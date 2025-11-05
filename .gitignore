@@ -1,0 +1,35 @@
+# Service Account Keys - DO NOT COMMIT!
+*.json
+temp-acc-*.json
+
+# Generated Access Tokens - DO NOT COMMIT!
+access_token.txt
+*.token
+*.credentials
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+tokens/
+browser_data/
+test*/
