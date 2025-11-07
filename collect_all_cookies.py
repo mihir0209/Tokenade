@@ -11,12 +11,16 @@ from playwright.sync_api import sync_playwright
 import json
 import os
 import time
+import platform
 from datetime import datetime
 
 # Base directory for all browser sessions
 BASE_DIR = os.path.dirname(__file__)
 BROWSER_DATA_BASE = os.path.join(BASE_DIR, 'browser_data')
 TOKENS_OUTPUT_DIR = os.path.join(BASE_DIR, 'tokens')
+
+# Detect OS
+OS_TYPE = platform.system()  # 'Windows', 'Linux', 'Darwin' (Mac)
 
 # URLs
 GMAIL_URL = "https://mail.google.com"  # For Google Account login
@@ -27,56 +31,81 @@ SESSION_API_URL = "https://labs.google/fx/api/auth/session"
 CREDENTIALS_FILE = os.path.join(BASE_DIR, 'accounts.json')
 
 # Browser configuration
-BROWSER_CONFIGS = {
-    'edge': {
-        'name': 'Microsoft Edge',
-        'path': r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-        'channel': 'msedge'
-    },
-    'brave': {
-        'name': 'Brave Browser',
-        'path': r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe',
-        'channel': None
-    },
-    'chrome': {
-        'name': 'Google Chrome',
-        'path': r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-        'channel': None
-    },
-    'chrome_x86': {
-        'name': 'Google Chrome (x86)',
-        'path': r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
-        'channel': None
-    }
-}
-
-def detect_browser():
-    """Detect which browser to use based on what's installed"""
-    # Priority order: Chrome (best portability) > Edge > Brave
-    
-    # Check Chrome first (64-bit)
-    if os.path.exists(BROWSER_CONFIGS['chrome']['path']):
-        return BROWSER_CONFIGS['chrome']
-    # Chrome 32-bit
-    elif os.path.exists(BROWSER_CONFIGS['chrome_x86']['path']):
-        return BROWSER_CONFIGS['chrome_x86']
-    # Edge (common on Windows)
-    elif os.path.exists(BROWSER_CONFIGS['edge']['path']):
-        return BROWSER_CONFIGS['edge']
-    # Brave
-    elif os.path.exists(BROWSER_CONFIGS['brave']['path']):
-        return BROWSER_CONFIGS['brave']
+def get_chrome_path():
+    """Get Google Chrome path based on OS"""
+    if OS_TYPE == 'Windows':
+        # Try 64-bit first, then 32-bit
+        paths = [
+            r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+            r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
+        ]
+    elif OS_TYPE == 'Linux':
+        paths = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser'
+        ]
+    elif OS_TYPE == 'Darwin':  # Mac
+        paths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium'
+        ]
     else:
-        # If neither Edge nor Brave found, show error
-        # We should NOT fall back to Playwright Chromium!
-        print("\n⚠️  WARNING: Neither Edge nor Brave found!")
-        print("   If you set up accounts with a real browser, use the same browser.")
-        print("   Falling back to Chromium may cause issues.")
+        return None
+    
+    # Return first existing path
+    for path in paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+def detect_browser_from_profile(account_number: int):
+    """Detect which browser was used during setup by reading 'Last Browser' file"""
+    
+    user_data_dir = os.path.join(BROWSER_DATA_BASE, str(account_number))
+    last_browser_file = os.path.join(user_data_dir, 'Last Browser')
+    
+    if os.path.exists(last_browser_file):
+        with open(last_browser_file, 'r') as f:
+            browser_path_saved = f.read().strip()
+        
+        # If the saved path is from a different OS, try to find equivalent browser
+        # For cross-platform portability, use Chrome on the current OS
+        chrome_path = get_chrome_path()
+        
+        if chrome_path:
+            browser_name = os.path.basename(chrome_path)
+            return {
+                'name': f'Google Chrome ({OS_TYPE})',
+                'path': chrome_path,
+                'channel': None
+            }
+        else:
+            # Fallback to saved browser if it exists on current OS
+            if os.path.exists(browser_path_saved):
+                return {
+                    'name': f'Browser from profile',
+                    'path': browser_path_saved,
+                    'channel': None
+                }
+    
+    # Fallback: try to find Chrome on current OS
+    chrome_path = get_chrome_path()
+    if chrome_path:
         return {
-            'name': 'Playwright Chromium (Fallback)',
-            'path': None,
+            'name': f'Google Chrome ({OS_TYPE})',
+            'path': chrome_path,
             'channel': None
         }
+    
+    # Last fallback to Playwright Chromium (may not work with profiles from other browsers)
+    return {
+        'name': 'Playwright Chromium (Fallback)',
+        'path': None,
+        'channel': None
+    }
 
 def load_credentials():
     """Load account credentials from file (optional)"""
@@ -106,8 +135,8 @@ def collect_token_from_account(account_number: int, credentials: dict = None, he
     
     print(f"\n📋 Account {account_number}: Collecting token...")
     
-    # Detect browser (same one used during setup)
-    browser_config = detect_browser()
+    # Detect which browser was used during setup
+    browser_config = detect_browser_from_profile(account_number)
     if account_number == 1 or credentials:  # Show browser info on first account
         print(f"   🌐 Using: {browser_config['name']}")
     
@@ -129,7 +158,7 @@ def collect_token_from_account(account_number: int, credentials: dict = None, he
                 'ignore_default_args': ['--enable-automation']
             }
             
-            # Add executable path if using real browser
+            # Add executable path if using real browser (not Playwright Chromium)
             if browser_config['path']:
                 launch_options['executable_path'] = browser_config['path']
                 if browser_config['channel']:

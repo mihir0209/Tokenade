@@ -17,10 +17,14 @@ from playwright.sync_api import sync_playwright
 import json
 import os
 import time
+import platform
 
 # Base directory for all browser sessions
 BASE_DIR = os.path.dirname(__file__)
 BROWSER_DATA_BASE = os.path.join(BASE_DIR, 'browser_data')
+
+# Detect OS
+OS_TYPE = platform.system()  # 'Windows', 'Linux', 'Darwin' (Mac)
 
 # Target URLs
 GOOGLE_SIGNIN_URL = "https://accounts.google.com/ServiceLogin"  # Direct Google Account sign-in
@@ -46,41 +50,98 @@ def setup_account(account_number: int, total_accounts: int):
     print(f"ACCOUNT {account_number}/{total_accounts} - Manual Login Setup")
     print("=" * 80)
     
-    # Browser selection
-    browser_choices = {
-        '1': {
-            'name': 'Microsoft Edge',
-            'path': r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-            'channel': 'msedge'
-        },
-        '2': {
-            'name': 'Brave Browser',
-            'path': r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe',
-            'channel': None
-        },
-        '3': {
-            'name': 'Google Chrome',
-            'path': r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-            'channel': None
-        },
-        '4': {
-            'name': 'Google Chrome (x86)',
-            'path': r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
-            'channel': None
-        }
-    }
+    # Browser selection - Cross-platform
+    def get_browser_paths():
+        """Get browser paths based on OS"""
+        if OS_TYPE == 'Windows':
+            return {
+                '1': {
+                    'name': 'Microsoft Edge',
+                    'path': r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+                    'channel': 'msedge'
+                },
+                '2': {
+                    'name': 'Brave Browser',
+                    'path': r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe',
+                    'channel': None
+                },
+                '3': {
+                    'name': 'Google Chrome (64-bit)',
+                    'path': r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                    'channel': None
+                },
+                '4': {
+                    'name': 'Google Chrome (32-bit)',
+                    'path': r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+                    'channel': None
+                }
+            }
+        elif OS_TYPE == 'Linux':
+            return {
+                '1': {
+                    'name': 'Google Chrome',
+                    'path': '/usr/bin/google-chrome',
+                    'channel': None
+                },
+                '2': {
+                    'name': 'Chromium',
+                    'path': '/usr/bin/chromium',
+                    'channel': None
+                },
+                '3': {
+                    'name': 'Chromium Browser',
+                    'path': '/usr/bin/chromium-browser',
+                    'channel': None
+                },
+                '4': {
+                    'name': 'Brave Browser',
+                    'path': '/usr/bin/brave-browser',
+                    'channel': None
+                }
+            }
+        elif OS_TYPE == 'Darwin':  # Mac
+            return {
+                '1': {
+                    'name': 'Google Chrome',
+                    'path': '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                    'channel': None
+                },
+                '2': {
+                    'name': 'Brave Browser',
+                    'path': '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+                    'channel': None
+                },
+                '3': {
+                    'name': 'Chromium',
+                    'path': '/Applications/Chromium.app/Contents/MacOS/Chromium',
+                    'channel': None
+                },
+                '4': {
+                    'name': 'Microsoft Edge',
+                    'path': '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+                    'channel': None
+                }
+            }
+        else:
+            return {}
+    
+    browser_choices = get_browser_paths()
     
     # Ask user which browser to use (only on first account)
     global SELECTED_BROWSER
     if 'SELECTED_BROWSER' not in globals() or SELECTED_BROWSER is None:
+        print(f"\n🖥️  Operating System: {OS_TYPE}")
         print("\n🌐 Select browser to use:")
-        print("   1. Microsoft Edge")
-        print("   2. Brave Browser")
-        print("   3. Google Chrome (64-bit) ⭐ Best for portability")
-        print("   4. Google Chrome (32-bit)")
         
-        browser_choice = input("\nEnter choice (1/2/3/4, default=3): ").strip() or '3'
-        SELECTED_BROWSER = browser_choices.get(browser_choice, browser_choices['3'])
+        # Show available browsers based on OS
+        for key, browser in browser_choices.items():
+            exists = "✅" if os.path.exists(browser['path']) else "❌"
+            recommended = " ⭐ Recommended for cross-platform" if 'Chrome' in browser['name'] and 'chrome' in browser['path'].lower() else ""
+            print(f"   {key}. {browser['name']}{recommended} {exists}")
+        
+        default_choice = '3' if OS_TYPE == 'Windows' else '1'
+        browser_choice = input(f"\nEnter choice (1/2/3/4, default={default_choice}): ").strip() or default_choice
+        SELECTED_BROWSER = browser_choices.get(browser_choice, browser_choices[default_choice])
         
         print(f"\n✅ Using: {SELECTED_BROWSER['name']}")
         print(f"   Path: {SELECTED_BROWSER['path']}")
@@ -89,6 +150,16 @@ def setup_account(account_number: int, total_accounts: int):
         if not os.path.exists(SELECTED_BROWSER['path']):
             print(f"\n❌ ERROR: Browser not found at {SELECTED_BROWSER['path']}")
             print("   Please install the browser or check the path.")
+            
+            # Show installation instructions
+            if OS_TYPE == 'Linux':
+                print("\n📦 To install Google Chrome on Linux:")
+                print("   wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb")
+                print("   sudo apt install ./google-chrome-stable_current_amd64.deb")
+            elif OS_TYPE == 'Darwin':
+                print("\n📦 To install Google Chrome on Mac:")
+                print("   brew install --cask google-chrome")
+            
             return False
     
     with sync_playwright() as p:
