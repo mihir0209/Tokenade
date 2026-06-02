@@ -30,7 +30,30 @@ ENV/
 Thumbs.db
 desktop.ini
 
+# Tokenade data directories
 tokens/
 browser_data/
 test*/
 decrypted_cookies/
+sessions/
+.fingerprints/
+accounts.json
+
+# Session packages (contain sensitive cookies)
+*.tokenade
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Archive (legacy scripts)
+archive/
+
+# Reports
+reports/
+*.log
+
+# Test outputs
+test_output*.log
+/tmp/*.png
