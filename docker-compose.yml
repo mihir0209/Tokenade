@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  tokenade:
+    build: .
+    image: tokenade:latest
+    container_name: tokenade
+    volumes:
+      - ./sessions:/app/sessions
+      - ./browser_data:/app/browser_data
+      - ./.fingerprints:/app/.fingerprints
+      - ./reports:/app/reports
+      - ./accounts.json:/app/accounts.json:ro
+    environment:
+      - TOKENADE_DATA_DIR=/app
+      - PYTHONUNBUFFERED=1
+    # For headless browser support
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
+    command: bash
+
+  # Optional: Run specific commands
+  tokenade-extract:
+    extends: tokenade
+    container_name: tokenade-extract
+    command: ["extract"]
+
+  tokenade-test:
+    extends: tokenade
+    container_name: tokenade-test
+    command: ["test", "-s", "/app/sessions/session.json"]
+
+  # Development service with volume mount for code changes
+  tokenade-dev:
+    build: .
+    image: tokenade:dev
+    container_name: tokenade-dev
+    volumes:
+      - ./sessions:/app/sessions
+      - ./browser_data:/app/browser_data
+      - ./.fingerprints:/app/.fingerprints
+      - ./reports:/app/reports
+      - ./tokenade:/app/tokenade  # Mount code for live changes
+      - ./accounts.json:/app/accounts.json
+    environment:
+      - TOKENADE_DATA_DIR=/app
+      - PYTHONUNBUFFERED=1
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    stdin_open: true
+    tty: true
+    command: bash

@@ -1,0 +1,19 @@
+# Core dependencies
+playwright>=1.40.0
+requests>=2.28.0
+pycryptodome>=3.19.0
+keyring>=24.0.0
+
+# Platform-specific (install as needed)
+# Windows: pywin32>=306
+# Linux: secretstorage>=3.3.3
+
+# Optional runtime engine (for JA3 fingerprint matching)
+# curl-cffi>=0.6.0
+
+# Development
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0

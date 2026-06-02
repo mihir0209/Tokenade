@@ -57,3 +57,5 @@ reports/
 # Test outputs
 test_output*.log
 /tmp/*.png
+
+temp_scripts/
