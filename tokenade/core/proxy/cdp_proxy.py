@@ -1,0 +1,949 @@
+"""
+Tokenade CDP Proxy - Playwright-based reverse proxy with TLS fingerprint matching.
+
+Architecture:
+  1. Launch Playwright Chromium with donor cookies injected
+  2. page.route("**/*") intercepts ALL browser requests
+  3. Handler forwards via curl-cffi (TLS matched) with donor headers/cookies
+  4. Browser renders everything natively — no URL rewriting, no service worker
+  5. aiohttp serves GUI + reverse proxy for the client browser
+
+Key insight: The browser makes the requests, not the proxy.
+The proxy just ensures each request goes through curl-cffi with the
+donor's TLS fingerprint and cookies.
+"""
+
+import asyncio
+import base64
+import json
+import logging
+import time
+from dataclasses import dataclass, field
+from typing import Optional, Dict, List, Any, Tuple
+from urllib.parse import urlparse
+
+import aiohttp
+from aiohttp import web
+
+try:
+    from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+
+from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
+from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CDPProxyConfig:
+    """Configuration for the CDP proxy server."""
+    port: int = 9222
+    host: str = "127.0.0.1"
+    headless: bool = True
+    verbose: bool = False
+    timeout: int = 30
+
+
+class CDPProxy:
+    """
+    Playwright-based reverse proxy with TLS fingerprint matching.
+    
+    Uses a real Chromium browser to render pages. All requests are
+    intercepted via page.route() and forwarded through curl-cffi
+    with the donor's TLS fingerprint and cookies.
+    
+    Benefits over the old SW-based approach:
+    - No URL rewriting needed
+    - No service worker injection
+    - No <base> tag injection
+    - Browser handles all JS/CSS/fonts natively
+    - Perfect rendering of SPAs (React, Next.js, etc.)
+    - Sub-resource requests (fonts, analytics, etc.) work correctly
+    """
+    
+    def __init__(self, session_package: Dict, config: Optional[CDPProxyConfig] = None):
+        self.config = config or CDPProxyConfig()
+        self.session = session_package
+        
+        # Initialize components from session
+        self.cookie_jar = CookieJar()
+        self.cookie_jar.add_cookies(session_package.get("cookies", []))
+        
+        self.fingerprint = FingerprintMatcher(session_package.get("fingerprint"))
+        
+        # Initialize TLS matcher
+        tls_profile = session_package.get("tls_profile", {})
+        self.tls_matcher = create_tls_matcher(
+            browser=tls_profile.get("browser", "chrome"),
+            version=tls_profile.get("version", "120"),
+            impersonate=tls_profile.get("impersonate")
+        )
+        
+        # Playwright state
+        self._playwright: Optional[Playwright] = None
+        self._browser: Optional[Browser] = None
+        self._context: Optional[BrowserContext] = None
+        self._pages: Dict[str, Page] = {}  # url -> page
+        
+        # HTTP session for curl-cffi fallback
+        self._http_session = None
+        
+        # Statistics
+        self.stats = {
+            "requests": 0,
+            "bytes_sent": 0,
+            "bytes_received": 0,
+            "errors": 0,
+            "start_time": None
+        }
+        
+        self._app = None
+        self._runner = None
+        self._site = None
+    
+    @classmethod
+    def from_session_file(cls, session_file: str, config: Optional[CDPProxyConfig] = None) -> 'CDPProxy':
+        """Create proxy from .tokenade file."""
+        from tokenade.core.importer.session_packager import SessionPackager
+        packager = SessionPackager()
+        session = packager.load(session_file)
+        return cls(session, config)
+    
+    @classmethod
+    def from_session_data(cls, session_data: Dict, config: Optional[CDPProxyConfig] = None) -> 'CDPProxy':
+        """Create proxy from session data dictionary."""
+        return cls(session_data, config)
+    
+    async def start(self):
+        """Start the proxy server and Playwright browser."""
+        if not HAS_PLAYWRIGHT:
+            raise RuntimeError(
+                "Playwright is required for CDP proxy. "
+                "Install with: pip install playwright && playwright install chromium"
+            )
+        
+        # Start Playwright browser
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
+            headless=self.config.headless,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ]
+        )
+        
+        # Create browser context with donor cookies
+        self._context = await self._browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent=self.session.get("fingerprint", {}).get(
+                "user_agent",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+        )
+        
+        # Inject donor cookies
+        await self._inject_cookies()
+        
+        # Start aiohttp server
+        self._app = self._create_app()
+        self._runner = web.AppRunner(self._app)
+        await self._runner.setup()
+        self._site = web.TCPSite(self._runner, self.config.host, self.config.port)
+        await self._site.start()
+        
+        self.stats["start_time"] = time.time()
+        
+        site_name = self.session.get("site_name", "unknown")
+        cookies = self.session.get("cookies", [])
+        tls_profile = self.session.get("tls_profile", {})
+        
+        logger.info(f"CDP Proxy started on {self.config.host}:{self.config.port}")
+        print(f"\n{'='*60}")
+        print(f"Tokenade CDP Proxy Server")
+        print(f"{'='*60}")
+        print(f"Site: {site_name}")
+        print(f"Cookies: {len(cookies)}")
+        print(f"TLS Profile: {tls_profile.get('impersonate', 'unknown')}")
+        print(f"Browser: Chromium (Playwright)")
+        print(f"Headless: {self.config.headless}")
+        print(f"\nGUI: http://127.0.0.1:{self.config.port}")
+        print(f"{'='*60}\n")
+    
+    async def stop(self):
+        """Stop the proxy server and Playwright browser."""
+        if self._http_session and not self._http_session.closed:
+            await self._http_session.close()
+        if self._runner:
+            await self._runner.cleanup()
+        if self._context:
+            await self._context.close()
+        if self._browser:
+            await self._browser.close()
+        if self._playwright:
+            await self._playwright.stop()
+        if self.tls_matcher:
+            self.tls_matcher.close()
+    
+    async def _inject_cookies(self):
+        """Inject donor cookies into the Playwright browser context."""
+        cookies = self.session.get("cookies", [])
+        if not cookies:
+            return
+        
+        pw_cookies = []
+        for cookie in cookies:
+            pw_cookie = {
+                "name": cookie.get("name", ""),
+                "value": cookie.get("value", ""),
+                "domain": cookie.get("domain", ""),
+                "path": cookie.get("path", "/"),
+            }
+            
+            # Map sameSite values
+            same_site = cookie.get("sameSite", "").lower()
+            if same_site in ("strict", "lax", "none"):
+                pw_cookie["sameSite"] = same_site.capitalize()
+            else:
+                pw_cookie["sameSite"] = "Lax"
+            
+            # Set secure flag
+            if cookie.get("secure"):
+                pw_cookie["secure"] = True
+            
+            # Set httpOnly flag
+            if cookie.get("httpOnly"):
+                pw_cookie["httpOnly"] = True
+            
+            # Convert expiry (handle Firefox ms → s)
+            expires = cookie.get("expires")
+            if expires:
+                if isinstance(expires, (int, float)) and expires > 1262304000000:
+                    expires = expires / 1000
+                pw_cookie["expires"] = expires
+            
+            # Skip __Host- cookies with domain set (invalid per spec)
+            if pw_cookie["name"].startswith("__Host-") and cookie.get("domain"):
+                continue
+            
+            pw_cookies.append(pw_cookie)
+        
+        if pw_cookies:
+            try:
+                await self._context.add_cookies(pw_cookies)
+                logger.info(f"Injected {len(pw_cookies)} cookies into browser")
+            except Exception as e:
+                logger.warning(f"Failed to inject some cookies: {e}")
+    
+    def _create_app(self) -> web.Application:
+        """Create aiohttp application with routes."""
+        app = web.Application()
+        
+        # Service worker cleanup — unregisters any cached old SW
+        app.router.add_get("/_tokenade_sw.js", self._handle_old_sw)
+        
+        # Legacy proxy routes — redirect to GUI
+        app.router.add_get("/proxy", self._handle_legacy_redirect)
+        app.router.add_get("/proxy/", self._handle_legacy_redirect)
+        
+        # GUI routes
+        app.router.add_get("/", self._handle_gui)
+        app.router.add_get("/status", self._handle_status)
+        app.router.add_get("/stats", self._handle_stats)
+        app.router.add_post("/browse", self._handle_browse_post)
+        app.router.add_get("/page/{page_id}", self._handle_page)
+        
+        # Reverse proxy catch-all (must be last)
+        app.router.add_route("*", "/{path:.*}", self._handle_proxy)
+        
+        return app
+    
+    async def _handle_old_sw(self, request: web.Request) -> web.Response:
+        """Return a service worker that unregisters itself (clears old cached SW)."""
+        sw_code = """
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', () => {
+    self.registration.unregister();
+    clients.matchAll().then(clients => clients.forEach(c => c.navigate(c.url)));
+});
+"""
+        return web.Response(text=sw_code, content_type='application/javascript')
+    
+    async def _handle_legacy_redirect(self, request: web.Request) -> web.Response:
+        """Redirect /proxy to / (clears old cached proxy URLs)."""
+        raise web.HTTPFound("/")
+    
+    async def _handle_gui(self, request: web.Request) -> web.Response:
+        """Serve the GUI landing page."""
+        site_name = self.session.get("site_name", "unknown")
+        source_device = self.session.get("source_device", {})
+        browser_name = source_device.get("browser", "unknown")
+        platform = source_device.get("platform", "unknown")
+        
+        default_url = self._get_site_url()
+        
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Tokenade CDP Proxy - {site_name}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a; color: #fff; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }}
+        .container {{ max-width: 800px; padding: 40px; width: 100%; }}
+        h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
+        .subtitle {{ color: #888; font-size: 1.2em; margin-bottom: 40px; }}
+        .card {{ 
+            background: #1a1a1a; border-radius: 12px; padding: 24px; 
+            margin-bottom: 20px; border: 1px solid #333;
+        }}
+        .card h3 {{ color: #00ff88; margin-bottom: 12px; }}
+        .info-row {{ display: flex; justify-content: space-between; margin: 8px 0; }}
+        .info-label {{ color: #888; }}
+        .info-value {{ color: #fff; font-weight: 500; }}
+        .browse-form {{
+            display: flex; gap: 10px; margin: 20px 0;
+        }}
+        .browse-input {{
+            flex: 1; padding: 16px; border-radius: 8px; border: 1px solid #333;
+            background: #0a0a0a; color: #fff; font-size: 1em; font-family: monospace;
+        }}
+        .browse-input:focus {{ outline: none; border-color: #00ff88; }}
+        .browse-btn {{
+            background: #00ff88; color: #000; padding: 16px 24px; 
+            border-radius: 8px; border: none; font-size: 1em; font-weight: 600;
+            cursor: pointer; transition: transform 0.2s;
+        }}
+        .browse-btn:hover {{ transform: scale(1.05); }}
+        .instructions {{ color: #888; line-height: 1.6; }}
+        .instructions code {{ 
+            background: #333; padding: 2px 6px; border-radius: 4px; 
+            font-family: monospace; color: #00ff88;
+        }}
+        .stats {{ display: flex; gap: 20px; margin-top: 20px; }}
+        .stat {{ text-align: center; }}
+        .stat-value {{ font-size: 2em; font-weight: bold; color: #00ff88; }}
+        .stat-label {{ color: #888; font-size: 0.9em; }}
+        .status {{ 
+            padding: 8px 16px; border-radius: 20px; 
+            display: inline-block; margin: 10px 0;
+        }}
+        .status-ok {{ background: #00ff8822; color: #00ff88; border: 1px solid #00ff88; }}
+        .architecture {{ color: #888; line-height: 1.8; margin-top: 10px; }}
+        .architecture strong {{ color: #00ff88; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tokenade CDP Proxy</h1>
+        <p class="subtitle">Playwright-based session proxy with TLS fingerprint matching</p>
+        
+        <div class="card">
+            <h3>Session Info</h3>
+            <div class="info-row">
+                <span class="info-label">Site</span>
+                <span class="info-value">{site_name}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Source Browser</span>
+                <span class="info-value">{browser_name}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Platform</span>
+                <span class="info-value">{platform}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Cookies</span>
+                <span class="info-value">{len(self.cookie_jar.to_list())}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">TLS Profile</span>
+                <span class="info-value">{self.session.get("tls_profile", {}).get("impersonate", "unknown")}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Status</span>
+                <span class="info-value"><span class="status status-ok">● Running</span></span>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Browse as Donor Device</h3>
+            <p style="color: #888; margin-bottom: 15px;">Enter a URL to browse with the donor's fingerprint and cookies:</p>
+            <form class="browse-form" action="/browse" method="POST">
+                <input type="text" name="url" class="browse-input" value="{default_url}" placeholder="https://example.com">
+                <button type="submit" class="browse-btn">Browse →</button>
+            </form>
+        </div>
+        
+        <div class="card">
+            <h3>Architecture</h3>
+            <div class="architecture">
+                <p><strong>How it works:</strong></p>
+                <p>1. Playwright Chromium renders the target page</p>
+                <p>2. <code>page.route()</code> intercepts ALL browser requests</p>
+                <p>3. Each request is forwarded via <strong>curl-cffi</strong> with the donor's TLS fingerprint</p>
+                <p>4. Donor cookies are injected into the browser context</p>
+                <p>5. Browser renders everything natively — no URL rewriting needed</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Usage</h3>
+            <div class="instructions">
+                <p><strong>GUI Mode:</strong> Enter a URL above and click Browse</p>
+                <p><strong>Proxy Mode:</strong> Configure your browser:</p>
+                <p>Linux/Mac: <code>export HTTP_PROXY=http://127.0.0.1:{self.config.port}</code></p>
+                <p>Windows: <code>set HTTP_PROXY=http://127.0.0.1:{self.config.port}</code></p>
+                <p><strong>curl:</strong> <code>curl --proxy http://127.0.0.1:{self.config.port} https://example.com</code></p>
+            </div>
+        </div>
+        
+        <div class="stats" id="stats">
+            <div class="stat">
+                <div class="stat-value" id="requests">0</div>
+                <div class="stat-label">Requests</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="bytes-in">0</div>
+                <div class="stat-label">Received</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="bytes-out">0</div>
+                <div class="stat-label">Sent</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function updateStats() {{
+            try {{
+                const resp = await fetch('/stats');
+                const data = await resp.json();
+                document.getElementById('requests').textContent = data.requests || 0;
+                document.getElementById('bytes-in').textContent = formatBytes(data.bytes_received || 0);
+                document.getElementById('bytes-out').textContent = formatBytes(data.bytes_sent || 0);
+            }} catch(e) {{}}
+        }}
+        function formatBytes(bytes) {{
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+            return (bytes/(1024*1024)).toFixed(1) + ' MB';
+        }}
+        setInterval(updateStats, 2000);
+        updateStats();
+    </script>
+</body>
+</html>"""
+        return web.Response(text=html, content_type='text/html')
+    
+    async def _handle_browse_post(self, request: web.Request) -> web.Response:
+        """Handle POST to /browse - create a new page and navigate."""
+        try:
+            data = await request.post()
+            url = data.get("url", "")
+            
+            if not url:
+                return web.Response(text="No URL provided", status=400)
+            
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            
+            parsed = urlparse(url)
+            if not parsed.hostname:
+                return web.Response(text="Invalid URL", status=400)
+            
+            # Create a unique page ID
+            page_id = str(int(time.time() * 1000))
+            
+            # Create a new page and navigate in the background
+            asyncio.create_task(self._navigate_page(page_id, url))
+            
+            # Redirect to the page viewer
+            raise web.HTTPFound(f"/page/{page_id}")
+            
+        except web.HTTPFound:
+            raise
+        except Exception as e:
+            return web.Response(text=f"Error: {e}", status=500)
+    
+    async def _navigate_page(self, page_id: str, url: str):
+        """Create a new page, set up route interception, and navigate."""
+        try:
+            page = await self._context.new_page()
+            self._pages[page_id] = page
+            
+            # Set up route interception for ALL requests
+            await page.route("**/*", lambda route: self._handle_route(route))
+            
+            # Navigate to the target URL
+            await page.goto(url, wait_until="networkidle", timeout=self.config.timeout * 1000)
+            
+            logger.info(f"Page {page_id} loaded: {url}")
+            
+        except Exception as e:
+            logger.error(f"Failed to navigate to {url}: {e}")
+    
+    async def _handle_route(self, route):
+        """
+        Intercept ALL requests from the browser and forward via curl-cffi.
+        
+        This is the core of the CDP proxy. Every request the browser makes
+        (navigation, CSS, JS, fonts, images, API calls, analytics, etc.)
+        is intercepted and forwarded through curl-cffi with the donor's
+        TLS fingerprint and cookies.
+        """
+        request = route.request
+        url = request.url
+        method = request.method
+        headers = dict(request.headers)
+        
+        # Skip internal requests
+        if url.startswith("data:") or url.startswith("about:"):
+            await route.continue_()
+            return
+        
+        self.stats["requests"] += 1
+        
+        try:
+            logger.debug(f"Route: {method} {url}")
+            
+            # Safely extract POST body (may be binary/compressed)
+            body = None
+            try:
+                body = request.post_data
+            except (UnicodeDecodeError, ValueError):
+                try:
+                    post_data_buffer = request.post_data_buffer
+                    if post_data_buffer:
+                        import base64 as b64
+                        body = b64.b64encode(post_data_buffer).decode("ascii")
+                except Exception:
+                    pass
+            
+            # Forward via curl-cffi with donor TLS fingerprint
+            response = await self._forward_via_curl_cffi(
+                method=method,
+                url=url,
+                headers=headers,
+                body=body
+            )
+            
+            if response is None:
+                await route.abort()
+                return
+            
+            self.stats["bytes_received"] += len(response.body)
+            
+            # Fulfill the route with the response
+            resp_headers = {}
+            raw_headers = response.headers
+            # curl-cffi may return headers as list of tuples or dict
+            if isinstance(raw_headers, dict):
+                header_items = raw_headers.items()
+            elif isinstance(raw_headers, list):
+                header_items = raw_headers
+            else:
+                header_items = []
+            
+            skip = {
+                "content-security-policy",
+                "x-frame-options",
+                "strict-transport-security",
+                "content-encoding",
+                "transfer-encoding",
+            }
+            
+            for item in header_items:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    key, value = item
+                elif isinstance(item, dict):
+                    key = item.get("name", "")
+                    value = item.get("value", "")
+                else:
+                    continue
+                
+                if key.lower() in skip:
+                    continue
+                resp_headers[str(key)] = str(value)
+            
+            await route.fulfill(
+                status=response.status,
+                headers=resp_headers,
+                body=response.body
+            )
+            
+        except Exception as e:
+            logger.error(f"Route error for {url}: {e}")
+            self.stats["errors"] += 1
+            try:
+                await route.abort()
+            except Exception:
+                pass
+    
+    async def _forward_via_curl_cffi(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        body: Optional[str] = None,
+    ):
+        """
+        Forward request via curl-cffi with donor TLS fingerprint.
+        
+        Falls back to aiohttp if curl-cffi fails.
+        """
+        try:
+            from curl_cffi import requests as curl_requests
+            
+            # Build donor-matched headers
+            donor_headers = self.fingerprint.get_headers(url, None, method)
+            
+            # Override with request headers (browser's headers take priority for content negotiation)
+            for key, value in headers.items():
+                key_lower = key.lower()
+                # Skip headers that curl-cffi manages
+                if key_lower in ("host", "connection", "proxy-connection"):
+                    continue
+                donor_headers[key] = value
+            
+            # Inject donor cookies
+            cookies = self.cookie_jar.get_for_request(url)
+            if cookies:
+                donor_headers["cookie"] = cookies
+            
+            # Remove accept-encoding (curl-cffi handles decompression)
+            donor_headers.pop("accept-encoding", None)
+            
+            self.stats["bytes_sent"] += len(body) if body else 0
+            
+            # Make the request with TLS fingerprint matching
+            response = await asyncio.to_thread(
+                curl_requests.request,
+                method=method,
+                url=url,
+                headers=donor_headers,
+                data=body,
+                impersonate=self.session.get("tls_profile", {}).get("impersonate", "chrome120"),
+                timeout=self.config.timeout,
+                allow_redirects=True,
+            )
+            
+            # Normalize headers to dict
+            raw_headers = response.headers
+            if isinstance(raw_headers, dict):
+                headers_dict = raw_headers
+            elif isinstance(raw_headers, list):
+                headers_dict = {}
+                for item in raw_headers:
+                    if isinstance(item, (list, tuple)) and len(item) == 2:
+                        headers_dict[item[0]] = item[1]
+            else:
+                headers_dict = dict(raw_headers) if raw_headers else {}
+            
+            return type('Response', (), {
+                'status': response.status_code,
+                'headers': headers_dict,
+                'body': response.content,
+            })()
+            
+        except Exception as e:
+            logger.debug(f"curl-cffi failed for {url}: {e}")
+            
+            # Fallback to aiohttp
+            return await self._forward_via_aiohttp(method, url, headers, body)
+    
+    async def _forward_via_aiohttp(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        body: Optional[str] = None,
+    ):
+        """Fallback: forward via aiohttp."""
+        try:
+            if self._http_session is None or self._http_session.closed:
+                connector = aiohttp.TCPConnector(
+                    ssl=False,
+                    limit=100,
+                    limit_per_host=30,
+                    enable_cleanup_closed=True
+                )
+                timeout = aiohttp.ClientTimeout(total=self.config.timeout, connect=10)
+                self._http_session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                    auto_decompress=False
+                )
+            
+            # Build donor-matched headers
+            donor_headers = self.fingerprint.get_headers(url, None, method)
+            for key, value in headers.items():
+                key_lower = key.lower()
+                if key_lower in ("host", "connection", "proxy-connection"):
+                    continue
+                donor_headers[key] = value
+            
+            cookies = self.cookie_jar.get_for_request(url)
+            if cookies:
+                donor_headers["cookie"] = cookies
+            
+            donor_headers.pop("accept-encoding", None)
+            
+            async with self._http_session.request(
+                method=method,
+                url=url,
+                headers=donor_headers,
+                data=body,
+                allow_redirects=True,
+                ssl=False
+            ) as resp:
+                resp_body = await resp.read()
+                return type('Response', (), {
+                    'status': resp.status,
+                    'headers': dict(resp.headers),
+                    'body': resp_body,
+                })()
+                
+        except Exception as e:
+            logger.error(f"aiohttp fallback also failed for {url}: {e}")
+            return None
+    
+    async def _handle_page(self, request: web.Request) -> web.Response:
+        """Serve a page that displays the browser content via iframe."""
+        page_id = request.match_info["page_id"]
+        
+        page = self._pages.get(page_id)
+        if not page:
+            return web.Response(
+                text="<html><body><h1>Page not found</h1><p>The page may still be loading.</p></body></html>",
+                content_type="text/html",
+                status=404
+            )
+        
+        try:
+            # Get the current URL of the page
+            current_url = page.url
+            
+            html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Tokenade - Browsing</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: monospace; background: #1a1a1a; color: #fff; }}
+        .toolbar {{
+            background: #0a0a0a; padding: 10px 20px; border-bottom: 1px solid #333;
+            display: flex; align-items: center; gap: 10px;
+        }}
+        .toolbar .url {{ 
+            flex: 1; padding: 8px 12px; border-radius: 4px; border: 1px solid #333;
+            background: #1a1a1a; color: #00ff88; font-family: monospace; font-size: 14px;
+        }}
+        .toolbar a {{ color: #00ff88; text-decoration: none; padding: 8px 16px; }}
+        .toolbar a:hover {{ background: #00ff8822; border-radius: 4px; }}
+        .frame {{ width: 100%; height: calc(100vh - 50px); border: none; }}
+        .loading {{
+            display: flex; align-items: center; justify-content: center;
+            height: calc(100vh - 50px); color: #888; font-size: 1.2em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <span class="url">{current_url}</span>
+        <a href="/">← Back</a>
+    </div>
+    <div id="content">
+        <div class="loading">Loading page content...</div>
+    </div>
+    <script>
+        // Auto-refresh the page content
+        async function refreshContent() {{
+            try {{
+                const resp = await fetch('/api/page/{page_id}/html');
+                if (resp.ok) {{
+                    const html = await resp.text();
+                    document.getElementById('content').innerHTML = '';
+                    const iframe = document.createElement('iframe');
+                    iframe.className = 'frame';
+                    iframe.srcdoc = html;
+                    document.getElementById('content').appendChild(iframe);
+                }}
+            }} catch(e) {{
+                console.error('Refresh failed:', e);
+            }}
+        }}
+        
+        // Initial load
+        setTimeout(refreshContent, 1000);
+        
+        // Auto-refresh every 5 seconds
+        setInterval(refreshContent, 5000);
+    </script>
+</body>
+</html>"""
+            return web.Response(text=html, content_type='text/html')
+            
+        except Exception as e:
+            return web.Response(text=f"Error: {e}", status=500)
+    
+    async def _handle_proxy(self, request: web.Request) -> web.Response:
+        """Handle reverse proxy requests."""
+        self.stats["requests"] += 1
+        
+        path = request.path
+        if path.startswith("/api/"):
+            return await self._handle_api(request)
+        
+        # Redirect old /proxy/* routes to root
+        if path.startswith("/proxy"):
+            raise web.HTTPFound("/")
+        
+        # Build target URL from request
+        target_url = self._build_target_url(request)
+        if not target_url:
+            return web.Response(text="Could not determine target URL", status=400)
+        
+        try:
+            body = await request.read() if request.method in ("POST", "PUT", "PATCH") else None
+            
+            response = await self._forward_via_curl_cffi(
+                method=request.method,
+                url=target_url,
+                headers=dict(request.headers),
+                body=body
+            )
+            
+            if response is None:
+                return web.Response(text="Proxy error", status=502)
+            
+            self.stats["bytes_received"] += len(response.body)
+            
+            # Filter response headers
+            resp_headers = {}
+            for key, value in response.headers.items():
+                if key.lower() in (
+                    "content-security-policy",
+                    "x-frame-options",
+                    "strict-transport-security",
+                    "content-encoding",
+                    "transfer-encoding",
+                ):
+                    continue
+                resp_headers[key] = value
+            
+            return web.Response(
+                status=response.status,
+                headers=resp_headers,
+                body=response.body
+            )
+            
+        except Exception as e:
+            logger.error(f"Proxy error: {e}")
+            self.stats["errors"] += 1
+            return web.Response(text=f"Proxy error: {e}", status=502)
+    
+    async def _handle_api(self, request: web.Request) -> web.Response:
+        """Handle API requests."""
+        path = request.path
+        
+        if path == "/api/status":
+            return await self._handle_status(request)
+        elif path == "/api/stats":
+            return await self._handle_stats(request)
+        elif path.startswith("/api/page/") and path.endswith("/html"):
+            return await self._handle_page_html(request)
+        
+        return web.Response(text="Not found", status=404)
+    
+    async def _handle_page_html(self, request: web.Request) -> web.Response:
+        """Return the rendered HTML of a page."""
+        parts = request.path.split("/")
+        if len(parts) >= 4:
+            page_id = parts[3]
+        else:
+            return web.Response(text="Invalid page ID", status=400)
+        
+        page = self._pages.get(page_id)
+        if not page:
+            return web.Response(text="Page not found", status=404)
+        
+        try:
+            html = await page.content()
+            return web.Response(text=html, content_type='text/html')
+        except Exception as e:
+            return web.Response(text=f"Error getting page content: {e}", status=500)
+    
+    async def _handle_status(self, request: web.Request) -> web.Response:
+        """Return proxy status as JSON."""
+        return web.json_response({
+            "status": "running",
+            "site": self.session.get("site_name", "unknown"),
+            "cookies": len(self.cookie_jar.to_list()),
+            "tls_profile": self.session.get("tls_profile", {}),
+            "uptime": time.time() - (self.stats["start_time"] or time.time())
+        })
+    
+    async def _handle_stats(self, request: web.Request) -> web.Response:
+        """Return proxy statistics as JSON."""
+        return web.json_response(self.stats)
+    
+    def _build_target_url(self, request: web.Request) -> Optional[str]:
+        """Build target URL from request."""
+        path = request.path
+        
+        if path.startswith(("http://", "https://")):
+            return path
+        
+        host = request.headers.get("Host") or request.headers.get(":authority")
+        if host:
+            scheme = "https" if ":443" in host or request.headers.get(":scheme") == "https" else "http"
+            return f"{scheme}://{host}{path}"
+        
+        return None
+    
+    def _get_site_url(self) -> str:
+        """Get the default URL for the session's site."""
+        site_name = self.session.get("site_name", "unknown")
+        if site_name and site_name != "unknown":
+            return f"https://www.{site_name}.com"
+        return "https://example.com"
+    
+    def run(self):
+        """Run the proxy server (blocking)."""
+        asyncio.run(self._run_async())
+    
+    async def _run_async(self):
+        """Run the proxy server asynchronously."""
+        await self.start()
+        
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down CDP proxy...")
+        finally:
+            await self.stop()
+
+
+def create_cdp_proxy_from_file(session_file: str, port: int = 9222, headless: bool = True) -> CDPProxy:
+    """
+    Convenience function to create a CDP proxy from a session file.
+    
+    Args:
+        session_file: Path to .tokenade file
+        port: Port to listen on
+        headless: Run browser in headless mode
+        
+    Returns:
+        Configured CDPProxy
+    """
+    config = CDPProxyConfig(port=port, headless=headless)
+    return CDPProxy.from_session_file(session_file, config)
