@@ -20,6 +20,7 @@ from typing import Optional
 
 from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
 from tokenade.core.crypto.cookie_crypto import CookieCryptoFactory
+from tokenade.core.crypto.encryptor import TokenadeEncryptor, encrypt_session, decrypt_session, load_key_from_file
 from tokenade.core.fingerprint.manager import FingerprintManager, FingerprintCollector
 from tokenade.core.fingerprint.injector import inject_stealth_script, validate_injection
 from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
@@ -27,6 +28,10 @@ from tokenade.core.importer.cookie_extractor import CookieExtractor, SiteFilter
 from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 from tokenade.core.importer.session_packager import SessionPackager
 from tokenade.core.importer.session_loader import SessionLoader
+from tokenade.core.injector.profile_manager import ProfileManager, inject_session_to_profile
+from tokenade.core.batch.operations import BatchExporter, BatchLoader, load_batch_config, generate_batch_report
+from tokenade.core.refresh.health_checker import SessionHealthChecker, SessionRefresher, generate_health_report
+from tokenade.core.proxy.server import TokenadeProxy, ProxyConfig, create_proxy_from_file
 from tokenade.handlers.base import HandlerRegistry
 from tokenade.handlers.google import GoogleHandler
 from tokenade.tests.portability import PortabilityTester
@@ -450,14 +455,23 @@ def cmd_export(args):
     print(f"\n🍪 Extracting cookies from: {browser_path}")
     extractor = CookieExtractor(browser_path, browser=browser_name)
 
+    # Load site config if provided
+    site_config = None
+    if args.site_config:
+        with open(args.site_config) as f:
+            site_config = json.load(f)
+
+    # Build domain filter list
+    domain_filter = None
+    if args.domains:
+        domain_filter = [d.strip() for d in args.domains.split(",") if d.strip()]
+
     try:
         if args.file_path:
-            # Parse from file
             cookies = extractor.extract_from_file(args.file_path, args.format or "netscape")
         else:
-            # Extract from browser database
-            site_filter = SiteFilter(args.site) if args.site else None
-            cookies = extractor.extract(site_filter)
+            # Extract ALL cookies first, filter by domains after
+            cookies = extractor.extract(site_filter=None)
     except Exception as e:
         logger.error(f"Extraction failed: {e}")
         print(f"❌ Extraction failed: {e}")
@@ -465,11 +479,44 @@ def cmd_export(args):
 
     print(f"   📊 Total cookies: {len(cookies)}")
 
-    # Filter by site
-    if args.site and not args.file_path:
-        site_filter = SiteFilter(args.site)
-        cookies = site_filter.filter_cookies(cookies)
-        print(f"   🎯 Filtered to {len(cookies)} cookies for site(s): {', '.join(args.site)}")
+    # Apply domain-based filtering from --domains flag
+    if domain_filter and not args.file_path:
+        filtered = []
+        for c in cookies:
+            domain = c.get("domain", "")
+            for d in domain_filter:
+                if d.startswith("."):
+                    if domain.endswith(d) or domain == d[1:]:
+                        filtered.append(c)
+                        break
+                else:
+                    if domain == d or domain.endswith("." + d):
+                        filtered.append(c)
+                        break
+        cookies = filtered
+        print(f"   🎯 Filtered to {len(cookies)} cookies for domains: {', '.join(domain_filter)}")
+
+    # Apply domain-based filtering from site config
+    elif site_config and not args.file_path:
+        configs = site_config if isinstance(site_config, list) else [site_config]
+        domains = []
+        for cfg in configs:
+            domains.extend(cfg.get("domains", []))
+        if domains:
+            filtered = []
+            for c in cookies:
+                domain = c.get("domain", "")
+                for d in domains:
+                    if d.startswith("."):
+                        if domain.endswith(d) or domain == d[1:]:
+                            filtered.append(c)
+                            break
+                    else:
+                        if domain == d or domain.endswith("." + d):
+                            filtered.append(c)
+                            break
+            cookies = filtered
+            print(f"   🎯 Filtered to {len(cookies)} cookies for domains: {', '.join(domains)}")
 
     # Extract localStorage if requested
     local_storage = {}
@@ -512,7 +559,7 @@ def cmd_export(args):
 
     # Determine output path
     site_name = package.get("site_name", "session")
-    output = args.output or f"{site_name}_session.tokenade"
+    output = args.output or f"{site_name}_session"
 
     # Save
     saved_path = packager.save(package, output)
@@ -529,7 +576,7 @@ def cmd_export(args):
 
 
 def cmd_load(args):
-    """Load .tokenade file into browser."""
+    """Load session file into browser."""
     print("\n" + "=" * 80)
     print("TOKENADE - Session Load")
     print("=" * 80)
@@ -540,6 +587,15 @@ def cmd_load(args):
         return
 
     print(f"\n📂 Loading: {file_path}")
+
+    # Load site config if provided
+    site_config = None
+    if args.site_config:
+        with open(args.site_config) as f:
+            site_config = json.load(f)
+        # If array, use first config for validation
+        if isinstance(site_config, list):
+            site_config = site_config[0] if site_config else None
 
     loader = SessionLoader()
 
@@ -552,6 +608,7 @@ def cmd_load(args):
             visible=args.visible,
             profile_dir=args.profile_dir,
             inject_local_storage=not args.no_local_storage,
+            site_config=site_config,
         )
 
         if result["success"]:
@@ -641,18 +698,476 @@ def cmd_validate(args):
     print(f"\n📊 Summary: {valid} valid, {invalid} invalid")
 
 
+def cmd_inject_profile(args):
+    """Inject cookies directly into browser profile."""
+    from tokenade.core.injector.profile_manager import ProfileManager, inject_session_to_profile
+    
+    print("\n" + "=" * 80)
+    print("TOKENADE - Direct Profile Injection")
+    print("=" * 80)
+    
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+    
+    print(f"\n📂 Session: {args.session}")
+    print(f"🌐 Browser: {args.browser}")
+    print(f"📁 Profile: {args.profile}")
+    
+    if args.dry_run:
+        print("\n🔍 Dry run mode - no changes will be made")
+    
+    try:
+        if args.dry_run:
+            # Just load and display session info
+            with open(session_file) as f:
+                session = json.load(f)
+            
+            cookies = session.get('cookies', [])
+            print(f"\n📊 Session info:")
+            print(f"   Site: {session.get('site_name', 'unknown')}")
+            print(f"   Cookies: {len(cookies)}")
+            print(f"   Auth status: {session.get('auth_status', 'unknown')}")
+            
+            if cookies:
+                print(f"\n🍪 Sample cookies:")
+                for cookie in cookies[:5]:
+                    print(f"   • {cookie.get('name')}: {cookie.get('domain')}")
+                if len(cookies) > 5:
+                    print(f"   ... and {len(cookies) - 5} more")
+        else:
+            # Perform injection
+            result = inject_session_to_profile(
+                session_file=str(session_file),
+                profile_path=args.profile,
+                browser=args.browser,
+                backup=not args.no_backup
+            )
+            
+            if result.success:
+                print(f"\n✅ Injection successful")
+                print(f"   Injected: {result.cookies_injected}/{result.cookies_total} cookies")
+                if result.backup_path:
+                    print(f"   Backup: {result.backup_path}")
+            else:
+                print(f"\n❌ Injection failed")
+                if result.error:
+                    print(f"   Error: {result.error}")
+    
+    except Exception as e:
+        logger.error(f"Profile injection failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_encrypt(args):
+    """Encrypt session file."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Encrypt Session")
+    print("=" * 80)
+    
+    input_file = Path(args.input)
+    if not input_file.exists():
+        print(f"❌ Input file not found: {args.input}")
+        return
+    
+    # Get password
+    if args.key_file:
+        password = load_key_from_file(args.key_file)
+        print(f"\n🔑 Loaded key from: {args.key_file}")
+    elif args.password:
+        password = args.password
+    else:
+        import getpass
+        password = getpass.getpass("\n🔑 Enter password: ")
+        confirm = getpass.getpass("🔑 Confirm password: ")
+        if password != confirm:
+            print("❌ Passwords don't match")
+            return
+    
+    output = args.output or str(input_file) + '.encrypted'
+    
+    try:
+        print(f"\n📂 Input: {args.input}")
+        print(f"📁 Output: {output}")
+        
+        result = encrypt_session(str(input_file), password, output)
+        
+        print(f"\n✅ Encrypted successfully")
+        print(f"   Output: {result}")
+        
+        # Show file size
+        input_size = input_file.stat().st_size
+        output_size = Path(result).stat().st_size
+        print(f"   Size: {input_size} -> {output_size} bytes")
+    
+    except Exception as e:
+        logger.error(f"Encryption failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_decrypt(args):
+    """Decrypt session file."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Decrypt Session")
+    print("=" * 80)
+    
+    input_file = Path(args.input)
+    if not input_file.exists():
+        print(f"❌ Input file not found: {args.input}")
+        return
+    
+    # Get password
+    if args.key_file:
+        password = load_key_from_file(args.key_file)
+        print(f"\n🔑 Loaded key from: {args.key_file}")
+    elif args.password:
+        password = args.password
+    else:
+        import getpass
+        password = getpass.getpass("\n🔑 Enter password: ")
+    
+    output = args.output or str(input_file).replace('.encrypted', '')
+    if output == str(input_file):
+        output = str(input_file) + '.decrypted'
+    
+    try:
+        print(f"\n📂 Input: {args.input}")
+        print(f"📁 Output: {output}")
+        
+        result = decrypt_session(str(input_file), password, output)
+        
+        print(f"\n✅ Decrypted successfully")
+        print(f"   Output: {result}")
+        
+        # Show file size
+        input_size = input_file.stat().st_size
+        output_size = Path(result).stat().st_size
+        print(f"   Size: {input_size} -> {output_size} bytes")
+    
+    except ValueError as e:
+        print(f"❌ Wrong password or corrupted file")
+        logger.debug(f"Decryption error: {e}")
+    except Exception as e:
+        logger.error(f"Decryption failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_rekey(args):
+    """Change encryption password."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Rekey Session")
+    print("=" * 80)
+    
+    input_file = Path(args.input)
+    if not input_file.exists():
+        print(f"❌ Input file not found: {args.input}")
+        return
+    
+    # Get old password
+    if args.old_key_file:
+        old_password = load_key_from_file(args.old_key_file)
+        print(f"\n🔑 Loaded old key from: {args.old_key_file}")
+    elif args.old_password:
+        old_password = args.old_password
+    else:
+        import getpass
+        old_password = getpass.getpass("\n🔑 Enter old password: ")
+    
+    # Get new password
+    if args.new_key_file:
+        new_password = load_key_from_file(args.new_key_file)
+        print(f"🔑 Loaded new key from: {args.new_key_file}")
+    elif args.new_password:
+        new_password = args.new_password
+    else:
+        import getpass
+        new_password = getpass.getpass("\n🔑 Enter new password: ")
+        confirm = getpass.getpass("🔑 Confirm new password: ")
+        if new_password != confirm:
+            print("❌ Passwords don't match")
+            return
+    
+    output = args.output or str(input_file)
+    
+    try:
+        print(f"\n📂 Input: {args.input}")
+        print(f"📁 Output: {output}")
+        
+        encryptor = TokenadeEncryptor()
+        
+        with open(input_file, 'rb') as f:
+            encrypted = f.read()
+        
+        rekeyed = encryptor.rekey(encrypted, old_password, new_password)
+        
+        with open(output, 'wb') as f:
+            f.write(rekeyed)
+        
+        print(f"\n✅ Rekeyed successfully")
+        print(f"   Output: {output}")
+    
+    except ValueError as e:
+        print(f"❌ Wrong old password or corrupted file")
+        logger.debug(f"Rekey error: {e}")
+    except Exception as e:
+        logger.error(f"Rekey failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_batch_export(args):
+    """Batch export multiple sites."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Batch Export")
+    print("=" * 80)
+    
+    # Load site configs
+    try:
+        sites = load_batch_config(args.site_config)
+        print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
+    except Exception as e:
+        print(f"❌ Failed to load site config: {e}")
+        return
+    
+    output_dir = args.output or "sessions_batch"
+    
+    print(f"\n🌐 Browser: {args.browser}")
+    print(f"📁 Output: {output_dir}")
+    
+    try:
+        exporter = BatchExporter()
+        result = exporter.export_batch(
+            browser=args.browser,
+            sites=sites,
+            output_dir=output_dir,
+            browser_path=args.browser_path,
+            profile=args.profile,
+            extract_local_storage=args.extract_local_storage
+        )
+        
+        print("\n" + generate_batch_report(result))
+        
+        if result.success:
+            print(f"\n✅ Batch export completed successfully")
+        else:
+            print(f"\n⚠️  Batch export completed with errors")
+    
+    except Exception as e:
+        logger.error(f"Batch export failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_batch_load(args):
+    """Batch load multiple sessions."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Batch Load")
+    print("=" * 80)
+    
+    # Load site configs if provided
+    sites = None
+    if args.site_config:
+        try:
+            sites = load_batch_config(args.site_config)
+            print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
+        except Exception as e:
+            print(f"⚠️  Failed to load site config: {e}")
+    
+    print(f"\n📂 Sessions: {args.sessions_dir}")
+    print(f"🌐 Target: {args.target_browser}")
+    
+    try:
+        loader = BatchLoader()
+        result = loader.load_batch(
+            sessions_dir=args.sessions_dir,
+            target_browser=args.target_browser,
+            site_configs=sites,
+            profile_dir=args.profile_dir,
+            validate=args.validate,
+            visible=args.visible
+        )
+        
+        print("\n" + generate_batch_report(result))
+        
+        if result.success:
+            print(f"\n✅ Batch load completed successfully")
+        else:
+            print(f"\n⚠️  Batch load completed with errors")
+    
+    except Exception as e:
+        logger.error(f"Batch load failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_health(args):
+    """Check session health."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Session Health Check")
+    print("=" * 80)
+    
+    session_files = []
+    
+    # Check single file or directory
+    if args.session:
+        session_files = [args.session]
+    elif args.sessions_dir:
+        sessions_path = Path(args.sessions_dir)
+        if not sessions_path.exists():
+            print(f"❌ Directory not found: {args.sessions_dir}")
+            return
+        session_files = [str(f) for f in sessions_path.glob("*.tokenade")] + \
+                       [str(f) for f in sessions_path.glob("*.session")] + \
+                       [str(f) for f in sessions_path.glob("*.json")]
+    
+    if not session_files:
+        print("❌ No session files found")
+        return
+    
+    checker = SessionHealthChecker()
+    
+    healthy_count = 0
+    unhealthy_count = 0
+    
+    for session_file in session_files:
+        print(f"\n📁 Checking: {Path(session_file).name}")
+        
+        health = checker.check_session(session_file)
+        
+        if health.healthy:
+            healthy_count += 1
+        else:
+            unhealthy_count += 1
+        
+        print(generate_health_report(health))
+    
+    print("\n" + "=" * 80)
+    print(f"SUMMARY: {healthy_count} healthy, {unhealthy_count} unhealthy")
+
+
+def cmd_refresh(args):
+    """Refresh session from source browser."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Session Refresh")
+    print("=" * 80)
+    
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+    
+    print(f"\n📂 Session: {args.session}")
+    print(f"🌐 Source: {args.source_browser}")
+    
+    # Load site config if provided
+    site_config = None
+    if args.site_config:
+        with open(args.site_config) as f:
+            site_config = json.load(f)
+        if isinstance(site_config, list):
+            site_config = site_config[0] if site_config else None
+    
+    try:
+        refresher = SessionRefresher()
+        result = refresher.refresh(
+            session_file=str(session_file),
+            source_browser=args.source_browser,
+            source_browser_path=args.source_browser_path,
+            source_profile=args.source_profile,
+            site_config=site_config
+        )
+        
+        if result.success:
+            print(f"\n✅ Refresh successful")
+            print(f"   Refreshed: {result.cookies_refreshed}/{result.cookies_total} cookies")
+        else:
+            print(f"\n❌ Refresh failed")
+            if result.error:
+                print(f"   Error: {result.error}")
+    
+    except Exception as e:
+        logger.error(f"Session refresh failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
+def cmd_proxy(args):
+    """Start fingerprint-matched proxy server."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Fingerprint Proxy Server")
+    print("=" * 80)
+    
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+    
+    print(f"\n📂 Session: {args.session}")
+    print(f"🔌 Port: {args.port}")
+    print(f"🧠 Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
+    
+    try:
+        if args.legacy:
+            # Legacy SW-based proxy
+            from tokenade.core.proxy.server import TokenadeProxy, ProxyConfig
+            gui_mode = not args.no_gui
+            config = ProxyConfig(
+                port=args.port,
+                host=args.host,
+                gui_mode=gui_mode,
+                verbose=args.verbose
+            )
+            proxy = TokenadeProxy.from_session_file(str(session_file), config)
+        else:
+            # CDP-based proxy (default, recommended)
+            from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+            config = CDPProxyConfig(
+                port=args.port,
+                host=args.host,
+                headless=not args.visible,
+                timeout=args.timeout,
+            )
+            proxy = CDPProxy.from_session_file(str(session_file), config)
+        
+        # Open browser in GUI mode
+        if not args.no_open_browser:
+            import webbrowser
+            import threading
+            
+            def open_browser_thread():
+                import time
+                time.sleep(2)  # Wait for server + browser to start
+                webbrowser.open(f"http://127.0.0.1:{args.port}")
+            
+            threading.Thread(target=open_browser_thread, daemon=True).start()
+        
+        print(f"\n🚀 Starting proxy server...")
+        proxy.run()
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Proxy stopped by user")
+    except Exception as e:
+        logger.error(f"Proxy failed: {e}")
+        print(f"❌ Failed: {e}")
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Tokenade - Production-grade token shifting tool",
+        description="Tokenade - Browser session portability tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  tokenade setup                    # Setup accounts
-  tokenade extract                  # Extract tokens (headless)
-  tokenade extract --visible        # Extract tokens (visible browser)
-  tokenade test -s session.json     # Test session portability
-  tokenade fingerprint collect -n my_pc  # Collect fingerprint
+Quick Start:
+  1. Export:   tokenade export --browser-name firefox --domains "google.com,accounts.google.com" -o my_session.tokenade
+  2. Proxy:    tokenade proxy -s my_session.tokenade
+  3. Browse:   Open http://127.0.0.1:9222 and enter the target URL
+
+Commands:
+  export        Extract cookies from browser to .tokenade file
+  proxy         Start CDP proxy server with donor session
+  load          Load .tokenade session into a browser
+  inject-profile Inject cookies directly into browser profile
+  encrypt       Encrypt a .tokenade file
+  decrypt       Decrypt a .tokenade file
+  health        Check session health
+  batch-export  Export multiple sites at once
         """,
     )
     
@@ -699,22 +1214,24 @@ Examples:
 
     # Export
     export_parser = subparsers.add_parser("export", help="Export session from existing browser")
-    export_parser.add_argument("--browser-name", choices=["chrome", "firefox", "edge"], help="Browser name")
+    export_parser.add_argument("--browser-name", choices=["chrome", "firefox", "edge", "brave"], help="Browser name")
     export_parser.add_argument("--browser-path", help="Custom path to browser profile")
     export_parser.add_argument("--profile", help="Profile name within browser")
-    export_parser.add_argument("--site", action="append", help="Filter by site (repeatable)")
+    export_parser.add_argument("--site-config", help="Path to JSON site config file for filtering")
+    export_parser.add_argument("--domains", help="Comma-separated domains to filter (e.g. 'google.com,accounts.google.com')")
     export_parser.add_argument("--file-path", help="Export from cookies file")
     export_parser.add_argument("--format", choices=["netscape", "json", "curl"], default="netscape", help="File format")
     export_parser.add_argument("--collect-fingerprint", action="store_true", help="Collect source browser fingerprint")
-    export_parser.add_argument("--output", "-o", help="Output .tokenade file path")
+    export_parser.add_argument("--output", "-o", help="Output file path (any extension)")
     export_parser.add_argument("--list-profiles", action="store_true", help="List available profiles")
     export_parser.add_argument("--decrypt", action="store_true", help="Decrypt cookies (auto-detected)")
     export_parser.add_argument("--extract-local-storage", action="store_true", help="Also extract localStorage data")
-    export_parser.add_argument("--local-storage-origin", help="Origin to extract localStorage from (e.g., https://example.com)")
+    export_parser.add_argument("--local-storage-origin", help="Origin to extract localStorage from")
 
     # Load
-    load_parser = subparsers.add_parser("load", help="Load .tokenade file into browser")
-    load_parser.add_argument("--file", "-f", required=True, help="Path to .tokenade file")
+    load_parser = subparsers.add_parser("load", help="Load session file into browser")
+    load_parser.add_argument("--file", "-f", required=True, help="Path to session file")
+    load_parser.add_argument("--site-config", help="Path to JSON site config file for validation")
     load_parser.add_argument("--fingerprint", help="Target fingerprint name")
     load_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth level")
     load_parser.add_argument("--validate", action="store_true", help="Validate session after injection")
@@ -723,6 +1240,83 @@ Examples:
     load_parser.add_argument("--visible", action="store_true", help="Show browser window")
     load_parser.add_argument("--profile-dir", help="Browser profile directory")
     load_parser.add_argument("--no-local-storage", action="store_true", help="Skip localStorage injection if present")
+
+    # Inject Profile
+    inject_parser = subparsers.add_parser("inject-profile", help="Inject cookies directly into browser profile")
+    inject_parser.add_argument("--session", "-s", required=True, help="Path to session file")
+    inject_parser.add_argument("--profile", "-p", required=True, help="Browser profile path")
+    inject_parser.add_argument("--browser", "-b", choices=["chrome", "brave", "edge", "firefox", "opera", "vivaldi"], 
+                              default="chrome", help="Browser name")
+    inject_parser.add_argument("--no-backup", action="store_true", help="Skip backup creation")
+    inject_parser.add_argument("--dry-run", action="store_true", help="Show what would be injected without making changes")
+
+    # Encrypt
+    encrypt_parser = subparsers.add_parser("encrypt", help="Encrypt session file")
+    encrypt_parser.add_argument("--input", "-i", required=True, help="Input file path")
+    encrypt_parser.add_argument("--output", "-o", help="Output file path")
+    encrypt_parser.add_argument("--password", "-p", help="Encryption password")
+    encrypt_parser.add_argument("--key-file", "-k", help="Password file")
+
+    # Decrypt
+    decrypt_parser = subparsers.add_parser("decrypt", help="Decrypt session file")
+    decrypt_parser.add_argument("--input", "-i", required=True, help="Encrypted file path")
+    decrypt_parser.add_argument("--output", "-o", help="Output file path")
+    decrypt_parser.add_argument("--password", "-p", help="Decryption password")
+    decrypt_parser.add_argument("--key-file", "-k", help="Password file")
+
+    # Rekey
+    rekey_parser = subparsers.add_parser("rekey", help="Change encryption password")
+    rekey_parser.add_argument("--input", "-i", required=True, help="Encrypted file path")
+    rekey_parser.add_argument("--output", "-o", help="Output file path")
+    rekey_parser.add_argument("--old-password", help="Old password")
+    rekey_parser.add_argument("--new-password", help="New password")
+    rekey_parser.add_argument("--old-key-file", help="Old password file")
+    rekey_parser.add_argument("--new-key-file", help="New password file")
+
+    # Batch Export
+    batch_export_parser = subparsers.add_parser("batch-export", help="Batch export multiple sites")
+    batch_export_parser.add_argument("--site-config", "-s", required=True, help="Site config JSON file")
+    batch_export_parser.add_argument("--browser", "-b", choices=["chrome", "firefox", "edge", "brave"], 
+                                   default="firefox", help="Browser name")
+    batch_export_parser.add_argument("--browser-path", help="Custom browser profile path")
+    batch_export_parser.add_argument("--profile", "-p", help="Profile name")
+    batch_export_parser.add_argument("--output", "-o", help="Output directory")
+    batch_export_parser.add_argument("--extract-local-storage", action="store_true", help="Extract localStorage")
+
+    # Batch Load
+    batch_load_parser = subparsers.add_parser("batch-load", help="Batch load multiple sessions")
+    batch_load_parser.add_argument("--sessions-dir", "-d", required=True, help="Sessions directory")
+    batch_load_parser.add_argument("--target-browser", "-t", choices=["chrome", "firefox", "edge", "brave"], 
+                                  default="chrome", help="Target browser")
+    batch_load_parser.add_argument("--site-config", "-s", help="Site config JSON file for validation")
+    batch_load_parser.add_argument("--profile-dir", help="Target profile directory")
+    batch_load_parser.add_argument("--validate", action="store_true", help="Validate sessions")
+    batch_load_parser.add_argument("--visible", action="store_true", help="Show browser window")
+
+    # Health Check
+    health_parser = subparsers.add_parser("health", help="Check session health")
+    health_parser.add_argument("--session", "-s", help="Single session file to check")
+    health_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to check")
+
+    # Refresh
+    refresh_parser = subparsers.add_parser("refresh", help="Refresh session from source browser")
+    refresh_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
+    refresh_parser.add_argument("--source-browser", "-b", choices=["chrome", "firefox", "edge", "brave"],
+                               required=True, help="Source browser name")
+    refresh_parser.add_argument("--source-browser-path", help="Custom source browser profile path")
+    refresh_parser.add_argument("--source-profile", help="Source profile name")
+    refresh_parser.add_argument("--site-config", help="Site config JSON file for filtering")
+
+    # Proxy
+    proxy_parser = subparsers.add_parser("proxy", help="Start fingerprint-matched proxy server")
+    proxy_parser.add_argument("--session", "-s", required=True, help="Path to .tokenade session file")
+    proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
+    proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
+    proxy_parser.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
+    proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
+    proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
+    proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
 
     args = parser.parse_args()
     
@@ -741,6 +1335,15 @@ Examples:
         "validate": cmd_validate,
         "export": cmd_export,
         "load": cmd_load,
+        "inject-profile": cmd_inject_profile,
+        "encrypt": cmd_encrypt,
+        "decrypt": cmd_decrypt,
+        "rekey": cmd_rekey,
+        "batch-export": cmd_batch_export,
+        "batch-load": cmd_batch_load,
+        "health": cmd_health,
+        "refresh": cmd_refresh,
+        "proxy": cmd_proxy,
     }
     
     try:
