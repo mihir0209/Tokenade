@@ -117,7 +117,8 @@ class SessionPackager:
                 fingerprint: Optional[Dict] = None,
                 tokens: Optional[List[Dict]] = None,
                 local_storage: Optional[Dict[str, str]] = None,
-                source_browser_manager=None) -> Dict:
+                source_browser_manager=None,
+                tls_profile: Optional[Dict] = None) -> Dict:
         """
         Package cookies into .tokenade format.
 
@@ -129,6 +130,7 @@ class SessionPackager:
             tokens: Optional list of tokens
             local_storage: Optional localStorage key-value dict
             source_browser_manager: Optional browser manager for fingerprint collection
+            tls_profile: Optional TLS profile for proxy mode
 
         Returns:
             .tokenade format dictionary
@@ -139,6 +141,10 @@ class SessionPackager:
         # Auto-collect fingerprint if not provided
         if fingerprint is None and source_browser_manager is not None:
             fingerprint = self.collect_fingerprint(source_browser_manager)
+
+        # Auto-detect TLS profile from browser if not provided
+        if tls_profile is None:
+            tls_profile = self._detect_tls_profile(browser, fingerprint)
 
         # Count critical cookies
         critical_count = 0
@@ -163,6 +169,7 @@ class SessionPackager:
             "tokens": tokens or [],
             "local_storage": local_storage or {},
             "fingerprint": fingerprint,
+            "tls_profile": tls_profile,
             "metadata": {
                 "extraction_method": "sqlite_direct",
                 "cookie_count": len(cookies),
@@ -174,6 +181,47 @@ class SessionPackager:
         ls_info = f", {len(local_storage)} localStorage" if local_storage else ""
         logger.info(f"Packaged session: {site_name} ({len(cookies)} cookies, {critical_count} critical{ls_info})")
         return package
+    
+    def _detect_tls_profile(self, browser: str, fingerprint: Optional[Dict] = None) -> Dict:
+        """
+        Detect TLS profile from browser name and fingerprint.
+        
+        Note: curl-cffi only supports Chrome impersonation, not Firefox.
+        We always use Chrome impersonation for TLS matching.
+        
+        Args:
+            browser: Browser name
+            fingerprint: Optional fingerprint dict
+            
+        Returns:
+            TLS profile dict
+        """
+        from tokenade.core.runtime.tls_matcher import IMPERSONATE_TARGETS
+        
+        # Always use Chrome for TLS impersonation (Firefox not supported by curl-cffi)
+        tls_browser = "chrome"
+        version = "120"
+        impersonate = "chrome120"
+        
+        # Try to extract Chrome version from user agent
+        if fingerprint and fingerprint.get("user_agent"):
+            ua = fingerprint["user_agent"]
+            import re
+            chrome_match = re.search(r'Chrome/(\d+)', ua)
+            if chrome_match:
+                version = chrome_match.group(1)
+                # Find closest impersonation target
+                for target_key in IMPERSONATE_TARGETS:
+                    if target_key.startswith(f"chrome{version}"):
+                        impersonate = target_key
+                        break
+        
+        return {
+            "browser": tls_browser,
+            "version": version,
+            "impersonate": impersonate,
+            "http_version": "2"
+        }
 
     def save(self, package: Dict, output_path: str) -> str:
         """

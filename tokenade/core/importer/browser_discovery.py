@@ -82,6 +82,17 @@ class BrowserProfileDiscovery:
                 "~/Library/Application Support/Microsoft Edge",
             ],
         },
+        "brave": {
+            "Windows": [
+                r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data",
+            ],
+            "Linux": [
+                "~/.config/BraveSoftware/Brave-Browser",
+            ],
+            "Darwin": [
+                "~/Library/Application Support/BraveSoftware/Brave-Browser",
+            ],
+        },
     }
 
     def __init__(self):
@@ -218,12 +229,44 @@ class BrowserProfileDiscovery:
         logger.info(f"Discovered {len(profiles)} Edge profiles")
         return profiles
 
+    def discover_brave_profiles(self) -> List[BrowserProfile]:
+        """Discover Brave profiles (same structure as Chrome)."""
+        profiles = []
+        paths = self.BROWSER_PATHS.get("brave", {}).get(self.os_type, [])
+
+        for base_path in paths:
+            expanded = self._expand_path(base_path)
+            if not os.path.exists(expanded):
+                continue
+
+            default_path = os.path.join(expanded, "Default")
+            if os.path.exists(default_path):
+                profiles.append(BrowserProfile(
+                    name="Default",
+                    path=default_path,
+                    browser="brave",
+                    is_default=True,
+                ))
+
+            for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
+                name = os.path.basename(profile_dir)
+                profiles.append(BrowserProfile(
+                    name=name,
+                    path=profile_dir,
+                    browser="brave",
+                    is_default=False,
+                ))
+
+        logger.info(f"Discovered {len(profiles)} Brave profiles")
+        return profiles
+
     def discover_all(self) -> Dict[str, List[BrowserProfile]]:
         """Discover all browser profiles."""
         return {
             "chrome": self.discover_chrome_profiles(),
             "firefox": self.discover_firefox_profiles(),
             "edge": self.discover_edge_profiles(),
+            "brave": self.discover_brave_profiles(),
         }
 
     def get_profile(self, browser: str, name: str) -> Optional[BrowserProfile]:

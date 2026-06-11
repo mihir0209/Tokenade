@@ -22,14 +22,17 @@ import json
 import logging
 import random
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,12 @@ class RuntimeConfig:
     verify_ssl: bool = True
     proxy: Optional[str] = None
     custom_headers: Dict[str, str] = field(default_factory=dict)
+    
+    # TLS fingerprint matching (requires curl-cffi)
+    use_tls_match: bool = True
+    tls_impersonate: Optional[str] = None  # e.g., "chrome120", "firefox120"
+    tls_browser: str = "chrome"
+    tls_version: str = "120"
 
 
 class FingerprintMatcher:
@@ -58,21 +67,26 @@ class FingerprintMatcher:
     requests indistinguishable from the target browser.
     """
 
-    # Common header orderings by browser
+    # Common header orderings by browser (order matters for JA3/H2 fingerprinting)
     CHROME_HEADERS = [
+        ":authority",
+        ":method",
+        ":path",
+        ":scheme",
+        "accept",
+        "accept-encoding",
+        "accept-language",
+        "cache-control",
+        "cookie",
         "sec-ch-ua",
         "sec-ch-ua-mobile",
         "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-user",
         "upgrade-insecure-requests",
         "user-agent",
-        "accept",
-        "sec-fetch-site",
-        "sec-fetch-mode",
-        "sec-fetch-user",
-        "sec-fetch-dest",
-        "accept-encoding",
-        "accept-language",
-        "cookie",
     ]
 
     FIREFOX_HEADERS = [
@@ -90,66 +104,133 @@ class FingerprintMatcher:
         "cookie",
     ]
 
-    # Chrome sec-ch-ua values by version
-    CHROME_UA_BRANDS = [
-        '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-        '"Not.A/Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
+    EDGE_HEADERS = [
+        "accept",
+        "accept-encoding",
+        "accept-language",
+        "cookie",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-user",
+        "upgrade-insecure-requests",
+        "user-agent",
     ]
+
+    # Chrome sec-ch-ua values by version
+    CHROME_UA_BRANDS = {
+        "109": '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
+        "120": '"Not.A/Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "119": '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
+        "131": '"Google Chrome";v="131", "Chromium";v="131", "Not?A_Brand";v="24"',
+    }
 
     def __init__(self, fingerprint: Optional[Dict] = None):
         self.fingerprint = fingerprint or {}
         self.ua = self.fingerprint.get("user_agent", "")
         self.platform = self.fingerprint.get("platform", "Win32")
         self.language = self.fingerprint.get("language", "en-US")
+        self._browser = self._detect_browser()
 
-    def get_headers(self, url: str, referer: Optional[str] = None) -> Dict[str, str]:
+    def _detect_browser(self) -> str:
+        """Detect browser type from user agent."""
+        if "Firefox" in self.ua:
+            return "firefox"
+        elif "Edg" in self.ua:
+            return "edge"
+        elif "OPR" in self.ua or "Opera" in self.ua:
+            return "opera"
+        else:
+            return "chrome"
+
+    def _get_chrome_version(self) -> str:
+        """Extract Chrome major version from user agent."""
+        import re
+        match = re.search(r'Chrome/(\d+)', self.ua)
+        return match.group(1) if match else "120"
+
+    def _order_headers(self, headers: Dict[str, str]) -> OrderedDict:
+        """
+        Order headers according to browser-specific ordering.
+        
+        This is critical for HTTP/2 fingerprinting (H2 SETTINGS frame).
+        """
+        if self._browser == "firefox":
+            order = self.FIREFOX_HEADERS
+        elif self._browser == "edge":
+            order = self.EDGE_HEADERS
+        else:
+            order = self.CHROME_HEADERS
+        
+        ordered = OrderedDict()
+        
+        # Add headers in browser-specific order
+        for key in order:
+            if key in headers:
+                ordered[key] = headers[key]
+        
+        # Add any remaining headers not in the order list
+        for key, value in headers.items():
+            if key not in ordered:
+                ordered[key] = value
+        
+        return ordered
+
+    def get_headers(self, url: str, referer: Optional[str] = None, 
+                    method: str = "GET", is_api: bool = False) -> OrderedDict:
         """
         Generate fingerprint-matched headers for a request.
 
         Args:
             url: Target URL
             referer: Optional referer URL
+            method: HTTP method
+            is_api: Whether this is an API request (different accept header)
 
         Returns:
-            Dictionary of HTTP headers
+            OrderedDict of HTTP headers in browser-specific order
         """
         headers = {}
         parsed = urlparse(url)
         is_secure = parsed.scheme == "https"
 
-        # Determine browser type from UA
-        if "Firefox" in self.ua:
-            browser = "firefox"
-        elif "Edg" in self.ua:
-            browser = "edge"
-        else:
-            browser = "chrome"
-
         # User-Agent
         headers["user-agent"] = self.ua or self._default_ua()
 
-        # Accept headers
-        headers["accept"] = (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,image/apng,*/*;"
-            "q=0.8,application/signed-exchange;v=b3;q=0.7"
-        )
+        # Accept headers - vary by request type
+        if is_api:
+            headers["accept"] = "application/json"
+        elif parsed.path.endswith((".js", ".css")):
+            headers["accept"] = "*/*"
+        elif parsed.path.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
+            headers["accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        else:
+            headers["accept"] = (
+                "text/html,application/xhtml+xml,application/xml;"
+                "q=0.9,image/avif,image/webp,image/apng,*/*;"
+                "q=0.8,application/signed-exchange;v=b3;q=0.7"
+            )
+        
         headers["accept-language"] = self.language
         headers["accept-encoding"] = "gzip, deflate, br"
 
         # Chrome-specific headers
-        if browser == "chrome":
-            headers["sec-ch-ua"] = random.choice(self.CHROME_UA_BRANDS)
+        if self._browser == "chrome":
+            version = self._get_chrome_version()
+            headers["sec-ch-ua"] = self.CHROME_UA_BRANDS.get(version, 
+                self.CHROME_UA_BRANDS.get("120", self.CHROME_UA_BRANDS["131"]))
             headers["sec-ch-ua-mobile"] = "?0"
             headers["sec-ch-ua-platform"] = f'"{self.platform}"'
             headers["upgrade-insecure-requests"] = "1"
 
             # Sec-Fetch headers
-            headers["sec-fetch-dest"] = "document"
-            headers["sec-fetch-mode"] = "navigate"
+            headers["sec-fetch-dest"] = "document" if not is_api else ""
+            headers["sec-fetch-mode"] = "navigate" if not is_api else "cors"
             headers["sec-fetch-site"] = "none" if not referer else "cross-site"
-            headers["sec-fetch-user"] = "?1"
+            headers["sec-fetch-user"] = "?1" if not is_api else ""
 
         # Referer
         if referer:
@@ -157,8 +238,16 @@ class FingerprintMatcher:
 
         # Connection
         headers["connection"] = "keep-alive"
+        
+        # Cache control for initial page loads
+        if not referer:
+            headers["cache-control"] = "max-age=0"
 
-        return headers
+        # Remove empty values
+        headers = {k: v for k, v in headers.items() if v}
+
+        # Order headers according to browser fingerprint
+        return self._order_headers(headers)
 
     def _default_ua(self) -> str:
         """Generate a default user agent."""
@@ -201,7 +290,7 @@ class FingerprintMatcher:
 
 class CookieJar:
     """
-    Manages cookies with domain/path matching.
+    Manages cookies with domain/path matching and expiry checking.
 
     Similar to browser cookie storage but for HTTP requests.
     """
@@ -227,6 +316,31 @@ class CookieJar:
         for cookie in cookies:
             self.add_cookie(cookie)
 
+    def _is_cookie_expired(self, cookie: Dict) -> bool:
+        """Check if a cookie has expired."""
+        expires = cookie.get("expires", 0)
+        if not expires or int(expires) <= 0:
+            return False  # Session cookie, never expires
+        
+        expires_int = int(expires)
+        # Convert milliseconds to seconds if needed
+        if expires_int > 1262304000000:
+            expires_int = expires_int // 1000
+        
+        return expires_int < time.time()
+
+    def _is_cookie_valid_for_request(self, cookie: Dict, parsed_url) -> bool:
+        """Check if a cookie should be sent for a request."""
+        # Check expiry
+        if self._is_cookie_expired(cookie):
+            return False
+        
+        # Check secure flag
+        if cookie.get("secure") and parsed_url.scheme != "https":
+            return False
+        
+        return True
+
     def get_for_request(self, url: str) -> str:
         """
         Get cookie header value for a URL.
@@ -244,18 +358,52 @@ class CookieJar:
         matching = []
         for domain, cookies in self.cookies.items():
             # Check domain match
-            if host == domain or host.endswith("." + domain):
+            domain_match = False
+            if not domain:
+                # Empty domain matches the exact host
+                domain_match = True
+            elif host == domain or host.endswith("." + domain):
+                domain_match = True
+            
+            if domain_match:
                 for cookie in cookies:
                     # Check path match
                     cookie_path = cookie.get("path", "/")
                     if path.startswith(cookie_path):
-                        # Check secure
-                        if cookie.get("secure") and parsed.scheme != "https":
+                        # Check if cookie is valid
+                        if not self._is_cookie_valid_for_request(cookie, parsed):
                             continue
-                        # Check httpOnly (we can't check from here)
+                        # Skip __Host- cookies with domain set (invalid per spec)
+                        cookie_name = cookie.get("name", "")
+                        if cookie_name.startswith("__Host-") and cookie.get("domain"):
+                            continue
                         matching.append(f"{cookie['name']}={cookie['value']}")
 
         return "; ".join(matching)
+    
+    def get_valid_cookies(self, url: str) -> List[Dict]:
+        """
+        Get all valid cookies for a URL as a list of dicts.
+        
+        Args:
+            url: Target URL
+            
+        Returns:
+            List of cookie dicts
+        """
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        path = parsed.path or "/"
+
+        matching = []
+        for domain, cookies in self.cookies.items():
+            if host == domain or host.endswith("." + domain):
+                for cookie in cookies:
+                    cookie_path = cookie.get("path", "/")
+                    if path.startswith(cookie_path):
+                        if self._is_cookie_valid_for_request(cookie, parsed):
+                            matching.append(cookie)
+        return matching
 
     def to_list(self) -> List[Dict]:
         """Export all cookies as list."""
@@ -263,6 +411,29 @@ class CookieJar:
         for cookies in self.cookies.values():
             result.extend(cookies)
         return result
+    
+    def get_expired_cookies(self) -> List[Dict]:
+        """Get all expired cookies."""
+        expired = []
+        for cookies in self.cookies.values():
+            for cookie in cookies:
+                if self._is_cookie_expired(cookie):
+                    expired.append(cookie)
+        return expired
+    
+    def prune_expired(self) -> int:
+        """Remove expired cookies. Returns number removed."""
+        count = 0
+        for domain in list(self.cookies.keys()):
+            before = len(self.cookies[domain])
+            self.cookies[domain] = [
+                c for c in self.cookies[domain]
+                if not self._is_cookie_expired(c)
+            ]
+            count += before - len(self.cookies[domain])
+            if not self.cookies[domain]:
+                del self.cookies[domain]
+        return count
 
     def clear(self) -> None:
         """Clear all cookies."""
@@ -287,8 +458,10 @@ class RuntimeEngine:
         self.cookie_jar.add_cookies(config.cookies)
         self.tokens = {t.get("token_type", "unknown"): t for t in config.tokens}
         self._session: Optional[requests.Session] = None
+        self._tls_matcher: Optional[TLSMatcher] = None
         self._last_request_time: float = 0
         self._setup_session()
+        self._setup_tls_matcher()
 
     def _setup_session(self) -> None:
         """Configure requests session with retries and proxy."""
@@ -313,6 +486,22 @@ class RuntimeEngine:
 
         # SSL verification
         self._session.verify = self.config.verify_ssl
+    
+    def _setup_tls_matcher(self) -> None:
+        """Setup TLS matcher for fingerprint-matched requests."""
+        if not self.config.use_tls_match:
+            return
+        
+        try:
+            self._tls_matcher = create_tls_matcher(
+                browser=self.config.tls_browser,
+                version=self.config.tls_version,
+                impersonate=self.config.tls_impersonate
+            )
+            logger.debug("TLS matcher initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize TLS matcher: {e}")
+            self._tls_matcher = None
 
     def _apply_rate_limit(self) -> None:
         """Enforce rate limiting between requests."""
@@ -355,6 +544,7 @@ class RuntimeEngine:
         data: Optional[Any] = None,
         json_data: Optional[Dict] = None,
         referer: Optional[str] = None,
+        use_tls: Optional[bool] = None,
     ) -> requests.Response:
         """
         Make a fingerprint-matched HTTP request.
@@ -366,6 +556,7 @@ class RuntimeEngine:
             data: Form data
             json_data: JSON payload
             referer: Referer URL
+            use_tls: Force TLS matching (None = auto-detect)
 
         Returns:
             Response object
@@ -377,14 +568,40 @@ class RuntimeEngine:
         logger.debug(f"Runtime: {method} {url}")
         logger.debug(f"Headers: {json.dumps(fp_headers, indent=2)}")
 
-        response = self._session.request(
-            method=method,
-            url=url,
-            headers=fp_headers,
-            data=data,
-            json=json_data,
-            timeout=self.config.timeout,
-        )
+        # Use TLS matcher if available and requested
+        use_tls = use_tls if use_tls is not None else (self._tls_matcher is not None)
+        
+        if use_tls and self._tls_matcher:
+            # Use curl-cffi for TLS fingerprint matching
+            logger.debug("Using TLS fingerprint matching")
+            
+            # Get cookies as dictionary
+            cookies_dict = {}
+            for cookie in self.cookie_jar.to_list():
+                cookies_dict[cookie["name"]] = cookie["value"]
+            
+            response = self._tls_matcher.request(
+                method=method,
+                url=url,
+                headers=fp_headers,
+                cookies=cookies_dict,
+                data=data,
+                json_data=json_data,
+                timeout=self.config.timeout,
+            )
+            
+            # Convert to requests.Response for compatibility
+            # Note: curl-cffi response is compatible with requests.Response
+        else:
+            # Fallback to standard requests
+            response = self._session.request(
+                method=method,
+                url=url,
+                headers=fp_headers,
+                data=data,
+                json=json_data,
+                timeout=self.config.timeout,
+            )
 
         # Update cookie jar with response cookies
         if response.cookies:
@@ -422,12 +639,19 @@ class RuntimeEngine:
         """Close the session."""
         if self._session:
             self._session.close()
+        if self._tls_matcher:
+            self._tls_matcher.close()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+    
+    @property
+    def has_tls_matching(self) -> bool:
+        """Check if TLS matching is available."""
+        return self._tls_matcher is not None
 
 
 class SessionValidator:

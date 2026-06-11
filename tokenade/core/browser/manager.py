@@ -228,6 +228,12 @@ class PlaywrightBrowserManager(BrowserManager):
         if not self._page:
             raise RuntimeError("Browser not launched")
         return self._page.evaluate(expression)
+
+    def evaluate_with_arg(self, expression: str, arg: Any) -> Any:
+        """Evaluate JavaScript with an argument."""
+        if not self._page:
+            raise RuntimeError("Browser not launched")
+        return self._page.evaluate(expression, arg)
     
     def query_selector(self, selector: str, timeout: Optional[int] = None):
         """Query element on page."""

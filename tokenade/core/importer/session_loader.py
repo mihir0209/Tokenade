@@ -18,6 +18,7 @@ import logging
 from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
 from tokenade.core.fingerprint.manager import FingerprintManager, BrowserFingerprint
 from tokenade.core.fingerprint.injector import inject_stealth_script, validate_injection
+from tokenade.core.importer.validator import SessionValidator
 from tokenade.handlers.base import AuthStatus, SessionData
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,13 @@ class SessionLoader:
         return injected
 
     def _normalize_cookie(self, cookie: Dict) -> Dict:
-        """Normalize cookie dict to Playwright format."""
+        """Normalize cookie dict to Playwright format.
+
+        Handles differences between browser cookie formats:
+        - Firefox stores expires in milliseconds, Playwright expects seconds
+        - Session cookies (expires=0 or missing) should omit the expires field
+        - sameSite='None' requires secure=True per Playwright spec
+        """
         normalized = {
             "name": cookie["name"],
             "value": cookie["value"],
@@ -193,69 +200,68 @@ class SessionLoader:
             "path": cookie.get("path", "/"),
         }
 
-        if cookie.get("secure"):
+        secure = bool(cookie.get("secure"))
+        http_only = bool(cookie.get("httpOnly"))
+        same_site = cookie.get("sameSite", "")
+
+        # Fix expires: Firefox uses milliseconds, Playwright expects seconds
+        expires = cookie.get("expires")
+        if expires and int(expires) > 0:
+            expires_int = int(expires)
+            # If value looks like milliseconds (> year 2010 in ms = 1262304000000)
+            if expires_int > 1262304000000:
+                expires_int = expires_int // 1000
+            # Only include if it's a valid future-ish timestamp
+            if expires_int > 0:
+                normalized["expires"] = expires_int
+
+        # Playwright requires secure=True when sameSite='None'
+        if same_site == "None":
+            secure = True
+
+        if secure:
             normalized["secure"] = True
-        if cookie.get("httpOnly"):
+        if http_only:
             normalized["httpOnly"] = True
-        if "expires" in cookie and cookie["expires"]:
-            normalized["expires"] = int(cookie["expires"])
-        if cookie.get("sameSite"):
-            normalized["sameSite"] = cookie["sameSite"]
+        if same_site:
+            normalized["sameSite"] = same_site
 
         return normalized
 
-    def validate_session(self, browser_manager, site_name: str) -> Dict:
+    def validate_session(self, browser_manager, site_config: Dict) -> Dict:
         """
-        Validate session after injection.
+        Validate session using composable validation strategies.
+
+        Strategies are auto-detected from site_config keys:
+        - login_indicator_css → CSSIndicatorStrategy
+        - auth_gated_url → URLRedirectStrategy
+        - api_probe_url → APIProbeStrategy
+        - user_content_selectors/text → PageContentStrategy
+        - critical_cookies → CookieExpiryStrategy
+        - localStorage_keys → LocalStorageStrategy
 
         Args:
             browser_manager: Active browser manager
-            site_name: Site name to validate
+            site_config: Site configuration dict
 
         Returns:
-            Validation result dict
+            Combined validation result dict
         """
-        result = {
-            "valid": False,
-            "auth_status": "unknown",
-            "cookies_present": 0,
-            "details": {},
-        }
+        validate_url = site_config.get("validate_url")
+        wait_seconds = site_config.get("wait_seconds", 10)
 
-        try:
-            # Get current cookies
-            current_cookies = browser_manager.get_cookies()
-            result["cookies_present"] = len(current_cookies)
+        # Navigate to the page first if URL provided
+        if validate_url:
+            try:
+                logger.info(f"Navigating to {validate_url} for validation (wait {wait_seconds}s)")
+                browser_manager.navigate(validate_url, wait_until="domcontentloaded", timeout=30000)
+                time.sleep(wait_seconds)
+            except Exception as e:
+                logger.warning(f"Navigation failed: {e}")
 
-            # Check for critical cookies based on site
-            from tokenade.core.importer.cookie_extractor import SITE_DETECTION
-            rules = SITE_DETECTION.get(site_name, {})
-            critical = rules.get("critical_cookies", [])
-
-            if critical:
-                cookie_names = {c.get("name", "") for c in current_cookies}
-                has_critical = any(name in cookie_names for name in critical)
-                primary = critical[0] if critical else None
-
-                if has_critical and primary and primary in cookie_names:
-                    result["valid"] = True
-                    result["auth_status"] = "logged_in"
-                elif has_critical:
-                    result["auth_status"] = "session_expired"
-                else:
-                    result["auth_status"] = "logged_out"
-            else:
-                # No critical cookies defined - just check if any cookies present
-                result["valid"] = len(current_cookies) > 0
-                result["auth_status"] = "logged_in" if result["valid"] else "logged_out"
-
-            logger.info(f"Session validation: {result['auth_status']} ({result['cookies_present']} cookies)")
-
-        except Exception as e:
-            logger.error(f"Session validation failed: {e}")
-            result["error"] = str(e)
-
-        return result
+        # Run composable validator
+        validator = SessionValidator()
+        return validator.validate(browser_manager, site_config)
 
     def load(self,
              file_path: str,
@@ -264,7 +270,8 @@ class SessionLoader:
              validate: bool = True,
              visible: bool = False,
              profile_dir: Optional[str] = None,
-             inject_local_storage: bool = True) -> Dict:
+             inject_local_storage: bool = True,
+             site_config: Optional[Dict] = None) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
 
@@ -276,6 +283,7 @@ class SessionLoader:
             visible: Show browser window
             profile_dir: Browser profile directory
             inject_local_storage: Whether to inject localStorage if present in package
+            site_config: Site configuration dict with validate_url, login_indicator_css, etc.
 
         Returns:
             Load result dict
@@ -331,20 +339,18 @@ class SessionLoader:
             local_storage = package.get("local_storage", {})
             result["local_storage_total"] = len(local_storage)
             if inject_local_storage and local_storage:
-                # Determine origin from cookies or infer from site
-                origin = self._infer_origin(package)
+                origin = self._infer_origin(package, site_config)
                 result["local_storage_injected"] = self.inject_local_storage(
                     self._browser, local_storage, origin=origin
                 )
 
             # Step 8: Validate if requested
             if validate:
-                time.sleep(1)  # Brief pause for cookies to settle
-                result["validation"] = self.validate_session(
-                    self._browser,
-                    package.get("site_name", "unknown")
-                )
-                # For localStorage-only sessions, consider success if localStorage was injected
+                time.sleep(1)
+                # Build site_config for validation
+                if not site_config:
+                    site_config = self._build_default_site_config(package)
+                result["validation"] = self.validate_session(self._browser, site_config)
                 has_cookies = result["cookies_injected"] > 0
                 has_local_storage = result["local_storage_injected"] > 0
                 result["success"] = result["validation"].get("valid", False) or has_local_storage
@@ -362,14 +368,20 @@ class SessionLoader:
 
         return result
 
-    def _infer_origin(self, package: Dict) -> Optional[str]:
-        """Infer the origin URL from package data for localStorage injection."""
+    def _infer_origin(self, package: Dict, site_config: Optional[Dict] = None) -> Optional[str]:
+        """Infer the origin URL from package data or site config for localStorage injection."""
+        # Try site_config domains first
+        if site_config and site_config.get("domains"):
+            domains = site_config["domains"]
+            for d in domains:
+                if not d.startswith("."):
+                    return f"https://{d}"
+
+        # Fallback to cookie domains
         cookies = package.get("cookies", [])
         if cookies:
-            # Use domain from first cookie
             domain = cookies[0].get("domain", "")
             if domain:
-                # Ensure domain has protocol
                 if not domain.startswith("http"):
                     domain = f"https://{domain.lstrip('.')}"
                 return domain
@@ -380,6 +392,28 @@ class SessionLoader:
             return f"https://{site_name}.com"
 
         return None
+
+    def _build_default_site_config(self, package: Dict) -> Dict:
+        """Build a minimal site config from package when none provided."""
+        site_name = package.get("site_name", "unknown")
+        cookies = package.get("cookies", [])
+        domains = list({c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")})
+
+        # Extract cookie names that look like session/auth cookies
+        auth_cookie_names = []
+        for c in cookies:
+            name = c.get("name", "")
+            if any(kw in name.lower() for kw in ("session", "token", "auth", "sid", "csrf")):
+                auth_cookie_names.append(name)
+
+        return {
+            "name": site_name,
+            "domains": domains,
+            "critical_cookies": auth_cookie_names[:5] if auth_cookie_names else [],
+            "validate_url": None,
+            "login_indicator_css": None,
+            "wait_seconds": 10,
+        }
 
     def load_into_runtime(self, file_path: str, runtime_engine=None) -> Dict:
         """

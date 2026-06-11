@@ -380,7 +380,7 @@ class CookieExtractor:
 
     def extract(self, site_filter: Optional[SiteFilter] = None) -> List[Dict]:
         """Extract cookies based on browser type."""
-        if self.browser in ("chrome", "chromium", "edge"):
+        if self.browser in ("chrome", "chromium", "edge", "brave"):
             return self.extract_chrome(site_filter)
         elif self.browser == "firefox":
             return self.extract_firefox(site_filter)
