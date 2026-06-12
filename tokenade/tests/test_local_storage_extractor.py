@@ -27,50 +27,49 @@ class TestLocalStorageExtractor(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.profile_path = self.temp_dir
 
-        # Create Firefox-style ls/data.sqlite
-        self.ls_dir = os.path.join(self.profile_path, "ls")
-        os.makedirs(self.ls_dir, exist_ok=True)
-        self.ls_db = os.path.join(self.ls_dir, "data.sqlite")
-
-        conn = sqlite3.connect(self.ls_db)
-        cursor = conn.cursor()
-
-        # Create database table (origin metadata)
-        cursor.execute("""
-            CREATE TABLE database (
-                id INTEGER PRIMARY KEY,
-                origin TEXT NOT NULL,
-                usage INTEGER DEFAULT 0,
-                last_vacuum_time INTEGER DEFAULT 0,
-                last_analyze_time INTEGER DEFAULT 0,
-                last_vacuum_size INTEGER DEFAULT 0
-            )
-        """)
-
-        # Create data table (key-value pairs)
-        cursor.execute("""
-            CREATE TABLE data (
-                database_id INTEGER,
-                key TEXT NOT NULL,
-                utf16_length INTEGER DEFAULT 0,
-                conversion_type INTEGER DEFAULT 1,
-                compression_type INTEGER DEFAULT 0,
-                last_access_time INTEGER DEFAULT 0,
-                value TEXT
-            )
-        """)
-
-        # Insert test data
-        cursor.execute("INSERT INTO database (id, origin, usage) VALUES (1, 'https://learner.pceterp.in', 1024)")
-        cursor.execute("INSERT INTO database (id, origin, usage) VALUES (2, 'https://example.com', 512)")
-
-        cursor.execute("INSERT INTO data (database_id, key, value) VALUES (1, 'name', 'PIMPRI CHINCHWAD EDUCATION TRUST')")
-        cursor.execute("INSERT INTO data (database_id, key, value) VALUES (1, 'token', 'abc123xyz')")
-        cursor.execute("INSERT INTO data (database_id, key, value) VALUES (1, 'user_id', '12345')")
-        cursor.execute("INSERT INTO data (database_id, key, value) VALUES (2, 'theme', 'dark')")
-
-        conn.commit()
-        conn.close()
+        # Create Firefox-style storage/default/https+++domain/ls/data.sqlite
+        storage_base = os.path.join(self.profile_path, "storage", "default")
+        
+        self.ls_dbs = {}
+        
+        for domain, entries in [
+            ("https+++learner.pceterp.in", [("name", "PIMPRI CHINCHWAD EDUCATION TRUST"), ("token", "abc123xyz"), ("user_id", "12345")]),
+            ("https+++example.com", [("theme", "dark")]),
+        ]:
+            ls_dir = os.path.join(storage_base, domain, "ls")
+            os.makedirs(ls_dir, exist_ok=True)
+            db_path = os.path.join(ls_dir, "data.sqlite")
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE database (
+                    id INTEGER PRIMARY KEY,
+                    origin TEXT NOT NULL,
+                    usage INTEGER DEFAULT 0,
+                    last_vacuum_time INTEGER DEFAULT 0,
+                    last_analyze_time INTEGER DEFAULT 0,
+                    last_vacuum_size INTEGER DEFAULT 0
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE data (
+                    database_id INTEGER,
+                    key TEXT NOT NULL,
+                    utf16_length INTEGER DEFAULT 0,
+                    conversion_type INTEGER DEFAULT 1,
+                    compression_type INTEGER DEFAULT 0,
+                    last_access_time INTEGER DEFAULT 0,
+                    value TEXT
+                )
+            """)
+            origin = domain.replace("+++", "://").replace("+", "/")
+            cursor.execute("INSERT INTO database (id, origin, usage) VALUES (1, ?, 1024)", (origin,))
+            for i, (key, val) in enumerate(entries, 1):
+                cursor.execute("INSERT INTO data (database_id, key, value) VALUES (1, ?, ?)", (key, val))
+            conn.commit()
+            conn.close()
+            self.ls_dbs[domain] = db_path
 
     def tearDown(self):
         """Clean up temporary files."""
@@ -82,11 +81,12 @@ class TestLocalStorageExtractor(unittest.TestCase):
         extractor = LocalStorageExtractor(self.profile_path, browser="firefox")
         result = extractor.extract_firefox()
 
-        # Should include all origins with prefix
-        self.assertIn("[https://learner.pceterp.in] name", result)
-        self.assertIn("[https://learner.pceterp.in] token", result)
-        self.assertIn("[https://example.com] theme", result)
-        self.assertEqual(result["[https://learner.pceterp.in] name"], "PIMPRI CHINCHWAD EDUCATION TRUST")
+        # Should include all keys from all origins (flat, no prefix)
+        self.assertIn("name", result)
+        self.assertIn("token", result)
+        self.assertIn("theme", result)
+        self.assertEqual(result["name"], "PIMPRI CHINCHWAD EDUCATION TRUST")
+        self.assertEqual(len(result), 4)
 
     def test_extract_firefox_filtered_origin(self):
         """Test extracting localStorage with origin filter."""
@@ -109,7 +109,7 @@ class TestLocalStorageExtractor(unittest.TestCase):
         self.assertEqual(result, {})
 
     def test_list_origins_firefox(self):
-        """Test listing origins from Firefox database."""
+        """Test listing origins from Firefox storage directories."""
         extractor = LocalStorageExtractor(self.profile_path, browser="firefox")
         origins = extractor.list_origins()
 

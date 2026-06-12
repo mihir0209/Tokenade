@@ -378,6 +378,47 @@ class CookieExtractor:
         logger.info(f"Extracted {len(cookies)} cookies from Firefox")
         return cookies
 
+    def extract_firefox_local_storage(self, domains: Optional[List[str]] = None) -> Dict[str, str]:
+        """
+        Extract localStorage from Firefox profile for given domains.
+        
+        Args:
+            domains: List of domains to extract localStorage for (e.g., ['web.telegram.org'])
+        
+        Returns:
+            Dict mapping localStorage keys to values (flattened across all domains)
+        """
+        storage_base = os.path.join(self.profile_path, "storage", "default")
+        if not os.path.exists(storage_base):
+            logger.warning(f"Firefox storage directory not found: {storage_base}")
+            return {}
+        
+        all_storage = {}
+        
+        for domain in (domains or []):
+            dir_name = "https+++" + domain.replace("/", "+")
+            ls_path = os.path.join(storage_base, dir_name, "ls", "data.sqlite")
+            if not os.path.exists(ls_path):
+                continue
+            
+            temp_db = self._copy_db(ls_path)
+            try:
+                conn = sqlite3.connect(temp_db)
+                cur = conn.cursor()
+                cur.execute("SELECT key, value FROM data")
+                for key, val in cur.fetchall():
+                    decoded = val.decode("utf-8", errors="replace") if isinstance(val, bytes) else str(val)
+                    all_storage[f"{domain}:{key}"] = decoded
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to extract localStorage for {domain}: {e}")
+            finally:
+                if os.path.exists(temp_db):
+                    os.remove(temp_db)
+        
+        logger.info(f"Extracted {len(all_storage)} localStorage entries from Firefox")
+        return all_storage
+
     def extract(self, site_filter: Optional[SiteFilter] = None) -> List[Dict]:
         """Extract cookies based on browser type."""
         if self.browser in ("chrome", "chromium", "edge", "brave"):

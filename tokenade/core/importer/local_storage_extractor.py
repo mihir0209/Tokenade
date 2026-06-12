@@ -57,92 +57,61 @@ class LocalStorageExtractor:
 
     def extract_firefox(self, origin_filter: Optional[str] = None) -> Dict[str, str]:
         """
-        Extract localStorage from Firefox's ls/data.sqlite.
+        Extract localStorage from Firefox's per-origin ls/data.sqlite files.
 
-        Firefox stores localStorage in profile/ls/data.sqlite with tables:
-        - database: origin metadata (origin, usage, last_vacuum_time, etc.)
-        - data: key-value pairs (key, utf16_length, conversion_type,
-                compression_type, last_access_time, value)
+        Firefox stores localStorage in:
+          profile/storage/default/https+++domain/ls/data.sqlite
+        
+        Each file has tables:
+        - database: origin metadata
+        - data: key-value pairs (key, value)
 
         Args:
-            origin_filter: Optional origin URL to filter by (e.g., "https://learner.pceterp.in")
+            origin_filter: Optional origin URL to filter by (e.g., "https://web.telegram.org")
 
         Returns:
             Dictionary of {key: value} for the matching origin
         """
-        ls_db = os.path.join(self.profile_path, "ls", "data.sqlite")
-        if not os.path.exists(ls_db):
-            logger.warning(f"Firefox localStorage DB not found: {ls_db}")
+        storage_base = os.path.join(self.profile_path, "storage", "default")
+        if not os.path.exists(storage_base):
+            logger.warning(f"Firefox storage directory not found: {storage_base}")
             return {}
 
-        temp_db = self._copy_db(ls_db)
         local_storage = {}
 
-        try:
-            conn = sqlite3.connect(temp_db)
-            cursor = conn.cursor()
+        for dir_name in os.listdir(storage_base):
+            ls_path = os.path.join(storage_base, dir_name, "ls", "data.sqlite")
+            if not os.path.exists(ls_path):
+                continue
 
-            # Get all origins first
-            cursor.execute("""
-                SELECT id, origin FROM database
-                ORDER BY origin
-            """)
-            origins = {row[0]: row[1] for row in cursor.fetchall()}
-
-            if not origins:
-                logger.warning("No origins found in Firefox localStorage database")
-                conn.close()
-                return {}
-
-            # Build query based on filter
+            # Check if this origin matches the filter
             if origin_filter:
-                # Find matching origin IDs
-                matching_ids = [
-                    oid for oid, origin in origins.items()
-                    if origin_filter in origin or origin in origin_filter
-                ]
-                if not matching_ids:
-                    logger.warning(f"No origin matching '{origin_filter}' found")
-                    logger.info(f"Available origins: {list(origins.values())}")
-                    conn.close()
-                    return {}
+                # dir_name format: https+++web.telegram.org
+                origin_from_dir = dir_name.replace("+++", "://").replace("+", "/")
+                if origin_filter not in origin_from_dir and origin_from_dir not in origin_filter:
+                    continue
 
-                placeholders = ",".join("?" * len(matching_ids))
-                cursor.execute(f"""
-                    SELECT key, value FROM data
-                    WHERE database_id IN ({placeholders})
-                    ORDER BY key
-                """, matching_ids)
-            else:
-                cursor.execute("""
-                    SELECT d.key, d.value, db.origin
-                    FROM data d
-                    JOIN database db ON d.database_id = db.id
-                    ORDER BY db.origin, d.key
-                """)
+            temp_db = self._copy_db(ls_path)
+            try:
+                conn = sqlite3.connect(temp_db)
+                cursor = conn.cursor()
 
-            for row in cursor.fetchall():
-                if origin_filter:
+                cursor.execute("SELECT key, value FROM data ORDER BY key")
+                for row in cursor.fetchall():
                     key, value = row
-                else:
-                    key, value, origin = row
-                    # Prefix with origin for disambiguation when no filter
-                    key = f"[{origin}] {key}"
+                    if isinstance(value, bytes):
+                        try:
+                            value = value.decode("utf-8")
+                        except UnicodeDecodeError:
+                            value = value.decode("utf-8", errors="replace")
+                    local_storage[str(key)] = str(value)
 
-                # Decode value if it's bytes
-                if isinstance(value, bytes):
-                    try:
-                        value = value.decode("utf-8")
-                    except UnicodeDecodeError:
-                        value = value.decode("utf-8", errors="replace")
-
-                local_storage[key] = value
-
-            conn.close()
-
-        finally:
-            if os.path.exists(temp_db):
-                os.remove(temp_db)
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to read localStorage from {dir_name}: {e}")
+            finally:
+                if os.path.exists(temp_db):
+                    os.remove(temp_db)
 
         logger.info(f"Extracted {len(local_storage)} localStorage entries from Firefox")
         return local_storage
@@ -249,25 +218,19 @@ class LocalStorageExtractor:
             return []
 
     def _list_origins_firefox(self) -> List[str]:
-        """List origins from Firefox localStorage database."""
-        ls_db = os.path.join(self.profile_path, "ls", "data.sqlite")
-        if not os.path.exists(ls_db):
+        """List origins from Firefox storage/default directories."""
+        storage_base = os.path.join(self.profile_path, "storage", "default")
+        if not os.path.exists(storage_base):
             return []
 
-        temp_db = self._copy_db(ls_db)
         origins = []
+        for dir_name in os.listdir(storage_base):
+            ls_path = os.path.join(storage_base, dir_name, "ls", "data.sqlite")
+            if os.path.exists(ls_path):
+                origin = dir_name.replace("+++", "://").replace("+", "/")
+                origins.append(origin)
 
-        try:
-            conn = sqlite3.connect(temp_db)
-            cursor = conn.cursor()
-            cursor.execute("SELECT origin FROM database ORDER BY origin")
-            origins = [row[0] for row in cursor.fetchall()]
-            conn.close()
-        finally:
-            if os.path.exists(temp_db):
-                os.remove(temp_db)
-
-        return origins
+        return sorted(origins)
 
     def _list_origins_chrome(self) -> List[str]:
         """List origins from Chrome LevelDB."""

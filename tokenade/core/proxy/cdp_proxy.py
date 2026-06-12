@@ -181,12 +181,14 @@ class CDPProxy:
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
+                "--window-size=1920,1080",
+                "--window-position=0,0",
             ]
         )
         
         # Create browser context with donor cookies
         self._context = await self._browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1920, "height": 960},
             user_agent=(self.session.get("fingerprint") or {}).get(
                 "user_agent",
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -288,6 +290,26 @@ class CDPProxy:
                 logger.info(f"Injected {len(pw_cookies)} cookies into browser")
             except Exception as e:
                 logger.warning(f"Failed to inject some cookies: {e}")
+    
+    async def _inject_local_storage(self, page):
+        """Inject donor localStorage into a page before navigation."""
+        local_storage = self.session.get("local_storage", {})
+        if not local_storage:
+            return
+        
+        try:
+            # Build JS to set all localStorage items
+            items = []
+            for key, value in local_storage.items():
+                escaped_key = key.replace("\\", "\\\\").replace("'", "\\'")
+                escaped_val = value.replace("\\", "\\\\").replace("'", "\\'")
+                items.append(f"localStorage.setItem('{escaped_key}', '{escaped_val}')")
+            
+            js = "(() => { " + "; ".join(items) + " })()"
+            await page.evaluate(js)
+            logger.info(f"Injected {len(items)} localStorage entries")
+        except Exception as e:
+            logger.warning(f"Failed to inject localStorage: {e}")
     
     def _create_app(self) -> web.Application:
         """Create aiohttp application with routes."""
@@ -539,6 +561,12 @@ self.addEventListener('activate', () => {
                 return
             
             await page.goto(url, wait_until="domcontentloaded", timeout=self.config.timeout * 1000)
+            
+            # Inject localStorage after navigation (needs correct origin)
+            local_storage = self.session.get("local_storage", {})
+            if local_storage:
+                await self._inject_local_storage(page)
+                await page.reload(wait_until="domcontentloaded", timeout=self.config.timeout * 1000)
             
             logger.info(f"Page {page_id} loaded: {url}")
             
