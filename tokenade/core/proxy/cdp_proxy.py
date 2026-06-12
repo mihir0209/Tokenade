@@ -25,6 +25,53 @@ from urllib.parse import urlparse
 import aiohttp
 from aiohttp import web
 
+
+def _strip_duplicate_headers(raw_data: bytes) -> bytes:
+    """Strip duplicate HTTP headers from raw request data to handle stale service workers."""
+    try:
+        header_end = raw_data.find(b'\r\n\r\n')
+        if header_end == -1:
+            return raw_data
+        header_block = raw_data[:header_end]
+        rest = raw_data[header_end:]
+        lines = header_block.split(b'\r\n')
+        seen = set()
+        fixed = []
+        for line in lines:
+            if b':' in line:
+                key = line.split(b':', 1)[0].strip().lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+            fixed.append(line)
+        return b'\r\n'.join(fixed) + rest
+    except Exception:
+        return raw_data
+
+
+class _LenientProtocol(asyncio.Protocol):
+    """Wraps aiohttp's protocol to tolerate duplicate headers from stale service workers."""
+    def __init__(self, inner):
+        self._inner = inner
+        self._transport = None
+    def connection_made(self, transport):
+        self._transport = transport
+        self._inner.connection_made(transport)
+    def connection_lost(self, exc):
+        self._inner.connection_lost(exc)
+    def data_received(self, data):
+        self._inner.data_received(_strip_duplicate_headers(data))
+    def eof_received(self):
+        return self._inner.eof_received()
+
+
+class _LenientServerFactory:
+    """Protocol factory that wraps aiohttp's protocol with duplicate-header tolerance."""
+    def __init__(self, aiohttp_server):
+        self._server = aiohttp_server
+    def __call__(self):
+        return _LenientProtocol(self._server())
+
 try:
     from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page
     HAS_PLAYWRIGHT = True
@@ -101,8 +148,7 @@ class CDPProxy:
         }
         
         self._app = None
-        self._runner = None
-        self._site = None
+        self._raw_server = None
     
     @classmethod
     def from_session_file(cls, session_file: str, config: Optional[CDPProxyConfig] = None) -> 'CDPProxy':
@@ -140,7 +186,7 @@ class CDPProxy:
         # Create browser context with donor cookies
         self._context = await self._browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            user_agent=self.session.get("fingerprint", {}).get(
+            user_agent=(self.session.get("fingerprint") or {}).get(
                 "user_agent",
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             ),
@@ -149,12 +195,14 @@ class CDPProxy:
         # Inject donor cookies
         await self._inject_cookies()
         
-        # Start aiohttp server
+        # Start aiohttp server with duplicate-header tolerance
         self._app = self._create_app()
-        self._runner = web.AppRunner(self._app)
-        await self._runner.setup()
-        self._site = web.TCPSite(self._runner, self.config.host, self.config.port)
-        await self._site.start()
+        self._app.freeze()
+        server = web.Server(self._app._handle, request_factory=self._app._make_request)
+        loop = asyncio.get_event_loop()
+        self._raw_server = await loop.create_server(
+            _LenientServerFactory(server), self.config.host, self.config.port
+        )
         
         self.stats["start_time"] = time.time()
         
@@ -178,8 +226,9 @@ class CDPProxy:
         """Stop the proxy server and Playwright browser."""
         if self._http_session and not self._http_session.closed:
             await self._http_session.close()
-        if self._runner:
-            await self._runner.cleanup()
+        if self._raw_server:
+            self._raw_server.close()
+            await self._raw_server.wait_closed()
         if self._context:
             await self._context.close()
         if self._browser:
@@ -422,6 +471,11 @@ self.addEventListener('activate', () => {
     </div>
     
     <script>
+        if ('serviceWorker' in navigator) {{
+            navigator.serviceWorker.getRegistrations().then(regs => {{
+                regs.forEach(r => {{ r.unregister(); }});
+            }});
+        }}
         async function updateStats() {{
             try {{
                 const resp = await fetch('/stats');
@@ -903,9 +957,16 @@ self.addEventListener('activate', () => {
             return path
         
         host = request.headers.get("Host") or request.headers.get(":authority")
-        if host:
+        
+        if host and host not in (self.config.host, f"{self.config.host}:{self.config.port}"):
             scheme = "https" if ":443" in host or request.headers.get(":scheme") == "https" else "http"
             return f"{scheme}://{host}{path}"
+        
+        referer = request.headers.get("Referer", "")
+        for page_id, page in self._pages.items():
+            if f"/page/{page_id}" in referer and page.url:
+                parsed = urlparse(page.url)
+                return f"{parsed.scheme}://{parsed.netloc}{path}"
         
         return None
     
