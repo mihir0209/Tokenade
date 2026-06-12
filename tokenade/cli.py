@@ -1102,6 +1102,8 @@ def cmd_proxy(args):
     print(f"\n📂 Session: {args.session}")
     print(f"🔌 Port: {args.port}")
     print(f"🧠 Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
+    if not args.legacy:
+        print(f"🔐 Fingerprint: {'curl-cffi TLS matching' if args.fingerprint else 'Native browser (cookies only)'}")
     
     try:
         if args.legacy:
@@ -1123,6 +1125,7 @@ def cmd_proxy(args):
                 host=args.host,
                 headless=not args.visible,
                 timeout=args.timeout,
+                use_fingerprint=args.fingerprint,
             )
             proxy = CDPProxy.from_session_file(str(session_file), config)
         
@@ -1314,6 +1317,7 @@ Commands:
     proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
     proxy_parser.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
+    proxy_parser.add_argument("--fingerprint", action="store_true", help="Enable TLS fingerprint matching via curl-cffi (breaks cf_clearance)")
     proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
     proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
     proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")

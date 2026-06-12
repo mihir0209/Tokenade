@@ -92,6 +92,7 @@ class CDPProxyConfig:
     headless: bool = True
     verbose: bool = False
     timeout: int = 30
+    use_fingerprint: bool = False
 
 
 class CDPProxy:
@@ -513,13 +514,16 @@ self.addEventListener('activate', () => {
             if not parsed.hostname:
                 return web.Response(text="Invalid URL", status=400)
             
-            # Create a unique page ID
             page_id = str(int(time.time() * 1000))
             
-            # Create a new page and navigate in the background
+            page = await self._context.new_page()
+            self._pages[page_id] = page
+            
+            if self.config.use_fingerprint:
+                await page.route("**/*", lambda route: self._handle_route(route))
+            
             asyncio.create_task(self._navigate_page(page_id, url))
             
-            # Redirect to the page viewer
             raise web.HTTPFound(f"/page/{page_id}")
             
         except web.HTTPFound:
@@ -528,16 +532,13 @@ self.addEventListener('activate', () => {
             return web.Response(text=f"Error: {e}", status=500)
     
     async def _navigate_page(self, page_id: str, url: str):
-        """Create a new page, set up route interception, and navigate."""
+        """Navigate an already-created page to the target URL."""
         try:
-            page = await self._context.new_page()
-            self._pages[page_id] = page
+            page = self._pages.get(page_id)
+            if not page:
+                return
             
-            # Set up route interception for ALL requests
-            await page.route("**/*", lambda route: self._handle_route(route))
-            
-            # Navigate to the target URL
-            await page.goto(url, wait_until="networkidle", timeout=self.config.timeout * 1000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=self.config.timeout * 1000)
             
             logger.info(f"Page {page_id} loaded: {url}")
             
@@ -595,9 +596,45 @@ self.addEventListener('activate', () => {
             
             self.stats["bytes_received"] += len(response.body)
             
+            # Extract raw headers from response
+            raw_headers = response.headers
+            
+            # Extract Set-Cookie from response and update our cookie jar
+            set_cookie_headers = []
+            if isinstance(raw_headers, dict):
+                sc = raw_headers.get("set-cookie", raw_headers.get("Set-Cookie"))
+                if sc:
+                    set_cookie_headers = [sc] if isinstance(sc, str) else sc
+            elif isinstance(raw_headers, list):
+                for item in raw_headers:
+                    if isinstance(item, (list, tuple)) and len(item) == 2:
+                        if item[0].lower() == "set-cookie":
+                            set_cookie_headers.append(item[1])
+                    elif isinstance(item, dict):
+                        if item.get("name", "").lower() == "set-cookie":
+                            set_cookie_headers.append(item.get("value", ""))
+            
+            if set_cookie_headers:
+                from urllib.parse import urlparse as _urlparse
+                parsed_url = _urlparse(url)
+                for sc in set_cookie_headers:
+                    try:
+                        cookie_parts = sc.split(";")[0].strip()
+                        if "=" in cookie_parts:
+                            cname, cvalue = cookie_parts.split("=", 1)
+                            new_cookie = {
+                                "name": cname.strip(),
+                                "value": cvalue.strip(),
+                                "domain": parsed_url.hostname or "",
+                                "path": "/",
+                                "secure": parsed_url.scheme == "https",
+                            }
+                            self.cookie_jar.add_cookie(new_cookie)
+                    except Exception:
+                        pass
+            
             # Fulfill the route with the response
             resp_headers = {}
-            raw_headers = response.headers
             # curl-cffi may return headers as list of tuples or dict
             if isinstance(raw_headers, dict):
                 header_items = raw_headers.items()
@@ -671,6 +708,11 @@ self.addEventListener('activate', () => {
             cookies = self.cookie_jar.get_for_request(url)
             if cookies:
                 donor_headers["cookie"] = cookies
+                if "chatgpt" in url:
+                    logger.info(f"[COOKIE] {url[:80]} → {len(cookies)} chars: {cookies[:120]}...")
+            else:
+                if "chatgpt" in url:
+                    logger.warning(f"[COOKIE] NO cookies for {url[:80]}")
             
             # Remove accept-encoding (curl-cffi handles decompression)
             donor_headers.pop("accept-encoding", None)
@@ -802,7 +844,18 @@ self.addEventListener('activate', () => {
         }}
         .toolbar a {{ color: #00ff88; text-decoration: none; padding: 8px 16px; }}
         .toolbar a:hover {{ background: #00ff8822; border-radius: 4px; }}
-        .frame {{ width: 100%; height: calc(100vh - 50px); border: none; }}
+        .screenshot-container {{
+            display: flex; justify-content: center; align-items: flex-start;
+            padding: 10px; overflow: auto; height: calc(100vh - 50px);
+        }}
+        .screenshot-container img {{
+            max-width: 100%; height: auto; border: 1px solid #333; border-radius: 4px;
+        }}
+        .info {{
+            padding: 20px; color: #888;
+        }}
+        .info p {{ margin: 5px 0; }}
+        .info a {{ color: #00ff88; }}
         .loading {{
             display: flex; align-items: center; justify-content: center;
             height: calc(100vh - 50px); color: #888; font-size: 1.2em;
@@ -815,31 +868,28 @@ self.addEventListener('activate', () => {
         <a href="/">← Back</a>
     </div>
     <div id="content">
-        <div class="loading">Loading page content...</div>
+        <div class="loading">Loading screenshot...</div>
     </div>
     <script>
-        // Auto-refresh the page content
-        async function refreshContent() {{
+        async function refreshScreenshot() {{
             try {{
-                const resp = await fetch('/api/page/{page_id}/html');
+                const resp = await fetch('/api/page/{page_id}/screenshot');
                 if (resp.ok) {{
-                    const html = await resp.text();
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
                     document.getElementById('content').innerHTML = '';
-                    const iframe = document.createElement('iframe');
-                    iframe.className = 'frame';
-                    iframe.srcdoc = html;
-                    document.getElementById('content').appendChild(iframe);
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.className = 'screenshot-container';
+                    document.getElementById('content').appendChild(img);
                 }}
             }} catch(e) {{
-                console.error('Refresh failed:', e);
+                console.error('Screenshot refresh failed:', e);
             }}
         }}
         
-        // Initial load
-        setTimeout(refreshContent, 1000);
-        
-        // Auto-refresh every 5 seconds
-        setInterval(refreshContent, 5000);
+        setTimeout(refreshScreenshot, 2000);
+        setInterval(refreshScreenshot, 5000);
     </script>
 </body>
 </html>"""
@@ -914,6 +964,8 @@ self.addEventListener('activate', () => {
             return await self._handle_stats(request)
         elif path.startswith("/api/page/") and path.endswith("/html"):
             return await self._handle_page_html(request)
+        elif path.startswith("/api/page/") and path.endswith("/screenshot"):
+            return await self._handle_page_screenshot(request)
         
         return web.Response(text="Not found", status=404)
     
@@ -931,9 +983,34 @@ self.addEventListener('activate', () => {
         
         try:
             html = await page.content()
+            if page.url and not page.url.startswith("about:"):
+                parsed = urlparse(page.url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                if "<head>" in html:
+                    html = html.replace("<head>", f"<head><base href=\"{base_url}/\">", 1)
+                elif "<HEAD>" in html:
+                    html = html.replace("<HEAD>", f"<HEAD><base href=\"{base_url}/\">", 1)
             return web.Response(text=html, content_type='text/html')
         except Exception as e:
             return web.Response(text=f"Error getting page content: {e}", status=500)
+    
+    async def _handle_page_screenshot(self, request: web.Request) -> web.Response:
+        """Return a screenshot of a page as PNG."""
+        parts = request.path.split("/")
+        if len(parts) >= 4:
+            page_id = parts[3]
+        else:
+            return web.Response(text="Invalid page ID", status=400)
+        
+        page = self._pages.get(page_id)
+        if not page:
+            return web.Response(text="Page not found", status=404)
+        
+        try:
+            screenshot = await page.screenshot(type="png")
+            return web.Response(body=screenshot, content_type='image/png')
+        except Exception as e:
+            return web.Response(text=f"Error taking screenshot: {e}", status=500)
     
     async def _handle_status(self, request: web.Request) -> web.Response:
         """Return proxy status as JSON."""
