@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      width: 320px; padding: 16px; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a; color: #fff;
+    }
+    h1 { font-size: 1.2em; margin-bottom: 12px; color: #00ff88; }
+    .section { margin-bottom: 16px; }
+    .section h3 { font-size: 0.9em; color: #888; margin-bottom: 8px; }
+    .info-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.85em; }
+    .info-label { color: #888; }
+    .info-value { color: #fff; }
+    .btn {
+      width: 100%; padding: 10px; margin: 4px 0; border-radius: 6px; border: none;
+      font-size: 0.9em; font-weight: 500; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #00ff88; color: #000; }
+    .btn-primary:hover { background: #00cc6a; }
+    .btn-secondary { background: #333; color: #fff; }
+    .btn-secondary:hover { background: #444; }
+    .btn-danger { background: #ff6b6b; color: #fff; }
+    .btn-danger:hover { background: #ff5252; }
+    .input-group { margin: 8px 0; }
+    .input-group label { display: block; font-size: 0.8em; color: #888; margin-bottom: 4px; }
+    .input-group input, .input-group select {
+      width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333;
+      background: #0a0a0a; color: #fff; font-size: 0.85em;
+    }
+    .input-group input:focus, .input-group select:focus { outline: none; border-color: #00ff88; }
+    .checkbox { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+    .checkbox input { width: auto; }
+    .checkbox label { font-size: 0.85em; color: #fff; }
+    .status { padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 0.85em; }
+    .status-success { background: #00ff8822; color: #00ff88; }
+    .status-error { background: #ff6b6b22; color: #ff6b6b; }
+    .status-info { background: #333; color: #888; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Tokenade Exporter</h1>
+  
+  <div class="section">
+    <h3>Current Tab</h3>
+    <div class="info-row">
+      <span class="info-label">Site</span>
+      <span class="info-value" id="site-name">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Cookies</span>
+      <span class="info-value" id="cookie-count">-</span>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="input-group">
+      <label>Proxy Server</label>
+      <input type="text" id="proxy-url" value="http://127.0.0.1:9222">
+    </div>
+    
+    <div class="checkbox">
+      <input type="checkbox" id="include-localstorage">
+      <label for="include-localstorage">Include localStorage</label>
+    </div>
+    
+    <div class="checkbox">
+      <input type="checkbox" id="encrypt">
+      <label for="encrypt">Encrypt session</label>
+    </div>
+    
+    <div class="input-group hidden" id="password-group">
+      <label>Password</label>
+      <input type="password" id="password">
+    </div>
+  </div>
+  
+  <button class="btn btn-primary" id="export-btn">Export Session</button>
+  <button class="btn btn-secondary" id="send-proxy-btn">Send to Proxy</button>
+  
+  <div id="status" class="status status-info hidden"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
