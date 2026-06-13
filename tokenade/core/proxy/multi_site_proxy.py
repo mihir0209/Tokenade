@@ -1,0 +1,185 @@
+"""
+Multi-Site Session Bundler - Serve multiple sessions from one proxy.
+
+Loads multiple .tokenade files and serves each on its own port.
+A master GUI at the base port shows tabs for all active sessions.
+
+Usage:
+    tokenade proxy --all --sessions-dir ./sessions/
+    tokenade proxy --all -s session1.tokenade -s session2.tokenade
+"""
+
+import asyncio
+import logging
+import time
+from pathlib import Path
+from typing import Optional, Dict, List
+
+from aiohttp import web
+
+logger = logging.getLogger(__name__)
+
+
+class MultiSiteProxy:
+    """Serve multiple .tokenade sessions from one command."""
+
+    def __init__(self, sessions: List[Dict], base_port: int = 9222, host: str = "127.0.0.1"):
+        self.sessions = sessions
+        self.base_port = base_port
+        self.host = host
+        self._proxies = []
+        self._app = None
+
+    async def start(self):
+        """Start all proxy instances and the master GUI."""
+        from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+
+        # Assign ports and start each session's proxy
+        for i, session in enumerate(self.sessions):
+            port = self.base_port + i + 1
+            site_name = session.get("site_name", f"site_{i}")
+            logger.info(f"Starting proxy for {site_name} on port {port}")
+
+            config = CDPProxyConfig(
+                port=port,
+                host=self.host,
+                headless=True,
+                timeout=30,
+                use_fingerprint=False,
+            )
+            proxy = CDPProxy(session, config)
+            self._proxies.append({"proxy": proxy, "port": port, "session": session})
+
+        # Start all proxies in background tasks
+        tasks = []
+        for item in self._proxies:
+            tasks.append(asyncio.create_task(item["proxy"]._run_async()))
+
+        # Wait for proxies to start
+        await asyncio.sleep(2)
+
+        # Start master GUI on base port
+        self._app = self._create_master_app()
+        runner = web.AppRunner(self._app)
+        await runner.setup()
+        site = web.TCPSite(runner, self.host, self.base_port)
+        await site.start()
+
+        self._print_status()
+
+        try:
+            await asyncio.Event().wait()
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            for item in self._proxies:
+                try:
+                    await item["proxy"].shutdown()
+                except Exception:
+                    pass
+            await runner.cleanup()
+
+    def _create_master_app(self) -> web.Application:
+        """Create the master GUI application."""
+        app = web.Application()
+        app.router.add_get("/", self._handle_master_gui)
+        app.router.add_get("/api/sessions", self._handle_sessions_api)
+        return app
+
+    async def _handle_master_gui(self, request: web.Request) -> web.Response:
+        """Serve the master multi-site GUI."""
+        tabs_html = ""
+        for i, item in enumerate(self._proxies):
+            site_name = item["session"].get("site_name", f"site_{i}")
+            port = item["port"]
+            cookies = len(item["session"].get("cookies", []))
+            active = "active" if i == 0 else ""
+            tabs_html += f'''
+            <div class="tab {active}" onclick="switchTab({i}, {port})">
+                <span class="site-name">{site_name}</span>
+                <span class="cookie-count">{cookies} cookies</span>
+            </div>'''
+
+        iframe_html = ""
+        for i, item in enumerate(self._proxies):
+            port = item["port"]
+            display = "block" if i == 0 else "none"
+            iframe_html += f'''
+            <iframe id="frame{i}" src="http://{self.host}:{port}"
+                    style="display:{display};width:100%;height:calc(100vh - 60px);border:none;"
+                    frameborder="0"></iframe>'''
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Tokenade Multi-Site Proxy</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: #0a0a0a; color: #fff; height: 100vh; overflow: hidden; }}
+        .tab-bar {{
+            display: flex; background: #1a1a1a; border-bottom: 2px solid #333;
+            padding: 0 10px; height: 50px; align-items: stretch;
+        }}
+        .tab {{
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent;
+            transition: all 0.2s; margin-right: 2px;
+        }}
+        .tab:hover {{ background: #222; }}
+        .tab.active {{ border-bottom-color: #4a9eff; background: #1a1a2e; }}
+        .site-name {{ font-weight: 600; font-size: 13px; }}
+        .cookie-count {{ font-size: 10px; color: #888; }}
+        .header {{ display: flex; align-items: center; gap: 10px; padding: 0 16px; }}
+        .header h1 {{ font-size: 14px; font-weight: 600; color: #4a9eff; white-space: nowrap; }}
+    </style>
+</head>
+<body>
+    <div class="tab-bar">
+        <div class="header">
+            <h1>Tokenade</h1>
+        </div>
+        {tabs_html}
+    </div>
+    {iframe_html}
+    <script>
+        function switchTab(index, port) {{
+            document.querySelectorAll('.tab').forEach((t, i) => {{
+                t.classList.toggle('active', i === index);
+            }});
+            for (let i = 0; i < {len(self._proxies)}; i++) {{
+                const frame = document.getElementById('frame' + i);
+                if (frame) frame.style.display = (i === index) ? 'block' : 'none';
+            }}
+        }}
+    </script>
+</body>
+</html>"""
+        return web.Response(text=html, content_type="text/html")
+
+    async def _handle_sessions_api(self, request: web.Request) -> web.Response:
+        """Return session info as JSON."""
+        sessions = []
+        for i, item in enumerate(self._proxies):
+            sessions.append({
+                "index": i,
+                "site_name": item["session"].get("site_name", "unknown"),
+                "port": item["port"],
+                "cookies": len(item["session"].get("cookies", [])),
+                "auth_status": item["session"].get("auth_status", "unknown"),
+            })
+        return web.json_response(sessions)
+
+    def _print_status(self):
+        """Print startup status."""
+        print(f"\n{'='*60}")
+        print(f"Tokenade Multi-Site Proxy")
+        print(f"{'='*60}")
+        print(f"Master GUI: http://{self.host}:{self.base_port}")
+        print(f"Sessions: {len(self._proxies)}")
+        print()
+        for item in self._proxies:
+            site = item["session"].get("site_name", "unknown")
+            cookies = len(item["session"].get("cookies", []))
+            print(f"  - {site}: {cookies} cookies -> port {item['port']}")
+        print(f"\n{'='*60}\n")

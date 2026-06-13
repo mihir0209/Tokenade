@@ -15,11 +15,13 @@ donor's TLS fingerprint and cookies.
 
 import asyncio
 import base64
+import html
+import ipaddress
 import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List
 from urllib.parse import urlparse
 
 import aiohttp
@@ -80,8 +82,40 @@ except ImportError:
 
 from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
 from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
+from tokenade.core.importer.session_refresher import SessionRefresher, RefreshConfig
 
 logger = logging.getLogger(__name__)
+
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+
+def _is_safe_url(url: str) -> bool:
+    """Check if a URL is safe to proxy (not targeting internal networks)."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname in ("localhost", "0.0.0.0", "[::]", "metadata.google.internal"):
+            return False
+        try:
+            addr = ipaddress.ip_address(hostname)
+            for net in _BLOCKED_NETWORKS:
+                if addr in net:
+                    return False
+        except ValueError:
+            pass
+        return True
+    except Exception:
+        return False
 
 
 @dataclass
@@ -135,9 +169,16 @@ class CDPProxy:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._pages: Dict[str, Page] = {}  # url -> page
+        self._page_meta: Dict[str, Dict] = {}  # url -> {"created": timestamp}
+        self._max_pages = 20
+        self._page_ttl = 3600  # 1 hour
         
         # HTTP session for curl-cffi fallback
         self._http_session = None
+        self._session_lock = asyncio.Lock()
+        
+        # Session auto-refresh
+        self._refresher: Optional[SessionRefresher] = None
         
         # Statistics
         self.stats = {
@@ -209,9 +250,24 @@ class CDPProxy:
         
         self.stats["start_time"] = time.time()
         
+        # Start session auto-refresh monitor
+        refresh_config = RefreshConfig(
+            auto_refresh=False,  # Don't auto-refresh by default, just monitor
+            source_browser=(self.session.get("source_device") or {}).get("browser"),
+        )
+        self._refresher = SessionRefresher(
+            session=self.session,
+            config=refresh_config,
+            on_refresh=self._on_session_refresh,
+        )
+        await self._refresher.start()
+        
         site_name = self.session.get("site_name", "unknown")
         cookies = self.session.get("cookies", [])
         tls_profile = self.session.get("tls_profile", {})
+        
+        # Check session health
+        expiry_info = self._refresher.check_expiry()
         
         logger.info(f"CDP Proxy started on {self.config.host}:{self.config.port}")
         print(f"\n{'='*60}")
@@ -219,6 +275,14 @@ class CDPProxy:
         print(f"{'='*60}")
         print(f"Site: {site_name}")
         print(f"Cookies: {len(cookies)}")
+        if expiry_info.expired_count:
+            print(f"⚠️  Expired cookies: {expiry_info.expired_count} — re-export recommended")
+        if expiry_info.expiring_soon_count:
+            print(f"⏰ Expiring soon: {expiry_info.expiring_soon_count} — refresh recommended")
+        if expiry_info.critical_count:
+            print(f"🔴 Critical: {expiry_info.critical_count} cookies expiring very soon")
+        if expiry_info.next_expiry_human:
+            print(f"⏳ Next expiry: {expiry_info.next_expiry_human}")
         print(f"TLS Profile: {tls_profile.get('impersonate', 'unknown')}")
         print(f"Browser: Chromium (Playwright)")
         print(f"Headless: {self.config.headless}")
@@ -227,6 +291,8 @@ class CDPProxy:
     
     async def stop(self):
         """Stop the proxy server and Playwright browser."""
+        if self._refresher:
+            await self._refresher.stop()
         if self._http_session and not self._http_session.closed:
             await self._http_session.close()
         if self._raw_server:
@@ -240,6 +306,21 @@ class CDPProxy:
             await self._playwright.stop()
         if self.tls_matcher:
             self.tls_matcher.close()
+    
+    async def _on_session_refresh(self, new_session: Dict):
+        """Callback when session is refreshed — hot-reload cookies."""
+        try:
+            # Update cookie jar
+            self.cookie_jar = CookieJar()
+            self.cookie_jar.add_cookies(new_session.get("cookies", []))
+            
+            # Re-inject cookies into browser context
+            if self._context:
+                await self._inject_cookies()
+            
+            logger.info("Session hot-reloaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to hot-reload session: {e}")
     
     async def _inject_cookies(self):
         """Inject donor cookies into the Playwright browser context."""
@@ -326,6 +407,8 @@ class CDPProxy:
         app.router.add_get("/", self._handle_gui)
         app.router.add_get("/status", self._handle_status)
         app.router.add_get("/stats", self._handle_stats)
+        app.router.add_get("/session/status", self._handle_session_status)
+        app.router.add_post("/session/refresh", self._handle_session_refresh)
         app.router.add_post("/browse", self._handle_browse_post)
         app.router.add_get("/page/{page_id}", self._handle_page)
         
@@ -351,14 +434,14 @@ self.addEventListener('activate', () => {
     
     async def _handle_gui(self, request: web.Request) -> web.Response:
         """Serve the GUI landing page."""
-        site_name = self.session.get("site_name", "unknown")
+        site_name = html.escape(self.session.get("site_name", "unknown"))
         source_device = self.session.get("source_device", {})
-        browser_name = source_device.get("browser", "unknown")
-        platform = source_device.get("platform", "unknown")
+        browser_name = html.escape(source_device.get("browser", "unknown"))
+        platform = html.escape(source_device.get("platform", "unknown"))
         
-        default_url = self._get_site_url()
+        default_url = html.escape(self._get_site_url())
         
-        html = f"""<!DOCTYPE html>
+        gui_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Tokenade CDP Proxy - {site_name}</title>
@@ -443,6 +526,7 @@ self.addEventListener('activate', () => {
                 <span class="info-label">Status</span>
                 <span class="info-value"><span class="status status-ok">● Running</span></span>
             </div>
+            <div id="expiry-info" style="margin-top: 10px; padding: 10px; border-radius: 8px; background: #1a1a1a;"></div>
         </div>
         
         <div class="card">
@@ -508,17 +592,46 @@ self.addEventListener('activate', () => {
                 document.getElementById('bytes-out').textContent = formatBytes(data.bytes_sent || 0);
             }} catch(e) {{}}
         }}
+        async function updateSessionStatus() {{
+            try {{
+                const resp = await fetch('/session/status');
+                const data = await resp.json();
+                const el = document.getElementById('expiry-info');
+                if (data.expired_count > 0) {{
+                    el.innerHTML = '<span style="color: #ff6b6b;">⚠️ ' + data.expired_count + ' expired cookies</span>' +
+                        '<button onclick="refreshSession()" style="margin-left: 10px; padding: 4px 8px; background: #ff6b6b; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Refresh</button>';
+                }} else if (data.critical_count > 0) {{
+                    el.innerHTML = '<span style="color: #ffa500;">⏰ ' + data.critical_count + ' cookies expiring soon (' + (data.next_expiry_human || 'unknown') + ')</span>' +
+                        '<button onclick="refreshSession()" style="margin-left: 10px; padding: 4px 8px; background: #ffa500; color: #000; border: none; border-radius: 4px; cursor: pointer;">Refresh</button>';
+                }} else if (data.expiring_soon_count > 0) {{
+                    el.innerHTML = '<span style="color: #888;">📅 ' + data.expiring_soon_count + ' cookies expiring in ' + data.next_expiry_human + '</span>';
+                }} else {{
+                    el.innerHTML = '<span style="color: #00ff88;">✓ All cookies valid</span>';
+                }}
+            }} catch(e) {{}}
+        }}
+        async function refreshSession() {{
+            try {{
+                const resp = await fetch('/session/refresh', {{ method: 'POST' }});
+                const data = await resp.json();
+                if (data.status === 'refreshed') {{
+                    updateSessionStatus();
+                }}
+            }} catch(e) {{}}
+        }}
         function formatBytes(bytes) {{
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
             return (bytes/(1024*1024)).toFixed(1) + ' MB';
         }}
         setInterval(updateStats, 2000);
+        setInterval(updateSessionStatus, 60000);
         updateStats();
+        updateSessionStatus();
     </script>
 </body>
 </html>"""
-        return web.Response(text=html, content_type='text/html')
+        return web.Response(text=gui_html, content_type='text/html')
     
     async def _handle_browse_post(self, request: web.Request) -> web.Response:
         """Handle POST to /browse - create a new page and navigate."""
@@ -536,10 +649,20 @@ self.addEventListener('activate', () => {
             if not parsed.hostname:
                 return web.Response(text="Invalid URL", status=400)
             
+            if not _is_safe_url(url):
+                return web.Response(text="URL blocked: internal/private network target", status=403)
+            
+            self._cleanup_expired_pages()
+            
+            if len(self._pages) >= self._max_pages:
+                oldest_id = min(self._page_meta, key=lambda k: self._page_meta[k]["created"])
+                await self._close_page(oldest_id)
+            
             page_id = str(int(time.time() * 1000))
             
             page = await self._context.new_page()
             self._pages[page_id] = page
+            self._page_meta[page_id] = {"created": time.time()}
             
             if self.config.use_fingerprint:
                 await page.route("**/*", lambda route: self._handle_route(route))
@@ -550,8 +673,8 @@ self.addEventListener('activate', () => {
             
         except web.HTTPFound:
             raise
-        except Exception as e:
-            return web.Response(text=f"Error: {e}", status=500)
+        except Exception:
+            return web.Response(text="Failed to process request", status=500)
     
     async def _navigate_page(self, page_id: str, url: str):
         """Navigate an already-created page to the target URL."""
@@ -572,6 +695,24 @@ self.addEventListener('activate', () => {
             
         except Exception as e:
             logger.error(f"Failed to navigate to {url}: {e}")
+    
+    def _cleanup_expired_pages(self):
+        """Remove pages older than TTL."""
+        now = time.time()
+        expired = [pid for pid, meta in self._page_meta.items()
+                   if now - meta["created"] > self._page_ttl]
+        for pid in expired:
+            asyncio.create_task(self._close_page(pid))
+    
+    async def _close_page(self, page_id: str):
+        """Safely close a page and remove from tracking."""
+        page = self._pages.pop(page_id, None)
+        self._page_meta.pop(page_id, None)
+        if page:
+            try:
+                await page.close()
+            except Exception:
+                pass
     
     async def _handle_route(self, route):
         """
@@ -643,8 +784,7 @@ self.addEventListener('activate', () => {
                             set_cookie_headers.append(item.get("value", ""))
             
             if set_cookie_headers:
-                from urllib.parse import urlparse as _urlparse
-                parsed_url = _urlparse(url)
+                parsed_url = urlparse(url)
                 for sc in set_cookie_headers:
                     try:
                         cookie_parts = sc.split(";")[0].strip()
@@ -737,7 +877,7 @@ self.addEventListener('activate', () => {
             if cookies:
                 donor_headers["cookie"] = cookies
                 if "chatgpt" in url:
-                    logger.info(f"[COOKIE] {url[:80]} → {len(cookies)} chars: {cookies[:120]}...")
+                    logger.info(f"[COOKIE] {url[:80]} -> {len(cookies)} chars")
             else:
                 if "chatgpt" in url:
                     logger.warning(f"[COOKIE] NO cookies for {url[:80]}")
@@ -792,19 +932,20 @@ self.addEventListener('activate', () => {
     ):
         """Fallback: forward via aiohttp."""
         try:
-            if self._http_session is None or self._http_session.closed:
-                connector = aiohttp.TCPConnector(
-                    ssl=False,
-                    limit=100,
-                    limit_per_host=30,
-                    enable_cleanup_closed=True
-                )
-                timeout = aiohttp.ClientTimeout(total=self.config.timeout, connect=10)
-                self._http_session = aiohttp.ClientSession(
-                    connector=connector,
-                    timeout=timeout,
-                    auto_decompress=False
-                )
+            async with self._session_lock:
+                if self._http_session is None or self._http_session.closed:
+                    connector = aiohttp.TCPConnector(
+                        ssl=False,
+                        limit=100,
+                        limit_per_host=30,
+                        enable_cleanup_closed=True
+                    )
+                    timeout = aiohttp.ClientTimeout(total=self.config.timeout, connect=10)
+                    self._http_session = aiohttp.ClientSession(
+                        connector=connector,
+                        timeout=timeout,
+                        auto_decompress=False
+                    )
             
             # Build donor-matched headers
             donor_headers = self.fingerprint.get_headers(url, None, method)
@@ -839,6 +980,28 @@ self.addEventListener('activate', () => {
             logger.error(f"aiohttp fallback also failed for {url}: {e}")
             return None
     
+    async def _handle_session_status(self, request: web.Request) -> web.Response:
+        """Return session expiry status as JSON."""
+        if not self._refresher:
+            return web.json_response({"error": "Refresh monitor not active"}, status=503)
+        
+        status = self._refresher.get_status()
+        return web.json_response(status)
+    
+    async def _handle_session_refresh(self, request: web.Request) -> web.Response:
+        """Trigger a manual session refresh from source browser."""
+        if not self._refresher:
+            return web.json_response({"error": "Refresh monitor not active"}, status=503)
+        
+        try:
+            await self._refresher._attempt_refresh()
+            return web.json_response({
+                "status": "refreshed",
+                "cookies": len(self.session.get("cookies", [])),
+            })
+        except Exception as e:
+            return web.json_response({"error": "Refresh failed"}, status=500)
+    
     async def _handle_page(self, request: web.Request) -> web.Response:
         """Serve a page that displays the browser content via iframe."""
         page_id = request.match_info["page_id"]
@@ -853,9 +1016,9 @@ self.addEventListener('activate', () => {
         
         try:
             # Get the current URL of the page
-            current_url = page.url
+            current_url = html.escape(page.url or "")
             
-            html = f"""<!DOCTYPE html>
+            page_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Tokenade - Browsing</title>
@@ -921,10 +1084,10 @@ self.addEventListener('activate', () => {
     </script>
 </body>
 </html>"""
-            return web.Response(text=html, content_type='text/html')
+            return web.Response(text=page_html, content_type='text/html')
             
-        except Exception as e:
-            return web.Response(text=f"Error: {e}", status=500)
+        except Exception:
+            return web.Response(text="Error loading page", status=500)
     
     async def _handle_proxy(self, request: web.Request) -> web.Response:
         """Handle reverse proxy requests."""
@@ -942,6 +1105,9 @@ self.addEventListener('activate', () => {
         target_url = self._build_target_url(request)
         if not target_url:
             return web.Response(text="Could not determine target URL", status=400)
+        
+        if not _is_safe_url(target_url):
+            return web.Response(text="URL blocked: internal/private network target", status=403)
         
         try:
             body = await request.read() if request.method in ("POST", "PUT", "PATCH") else None
@@ -1079,6 +1245,20 @@ self.addEventListener('activate', () => {
         """Get the default URL for the session's site."""
         site_name = self.session.get("site_name", "unknown")
         if site_name and site_name != "unknown":
+            # Try to infer from cookie domains
+            cookies = self.session.get("cookies", [])
+            domains = set()
+            for c in cookies:
+                d = c.get("domain", "")
+                if d:
+                    domains.add(d.lstrip("."))
+            # Find most specific domain matching site_name
+            for d in sorted(domains, key=len):
+                if site_name.lower() in d.lower():
+                    return f"https://{d}"
+            # Fallback: use first non-empty domain
+            if domains:
+                return f"https://{min(domains, key=len)}"
             return f"https://www.{site_name}.com"
         return "https://example.com"
     
