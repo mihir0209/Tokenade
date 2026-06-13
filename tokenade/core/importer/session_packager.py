@@ -72,14 +72,24 @@ class SessionPackager:
             return AuthStatus.LOGGED_IN
         else:
             # Unknown site: use heuristics
+            # Blocklist: known non-auth cookies that have secure+httpOnly but aren't sessions
+            non_auth_cookies = {
+                "_ga", "_gid", "_gat", "__cf_bm", "cf_clearance",
+                "__utmz", "__utma", "__utmc", "__utmb",
+                "_fbp", "_fbc", "fr", "IDE", "NID", "1P_JAR",
+                "AnalyticsSyncHistory", "__hstc", "hubspotutk",
+            }
             # Look for session-like cookies (secure + httpOnly + long expiry)
             session_like = 0
             for c in cookies:
+                name = c.get("name", "")
+                if name in non_auth_cookies:
+                    continue
                 if c.get("secure") and c.get("httpOnly"):
                     session_like += 1
                 # Session token patterns
-                name = c.get("name", "").lower()
-                if any(kw in name for kw in ("session", "token", "auth", "sid", "csrf", "xsrf")):
+                name_lower = name.lower()
+                if any(kw in name_lower for kw in ("session", "token", "auth", "sid", "csrf", "xsrf")):
                     session_like += 1
 
             if session_like >= 2:

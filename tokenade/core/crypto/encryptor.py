@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # File format constants
 MAGIC = b'TOKENADE_ENCRYPTED'
-VERSION = 1
+VERSION = 2
 SALT_SIZE = 16
 NONCE_SIZE = 12
 HMAC_SIZE = 32
@@ -41,29 +41,24 @@ class TokenadeEncryptor:
     """
     Encrypts and decrypts .tokenade files using AES-256-GCM.
     
-    File format:
+    File format (v2):
     ┌─────────────────────────────────────────────────────┐
     │  TOKENADE_ENCRYPTED_v1                             │
     ├─────────────────────────────────────────────────────┤
     │  Salt (16 bytes)                                   │
     │  Nonce (12 bytes)                                  │
-    │  Encrypted Data                                    │
-    │  HMAC-SHA256 (32 bytes)                            │
+    │  Encrypted Data + GCM Auth Tag (16 bytes)          │
     └─────────────────────────────────────────────────────┘
     
-    Usage:
-        encryptor = TokenadeEncryptor()
-        
-        # Encrypt
-        encrypted = encryptor.encrypt(data, password)
-        
-        # Decrypt
-        decrypted = encryptor.decrypt(encrypted, password)
+    v1 format (deprecated, still supported for decryption):
+    Includes HMAC-SHA256 (32 bytes) at the end.
     """
     
     def encrypt(self, data: bytes, password: str) -> bytes:
         """
         Encrypt data with password.
+        
+        Uses AES-256-GCM (authentication via GCM tag, no redundant HMAC).
         
         Args:
             data: Data to encrypt
@@ -89,19 +84,13 @@ class TokenadeEncryptor:
         # Generate nonce
         nonce = secrets.token_bytes(NONCE_SIZE)
         
-        # Encrypt with AES-GCM
+        # Encrypt with AES-GCM (GCM tag provides authentication)
         aesgcm = AESGCM(key)
         encrypted_data = aesgcm.encrypt(nonce, data, None)
         
-        # Build encrypted payload
-        payload = nonce + encrypted_data
-        
-        # Calculate HMAC
-        h = hmac.new(key, payload, hashlib.sha256)
-        hmac_digest = h.digest()
-        
-        # Build final output
-        output = MAGIC + struct.pack('>I', VERSION) + salt + payload + hmac_digest
+        # Build output: MAGIC + version + salt + nonce + ciphertext
+        # No HMAC — AES-GCM's authentication tag is sufficient
+        output = MAGIC + struct.pack('>I', VERSION) + salt + nonce + encrypted_data
         
         return output
     
@@ -109,9 +98,11 @@ class TokenadeEncryptor:
         """
         Decrypt data with password.
         
+        Supports both v1 (with HMAC) and v2 (no HMAC) formats.
+        
         Args:
             encrypted: Encrypted data with header
-            password: Decryption password
+            password: Encryption password
             
         Returns:
             Decrypted data
@@ -128,7 +119,7 @@ class TokenadeEncryptor:
             raise ValueError("Invalid file format")
         
         version = struct.unpack('>I', encrypted[len(MAGIC):len(MAGIC)+4])[0]
-        if version != VERSION:
+        if version not in (1, VERSION):
             raise ValueError(f"Unsupported version: {version}")
         
         # Extract components
@@ -136,28 +127,43 @@ class TokenadeEncryptor:
         salt = encrypted[offset:offset + SALT_SIZE]
         offset += SALT_SIZE
         
-        payload = encrypted[offset:-HMAC_SIZE]
-        stored_hmac = encrypted[-HMAC_SIZE:]
+        if version == 1:
+            # v1 format: salt + payload + HMAC
+            payload = encrypted[offset:-HMAC_SIZE]
+            stored_hmac = encrypted[-HMAC_SIZE:]
+            
+            # Derive key
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=KEY_SIZE,
+                salt=salt,
+                iterations=self.config.iterations if hasattr(self, 'config') else PBKDF2_ITERATIONS,
+            )
+            key = kdf.derive(password.encode('utf-8'))
+            
+            # Verify HMAC (backward compat)
+            h = hmac.new(key, payload, hashlib.sha256)
+            if not hmac.compare_digest(h.digest(), stored_hmac):
+                raise ValueError("Wrong password or corrupted data")
+            
+            nonce = payload[:NONCE_SIZE]
+            ciphertext = payload[NONCE_SIZE:]
+        else:
+            # v2 format: salt + nonce + ciphertext (no HMAC)
+            nonce = encrypted[offset:offset + NONCE_SIZE]
+            offset += NONCE_SIZE
+            ciphertext = encrypted[offset:]
+            
+            # Derive key
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=KEY_SIZE,
+                salt=salt,
+                iterations=self.config.iterations if hasattr(self, 'config') else PBKDF2_ITERATIONS,
+            )
+            key = kdf.derive(password.encode('utf-8'))
         
-        # Derive key
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=KEY_SIZE,
-            salt=salt,
-            iterations=self.config.iterations if hasattr(self, 'config') else PBKDF2_ITERATIONS,
-        )
-        key = kdf.derive(password.encode('utf-8'))
-        
-        # Verify HMAC
-        h = hmac.new(key, payload, hashlib.sha256)
-        if not hmac.compare_digest(h.digest(), stored_hmac):
-            raise ValueError("Wrong password or corrupted data")
-        
-        # Extract nonce and ciphertext
-        nonce = payload[:NONCE_SIZE]
-        ciphertext = payload[NONCE_SIZE:]
-        
-        # Decrypt
+        # Decrypt (AES-GCM verifies authentication tag)
         aesgcm = AESGCM(key)
         try:
             decrypted = aesgcm.decrypt(nonce, ciphertext, None)
@@ -183,8 +189,12 @@ class TokenadeEncryptor:
         
         encrypted = self.encrypt(data, password)
         
-        with open(output_path, 'wb') as f:
-            f.write(encrypted)
+        umask = os.umask(0o177)
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(encrypted)
+        finally:
+            os.umask(umask)
         
         logger.info(f"File encrypted: {input_path} -> {output_path}")
         return output_path
@@ -206,8 +216,12 @@ class TokenadeEncryptor:
         
         decrypted = self.decrypt(encrypted, password)
         
-        with open(output_path, 'wb') as f:
-            f.write(decrypted)
+        umask = os.umask(0o177)
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(decrypted)
+        finally:
+            os.umask(umask)
         
         logger.info(f"File decrypted: {input_path} -> {output_path}")
         return output_path

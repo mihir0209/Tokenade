@@ -13,20 +13,21 @@ Architecture:
 """
 
 import asyncio
+import html as html_module
 import json
 import logging
 import re
-import ssl
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any, Tuple
-from urllib.parse import urlparse, urljoin, quote
+from urllib.parse import urlparse, quote
 
 import aiohttp
 from aiohttp import web
 
 from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
 from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
+from tokenade.core.proxy.cdp_proxy import _is_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -159,13 +160,13 @@ class TokenadeProxy:
     
     async def _handle_gui(self, request: web.Request) -> web.Response:
         """Serve the GUI landing page."""
-        site_name = self.session.get("site_name", "unknown")
+        site_name = html_module.escape(self.session.get("site_name", "unknown"))
         source_device = self.session.get("source_device", {})
-        browser = source_device.get("browser", "unknown")
-        platform = source_device.get("platform", "unknown")
+        browser = html_module.escape(source_device.get("browser", "unknown"))
+        platform = html_module.escape(source_device.get("platform", "unknown"))
         
         # Determine default URL
-        default_url = self._get_site_url()
+        default_url = html_module.escape(self._get_site_url())
         
         html = f"""<!DOCTYPE html>
 <html>
@@ -336,6 +337,9 @@ class TokenadeProxy:
             if not parsed.hostname:
                 return web.Response(text="Invalid URL", status=400)
             
+            if not _is_safe_url(url):
+                return web.Response(text="URL blocked: internal/private network target", status=403)
+            
             # Store target URL and activate proxy mode
             self._target_url = url
             self._proxy_active = True
@@ -345,8 +349,8 @@ class TokenadeProxy:
             
         except web.HTTPFound:
             raise
-        except Exception as e:
-            return web.Response(text=f"Error: {e}", status=500)
+        except Exception:
+            return web.Response(text="Failed to process request", status=500)
     
     async def _handle_site_proxy_entry(self, request: web.Request) -> web.StreamResponse:
         """
@@ -545,8 +549,8 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
     
     async def _handle_browse_page(self, request: web.Request) -> web.Response:
         """Show the browse page with URL input."""
-        site_name = self.session.get("site_name", "unknown")
-        default_url = self._target_url or self._get_site_url()
+        site_name = html_module.escape(self.session.get("site_name", "unknown"))
+        default_url = html_module.escape(self._target_url or self._get_site_url())
         
         html = f"""<!DOCTYPE html>
 <html>
@@ -618,6 +622,9 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
         
         if not target_url:
             return web.Response(text="Could not determine target URL", status=400)
+        
+        if not _is_safe_url(target_url):
+            return web.Response(text="URL blocked: internal/private network target", status=403)
         
         logger.debug(f"Proxy: {request.method} {target_url}")
         
@@ -726,7 +733,7 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
         except Exception as e:
             logger.error(f"Site subresource error: {e}")
             self.stats["errors"] += 1
-            return web.Response(text=f"Error: {e}", status=502)
+            return web.Response(text="Failed to fetch resource", status=502)
     
     def _build_target_url(self, request: web.Request) -> Optional[str]:
         """Build target URL from request."""
@@ -771,6 +778,18 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
         """Get the default URL for the session's site."""
         site_name = self.session.get("site_name", "unknown")
         if site_name and site_name != "unknown":
+            # Try to infer from cookie domains
+            cookies = self.session.get("cookies", [])
+            domains = set()
+            for c in cookies:
+                d = c.get("domain", "")
+                if d:
+                    domains.add(d.lstrip("."))
+            for d in sorted(domains, key=len):
+                if site_name.lower() in d.lower():
+                    return f"https://{d}"
+            if domains:
+                return f"https://{min(domains, key=len)}"
             return f"https://www.{site_name}.com"
         return "https://example.com"
     

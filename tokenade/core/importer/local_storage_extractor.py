@@ -10,12 +10,13 @@ Handles site-specific filtering so users only export what they need.
 
 import json
 import os
-import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
+
+from tokenade.core.importer.db_utils import copy_db
 
 logger = logging.getLogger(__name__)
 
@@ -35,25 +36,8 @@ class LocalStorageExtractor:
         self.browser = browser.lower()
 
     def _copy_db(self, db_path: str) -> str:
-        """Copy database to temp file (browser may lock it).
-
-        Also copies WAL (-wal) and SHM (-shm) files if present.
-        """
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(f"LocalStorage database not found: {db_path}")
-
-        temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
-        os.close(temp_fd)
-        shutil.copy2(db_path, temp_path)
-
-        # Copy WAL and SHM files if present
-        for suffix in ("-wal", "-shm"):
-            wal_path = db_path + suffix
-            if os.path.exists(wal_path):
-                temp_wal = temp_path + suffix
-                shutil.copy2(wal_path, temp_wal)
-
-        return temp_path
+        """Copy database to temp file (browser may lock it)."""
+        return copy_db(db_path)
 
     def extract_firefox(self, origin_filter: Optional[str] = None) -> Dict[str, str]:
         """
@@ -88,7 +72,7 @@ class LocalStorageExtractor:
             if origin_filter:
                 # dir_name format: https+++web.telegram.org
                 origin_from_dir = dir_name.replace("+++", "://").replace("+", "/")
-                if origin_filter not in origin_from_dir and origin_from_dir not in origin_filter:
+                if not (origin_from_dir == origin_filter or origin_from_dir.endswith(origin_filter)):
                     continue
 
             temp_db = self._copy_db(ls_path)

@@ -575,16 +575,10 @@ class RuntimeEngine:
             # Use curl-cffi for TLS fingerprint matching
             logger.debug("Using TLS fingerprint matching")
             
-            # Get cookies as dictionary
-            cookies_dict = {}
-            for cookie in self.cookie_jar.to_list():
-                cookies_dict[cookie["name"]] = cookie["value"]
-            
             response = self._tls_matcher.request(
                 method=method,
                 url=url,
                 headers=fp_headers,
-                cookies=cookies_dict,
                 data=data,
                 json_data=json_data,
                 timeout=self.config.timeout,

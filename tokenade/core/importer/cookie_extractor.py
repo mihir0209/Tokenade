@@ -6,13 +6,14 @@ Supports site-specific filtering so users only export what they need.
 
 import json
 import os
-import re
 import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
+
+from tokenade.core.importer.db_utils import copy_db
 
 from tokenade.core.crypto.cookie_crypto import CookieCryptoFactory, DecryptedCookie
 
@@ -225,26 +226,8 @@ class CookieExtractor:
         return self._crypto
 
     def _copy_db(self, db_path: str) -> str:
-        """Copy database to temp file (browser may lock it).
-
-        Also copies WAL (-wal) and SHM (-shm) files if present,
-        since Firefox/Chrome use WAL mode and data may be in WAL.
-        """
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(f"Cookie database not found: {db_path}")
-
-        temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
-        os.close(temp_fd)
-        shutil.copy2(db_path, temp_path)
-
-        # Copy WAL and SHM files if present
-        for suffix in ("-wal", "-shm"):
-            wal_path = db_path + suffix
-            if os.path.exists(wal_path):
-                temp_wal = temp_path + suffix
-                shutil.copy2(wal_path, temp_wal)
-
-        return temp_path
+        """Copy database to temp file (browser may lock it)."""
+        return copy_db(db_path)
 
     def extract_chrome(self, site_filter: Optional[SiteFilter] = None) -> List[Dict]:
         """Extract cookies from Chrome/Chromium/Edge."""
@@ -255,6 +238,7 @@ class CookieExtractor:
 
         temp_db = self._copy_db(cookies_db)
         cookies = []
+        conn = None
 
         try:
             conn = sqlite3.connect(temp_db)
@@ -316,8 +300,14 @@ class CookieExtractor:
                 cookies.append(cookie)
 
             conn.close()
+            conn = None
 
         finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             if os.path.exists(temp_db):
                 os.remove(temp_db)
 
@@ -337,6 +327,7 @@ class CookieExtractor:
 
         temp_db = self._copy_db(cookies_db)
         cookies = []
+        conn = None
 
         try:
             conn = sqlite3.connect(temp_db)
@@ -366,8 +357,14 @@ class CookieExtractor:
                 cookies.append(cookie)
 
             conn.close()
+            conn = None
 
         finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             if os.path.exists(temp_db):
                 os.remove(temp_db)
 
@@ -402,6 +399,7 @@ class CookieExtractor:
                 continue
             
             temp_db = self._copy_db(ls_path)
+            conn = None
             try:
                 conn = sqlite3.connect(temp_db)
                 cur = conn.cursor()
@@ -410,9 +408,15 @@ class CookieExtractor:
                     decoded = val.decode("utf-8", errors="replace") if isinstance(val, bytes) else str(val)
                     all_storage[f"{domain}:{key}"] = decoded
                 conn.close()
+                conn = None
             except Exception as e:
                 logger.warning(f"Failed to extract localStorage for {domain}: {e}")
             finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 if os.path.exists(temp_db):
                     os.remove(temp_db)
         
