@@ -53,17 +53,17 @@ def setup_logging(verbose: bool = False):
 def cmd_setup(args):
     """Setup accounts with initial login."""
     from datetime import datetime
+    import getpass
+    from tokenade.core.security.credentials import CredentialManager, AccountCredentials
     
     print("\n" + "=" * 80)
     print("TOKENADE - Account Setup")
     print("=" * 80)
     
-    accounts_file = Path("accounts.json")
-    accounts = []
+    manager = CredentialManager()
+    accounts = manager.load_accounts()
     
-    if accounts_file.exists():
-        with open(accounts_file) as f:
-            accounts = json.load(f)
+    if accounts:
         print(f"\n📋 Found {len(accounts)} existing account(s)")
     
     while True:
@@ -72,7 +72,7 @@ def cmd_setup(args):
             break
         
         email = input("📧 Email: ").strip()
-        password = input("🔒 Password: ").strip()
+        password = getpass.getpass("🔒 Password: ")
         
         if not email or not password:
             print("❌ Email and password required")
@@ -97,18 +97,20 @@ def cmd_setup(args):
             status = handler.login(email, password, headless=False)
             
             if status.value == "logged_in":
-                accounts.append({
-                    "number": account_num,
-                    "email": email,
-                    "password": password,
-                    "profile_dir": profile_dir,
-                    "created_at": datetime.now().isoformat(),
-                })
-                
-                with open(accounts_file, "w") as f:
-                    json.dump(accounts, f, indent=2)
+                account = AccountCredentials(
+                    number=account_num,
+                    email=email,
+                    password=password,
+                    profile_dir=profile_dir,
+                    site="google",
+                    metadata={"created_at": datetime.now().isoformat()},
+                )
+                accounts.append(account)
+                manager.save_accounts(accounts, use_keyring=True, encrypt_file=False)
                 
                 print(f"✅ Account #{account_num} setup complete")
+                print(f"   Password stored in system keyring" if manager._keyring_available
+                      else f"   ⚠️  Keyring unavailable — run 'tokenade setup --encrypt' for secure storage")
             else:
                 print(f"❌ Login failed for account #{account_num}")
                 
@@ -122,18 +124,22 @@ def cmd_setup(args):
 def cmd_extract(args):
     """Extract tokens from saved browser sessions."""
     from datetime import datetime
+    from tokenade.core.security.credentials import CredentialManager
     
     print("\n" + "=" * 80)
     print("TOKENADE - Token Extraction")
     print("=" * 80)
     
-    accounts_file = Path("accounts.json")
-    if not accounts_file.exists():
-        print("❌ No accounts configured. Run 'tokenade setup' first.")
+    manager = CredentialManager()
+    try:
+        accounts = manager.load_accounts()
+    except ValueError:
+        print("❌ Accounts file is encrypted. Run with --master-password to decrypt.")
         return
     
-    with open(accounts_file) as f:
-        accounts = json.load(f)
+    if not accounts:
+        print("❌ No accounts configured. Run 'tokenade setup' first.")
+        return
     
     output_dir = Path("sessions")
     output_dir.mkdir(exist_ok=True)
@@ -141,9 +147,9 @@ def cmd_extract(args):
     results = []
     
     for account in accounts:
-        account_num = account["number"]
-        email = account["email"]
-        profile_dir = account.get("profile_dir", f"browser_data/{account_num}")
+        account_num = account.number
+        email = account.email
+        profile_dir = account.profile_dir or f"browser_data/{account_num}"
         
         print(f"\n📋 Account #{account_num}: {email}")
         
@@ -543,6 +549,22 @@ def cmd_export(args):
         except Exception as e:
             logger.warning(f"localStorage extraction failed: {e}")
             print(f"   ⚠️  localStorage extraction failed: {e}")
+    else:
+        # Auto-detect: check if any cookie domains have localStorage
+        try:
+            ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
+            origins = ls_extractor.list_origins()
+            if origins and cookies:
+                cookie_domains = {c.get("domain", "").lstrip(".") for c in cookies}
+                matching_origins = [
+                    o for o in origins
+                    if any(d in o for d in cookie_domains)
+                ]
+                if matching_origins:
+                    print(f"\n💾 Found localStorage for {len(matching_origins)} cookie domain(s): {', '.join(matching_origins)}")
+                    print("   💡 Re-run with --extract-local-storage to include it")
+        except Exception:
+            pass
 
     if not cookies and not local_storage:
         print("❌ No cookies or localStorage to export")
@@ -1090,23 +1112,74 @@ def cmd_refresh(args):
 
 def cmd_proxy(args):
     """Start fingerprint-matched proxy server."""
-    print("\n" + "=" * 80)
-    print("TOKENADE - Fingerprint Proxy Server")
-    print("=" * 80)
-    
+    from tokenade.core.importer.session_packager import SessionPackager
+    packager = SessionPackager()
+
+    # Multi-site mode
+    if args.all:
+        sessions = []
+        search_dirs = [args.sessions_dir] if args.sessions_dir else ["."]
+        for d in search_dirs:
+            p = Path(d)
+            for ext in ("*.tokenade", "*.session"):
+                for f in p.glob(ext):
+                    try:
+                        session = packager.load(str(f))
+                        sessions.append(session)
+                        print(f"  Loaded: {f.name} ({session.get('site_name', 'unknown')})")
+                    except Exception as e:
+                        logger.warning(f"Failed to load {f}: {e}")
+
+        if not sessions:
+            print("❌ No session files found")
+            return
+
+        print(f"\n{'='*60}")
+        print(f"TOKENADE - Multi-Site Proxy ({len(sessions)} sessions)")
+        print(f"{'='*60}")
+
+        from tokenade.core.proxy.multi_site_proxy import MultiSiteProxy
+        proxy = MultiSiteProxy(sessions, base_port=args.port, host=args.host)
+        import asyncio
+        asyncio.run(proxy.start())
+        return
+
+    # Single-site mode
+    if not args.session:
+        print("❌ --session required (or use --all for multi-site mode)")
+        return
+
     session_file = Path(args.session)
     if not session_file.exists():
         print(f"❌ Session file not found: {args.session}")
         return
     
+    print("\n" + "=" * 80)
+    print("TOKENADE - Fingerprint Proxy Server")
+    print("=" * 80)
     print(f"\n📂 Session: {args.session}")
     print(f"🔌 Port: {args.port}")
-    print(f"🧠 Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
-    if not args.legacy:
-        print(f"🔐 Fingerprint: {'curl-cffi TLS matching' if args.fingerprint else 'Native browser (cookies only)'}")
+    print(f"🔧 Mode: {args.mode}")
+    
+    if args.mode == "forward":
+        print(f"   Configure browser: HTTP_PROXY=http://{args.host}:{args.port}")
+    
+    if args.mode != "forward":
+        print(f"🧠 Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
+        if not args.legacy:
+            print(f"🔐 Fingerprint: {'curl-cffi TLS matching' if args.fingerprint else 'Native browser (cookies only)'}")
     
     try:
-        if args.legacy:
+        if args.mode == "forward":
+            # HTTP forward proxy mode
+            from tokenade.core.proxy.forward_proxy import ForwardProxy
+            from tokenade.core.importer.session_packager import SessionPackager
+            packager = SessionPackager()
+            session = packager.load(str(session_file))
+            proxy = ForwardProxy(session, port=args.port, host=args.host)
+            import asyncio
+            asyncio.run(proxy.start())
+        elif args.legacy:
             # Legacy SW-based proxy
             from tokenade.core.proxy.server import TokenadeProxy, ProxyConfig
             gui_mode = not args.no_gui
@@ -1120,6 +1193,8 @@ def cmd_proxy(args):
         else:
             # CDP-based proxy (default, recommended)
             from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+            from tokenade.core.importer.session_refresher import RefreshConfig
+            
             config = CDPProxyConfig(
                 port=args.port,
                 host=args.host,
@@ -1128,6 +1203,15 @@ def cmd_proxy(args):
                 use_fingerprint=args.fingerprint,
             )
             proxy = CDPProxy.from_session_file(str(session_file), config)
+            
+            # Configure auto-refresh if enabled
+            if args.auto_refresh:
+                proxy._refresher.config.auto_refresh = True
+                if args.source_browser:
+                    proxy._refresher.config.source_browser = args.source_browser
+                if args.source_profile:
+                    proxy._refresher.config.source_profile = args.source_profile
+                print(f"🔄 Auto-refresh enabled from {args.source_browser or 'source browser'}")
         
         # Open browser in GUI mode
         if not args.no_open_browser:
@@ -1151,8 +1235,292 @@ def cmd_proxy(args):
         print(f"❌ Failed: {e}")
 
 
+def cmd_sessions(args):
+    """Manage multiple sessions."""
+    from tokenade.core.importer.session_manager import SessionManager
+    
+    manager = SessionManager(args.dir if hasattr(args, 'dir') else ".")
+    
+    if args.sessions_command == "list":
+        sessions = manager.list_sessions(
+            pattern=args.pattern,
+            recursive=args.recursive,
+        )
+        
+        # Apply filters
+        if args.site or args.browser:
+            sessions = manager.filter_sessions(
+                sessions,
+                site_name=args.site,
+                browser=args.browser,
+            )
+        
+        if not sessions:
+            print("No sessions found")
+            return
+        
+        print("\n" + "=" * 70)
+        print(f"{'Site':<20} {'Cookies':<10} {'Browser':<12} {'Size':<10} {'Path'}")
+        print("=" * 70)
+        
+        for s in sessions:
+            size = f"{s.file_size / 1024:.1f}K" if s.file_size < 1024*1024 else f"{s.file_size / (1024*1024):.1f}M"
+            print(f"{s.site_name:<20} {s.cookie_count:<10} {s.source_browser or 'unknown':<12} {size:<10} {Path(s.path).name}")
+        
+        print(f"\n{'='*70}")
+        print(f"Total: {len(sessions)} sessions")
+        print(f"{'='*70}\n")
+    
+    elif args.sessions_command == "merge":
+        for f in args.files:
+            if not Path(f).exists():
+                print(f"❌ File not found: {f}")
+                return
+        
+        output = manager.merge_sessions(
+            args.files,
+            args.output,
+            site_name=args.site_name,
+        )
+        
+        print(f"✅ Merged {len(args.files)} sessions into: {output}")
+    
+    elif args.sessions_command == "rotate":
+        for f in args.files:
+            if not Path(f).exists():
+                print(f"❌ File not found: {f}")
+                return
+        
+        selected = manager.rotate_session(
+            args.files,
+            strategy=args.strategy,
+            state_file=args.state_file,
+        )
+        
+        print(f"🔄 Selected: {selected}")
+    
+    elif args.sessions_command == "stats":
+        for f in args.files:
+            if not Path(f).exists():
+                print(f"❌ File not found: {f}")
+                return
+        
+        stats = manager.get_session_stats(args.files)
+        
+        print("\n" + "=" * 60)
+        print("Session Statistics")
+        print("=" * 60)
+        print(f"Sessions: {stats['session_count']}")
+        print(f"Total cookies: {stats['total_cookies']}")
+        print(f"Total size: {stats['total_size_bytes'] / 1024:.1f} KB")
+        print(f"Sites: {', '.join(stats['unique_sites']) or 'none'}")
+        print(f"Browsers: {', '.join(stats['unique_browsers']) or 'none'}")
+        print(f"{'='*60}\n")
+    
+    else:
+        print("❌ Specify a sessions subcommand: list, merge, rotate, stats")
+
+
+def cmd_share(args):
+    """Create shareable session link or QR code."""
+    from tokenade.core.importer.session_sharer import SessionSharer, ShareConfig, generate_share_html
+    from tokenade.core.importer.session_packager import SessionPackager
+    
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+    
+    packager = SessionPackager()
+    session = packager.load(str(session_file))
+    
+    sharer = SessionSharer()
+    config = ShareConfig(
+        expiry_hours=args.expiry,
+        max_uses=args.max_uses,
+        password_protected=bool(args.password),
+        password=args.password,
+    )
+    
+    print("\n" + "=" * 60)
+    print("TOKENADE - Share Session")
+    print("=" * 60)
+    print(f"\n📂 Session: {args.session}")
+    print(f"🔒 Expires: {args.expiry} hours")
+    if args.max_uses:
+        print(f"🔢 Max uses: {args.max_uses}")
+    if args.password:
+        print(f"🔑 Password protected: Yes")
+    
+    if args.format == "qr":
+        output_path = args.output or f"{session_file.stem}_qr.png"
+        sharer.create_qr_code(session, output_path, config)
+        print(f"\n📱 QR code saved to: {output_path}")
+    elif args.format == "html":
+        output_path = args.output or f"{session_file.stem}_share.html"
+        share_url, session_id = sharer.create_share_link(session, config)
+        generate_share_html(session, output_path)
+        print(f"\n📄 Share page saved to: {output_path}")
+        print(f"🆔 Session ID: {session_id}")
+    else:
+        share_url, session_id = sharer.create_share_link(session, config)
+        print(f"\n🔗 Share URL: {share_url}")
+        print(f"🆔 Session ID: {session_id}")
+    
+    print(f"\n{'='*60}\n")
+
+
+def cmd_unshare(args):
+    """Revoke a shared session or list active shares."""
+    from tokenade.core.importer.session_sharer import SessionSharer
+    
+    sharer = SessionSharer()
+    
+    if args.list:
+        shares = sharer.list_shared()
+        if not shares:
+            print("No active shared sessions")
+            return
+        
+        print("\n" + "=" * 60)
+        print("Active Shared Sessions")
+        print("=" * 60)
+        
+        for s in shares:
+            print(f"\n🆔 {s['session_id']}")
+            print(f"   Created: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['created_at']))}")
+            print(f"   Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['expires_at']))}")
+            print(f"   Uses: {s['use_count']}/{s['max_uses'] or '∞'}")
+            print(f"   Password: {'Yes' if s['has_password'] else 'No'}")
+        
+        print(f"\n{'='*60}\n")
+        return
+    
+    if sharer.revoke_share(args.session_id):
+        print(f"✅ Revoked shared session: {args.session_id}")
+    else:
+        print(f"❌ Failed to revoke session: {args.session_id}")
+
+
+def cmd_validate_rules(args):
+    """Validate session with custom rules."""
+    from tokenade.core.importer.advanced_validator import AdvancedValidator, load_validation_rules
+    from tokenade.core.importer.session_packager import SessionPackager
+    
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+    
+    rules_file = Path(args.rules)
+    if not rules_file.exists():
+        print(f"❌ Rules file not found: {args.rules}")
+        return
+    
+    packager = SessionPackager()
+    session = packager.load(str(session_file))
+    
+    rules = load_validation_rules(str(rules_file))
+    
+    print("\n" + "=" * 60)
+    print("TOKENADE - Advanced Validation")
+    print("=" * 60)
+    print(f"\n📂 Session: {args.session}")
+    print(f"📋 Rules: {len(rules)}")
+    
+    validator = AdvancedValidator()
+    
+    # Run validation
+    results = asyncio.run(validator.validate_rules(
+        session,
+        rules,
+        site_url=args.url,
+    ))
+    
+    # Print results
+    passed = sum(1 for r in results if r.passed)
+    failed = sum(1 for r in results if not r.passed)
+    
+    print(f"\n{'='*60}")
+    for result in results:
+        status = "✅" if result.passed else "❌"
+        duration = f" ({result.duration_ms:.0f}ms)" if result.duration_ms else ""
+        print(f"{status} {result.rule_name}: {result.message}{duration}")
+        if result.details and not result.passed:
+            for k, v in result.details.items():
+                print(f"   {k}: {v}")
+    
+    print(f"\n{'='*60}")
+    print(f"Results: {passed} passed, {failed} failed")
+    print(f"{'='*60}\n")
+    
+    if failed:
+        sys.exit(1)
+
+
+def cmd_diff(args):
+    """Compare two session files."""
+    from tokenade.core.importer.session_comparator import SessionComparator
+
+    for path in (args.session_a, args.session_b):
+        if not Path(path).exists():
+            print(f"❌ File not found: {path}")
+            return
+
+    comparator = SessionComparator()
+    result = comparator.compare_files(args.session_a, args.session_b)
+
+    print("\n" + "=" * 70)
+    print("SESSION COMPARISON")
+    print("=" * 70)
+    print(f"\n  A: {args.session_a}")
+    print(f"  B: {args.session_b}")
+
+    if not result.has_changes:
+        print("\n  ✅ Sessions are identical")
+        return
+
+    print(f"\n  {'─' * 50}")
+    print(result.summary())
+
+    if args.verbose:
+        if result.cookies_only_in_a:
+            print(f"\n  Cookies only in A:")
+            for c in result.cookies_only_in_a:
+                print(f"    - {c.get('name')} ({c.get('domain')})")
+        if result.cookies_only_in_b:
+            print(f"\n  Cookies only in B:")
+            for c in result.cookies_only_in_b:
+                print(f"    - {c.get('name')} ({c.get('domain')})")
+        if result.cookies_modified:
+            print(f"\n  Cookies modified:")
+            for m in result.cookies_modified:
+                print(f"    - {m['key']}")
+                print(f"      A: {m['a'].get('value', '')[:50]}...")
+                print(f"      B: {m['b'].get('value', '')[:50]}...")
+        if result.localStorage_only_in_a:
+            print(f"\n  localStorage only in A:")
+            for k in result.localStorage_only_in_a:
+                print(f"    - {k}")
+        if result.localStorage_only_in_b:
+            print(f"\n  localStorage only in B:")
+            for k in result.localStorage_only_in_b:
+                print(f"    - {k}")
+        if result.localStorage_modified:
+            print(f"\n  localStorage modified:")
+            for k, v in result.localStorage_modified.items():
+                print(f"    - {k}")
+                print(f"      A: {v['a'][:50]}...")
+                print(f"      B: {v['b'][:50]}...")
+        if result.metadata_diffs:
+            print(f"\n  Metadata differences:")
+            for field, vals in result.metadata_diffs.items():
+                print(f"    - {field}: {vals['a']} -> {vals['b']}")
+
+
 def main():
     """Main CLI entry point."""
+    from tokenade import __version__
     parser = argparse.ArgumentParser(
         description="Tokenade - Browser session portability tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1174,6 +1542,7 @@ Commands:
         """,
     )
     
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1312,7 +1681,11 @@ Commands:
 
     # Proxy
     proxy_parser = subparsers.add_parser("proxy", help="Start fingerprint-matched proxy server")
-    proxy_parser.add_argument("--session", "-s", required=True, help="Path to .tokenade session file")
+    proxy_parser.add_argument("--session", "-s", help="Path to .tokenade session file (single mode)")
+    proxy_parser.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
+    proxy_parser.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
+    proxy_parser.add_argument("--mode", choices=["gui", "forward"], default="gui",
+                             help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
     proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
     proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
@@ -1321,6 +1694,67 @@ Commands:
     proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
     proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
     proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
+    proxy_parser.add_argument("--auto-refresh", action="store_true", help="Auto-refresh session from source browser when cookies expire")
+    proxy_parser.add_argument("--source-browser", help="Source browser for auto-refresh (e.g., firefox, chrome)")
+    proxy_parser.add_argument("--source-profile", help="Source profile for auto-refresh (e.g., default, Profile 1)")
+
+    # Sessions (subcommand group)
+    sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")
+    sessions_sub = sessions_parser.add_subparsers(dest="sessions_command", help="Session management commands")
+    
+    # sessions list
+    sessions_list_parser = sessions_sub.add_parser("list", help="List all sessions")
+    sessions_list_parser.add_argument("--dir", "-d", default=".", help="Directory to search")
+    sessions_list_parser.add_argument("--pattern", "-p", default="*.tokenade", help="File pattern")
+    sessions_list_parser.add_argument("--recursive", "-r", action="store_true", help="Search subdirectories")
+    sessions_list_parser.add_argument("--site", "-s", help="Filter by site name")
+    sessions_list_parser.add_argument("--browser", "-b", help="Filter by source browser")
+    
+    # sessions merge
+    sessions_merge_parser = sessions_sub.add_parser("merge", help="Merge multiple sessions")
+    sessions_merge_parser.add_argument("files", nargs="+", help="Session files to merge")
+    sessions_merge_parser.add_argument("--output", "-o", required=True, help="Output file path")
+    sessions_merge_parser.add_argument("--site-name", help="Site name for merged session")
+    
+    # sessions rotate
+    sessions_rotate_parser = sessions_sub.add_parser("rotate", help="Select next session (rotation)")
+    sessions_rotate_parser.add_argument("files", nargs="+", help="Session files to rotate through")
+    sessions_rotate_parser.add_argument("--strategy", choices=["round-robin", "random"], default="round-robin",
+                                       help="Rotation strategy")
+    sessions_rotate_parser.add_argument("--state-file", help="State file for round-robin")
+    
+    # sessions stats
+    sessions_stats_parser = sessions_sub.add_parser("stats", help="Show aggregate session statistics")
+    sessions_stats_parser.add_argument("files", nargs="+", help="Session files to analyze")
+
+    # Share
+    share_parser = subparsers.add_parser("share", help="Create shareable session link or QR code")
+    share_parser.add_argument("--session", "-s", required=True, help="Session file to share")
+    share_parser.add_argument("--output", "-o", help="Output file path (HTML or QR image)")
+    share_parser.add_argument("--format", choices=["url", "html", "qr"], default="url",
+                             help="Output format: url (default), html, qr")
+    share_parser.add_argument("--expiry", type=int, default=24, help="Link expiry in hours (default: 24)")
+    share_parser.add_argument("--max-uses", type=int, default=0, help="Max uses (0 = unlimited)")
+    share_parser.add_argument("--password", "-p", help="Password protect the link")
+
+    # Unshare
+    unshare_parser = subparsers.add_parser("unshare", help="Revoke a shared session")
+    unshare_parser.add_argument("session_id", help="Session ID to revoke")
+    unshare_parser.add_argument("--list", action="store_true", help="List all active shares")
+
+    # Diff
+    # Validate Rules
+    validate_rules_parser = subparsers.add_parser("validate-rules", help="Validate session with custom rules")
+    validate_rules_parser.add_argument("--session", "-s", required=True, help="Session file to validate")
+    validate_rules_parser.add_argument("--rules", "-r", required=True, help="Validation rules JSON file")
+    validate_rules_parser.add_argument("--url", "-u", help="Target site URL")
+    validate_rules_parser.add_argument("--update-baselines", action="store_true", help="Update screenshot baselines")
+
+    # Diff
+    diff_parser = subparsers.add_parser("diff", help="Compare two session files")
+    diff_parser.add_argument("session_a", help="First .tokenade file")
+    diff_parser.add_argument("session_b", help="Second .tokenade file")
+    diff_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed differences")
 
     args = parser.parse_args()
     
@@ -1348,6 +1782,11 @@ Commands:
         "health": cmd_health,
         "refresh": cmd_refresh,
         "proxy": cmd_proxy,
+        "sessions": cmd_sessions,
+        "share": cmd_share,
+        "unshare": cmd_unshare,
+        "validate-rules": cmd_validate_rules,
+        "diff": cmd_diff,
     }
     
     try:

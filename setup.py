@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="tokenade",
-    version="2.0.0",
+    version="2.5.0",
     author="Tokenade Team",
     description="Production-grade token shifting and session portability tool",
     long_description=long_description,
@@ -37,6 +37,7 @@ setup(
         "requests>=2.28.0",
         "pycryptodome>=3.19.0",
         "keyring>=24.0.0",
+        "aiohttp>=3.9.0",
     ],
     extras_require={
         "windows": ["pywin32>=306"],
