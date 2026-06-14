@@ -70,8 +70,9 @@ class PluginLoader:
 
         for meta in plugins:
             try:
-                self.load_plugin(meta)
-                loaded += 1
+                result = self.load_plugin(meta)
+                if result is not None:
+                    loaded += 1
             except Exception as e:
                 logger.error(f"Failed to load plugin {meta.get('name', '?')}: {e}", exc_info=True)
 
