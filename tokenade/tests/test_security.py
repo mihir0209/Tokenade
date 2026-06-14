@@ -45,12 +45,17 @@ class TestAccountCredentials(unittest.TestCase):
             site="github",
             metadata={"2fa": True},
         )
+        # Default: password excluded
         data = acc.to_dict()
         self.assertEqual(data["number"], 1)
         self.assertEqual(data["email"], "test@example.com")
-        self.assertEqual(data["password"], "secret123")
+        self.assertNotIn("password", data)
         self.assertEqual(data["site"], "github")
         self.assertEqual(data["metadata"], {"2fa": True})
+        
+        # With include_password=True
+        data_with_pw = acc.to_dict(include_password=True)
+        self.assertEqual(data_with_pw["password"], "secret123")
 
     def test_from_dict(self):
         """Test deserialization from dict."""

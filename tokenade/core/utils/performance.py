@@ -215,7 +215,7 @@ class ConnectionPool:
         import aiohttp
         
         connector = aiohttp.TCPConnector(
-            ssl=False,
+            ssl=None,
             limit=1,
             enable_cleanup_closed=True,
         )
@@ -269,6 +269,7 @@ class ParallelExtractor:
     
     Features:
     - Extract from multiple browsers simultaneously
+    - Profile discovery before extraction
     - Configurable concurrency limit
     - Progress tracking
     - Error aggregation
@@ -287,50 +288,95 @@ class ParallelExtractor:
         
         Args:
             extraction_tasks: List of task dicts with keys:
-                - browser: Browser name
-                - profile: Profile name (optional)
-                - domains: Domain filter (optional)
+                - browser: Browser name (chrome, firefox, edge, brave)
+                - profile: Profile name (optional, uses default if not specified)
+                - domains: Comma-separated domain filter (optional)
                 
         Returns:
-            Dict mapping task index to result
+            Dict mapping task index to result with keys:
+                - success: bool
+                - data: List[Dict] of cookies (if success)
+                - error: str (if not success)
+                - browser: str
+                - profile: str
+                - cookie_count: int
         """
+        from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
+        
+        discovery = BrowserProfileDiscovery()
+        all_profiles = discovery.discover_all()
+        
+        flat_profiles = []
+        for browser_profiles in all_profiles.values():
+            flat_profiles.extend(browser_profiles)
+        
         loop = asyncio.get_event_loop()
         results = {}
         
-        # Create futures
         futures = {}
         for i, task in enumerate(extraction_tasks):
             future = loop.run_in_executor(
                 self._executor,
                 self._extract_single,
                 task,
+                flat_profiles,
             )
             futures[i] = future
         
-        # Wait for all futures
         for i, future in futures.items():
             try:
                 result = await future
-                results[i] = {"success": True, "data": result}
+                results[i] = {
+                    "success": True,
+                    "data": result["cookies"],
+                    "browser": result["browser"],
+                    "profile": result["profile"],
+                    "cookie_count": len(result["cookies"]),
+                }
             except Exception as e:
-                results[i] = {"success": False, "error": str(e)}
+                results[i] = {
+                    "success": False,
+                    "error": str(e),
+                    "browser": extraction_tasks[i].get("browser", "unknown"),
+                    "profile": extraction_tasks[i].get("profile", "default"),
+                    "cookie_count": 0,
+                }
         
         return results
     
-    def _extract_single(self, task: Dict) -> Any:
-        """Extract cookies from a single browser."""
+    def _extract_single(self, task: Dict, flat_profiles: list) -> Dict:
+        """Extract cookies from a single browser profile."""
         from tokenade.core.importer.cookie_extractor import CookieExtractor
         
-        extractor = CookieExtractor()
-        browser = task.get("browser")
-        profile = task.get("profile")
+        browser = task.get("browser", "chrome")
+        profile_name = task.get("profile")
         domains = task.get("domains")
         
-        return extractor.extract(
-            browser_name=browser,
-            profile_name=profile,
-            domains=domains,
-        )
+        matching = [p for p in flat_profiles if p.browser == browser]
+        if profile_name:
+            matching = [p for p in matching if p.name == profile_name]
+        
+        if not matching:
+            raise ValueError(f"No profile found for {browser}" + 
+                           (f" (profile: {profile_name})" if profile_name else ""))
+        
+        profile = matching[0]
+        extractor = CookieExtractor(str(profile.path), browser=browser)
+        
+        site_filter = None
+        if domains:
+            from tokenade.core.importer.cookie_extractor import SiteFilter
+            domain_list = [d.strip() for d in domains.split(",") if d.strip()]
+            if domain_list:
+                site_filter = SiteFilter(domains=domain_list)
+        
+        cookies = extractor.extract(site_filter=site_filter)
+        
+        return {
+            "cookies": cookies,
+            "browser": browser,
+            "profile": profile.name,
+        }
     
     def shutdown(self) -> None:
         """Shutdown the executor."""

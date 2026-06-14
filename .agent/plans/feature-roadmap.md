@@ -1,4 +1,4 @@
-# Tokenade Feature Plans — Updated 2025-06-13
+# Tokenade Feature Plans — Updated 2026-06-14 (v3.4.0)
 
 ## Priority 1 — Security Hardening (v2.1)
 
@@ -88,7 +88,7 @@
 ## Priority 4 — Polish & DX (v2.4) ✅
 
 ### 4.1 Comprehensive Test Coverage ✅
-- 406 tests passing (2 skipped)
+- 1010 tests passing (7 skipped)
 - SSRF protection tests added
 - CLI end-to-end tests added
 
@@ -167,41 +167,37 @@
 
 ## Priority 6 — Future Features (v2.6+)
 
-### 6.1 Session Auto-Refresh Improvements
+### 6.1 Session Auto-Refresh Improvements ✅
 - WebSocket notifications for real-time expiry alerts
 - Multiple source browser fallback
 - Session history tracking
-- Effort: Medium (4-5 hours)
 
-### 6.2 Advanced Sharing Features
+### 6.2 Advanced Sharing Features ✅
 - Share via email (SMTP integration)
 - Share via webhook (Slack, Discord, etc.)
 - Session versioning and rollback
-- Effort: Medium (4-5 hours)
 
-### 6.3 Enterprise Features
-- Session audit logging
-- Role-based access control for shared sessions
-- LDAP/SSO integration
-- Effort: Large (10-12 hours)
+### 6.3 Enterprise Features ✅
+- Session audit logging (`AuditLogger` — JSONL structured logs, query, rotate)
+- Role-based access control (`RoleManager` — admin/editor/viewer, persistent storage)
+- LDAP/SSO integration (`LDAPAuthenticator` — bind auth, group membership, graceful fallback)
 
-### 6.4 Performance Optimizations
-- Connection pooling for multi-site proxy
-- Session caching with LRU eviction
-- Parallel cookie extraction
-- Effort: Medium (4-5 hours)
+### 6.4 Performance Optimizations ✅
+- Connection pooling for multi-site proxy (`SharedConnectionPool`)
+- Session caching with LRU eviction (`SessionPackager` cache)
+- Parallel cookie extraction (`ParallelExtractor` with correct API)
 
-### 6.5 Integration Features
-- GitHub Actions integration
-- Docker session management
-- Kubernetes sidecar mode
-- Effort: Large (8-10 hours)
+### 6.5 Integration Features ✅
+- GitHub Actions CI/CD (`ci.yml` — lint, test matrix, security, build)
+- Docker build & publish (`docker.yml` — GHCR push with semver tags)
+- Release automation (`release.yml` — GitHub releases with artifacts)
+- Docker session management (`DockerSessionManager` — container lifecycle, batch, cleanup)
+- Kubernetes sidecar mode (`KubernetesManager` — Deployment, Service, ConfigMap, sidecar YAML generation)
 
-### 6.6 Advanced Browser Support
-- Safari cookie extraction (requires entitlements)
-- Tor Browser support
-- Mobile browser support (via ADB)
-- Effort: Very Large (20+ hours)
+### 6.6 Advanced Browser Support ✅
+- Safari cookie extraction (`SafariExtractor` — binary cookie parser, Keychain fallback)
+- Tor Browser support (`TorExtractor` — cross-platform profile discovery)
+- Mobile browser support via ADB (`ADBExtractor` — Chrome/Firefox on Android)
 
 ---
 
@@ -248,10 +244,63 @@ v2.5 (Advanced Features) ✅
   └── 5.5 Multi-session management ✅
 
 v2.6+ (Future)
-  ├── 6.1 Session auto-refresh improvements
-  ├── 6.2 Advanced sharing features
-  ├── 6.3 Enterprise features
-  ├── 6.4 Performance optimizations
-  ├── 6.5 Integration features
-  └── 6.6 Advanced browser support
+  ├── 6.1 Session auto-refresh improvements ✅
+  ├── 6.2 Advanced sharing features ✅
+  ├── 6.3 Enterprise features ✅
+  ├── 6.4 Performance optimizations ✅
+  ├── 6.5 Integration features ✅
+  └── 6.6 Advanced browser support ✅
+
+v3.0 (Dev Tooling) ✅
+  ├── Version bump to 3.0.0 ✅
+  ├── README overhaul ✅
+  ├── pyproject.toml migration ✅
+  ├── conftest.py shared fixtures ✅
+  └── Makefile + dev tooling ✅
+
+v3.1 (Security & Multi-Format) ✅
+  ├── Fix XSS in server.py error responses ✅
+  ├── Remove dead code in server.py ✅
+  ├── Fix BrowserFingerprint.to_dict() ✅
+  ├── Fix plaintext password leak in to_dict() ✅
+  ├── Sync requirements.txt ✅
+  ├── Remove setup.py (migrate to pyproject.toml) ✅
+  ├── Fix bare except clauses (5 locations) ✅
+  ├── Fix SSL disabled in ConnectionPool ✅
+  ├── Replace MD5 with SHA-256 ✅
+  ├── Remove hostname from session metadata ✅
+  ├── Playwright storageState export ✅
+  ├── Puppeteer/CDP cookie export ✅
+  ├── Netscape/curl format export ✅
+  ├── HTTP cookie header export ✅
+  ├── Format auto-detection import ✅
+  ├── CDP artifact removal ✅
+  ├── Behavioral signal injection ✅
+  └── Plugin registry (GitHub raw content) ✅
+
+v3.2 (Session Lifecycle) ✅
+  ├── OWASP-based session health scoring ✅
+  ├── Session vault (ACLs, versioning, expiry) ✅
+  ├── Session rotation (login/logout detection) ✅
+  └── Comprehensive tests (883 total) ✅
+
+v3.3 (CLI & Testing) ✅
+  ├── CLI refactoring (1800 lines → 9 modules) ✅
+  ├── Color output (success/error/warning/info) ✅
+  ├── Configuration file (~/.tokenade/config.json) ✅
+  ├── Shell completion (bash/zsh/fish) ✅
+  ├── Property-based testing (hypothesis) ✅
+  ├── Performance benchmarks ✅
+  ├── Comprehensive integration tests ✅
+  └── 969 tests total ✅
+
+v3.4 (Browser & Ecosystem) ✅
+  ├── Safari Keychain decryption ✅
+  ├── Chromium fork detection (Arc, Opera, Vivaldi, Brave) ✅
+  ├── Mobile extraction (Android ADB, iOS Safari) ✅
+  ├── Extension-Proxy WebSocket bridge ✅
+  ├── REST API server ✅
+  ├── Python SDK ✅
+  ├── Enhanced webhooks (Slack, Discord, Teams, Telegram) ✅
+  └── 1010 tests total ✅
 ```

@@ -175,6 +175,7 @@ class CDPProxy:
         
         # HTTP session for curl-cffi fallback
         self._http_session = None
+        self._shared_http_session = None  # Set by MultiSiteProxy for connection pooling
         self._session_lock = asyncio.Lock()
         
         # Session auto-refresh
@@ -930,22 +931,27 @@ self.addEventListener('activate', () => {
         headers: Dict[str, str],
         body: Optional[str] = None,
     ):
-        """Fallback: forward via aiohttp."""
+        """Fallback: forward via aiohttp. Uses shared pool if available."""
         try:
-            async with self._session_lock:
-                if self._http_session is None or self._http_session.closed:
-                    connector = aiohttp.TCPConnector(
-                        ssl=False,
-                        limit=100,
-                        limit_per_host=30,
-                        enable_cleanup_closed=True
-                    )
-                    timeout = aiohttp.ClientTimeout(total=self.config.timeout, connect=10)
-                    self._http_session = aiohttp.ClientSession(
-                        connector=connector,
-                        timeout=timeout,
-                        auto_decompress=False
-                    )
+            # Use shared session from MultiSiteProxy if available
+            if self._shared_http_session and not self._shared_http_session.closed:
+                http_session = self._shared_http_session
+            else:
+                async with self._session_lock:
+                    if self._http_session is None or self._http_session.closed:
+                        connector = aiohttp.TCPConnector(
+                            ssl=False,
+                            limit=100,
+                            limit_per_host=30,
+                            enable_cleanup_closed=True
+                        )
+                        timeout = aiohttp.ClientTimeout(total=self.config.timeout, connect=10)
+                        self._http_session = aiohttp.ClientSession(
+                            connector=connector,
+                            timeout=timeout,
+                            auto_decompress=False
+                        )
+                http_session = self._http_session
             
             # Build donor-matched headers
             donor_headers = self.fingerprint.get_headers(url, None, method)
@@ -961,7 +967,7 @@ self.addEventListener('activate', () => {
             
             donor_headers.pop("accept-encoding", None)
             
-            async with self._http_session.request(
+            async with http_session.request(
                 method=method,
                 url=url,
                 headers=donor_headers,

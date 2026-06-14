@@ -193,7 +193,7 @@ class AdvancedValidator:
                 
                 # Take screenshot
                 screenshot = await page.screenshot(type="png")
-                current_hash = hashlib.md5(screenshot).hexdigest()
+                current_hash = hashlib.sha256(screenshot).hexdigest()
                 
                 # Check baseline
                 baseline_name = rule.config.get("baseline", "default")

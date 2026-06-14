@@ -1,12 +1,20 @@
 """
 Session auto-refresh: detect cookie expiry during proxy operation, re-export from source browser.
+
+Features:
+- Periodic cookie expiry monitoring
+- Auto-refresh from source browser when cookies expire
+- Multi-browser fallback (try firefox, then chrome, etc.)
+- WebSocket notifications to connected clients on refresh
+- Hot-reload session into running proxy
 """
 
 import asyncio
+import json
 import logging
 import time
-from dataclasses import dataclass
-from typing import Optional, Dict, Callable, Awaitable
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Callable, Awaitable, List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +29,10 @@ class RefreshConfig:
     source_browser: Optional[str] = None  # e.g., "firefox", "chrome"
     source_profile: Optional[str] = None  # e.g., "default", "Profile 1"
     domains: Optional[str] = None  # comma-separated domains to filter
+    # Multi-browser fallback: try these browsers in order if primary fails
+    fallback_browsers: List[str] = field(default_factory=list)
+    # WebSocket notification callback
+    notify_ws: Optional[Callable[[Dict], Awaitable[None]]] = None
 
 
 @dataclass
@@ -41,8 +53,9 @@ class SessionRefresher:
     During proxy operation:
     1. Periodically checks cookie expiry status
     2. Logs warnings when cookies are expiring
-    3. Optionally auto-refreshes from source browser
+    3. Optionally auto-refreshes from source browser (with multi-browser fallback)
     4. Hot-reloads session into the proxy
+    5. Sends WebSocket notifications to connected clients
     """
     
     def __init__(
@@ -58,6 +71,7 @@ class SessionRefresher:
         self._task: Optional[asyncio.Task] = None
         self._last_check = 0
         self._last_status: Optional[CookieExpiryInfo] = None
+        self._ws_clients: Set[asyncio.Queue] = set()
     
     def check_expiry(self) -> CookieExpiryInfo:
         """Check cookie expiry status without triggering any action."""
@@ -149,6 +163,12 @@ class SessionRefresher:
                         f"Session has {status.expired_count} expired cookies "
                         f"(of {status.total_cookies} total)"
                     )
+                    await self._notify_ws_clients({
+                        "type": "cookies_expired",
+                        "expired_count": status.expired_count,
+                        "total": status.total_cookies,
+                        "timestamp": time.time(),
+                    })
                 
                 if status.critical_count > 0:
                     logger.warning(
@@ -157,6 +177,13 @@ class SessionRefresher:
                     )
                     if status.next_expiry_human:
                         logger.warning(f"Next expiry: {status.next_expiry_human}")
+                    
+                    await self._notify_ws_clients({
+                        "type": "cookies_critical",
+                        "critical_count": status.critical_count,
+                        "next_expiry": status.next_expiry_human,
+                        "timestamp": time.time(),
+                    })
                 
                 elif status.expiring_soon_count > 0:
                     logger.info(
@@ -179,69 +206,137 @@ class SessionRefresher:
                 await asyncio.sleep(60)
     
     async def _attempt_refresh(self):
-        """Attempt to re-export session from source browser."""
-        try:
-            from tokenade.core.importer.cookie_extractor import CookieExtractor
-            from tokenade.core.importer.session_packager import SessionPackager
-            
-            logger.info(
-                f"Attempting auto-refresh from {self.config.source_browser} "
-                f"profile '{self.config.source_profile or 'default'}'"
+        """Attempt to re-export session from source browser with multi-browser fallback."""
+        from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
+        from tokenade.core.importer.cookie_extractor import CookieExtractor
+        from tokenade.core.importer.session_packager import SessionPackager
+        
+        # Build list of browsers to try: primary + fallbacks
+        browsers_to_try = []
+        if self.config.source_browser:
+            browsers_to_try.append(
+                (self.config.source_browser, self.config.source_profile)
             )
-            
-            extractor = CookieExtractor()
-            packager = SessionPackager()
-            
-            # Extract cookies from source browser
-            cookies = extractor.extract(
-                browser_name=self.config.source_browser,
-                profile_name=self.config.source_profile,
-            )
-            
-            if not cookies:
-                logger.warning("No cookies extracted from source browser")
-                return
-            
-            # Filter by domains if specified
-            if self.config.domains:
-                domain_list = [d.strip().lower() for d in self.config.domains.split(",")]
-                cookies = [
-                    c for c in cookies
-                    if any(d in c.get("domain", "").lower() for d in domain_list)
-                ]
-            
-            if not cookies:
-                logger.warning("No matching cookies found after domain filtering")
-                return
-            
-            # Create new session package
-            new_session = packager.create(
-                cookies=cookies,
-                site_name=self.session.get("site_name", "unknown"),
-                source_device=self.session.get("source_device", {}),
-            )
-            
-            # Preserve local storage from original session if present
-            if self.session.get("local_storage"):
-                new_session["local_storage"] = self.session["local_storage"]
-            
-            # Update session
-            self.session.update(new_session)
-            
-            logger.info(f"Session refreshed: {len(cookies)} cookies")
-            
-            # Callback for proxy to hot-reload
-            if self.on_refresh:
-                await self.on_refresh(new_session)
-            
-        except Exception as e:
-            logger.error(f"Auto-refresh failed: {e}")
+        for fb in self.config.fallback_browsers:
+            browsers_to_try.append((fb, None))
+        
+        if not browsers_to_try:
+            logger.warning("No source browser configured for auto-refresh")
+            return
+        
+        discovery = BrowserProfileDiscovery()
+        packager = SessionPackager()
+        
+        for browser_name, profile_name in browsers_to_try:
+            try:
+                logger.info(
+                    f"Attempting auto-refresh from {browser_name} "
+                    f"profile '{profile_name or 'default'}'"
+                )
+                
+                # Discover browser profile path
+                profiles = discovery.discover_all()
+                all_profiles = []
+                for browser_profiles in profiles.values():
+                    all_profiles.extend(browser_profiles)
+                
+                matching = [p for p in all_profiles if p.browser == browser_name]
+                if profile_name:
+                    matching = [p for p in matching if p.name == profile_name]
+                
+                if not matching:
+                    logger.warning(f"No profile found for {browser_name}")
+                    continue
+                
+                browser_path = str(matching[0].path)
+                
+                # Extract cookies from source browser
+                extractor = CookieExtractor(browser_path, browser=browser_name)
+                cookies = extractor.extract(site_filter=None)
+                
+                if not cookies:
+                    logger.warning(f"No cookies extracted from {browser_name}")
+                    continue
+                
+                # Filter by domains if specified
+                if self.config.domains:
+                    domain_list = [d.strip().lower() for d in self.config.domains.split(",")]
+                    cookies = [
+                        c for c in cookies
+                        if any(d in c.get("domain", "").lower() for d in domain_list)
+                    ]
+                
+                if not cookies:
+                    logger.warning(f"No matching cookies found in {browser_name} after domain filtering")
+                    continue
+                
+                # Create new session package
+                new_session = packager.package(
+                    cookies=cookies,
+                    browser=browser_name,
+                    profile=profile_name or matching[0].name,
+                )
+                
+                # Preserve local storage from original session if present
+                if self.session.get("local_storage"):
+                    new_session["local_storage"] = self.session["local_storage"]
+                
+                # Update session
+                self.session.update(new_session)
+                
+                logger.info(f"Session refreshed from {browser_name}: {len(cookies)} cookies")
+                
+                # Send WebSocket notification
+                await self._notify_ws_clients({
+                    "type": "session_refreshed",
+                    "source_browser": browser_name,
+                    "cookies_count": len(cookies),
+                    "timestamp": time.time(),
+                })
+                
+                # Callback for proxy to hot-reload
+                if self.on_refresh:
+                    await self.on_refresh(new_session)
+                
+                return  # Success, stop trying other browsers
+                
+            except Exception as e:
+                logger.warning(f"Auto-refresh from {browser_name} failed: {e}")
+                continue
+        
+        # All browsers failed
+        logger.error("Auto-refresh failed: all browsers exhausted")
+        await self._notify_ws_clients({
+            "type": "refresh_failed",
+            "error": "all browsers exhausted",
+            "timestamp": time.time(),
+        })
     
     def update_session(self, session: Dict):
         """Update the session data (e.g., after manual re-export)."""
         self.session = session
         self._last_status = None  # Reset cached status
         logger.info("Session data updated")
+    
+    def register_ws_client(self) -> asyncio.Queue:
+        """Register a WebSocket client to receive refresh notifications."""
+        queue: asyncio.Queue = asyncio.Queue()
+        self._ws_clients.add(queue)
+        logger.debug(f"WebSocket client registered ({len(self._ws_clients)} total)")
+        return queue
+    
+    def unregister_ws_client(self, queue: asyncio.Queue):
+        """Unregister a WebSocket client."""
+        self._ws_clients.discard(queue)
+        logger.debug(f"WebSocket client unregistered ({len(self._ws_clients)} total)")
+    
+    async def _notify_ws_clients(self, event: Dict):
+        """Send notification to all connected WebSocket clients."""
+        for queue in list(self._ws_clients):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                logger.warning("WebSocket client queue full, dropping notification")
     
     def get_status(self) -> Dict:
         """Get current refresh status as dict."""
@@ -254,5 +349,6 @@ class SessionRefresher:
             "next_expiry_human": status.next_expiry_human,
             "auto_refresh_enabled": self.config.auto_refresh,
             "source_browser": self.config.source_browser,
+            "fallback_browsers": self.config.fallback_browsers,
             "last_check": self._last_check,
         }

@@ -100,7 +100,7 @@ class GoogleHandler(SiteHandler):
                 try:
                     dt = datetime.fromisoformat(self._token_expires.replace("Z", "+00:00"))
                     expires_at = int(dt.timestamp())
-                except:
+                except Exception:
                     pass
             
             tokens.append(ExtractedToken(

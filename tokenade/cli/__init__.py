@@ -1,0 +1,306 @@
+"""Tokenade CLI - Main entry point and argument parser."""
+import argparse
+import logging
+import sys
+
+from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
+from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
+from tokenade.cli.proxy import cmd_proxy
+from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare
+from tokenade.cli.advanced import (
+    cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
+    cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("tokenade")
+
+
+def setup_logging(verbose: bool = False):
+    """Configure logging level."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.getLogger("tokenade").setLevel(level)
+
+
+def main():
+    """Main CLI entry point."""
+    from tokenade import __version__
+    parser = argparse.ArgumentParser(
+        description="Tokenade - Browser session portability tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Quick Start:
+  1. Export:   tokenade export --browser-name firefox --domains "google.com,accounts.google.com" -o my_session.tokenade
+  2. Proxy:    tokenade proxy -s my_session.tokenade
+  3. Browse:   Open http://127.0.0.1:9222 and enter the target URL
+
+Commands:
+  export        Extract cookies from browser to .tokenade file
+  proxy         Start CDP proxy server with donor session
+  load          Load .tokenade session into a browser
+  inject-profile Inject cookies directly into browser profile
+  encrypt       Encrypt a .tokenade file
+  decrypt       Decrypt a .tokenade file
+  health        Check session health
+  batch-export  Export multiple sites at once
+        """,
+    )
+
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Setup
+    setup_parser = subparsers.add_parser("setup", help="Setup accounts")
+
+    # Extract
+    extract_parser = subparsers.add_parser("extract", help="Extract tokens")
+    extract_parser.add_argument("--visible", action="store_true", help="Show browser window")
+
+    # Transfer
+    transfer_parser = subparsers.add_parser("transfer", help="Transfer session")
+    transfer_parser.add_argument("-s", "--session", required=True, help="Session file path")
+    transfer_parser.add_argument("-f", "--fingerprint", help="Target fingerprint name")
+    transfer_parser.add_argument("-p", "--profile-dir", default="browser_data/transfer", help="Profile directory")
+    transfer_parser.add_argument("--visible", action="store_true", help="Show browser window")
+    transfer_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth injection level")
+    transfer_parser.add_argument("--validate-stealth", action="store_true", help="Validate stealth injection after launch")
+
+    # Test
+    test_parser = subparsers.add_parser("test", help="Test portability")
+    test_parser.add_argument("-s", "--session", required=True, help="Session file path")
+    test_parser.add_argument("--source-fp", default="default", help="Source fingerprint")
+    test_parser.add_argument("--target-fp", default="default", help="Target fingerprint")
+    test_parser.add_argument("--variations", action="store_true", help="Test fingerprint variations")
+    test_parser.add_argument("--test-api", action="store_true", help="Test API calls")
+    test_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth injection level")
+    test_parser.add_argument("--validate-stealth", action="store_true", help="Validate stealth injection")
+    test_parser.add_argument("-o", "--output", help="Output report path")
+
+    # Fingerprint
+    fp_parser = subparsers.add_parser("fingerprint", help="Manage fingerprints")
+    fp_parser.add_argument("action", choices=["list", "collect", "show", "delete"], help="Action")
+    fp_parser.add_argument("-n", "--name", help="Fingerprint name")
+    fp_parser.add_argument("-p", "--profile-dir", help="Browser profile directory")
+
+    # Validate
+    validate_parser = subparsers.add_parser("validate", help="Validate sessions")
+    validate_parser.add_argument("-d", "--sessions-dir", default="sessions", help="Sessions directory")
+
+    # Export
+    export_parser = subparsers.add_parser("export", help="Export session from existing browser")
+    export_parser.add_argument("--browser-name", choices=["chrome", "firefox", "edge", "brave"], help="Browser name")
+    export_parser.add_argument("--browser-path", help="Custom path to browser profile")
+    export_parser.add_argument("--profile", help="Profile name within browser")
+    export_parser.add_argument("--site-config", help="Path to JSON site config file for filtering")
+    export_parser.add_argument("--domains", help="Comma-separated domains to filter (e.g. 'google.com,accounts.google.com')")
+    export_parser.add_argument("--file-path", help="Export from cookies file")
+    export_parser.add_argument("--format", choices=["netscape", "json", "curl"], default="netscape", help="File format")
+    export_parser.add_argument("--collect-fingerprint", action="store_true", help="Collect source browser fingerprint")
+    export_parser.add_argument("--output", "-o", help="Output file path (any extension)")
+    export_parser.add_argument("--list-profiles", action="store_true", help="List available profiles")
+    export_parser.add_argument("--decrypt", action="store_true", help="Decrypt cookies (auto-detected)")
+    export_parser.add_argument("--extract-local-storage", action="store_true", help="Also extract localStorage data")
+    export_parser.add_argument("--local-storage-origin", help="Origin to extract localStorage from")
+
+    # Load
+    load_parser = subparsers.add_parser("load", help="Load session file into browser")
+    load_parser.add_argument("--file", "-f", required=True, help="Path to session file")
+    load_parser.add_argument("--site-config", help="Path to JSON site config file for validation")
+    load_parser.add_argument("--fingerprint", help="Target fingerprint name")
+    load_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth level")
+    load_parser.add_argument("--validate", action="store_true", help="Validate session after injection")
+    load_parser.add_argument("--runtime", action="store_true", help="Load into RuntimeEngine")
+    load_parser.add_argument("--test-api", action="store_true", help="Test API after loading")
+    load_parser.add_argument("--visible", action="store_true", help="Show browser window")
+    load_parser.add_argument("--profile-dir", help="Browser profile directory")
+    load_parser.add_argument("--no-local-storage", action="store_true", help="Skip localStorage injection if present")
+
+    # Inject Profile
+    inject_parser = subparsers.add_parser("inject-profile", help="Inject cookies directly into browser profile")
+    inject_parser.add_argument("--session", "-s", required=True, help="Path to session file")
+    inject_parser.add_argument("--profile", "-p", required=True, help="Browser profile path")
+    inject_parser.add_argument("--browser", "-b", choices=["chrome", "brave", "edge", "firefox", "opera", "vivaldi"],
+                              default="chrome", help="Browser name")
+    inject_parser.add_argument("--no-backup", action="store_true", help="Skip backup creation")
+    inject_parser.add_argument("--dry-run", action="store_true", help="Show what would be injected without making changes")
+
+    # Encrypt
+    encrypt_parser = subparsers.add_parser("encrypt", help="Encrypt session file")
+    encrypt_parser.add_argument("--input", "-i", required=True, help="Input file path")
+    encrypt_parser.add_argument("--output", "-o", help="Output file path")
+    encrypt_parser.add_argument("--password", "-p", help="Encryption password")
+    encrypt_parser.add_argument("--key-file", "-k", help="Password file")
+
+    # Decrypt
+    decrypt_parser = subparsers.add_parser("decrypt", help="Decrypt session file")
+    decrypt_parser.add_argument("--input", "-i", required=True, help="Encrypted file path")
+    decrypt_parser.add_argument("--output", "-o", help="Output file path")
+    decrypt_parser.add_argument("--password", "-p", help="Decryption password")
+    decrypt_parser.add_argument("--key-file", "-k", help="Password file")
+
+    # Rekey
+    rekey_parser = subparsers.add_parser("rekey", help="Change encryption password")
+    rekey_parser.add_argument("--input", "-i", required=True, help="Encrypted file path")
+    rekey_parser.add_argument("--output", "-o", help="Output file path")
+    rekey_parser.add_argument("--old-password", help="Old password")
+    rekey_parser.add_argument("--new-password", help="New password")
+    rekey_parser.add_argument("--old-key-file", help="Old password file")
+    rekey_parser.add_argument("--new-key-file", help="New password file")
+
+    # Batch Export
+    batch_export_parser = subparsers.add_parser("batch-export", help="Batch export multiple sites")
+    batch_export_parser.add_argument("--site-config", "-s", required=True, help="Site config JSON file")
+    batch_export_parser.add_argument("--browser", "-b", choices=["chrome", "firefox", "edge", "brave"],
+                                   default="firefox", help="Browser name")
+    batch_export_parser.add_argument("--browser-path", help="Custom browser profile path")
+    batch_export_parser.add_argument("--profile", "-p", help="Profile name")
+    batch_export_parser.add_argument("--output", "-o", help="Output directory")
+    batch_export_parser.add_argument("--extract-local-storage", action="store_true", help="Extract localStorage")
+
+    # Batch Load
+    batch_load_parser = subparsers.add_parser("batch-load", help="Batch load multiple sessions")
+    batch_load_parser.add_argument("--sessions-dir", "-d", required=True, help="Sessions directory")
+    batch_load_parser.add_argument("--target-browser", "-t", choices=["chrome", "firefox", "edge", "brave"],
+                                  default="chrome", help="Target browser")
+    batch_load_parser.add_argument("--site-config", "-s", help="Site config JSON file for validation")
+    batch_load_parser.add_argument("--profile-dir", help="Target profile directory")
+    batch_load_parser.add_argument("--validate", action="store_true", help="Validate sessions")
+    batch_load_parser.add_argument("--visible", action="store_true", help="Show browser window")
+
+    # Health Check
+    health_parser = subparsers.add_parser("health", help="Check session health")
+    health_parser.add_argument("--session", "-s", help="Single session file to check")
+    health_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to check")
+
+    # Refresh
+    refresh_parser = subparsers.add_parser("refresh", help="Refresh session from source browser")
+    refresh_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
+    refresh_parser.add_argument("--source-browser", "-b", choices=["chrome", "firefox", "edge", "brave"],
+                               required=True, help="Source browser name")
+    refresh_parser.add_argument("--source-browser-path", help="Custom source browser profile path")
+    refresh_parser.add_argument("--source-profile", help="Source profile name")
+    refresh_parser.add_argument("--site-config", help="Site config JSON file for filtering")
+
+    # Proxy
+    proxy_parser = subparsers.add_parser("proxy", help="Start fingerprint-matched proxy server")
+    proxy_parser.add_argument("--session", "-s", help="Path to .tokenade session file (single mode)")
+    proxy_parser.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
+    proxy_parser.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
+    proxy_parser.add_argument("--mode", choices=["gui", "forward"], default="gui",
+                             help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
+    proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
+    proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
+    proxy_parser.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
+    proxy_parser.add_argument("--fingerprint", action="store_true", help="Enable TLS fingerprint matching via curl-cffi (breaks cf_clearance)")
+    proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
+    proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
+    proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
+    proxy_parser.add_argument("--auto-refresh", action="store_true", help="Auto-refresh session from source browser when cookies expire")
+    proxy_parser.add_argument("--source-browser", help="Source browser for auto-refresh (e.g., firefox, chrome)")
+    proxy_parser.add_argument("--source-profile", help="Source profile for auto-refresh (e.g., default, Profile 1)")
+
+    # Sessions (subcommand group)
+    sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")
+    sessions_sub = sessions_parser.add_subparsers(dest="sessions_command", help="Session management commands")
+
+    # sessions list
+    sessions_list_parser = sessions_sub.add_parser("list", help="List all sessions")
+    sessions_list_parser.add_argument("--dir", "-d", default=".", help="Directory to search")
+    sessions_list_parser.add_argument("--pattern", "-p", default="*.tokenade", help="File pattern")
+    sessions_list_parser.add_argument("--recursive", "-r", action="store_true", help="Search subdirectories")
+    sessions_list_parser.add_argument("--site", "-s", help="Filter by site name")
+    sessions_list_parser.add_argument("--browser", "-b", help="Filter by source browser")
+
+    # sessions merge
+    sessions_merge_parser = sessions_sub.add_parser("merge", help="Merge multiple sessions")
+    sessions_merge_parser.add_argument("files", nargs="+", help="Session files to merge")
+    sessions_merge_parser.add_argument("--output", "-o", required=True, help="Output file path")
+    sessions_merge_parser.add_argument("--site-name", help="Site name for merged session")
+
+    # sessions rotate
+    sessions_rotate_parser = sessions_sub.add_parser("rotate", help="Select next session (rotation)")
+    sessions_rotate_parser.add_argument("files", nargs="+", help="Session files to rotate through")
+    sessions_rotate_parser.add_argument("--strategy", choices=["round-robin", "random"], default="round-robin",
+                                       help="Rotation strategy")
+    sessions_rotate_parser.add_argument("--state-file", help="State file for round-robin")
+
+    # sessions stats
+    sessions_stats_parser = sessions_sub.add_parser("stats", help="Show aggregate session statistics")
+    sessions_stats_parser.add_argument("files", nargs="+", help="Session files to analyze")
+
+    # Share
+    share_parser = subparsers.add_parser("share", help="Create shareable session link or QR code")
+    share_parser.add_argument("--session", "-s", required=True, help="Session file to share")
+    share_parser.add_argument("--output", "-o", help="Output file path (HTML or QR image)")
+    share_parser.add_argument("--format", choices=["url", "html", "qr"], default="url",
+                             help="Output format: url (default), html, qr")
+    share_parser.add_argument("--expiry", type=int, default=24, help="Link expiry in hours (default: 24)")
+    share_parser.add_argument("--max-uses", type=int, default=0, help="Max uses (0 = unlimited)")
+    share_parser.add_argument("--password", "-p", help="Password protect the link")
+
+    # Unshare
+    unshare_parser = subparsers.add_parser("unshare", help="Revoke a shared session")
+    unshare_parser.add_argument("session_id", help="Session ID to revoke")
+    unshare_parser.add_argument("--list", action="store_true", help="List all active shares")
+
+    # Validate Rules
+    validate_rules_parser = subparsers.add_parser("validate-rules", help="Validate session with custom rules")
+    validate_rules_parser.add_argument("--session", "-s", required=True, help="Session file to validate")
+    validate_rules_parser.add_argument("--rules", "-r", required=True, help="Validation rules JSON file")
+    validate_rules_parser.add_argument("--url", "-u", help="Target site URL")
+    validate_rules_parser.add_argument("--update-baselines", action="store_true", help="Update screenshot baselines")
+
+    # Diff
+    diff_parser = subparsers.add_parser("diff", help="Compare two session files")
+    diff_parser.add_argument("session_a", help="First .tokenade file")
+    diff_parser.add_argument("session_b", help="Second .tokenade file")
+    diff_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed differences")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    setup_logging(args.verbose)
+
+    commands = {
+        "setup": cmd_setup,
+        "extract": cmd_extract,
+        "transfer": cmd_transfer,
+        "test": cmd_test,
+        "fingerprint": cmd_fingerprint,
+        "validate": cmd_validate,
+        "export": cmd_export,
+        "load": cmd_load,
+        "inject-profile": cmd_inject_profile,
+        "encrypt": cmd_encrypt,
+        "decrypt": cmd_decrypt,
+        "rekey": cmd_rekey,
+        "batch-export": cmd_batch_export,
+        "batch-load": cmd_batch_load,
+        "health": cmd_health,
+        "refresh": cmd_refresh,
+        "proxy": cmd_proxy,
+        "sessions": cmd_sessions,
+        "share": cmd_share,
+        "unshare": cmd_unshare,
+        "validate-rules": cmd_validate_rules,
+        "diff": cmd_diff,
+    }
+
+    try:
+        commands[args.command](args)
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Interrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.exception("Command failed")
+        print(f"\n❌ Error: {e}")
+        sys.exit(1)

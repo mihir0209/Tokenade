@@ -522,27 +522,9 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
         except Exception as e:
             logger.error(f"Browse error: {e}")
             self.stats["errors"] += 1
+            safe_msg = html_module.escape(str(e))
             return web.Response(
-                text=f"<html><body><h1>Proxy Error</h1><p>{e}</p><p><a href='/'>Back to Proxy</a></p></body></html>",
-                content_type="text/html",
-                status=502
-            )
-            
-            # Build response headers (keep content-type in headers)
-            resp_headers = self._filter_response_headers(response.headers)
-            
-            # Return the proxied content - use headers only, not content_type param
-            return web.Response(
-                status=response.status,
-                headers=resp_headers,
-                body=response.body
-            )
-            
-        except Exception as e:
-            logger.error(f"Browse error: {e}")
-            self.stats["errors"] += 1
-            return web.Response(
-                text=f"<html><body><h1>Proxy Error</h1><p>{e}</p><p><a href='/'>Back to Proxy</a></p></body></html>",
+                text=f"<html><body><h1>Proxy Error</h1><p>{safe_msg}</p><p><a href='/'>Back to Proxy</a></p></body></html>",
                 content_type="text/html",
                 status=502
             )

@@ -61,6 +61,10 @@ class BrowserFingerprint:
     # Network
     accept_language: str = "en-US,en;q=0.9"
     
+    def to_dict(self) -> Dict:
+        """Convert to dictionary."""
+        return asdict(self)
+    
     def to_playwright_context(self) -> Dict:
         """Convert to Playwright context options."""
         return {
@@ -174,7 +178,7 @@ class FingerprintCollector:
                 }""")
                 fp.webgl_vendor = webgl.get("vendor", "")
                 fp.webgl_renderer = webgl.get("renderer", "")
-            except:
+            except Exception:
                 pass
             
             # Plugins
@@ -187,7 +191,7 @@ class FingerprintCollector:
                     }));
                 }""")
                 fp.plugins = plugins or []
-            except:
+            except Exception:
                 pass
             
             logger.info("Fingerprint collected successfully")
@@ -210,7 +214,7 @@ class FingerprintCollector:
         try:
             import tzlocal
             fp.timezone = str(tzlocal.get_localzone())
-        except:
+        except Exception:
             pass
         
         return fp

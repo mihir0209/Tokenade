@@ -4,6 +4,11 @@ Multi-Site Session Bundler - Serve multiple sessions from one proxy.
 Loads multiple .tokenade files and serves each on its own port.
 A master GUI at the base port shows tabs for all active sessions.
 
+Features:
+- Shared connection pool across all proxy instances
+- Reuse of aiohttp.ClientSession for connection efficiency
+- Centralized session status and refresh endpoints
+
 Usage:
     tokenade proxy --all --sessions-dir ./sessions/
     tokenade proxy --all -s session1.tokenade -s session2.tokenade
@@ -15,9 +20,73 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, List
 
+import aiohttp
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+
+class SharedConnectionPool:
+    """
+    Shared aiohttp connection pool for multiple CDPProxy instances.
+    
+    Avoids creating separate TCP connectors per proxy, reducing
+    file descriptor usage and enabling connection reuse across sites.
+    """
+    
+    def __init__(
+        self,
+        max_connections: int = 200,
+        max_per_host: int = 50,
+        timeout: int = 30,
+    ):
+        self._max_connections = max_connections
+        self._max_per_host = max_per_host
+        self._timeout = timeout
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._lock = asyncio.Lock()
+    
+    async def get_session(self) -> aiohttp.ClientSession:
+        """Get or create the shared aiohttp session."""
+        async with self._lock:
+            if self._session is None or self._session.closed:
+                connector = aiohttp.TCPConnector(
+                    ssl=False,
+                    limit=self._max_connections,
+                    limit_per_host=self._max_per_host,
+                    enable_cleanup_closed=True,
+                )
+                timeout = aiohttp.ClientTimeout(total=self._timeout, connect=10)
+                self._session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                    auto_decompress=False,
+                )
+                logger.info(
+                    f"Shared connection pool created: "
+                    f"max={self._max_connections}, per_host={self._max_per_host}"
+                )
+            return self._session
+    
+    async def close(self):
+        """Close the shared session."""
+        async with self._lock:
+            if self._session and not self._session.closed:
+                await self._session.close()
+                self._session = None
+                logger.info("Shared connection pool closed")
+    
+    @property
+    def stats(self) -> Dict:
+        """Get pool statistics."""
+        if self._session and not self._session.closed:
+            connector = self._session.connector
+            return {
+                "active_connections": len(connector._conns) if hasattr(connector, '_conns') else 0,
+                "max_connections": self._max_connections,
+                "max_per_host": self._max_per_host,
+            }
+        return {"active_connections": 0, "max_connections": self._max_connections}
 
 
 class MultiSiteProxy:
@@ -29,12 +98,14 @@ class MultiSiteProxy:
         self.host = host
         self._proxies = []
         self._app = None
+        self._shared_pool = SharedConnectionPool()
 
     async def start(self):
         """Start all proxy instances and the master GUI."""
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
 
-        # Assign ports and start each session's proxy
+        shared_session = await self._shared_pool.get_session()
+
         for i, session in enumerate(self.sessions):
             port = self.base_port + i + 1
             site_name = session.get("site_name", f"site_{i}")
@@ -48,6 +119,7 @@ class MultiSiteProxy:
                 use_fingerprint=False,
             )
             proxy = CDPProxy(session, config)
+            proxy._shared_http_session = shared_session
             self._proxies.append({"proxy": proxy, "port": port, "session": session})
 
         # Start all proxies in background tasks

@@ -32,22 +32,24 @@ class AccountCredentials:
     site: str = "google"
     metadata: Dict = field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
-        return {
+    def to_dict(self, include_password: bool = False) -> Dict:
+        data = {
             "number": self.number,
             "email": self.email,
-            "password": self.password,
             "profile_dir": self.profile_dir,
             "site": self.site,
             "metadata": self.metadata,
         }
+        if include_password:
+            data["password"] = self.password
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict) -> "AccountCredentials":
         return cls(
             number=data["number"],
             email=data["email"],
-            password=data["password"],
+            password=data.get("password", ""),
             profile_dir=data.get("profile_dir", ""),
             site=data.get("site", "google"),
             metadata=data.get("metadata", {}),
@@ -206,10 +208,11 @@ class CredentialManager:
         # Prepare data for storage
         storage_data = []
         for account in accounts:
-            acc_dict = account.to_dict()
-            # Remove password from file if using keyring
             if use_keyring and self._keyring_available:
+                acc_dict = account.to_dict(include_password=False)
                 acc_dict["password"] = ""
+            else:
+                acc_dict = account.to_dict(include_password=True)
             storage_data.append(acc_dict)
 
         # Encrypt if requested

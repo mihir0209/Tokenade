@@ -28,14 +28,19 @@ class SessionPackager:
 
     TOKENADE_VERSION = "2.0"
 
-    def __init__(self, site_filter: Optional[SiteFilter] = None):
+    def __init__(self, site_filter: Optional[SiteFilter] = None, cache_ttl: int = 300):
         """
         Initialize packager.
 
         Args:
             site_filter: Optional site filter for detecting the site
+            cache_ttl: Cache TTL in seconds for loaded sessions (0 to disable)
         """
         self.site_filter = site_filter or SiteFilter()
+        self._cache = None
+        if cache_ttl > 0:
+            from tokenade.core.utils.performance import LRUCache
+            self._cache = LRUCache(max_size=50, default_ttl=cache_ttl)
 
     def detect_site(self, cookies: List[Dict]) -> Optional[str]:
         """Detect which site these cookies belong to."""
@@ -171,7 +176,7 @@ class SessionPackager:
                 "browser": browser,
                 "profile": profile,
                 "platform": platform.system(),
-                "hostname": socket.gethostname(),
+                "hostname": "anonymous",
             },
             "site_name": site_name or "unknown",
             "auth_status": auth_status.value,
@@ -250,6 +255,10 @@ class SessionPackager:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(package, f, indent=2, ensure_ascii=False)
 
+        # Update cache
+        if self._cache is not None:
+            self._cache.set(str(path.absolute()), package)
+
         logger.info(f"Session saved: {path}")
         return str(path.absolute())
 
@@ -264,11 +273,24 @@ class SessionPackager:
             Package dictionary
         """
         path = Path(file_path)
+        abs_path = str(path.absolute())
+
+        # Check cache first
+        if self._cache is not None:
+            cached = self._cache.get(abs_path)
+            if cached is not None:
+                logger.debug(f"Session loaded from cache: {path}")
+                return cached
+
         if not path.exists():
             raise FileNotFoundError(f"Session file not found: {file_path}")
 
         with open(path, "r", encoding="utf-8") as f:
             package = json.load(f)
+
+        # Store in cache
+        if self._cache is not None:
+            self._cache.set(abs_path, package)
 
         logger.info(f"Session loaded: {path} ({len(package.get('cookies', []))} cookies)")
         return package

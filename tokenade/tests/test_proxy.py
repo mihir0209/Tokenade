@@ -630,7 +630,7 @@ class TestCDPProxy:
         proxy = CDPProxy(sample_session)
         
         url = proxy._get_site_url()
-        assert url == "https://www.example.com"
+        assert url == "https://example.com"
     
     def test_cdp_proxy_get_site_url_unknown(self):
         """Test default site URL for unknown site."""
