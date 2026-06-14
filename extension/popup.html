@@ -39,11 +39,34 @@
     .status-success { background: #00ff8822; color: #00ff88; }
     .status-error { background: #ff6b6b22; color: #ff6b6b; }
     .status-info { background: #333; color: #888; }
+    .status-warning { background: #ffaa0022; color: #ffaa00; }
     .hidden { display: none; }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #333; border-top-color: #00ff88; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .proxy-status { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 0.8em; }
+    .proxy-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff6b6b; }
+    .proxy-dot.connected { background: #00ff88; }
+    .domain-filter { margin: 8px 0; }
+    .domain-filter label { display: block; font-size: 0.8em; color: #888; margin-bottom: 4px; }
+    .domain-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .domain-tag { background: #333; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; cursor: pointer; }
+    .domain-tag:hover { background: #444; }
+    .domain-tag.active { background: #00ff88; color: #000; }
+    .history { max-height: 120px; overflow-y: auto; }
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #222; font-size: 0.8em; }
+    .history-item:last-child { border-bottom: none; }
+    .history-site { color: #fff; }
+    .history-time { color: #666; }
+    .footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid #222; font-size: 0.7em; color: #555; text-align: center; }
   </style>
 </head>
 <body>
   <h1>Tokenade Exporter</h1>
+  
+  <div class="proxy-status">
+    <span class="proxy-dot" id="proxy-dot"></span>
+    <span id="proxy-status-text" style="color: #888; font-size: 0.8em;">Checking proxy...</span>
+  </div>
   
   <div class="section">
     <h3>Current Tab</h3>
@@ -81,8 +104,16 @@
   
   <button class="btn btn-primary" id="export-btn">Export Session</button>
   <button class="btn btn-secondary" id="send-proxy-btn">Send to Proxy</button>
+  <button class="btn btn-secondary" id="refresh-btn" style="font-size: 0.8em;">Refresh</button>
   
   <div id="status" class="status status-info hidden"></div>
+  
+  <div class="section history hidden" id="history-section">
+    <h3>Recent Exports</h3>
+    <div id="history-list"></div>
+  </div>
+  
+  <div class="footer">Tokenade v4.0 — No data leaves your machine</div>
   
   <script src="popup.js"></script>
 </body>

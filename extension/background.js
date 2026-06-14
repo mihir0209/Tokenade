@@ -3,13 +3,11 @@
 // Listen for extension installation
 browser.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    console.log('Tokenade extension installed');
-    
-    // Set default settings
     browser.storage.local.set({
       proxyUrl: 'http://127.0.0.1:9222',
       includeLocalstorage: false,
       encrypt: false,
+      exportHistory: [],
     });
   }
 });
@@ -17,15 +15,13 @@ browser.runtime.onInstalled.addListener((details) => {
 // Listen for messages from content script or popup
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_COOKIES') {
-    // Get cookies for a URL
     browser.cookies.getAll({ url: message.url }).then(cookies => {
       sendResponse({ cookies });
     });
-    return true; // Keep message channel open for async response
+    return true;
   }
-  
+
   if (message.type === 'GETLocalStorage') {
-    // Get localStorage from active tab
     browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
       if (tabs[0]) {
         browser.scripting.executeScript({
@@ -45,11 +41,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  
+
   if (message.type === 'SEND_TO_PROXY') {
-    // Send session to proxy server
     const proxyUrl = message.proxyUrl || 'http://127.0.0.1:9222';
-    
+
     fetch(`${proxyUrl}/api/session/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,7 +71,7 @@ browser.runtime.onInstalled.addListener(() => {
     title: 'Export session with Tokenade',
     contexts: ['page'],
   });
-  
+
   browser.contextMenus.create({
     id: 'tokenade-send',
     title: 'Send session to Tokenade proxy',
@@ -88,14 +83,20 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'tokenade-export' || info.menuItemId === 'tokenade-send') {
     const cookies = await browser.cookies.getAll({ url: tab.url });
     const url = new URL(tab.url);
-    
+
     const session = {
-      version: '2.0',
+      version: '3.0',
       created_at: new Date().toISOString(),
       site_name: url.hostname.replace(/\./g, '_'),
       source_device: {
         browser: 'chrome',
-        platform: navigator.platform,
+        platform: 'linux',
+        browser_version: 'extension-export',
+      },
+      tls_profile: {
+        browser: 'chrome',
+        version: '131.0',
+        platform: 'linux',
       },
       cookies: cookies.map(c => ({
         name: c.name,
@@ -107,10 +108,10 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
         sameSite: c.sameSite,
         expires: c.expirationDate,
       })),
+      auth_status: 'unknown',
     };
-    
+
     if (info.menuItemId === 'tokenade-export') {
-      // Download as file
       const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -118,20 +119,25 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
       a.download = `${session.site_name}.tokenade`;
       a.click();
       URL.revokeObjectURL(downloadUrl);
+
+      // Save to history
+      const hist = (await browser.storage.local.get(['exportHistory'])).exportHistory || [];
+      hist.push({ site: session.site_name, cookies: cookies.length, time: new Date().toLocaleTimeString() });
+      if (hist.length > 20) hist.splice(0, hist.length - 20);
+      await browser.storage.local.set({ exportHistory: hist });
     } else {
-      // Send to proxy
       const settings = await browser.storage.local.get(['proxyUrl']);
       const proxyUrl = settings.proxyUrl || 'http://127.0.0.1:9222';
-      
+
       try {
         const response = await fetch(`${proxyUrl}/api/session/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(session),
         });
-        
+
         if (!response.ok) throw new Error(`Proxy returned ${response.status}`);
-        
+
         browser.notifications.create({
           type: 'basic',
           title: 'Tokenade',

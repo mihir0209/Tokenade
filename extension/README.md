@@ -4,11 +4,14 @@ Export browser sessions directly from Chrome or Firefox to Tokenade format.
 
 ## Features
 
-- Export cookies from current tab
-- Export localStorage data
-- Send sessions directly to Tokenade proxy
+- Export cookies from current tab with one click
+- Export localStorage data (optional)
+- Send sessions directly to running Tokenade proxy
 - Password protection for exported sessions
-- Context menu integration
+- Context menu integration (right-click)
+- Proxy connection status indicator
+- Export history tracking
+- Session format v3.0 (matches CLI output)
 
 ## Installation
 
@@ -75,7 +78,7 @@ const result = await window.Tokenade.sendSession({
 ## Permissions
 
 - `cookies`: Read browser cookies
-- `storage`: Save extension settings
+- `storage`: Save extension settings and export history
 - `activeTab`: Access current tab
 - `scriptInjection`: Inject content scripts
 
@@ -84,12 +87,7 @@ const result = await window.Tokenade.sendSession({
 - Cannot read HttpOnly cookies (browser security restriction)
 - localStorage may be restricted by same-origin policy
 - Some sites may block extension access
-
-## Development
-
-1. Make changes to extension files
-2. Reload the extension in `chrome://extensions/` or `about:debugging`
-3. Test on a website
+- Proxy must be running to use "Send to Proxy"
 
 ## Privacy
 
