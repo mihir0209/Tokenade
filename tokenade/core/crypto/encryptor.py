@@ -167,8 +167,12 @@ class TokenadeEncryptor:
         aesgcm = AESGCM(key)
         try:
             decrypted = aesgcm.decrypt(nonce, ciphertext, None)
-        except Exception:
-            raise ValueError("Wrong password or corrupted data")
+        except Exception as exc:
+            from tokenade.core.errors import DecryptionError
+            raise DecryptionError(
+                "Wrong password or corrupted data",
+                operation="decrypt",
+            ) from exc
         
         return decrypted
     

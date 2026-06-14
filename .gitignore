@@ -33,7 +33,7 @@ desktop.ini
 # Tokenade data directories
 tokens/
 browser_data/
-test*/
+test_output/
 decrypted_cookies/
 sessions/
 .fingerprints/

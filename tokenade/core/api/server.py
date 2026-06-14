@@ -7,6 +7,7 @@ and integration with external tools.
 import json
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Optional, Dict, List
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ class TokenadeAPIServer:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self._app = None
         self._runner = None
+        self._monitor = None
     
     def _check_auth(self, request) -> bool:
         """Check API key authentication."""
@@ -125,9 +127,10 @@ class TokenadeAPIServer:
     
     async def _handle_health_check(self, request):
         """GET /api/health - Health check endpoint."""
+        from tokenade import __version__
         return self._json_response({
             "status": "healthy",
-            "version": "3.3.0",
+            "version": __version__,
             "sessions_dir": str(self.sessions_dir),
         })
     
@@ -197,6 +200,98 @@ class TokenadeAPIServer:
         else:
             return self._error_response(result.stderr, 500)
     
+    async def _handle_monitor_status(self, request):
+        """GET /api/monitor/status - Get monitoring status."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        if not self._monitor:
+            return self._json_response({
+                "monitoring": False,
+                "message": "Monitor not started",
+            })
+
+        summary = self._monitor.get_summary()
+        return self._json_response({
+            "monitoring": True,
+            **summary,
+        })
+
+    async def _handle_monitor_session(self, request):
+        """GET /api/monitor/sessions/{id} - Get session monitoring details."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        session_id = request.match_info["id"]
+
+        if not self._monitor:
+            return self._error_response("Monitor not started", 404)
+
+        status = self._monitor.get_status(session_id)
+        if not status:
+            return self._error_response("Session not monitored", 404)
+
+        return self._json_response({
+            "session_id": status.session_id,
+            "site_name": status.site_name,
+            "health_score": status.health_score,
+            "cookie_count": status.cookie_count,
+            "healthy_cookies": status.healthy_cookies,
+            "warning_cookies": status.warning_cookies,
+            "expired_cookies": status.expired_cookies,
+            "last_check": status.last_check,
+            "last_refresh": status.last_refresh,
+            "refresh_count": status.refresh_count,
+            "issues": status.issues,
+            "recommendations": status.recommendations,
+            "cookies": [
+                {
+                    "name": c.name,
+                    "domain": c.domain,
+                    "health": c.health,
+                    "remaining_seconds": c.remaining_seconds,
+                    "secure": c.is_secure,
+                    "http_only": c.is_http_only,
+                    "same_site": c.same_site,
+                }
+                for c in status.cookies
+            ],
+        })
+
+    async def _handle_monitor_cookies(self, request):
+        """GET /api/monitor/sessions/{id}/cookies - Get cookie expiry timeline."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        session_id = request.match_info["id"]
+
+        if not self._monitor:
+            return self._error_response("Monitor not started", 404)
+
+        status = self._monitor.get_status(session_id)
+        if not status:
+            return self._error_response("Session not monitored", 404)
+
+        now = time.time()
+        timeline = []
+        for c in status.cookies:
+            if c.expires and c.expires > 0:
+                timeline.append({
+                    "name": c.name,
+                    "domain": c.domain,
+                    "expires_at": c.expires,
+                    "remaining_seconds": c.remaining_seconds,
+                    "health": c.health,
+                })
+
+        timeline.sort(key=lambda x: x.get("remaining_seconds") or float("inf"))
+
+        return self._json_response({
+            "session_id": session_id,
+            "now": now,
+            "cookies": timeline,
+        })
+
     async def _handle_options(self, request):
         """Handle CORS preflight."""
         from aiohttp import web
@@ -215,7 +310,11 @@ class TokenadeAPIServer:
         self._app.router.add_get("/api/proxy/status", self._handle_proxy_status)
         self._app.router.add_post("/api/export", self._handle_export)
         self._app.router.add_post("/api/share", self._handle_share_create)
-        
+
+        self._app.router.add_get("/api/monitor/status", self._handle_monitor_status)
+        self._app.router.add_get("/api/monitor/sessions/{id}", self._handle_monitor_session)
+        self._app.router.add_get("/api/monitor/sessions/{id}/cookies", self._handle_monitor_cookies)
+
         self._app.router.add_route("*", "/api/{tail:.*}", self._handle_options)
         
         return self._app
@@ -248,4 +347,7 @@ class TokenadeAPIServer:
             {"method": "GET", "path": "/api/proxy/status", "description": "Proxy status"},
             {"method": "POST", "path": "/api/export", "description": "Export session"},
             {"method": "POST", "path": "/api/share", "description": "Create share link"},
+            {"method": "GET", "path": "/api/monitor/status", "description": "Monitoring status"},
+            {"method": "GET", "path": "/api/monitor/sessions/{id}", "description": "Session monitoring details"},
+            {"method": "GET", "path": "/api/monitor/sessions/{id}/cookies", "description": "Cookie expiry timeline"},
         ]

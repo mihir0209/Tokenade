@@ -84,12 +84,12 @@ def cmd_extract(args):
             })
 
         except Exception as e:
-            logger.error(f"Extraction failed for account {account_num}: {e}")
+            logger.error(f"Extraction failed for account {account_num}: {e}", exc_info=True)
             results.append({
                 "account": account_num,
                 "email": email,
                 "status": "error",
-                "error": str(e),
+                "error": "Extraction failed — check browser is running and profile is accessible",
             })
         finally:
             browser.close()
@@ -168,8 +168,8 @@ def cmd_export(args):
         else:
             cookies = extractor.extract(site_filter=None)
     except Exception as e:
-        logger.error(f"Extraction failed: {e}")
-        print(f"❌ Extraction failed: {e}")
+        logger.error(f"Extraction failed: {e}", exc_info=True)
+        print(f"❌ Extraction failed — check browser profile is accessible")
         return
 
     print(f"   📊 Total cookies: {len(cookies)}")
@@ -232,8 +232,8 @@ def cmd_export(args):
                 else:
                     print("   ⚠️  No localStorage data found")
         except Exception as e:
-            logger.warning(f"localStorage extraction failed: {e}")
-            print(f"   ⚠️  localStorage extraction failed: {e}")
+            logger.warning(f"localStorage extraction failed: {e}", exc_info=True)
+            print(f"   ⚠️  localStorage extraction skipped — browser may be running")
     else:
         try:
             ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
@@ -333,8 +333,8 @@ def cmd_load(args):
                 print(f"   Error: {result['error']}")
 
     except Exception as e:
-        logger.error(f"Load failed: {e}")
-        print(f"❌ Load failed: {e}")
+        logger.error(f"Load failed: {e}", exc_info=True)
+        print(f"❌ Load failed — verify session file is valid and not corrupted")
     finally:
         loader.close()
 
@@ -467,5 +467,5 @@ def cmd_inject_profile(args):
                     print(f"   Error: {result.error}")
 
     except Exception as e:
-        logger.error(f"Profile injection failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Profile injection failed: {e}", exc_info=True)
+        print(f"❌ Profile injection failed — check browser is not running")

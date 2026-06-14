@@ -47,8 +47,8 @@ def cmd_encrypt(args):
         print(f"   Size: {input_size} -> {output_size} bytes")
 
     except Exception as e:
-        logger.error(f"Encryption failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Encryption failed: {e}", exc_info=True)
+        print(f"❌ Encryption failed — check input file is readable")
 
 
 def cmd_decrypt(args):
@@ -92,8 +92,8 @@ def cmd_decrypt(args):
         print(f"❌ Wrong password or corrupted file")
         logger.debug(f"Decryption error: {e}")
     except Exception as e:
-        logger.error(f"Decryption failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Decryption failed: {e}", exc_info=True)
+        print(f"❌ Decryption failed — verify password and file integrity")
 
 
 def cmd_rekey(args):
@@ -152,5 +152,5 @@ def cmd_rekey(args):
         print(f"❌ Wrong old password or corrupted file")
         logger.debug(f"Rekey error: {e}")
     except Exception as e:
-        logger.error(f"Rekey failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Rekey failed: {e}", exc_info=True)
+        print(f"❌ Rekey failed — verify old password and file integrity")

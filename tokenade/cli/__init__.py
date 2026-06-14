@@ -12,6 +12,66 @@ from tokenade.cli.advanced import (
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
 )
 
+
+def cmd_plugin(args):
+    """Manage plugins."""
+    from tokenade.core.integration.plugin_registry import PluginRegistry
+    from tokenade.core.integration.plugin_loader import PluginLoader
+
+    registry = PluginRegistry()
+    loader = PluginLoader()
+
+    if args.plugin_command == "list":
+        if args.available:
+            print("\n🌐 Available plugins from registry:")
+            plugins = registry.search()
+            if not plugins:
+                print("   No plugins found in registry")
+            for p in plugins:
+                print(f"   • {p['name']} v{p.get('version', '?')} — {p.get('description', '')}")
+        else:
+            print("\n📦 Installed plugins:")
+            installed = loader.discover()
+            if not installed:
+                print("   No plugins installed. Use 'tokenade plugin install <name>' to install.")
+            for p in installed:
+                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}) — {p.get('description', '')}")
+
+    elif args.plugin_command == "install":
+        print(f"\n📥 Installing plugin: {args.name}")
+        if registry.install(args.name):
+            print(f"   ✅ Plugin installed successfully")
+        else:
+            print(f"   ❌ Failed to install plugin")
+
+    elif args.plugin_command == "uninstall":
+        print(f"\n🗑️  Uninstalling plugin: {args.name}")
+        if registry.uninstall(args.name):
+            print(f"   ✅ Plugin uninstalled successfully")
+        else:
+            print(f"   ❌ Failed to uninstall plugin (not installed or dependency conflict)")
+
+    elif args.plugin_command == "info":
+        installed = loader.discover()
+        plugin = None
+        for p in installed:
+            if p["name"] == args.name:
+                plugin = p
+                break
+        if not plugin:
+            print(f"❌ Plugin not found: {args.name}")
+            return
+        print(f"\n📋 Plugin: {plugin['name']}")
+        print(f"   Version: {plugin.get('version', '?')}")
+        print(f"   Type: {plugin.get('type', '?')}")
+        print(f"   Author: {plugin.get('author', '?')}")
+        print(f"   Description: {plugin.get('description', '')}")
+        if plugin.get("dependencies"):
+            print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
+
+    else:
+        print("Usage: tokenade plugin {list|install|uninstall|info}")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -262,6 +322,22 @@ Commands:
     diff_parser.add_argument("session_b", help="Second .tokenade file")
     diff_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed differences")
 
+    # Plugin
+    plugin_parser = subparsers.add_parser("plugin", help="Manage plugins")
+    plugin_sub = plugin_parser.add_subparsers(dest="plugin_command", help="Plugin commands")
+
+    plugin_list_parser = plugin_sub.add_parser("list", help="List installed plugins")
+    plugin_list_parser.add_argument("--available", action="store_true", help="Show available plugins from registry")
+
+    plugin_install_parser = plugin_sub.add_parser("install", help="Install a plugin")
+    plugin_install_parser.add_argument("name", help="Plugin name to install")
+
+    plugin_uninstall_parser = plugin_sub.add_parser("uninstall", help="Uninstall a plugin")
+    plugin_uninstall_parser.add_argument("name", help="Plugin name to uninstall")
+
+    plugin_info_parser = plugin_sub.add_parser("info", help="Show plugin details")
+    plugin_info_parser.add_argument("name", help="Plugin name")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -293,6 +369,7 @@ Commands:
         "unshare": cmd_unshare,
         "validate-rules": cmd_validate_rules,
         "diff": cmd_diff,
+        "plugin": cmd_plugin,
     }
 
     try:
@@ -301,6 +378,10 @@ Commands:
         print("\n\n⚠️  Interrupted by user")
         sys.exit(130)
     except Exception as e:
+        from tokenade.core.errors import TokenadeError
         logger.exception("Command failed")
-        print(f"\n❌ Error: {e}")
+        if isinstance(e, TokenadeError):
+            print(f"\n❌ {e}")
+        else:
+            print(f"\n❌ An unexpected error occurred. Check logs for details.")
         sys.exit(1)

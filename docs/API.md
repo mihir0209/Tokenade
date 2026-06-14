@@ -1,300 +1,168 @@
 # Tokenade API Reference
 
-## Core Modules
+## Python SDK
 
-### tokenade.core.proxy.cdp_proxy
-
-The CDP proxy is the primary proxy implementation using Playwright Chromium.
+### TokenadeClient
 
 ```python
-from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+from tokenade.sdk import TokenadeClient
 
-# Create proxy from session file
-config = CDPProxyConfig(port=9222, headless=True)
-proxy = CDPProxy.from_session_file("session.tokenade", config)
-
-# Start the proxy (blocking)
-proxy.run()
-
-# Or start async
-import asyncio
-asyncio.run(proxy.start())
+client = TokenadeClient()
 ```
 
-#### CDPProxyConfig
+#### Methods
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| port | int | 9222 | Port to listen on |
-| host | str | "127.0.0.1" | Host to bind to |
-| headless | bool | True | Run browser in headless mode |
-| verbose | bool | False | Enable verbose logging |
-| timeout | int | 30 | Request timeout in seconds |
-| use_fingerprint | bool | False | Enable TLS fingerprint matching |
+##### `extract(browser, domains=None, output=None) -> ExtractionResult`
 
-#### CDPProxy Methods
-
-- `start()` - Start the proxy server and Playwright browser
-- `stop()` - Stop the proxy server and Playwright browser
-- `run()` - Run the proxy server (blocking)
-
-### tokenade.core.importer.session_refresher
-
-Monitor session cookie expiry and trigger re-export when needed.
+Extract cookies from a browser.
 
 ```python
-from tokenade.core.importer.session_refresher import SessionRefresher, RefreshConfig
-
-config = RefreshConfig(
-    check_interval=300,  # Check every 5 minutes
-    expiry_warning_days=7,
-    expiry_critical_days=1,
-    auto_refresh=False,
-    source_browser="firefox",
+result = client.extract(
+    browser="firefox",
+    domains=["github.com"],
+    output="github.tokenade"
 )
-
-refresher = SessionRefresher(session, config, on_refresh=callback)
-
-# Check expiry status
-status = refresher.check_expiry()
-print(f"Expired: {status.expired_count}, Expiring soon: {status.expiring_soon_count}")
-
-# Start monitoring (async)
-await refresher.start()
-await refresher.stop()
+print(result.success)  # True
+print(result.session_path)  # "github.tokenade"
 ```
 
-#### RefreshConfig
+##### `load(session_path) -> dict`
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| check_interval | int | 300 | Check interval in seconds |
-| expiry_warning_days | int | 7 | Warn if expiring within N days |
-| expiry_critical_days | int | 1 | Critical if expiring within N days |
-| auto_refresh | bool | False | Auto-refresh from source browser |
-| source_browser | str | None | Source browser for auto-refresh |
-| source_profile | str | None | Source profile for auto-refresh |
-| domains | str | None | Comma-separated domains to filter |
-
-#### CookieExpiryInfo
-
-| Field | Type | Description |
-|-------|------|-------------|
-| total_cookies | int | Total number of cookies |
-| expired_count | Number of expired cookies |
-| expiring_soon_count | int | Cookies expiring within warning_days |
-| critical_count | int | Cookies expiring within critical_days |
-| next_expiry_epoch | float | Next expiry timestamp |
-| next_expiry_human | str | Human-readable next expiry |
-
-### tokenade.core.importer.session_sharer
-
-Create shareable encrypted session links and QR codes.
+Load a session file.
 
 ```python
-from tokenade.core.importer.session_sharer import SessionSharer, ShareConfig
-
-sharer = SessionSharer(storage_dir="~/.tokenade/shared")
-
-# Create share link
-config = ShareConfig(
-    expiry_hours=24,
-    max_uses=0,  # Unlimited
-    password_protected=False,
-)
-url, session_id = sharer.create_share_link(session, config)
-
-# Load from URL
-loaded = sharer.load_from_url(url)
-
-# Create QR code
-sharer.create_qr_code(session, "qr.png", config)
-
-# List active shares
-shares = sharer.list_shared()
-
-# Revoke a share
-sharer.revoke_share(session_id)
+session = client.load("github.tokenade")
+print(session["site_name"])  # "github"
+print(len(session["cookies"]))  # 42
 ```
 
-#### ShareConfig
+##### `health_check(session_path) -> dict`
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| expiry_hours | int | 24 | Link expiry in hours |
-| max_uses | int | 0 | Max uses (0 = unlimited) |
-| password_protected | bool | False | Password protect the link |
-| password | str | None | Password for protection |
-
-### tokenade.core.importer.session_manager
-
-Manage multiple session files.
+Check session health score.
 
 ```python
-from tokenade.core.importer.session_manager import SessionManager
+health = client.health_check("github.tokenade")
+print(health["score"])  # 85.0
+print(health["issues"])  # ["Cookie 'sid' missing Secure flag"]
+```
 
-manager = SessionManager(sessions_dir="./sessions")
+##### `share(session_path, password=None, expiry_hours=24) -> str`
 
+Create a shareable link.
+
+```python
+link = client.share("github.tokenade", password="secret", expiry_hours=48)
+print(link)  # "https://..."
+```
+
+##### `export_playwright(session_path) -> str`
+
+Export as Playwright storageState.
+
+```python
+state_json = client.export_playwright("github.tokenade")
+# Use with Playwright:
+# context = browser.new_context(storage_state=state_json)
+```
+
+---
+
+## REST API
+
+Start the API server:
+
+```bash
+tokenade serve --port 9224
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/sessions` | List all sessions |
+| GET | `/api/sessions/{id}` | Get session details |
+| DELETE | `/api/sessions/{id}` | Delete session |
+| GET | `/api/proxy/status` | Proxy status |
+| POST | `/api/export` | Export session |
+| POST | `/api/share` | Create share link |
+| GET | `/api/monitor/status` | Monitoring status |
+| GET | `/api/monitor/sessions/{id}` | Session monitoring details |
+| GET | `/api/monitor/sessions/{id}/cookies` | Cookie expiry timeline |
+
+### Authentication
+
+All endpoints require either:
+- `Authorization: Bearer <api_key>` header
+- `X-API-Key: <api_key>` header
+
+### Examples
+
+```bash
 # List sessions
-sessions = manager.list_sessions()
-for s in sessions:
-    print(f"{s.site_name}: {s.cookie_count} cookies")
+curl -H "X-API-Key: my-key" http://localhost:9224/api/sessions
 
-# Filter sessions
-filtered = manager.filter_sessions(sessions, site_name="google", browser="firefox")
+# Check session health
+curl -H "X-API-Key: my-key" http://localhost:9224/api/monitor/status
 
-# Merge sessions
-manager.merge_sessions(
-    ["session1.tokenade", "session2.tokenade"],
-    "merged.tokenade",
-    site_name="merged",
-)
-
-# Rotate between sessions
-selected = manager.rotate_session(
-    ["session1.tokenade", "session2.tokenade"],
-    strategy="round-robin",
-)
-
-# Get statistics
-stats = manager.get_session_stats(["session1.tokenade", "session2.tokenade"])
+# Export session
+curl -X POST -H "Content-Type: application/json" -H "X-API-Key: my-key" \
+  -d '{"browser": "chrome", "domains": ["github.com"]}' \
+  http://localhost:9224/api/export
 ```
 
-#### SessionInfo
+---
 
-| Field | Type | Description |
-|-------|------|-------------|
-| path | str | Path to session file |
-| site_name | str | Site name |
-| cookie_count | int | Number of cookies |
-| has_local_storage | bool | Has localStorage data |
-| created_at | str | Creation timestamp |
-| source_browser | str | Source browser |
-| file_size | int | File size in bytes |
-
-### tokenade.core.importer.advanced_validator
-
-Validate sessions with custom rules.
-
-```python
-from tokenade.core.importer.advanced_validator import (
-    AdvancedValidator,
-    ValidationRule,
-    load_validation_rules,
-)
-
-validator = AdvancedValidator(proxy_port=9222)
-
-# Load rules from file
-rules = load_validation_rules("rules.json")
-
-# Validate session
-results = await validator.validate_rules(session, rules, site_url="https://example.com")
-
-for result in results:
-    status = "✓" if result.passed else "✗"
-    print(f"{status} {result.rule_name}: {result.message}")
-```
-
-#### ValidationRule
-
-| Field | Type | Description |
-|-------|------|-------------|
-| name | str | Rule name |
-| type | str | Rule type: "js", "screenshot", "api", "cookie", "url", "element" |
-| config | dict | Rule configuration |
-| timeout | int | Timeout in seconds |
-
-#### Rule Types
-
-**JavaScript Validation**
-```python
-ValidationRule(
-    name="logged_in",
-    type="js",
-    config={"script": "return document.querySelector('.user-menu') !== null"},
-)
-```
-
-**Cookie Validation**
-```python
-ValidationRule(
-    name="session_cookie",
-    type="cookie",
-    config={"name": "session", "exists": True, "value": "abc123"},
-)
-```
-
-**API Validation**
-```python
-ValidationRule(
-    name="api_check",
-    type="api",
-    config={
-        "url": "https://api.example.com/me",
-        "status": 200,
-        "body": {"authenticated": True},
-    },
-)
-```
-
-**Screenshot Validation**
-```python
-ValidationRule(
-    name="visual_check",
-    type="screenshot",
-    config={"baseline": "homepage", "update_baseline": False},
-)
-```
-
-**URL Validation**
-```python
-ValidationRule(
-    name="no_redirect",
-    type="url",
-    config={"redirect": False},
-)
-```
-
-**Element Validation**
-```python
-ValidationRule(
-    name="user_avatar",
-    type="element",
-    config={"selector": ".user-avatar", "exists": True},
-)
-```
-
-## CLI Commands
+## CLI Reference
 
 ### Export
+
 ```bash
-tokenade export --browser-name firefox --domains "example.com" -o session.tokenade
+tokenade export --browser-name firefox --domains "github.com" -o github.tokenade
 ```
 
 ### Proxy
+
 ```bash
-tokenade proxy -s session.tokenade --port 9222 --auto-refresh --source-browser firefox
+tokenade proxy -s github.tokenade --port 9222
 ```
 
-### Share
+### Health
+
 ```bash
-tokenade share -s session.tokenade --format qr --expiry 48 --password secret
+tokenade health -s github.tokenade
+```
+
+### Plugin Management
+
+```bash
+tokenade plugin list                    # List installed plugins
+tokenade plugin list --available        # Show registry plugins
+tokenade plugin install <name>          # Install from registry
+tokenade plugin uninstall <name>        # Remove plugin
+tokenade plugin info <name>             # Show plugin details
 ```
 
 ### Sessions
+
 ```bash
-tokenade sessions list -d ./sessions --site google
-tokenade sessions merge *.tokenade -o merged.tokenade
-tokenade sessions rotate session1.tokenade session2.tokenade
+tokenade sessions list -d ./sessions    # List sessions
+tokenade sessions merge s1.tokenade s2.tokenade -o merged.tokenade
+tokenade sessions rotate s1.tokenade s2.tokenade
+tokenade sessions stats *.tokenade
 ```
 
-### Validate Rules
+### Security
+
 ```bash
-tokenade validate-rules -s session.tokenade -r rules.json
+tokenade encrypt -s session.tokenade -o encrypted.tokenade
+tokenade decrypt -s encrypted.tokenade -o session.tokenade
+tokenade rekey -s encrypted.tokenade
 ```
 
-### Diff
+### Sharing
+
 ```bash
-tokenade diff session1.tokenade session2.tokenade -v
+tokenade share -s session.tokenade --password x --expiry 48
+tokenade unshare --list
 ```

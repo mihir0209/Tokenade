@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokenade"
-version = "3.5.0"
+version = "4.0.0"
 description = "Production-grade token shifting and session portability tool"
 readme = "README.md"
 license = {text = "MIT"}
@@ -41,6 +41,8 @@ enterprise = ["ldap3>=2.9"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "hypothesis>=6.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",

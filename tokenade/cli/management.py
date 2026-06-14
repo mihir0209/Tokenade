@@ -179,8 +179,8 @@ def cmd_refresh(args):
                 print(f"   Error: {result.error}")
 
     except Exception as e:
-        logger.error(f"Session refresh failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Session refresh failed: {e}", exc_info=True)
+        print(f"❌ Refresh failed — check source browser is running and session is valid")
 
 
 def cmd_share(args):

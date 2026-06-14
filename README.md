@@ -410,7 +410,7 @@ tokenade/
 ├── cli.py                        # CLI entry point (21 commands)
 ├── handlers/                     # Site-specific handlers
 ├── extension/                    # Browser extension
-└── tests/                        # 1009 tests
+└── tests/                        # 1045 tests
 ```
 
 ## .tokenade File Format
@@ -478,7 +478,7 @@ pip install -e ".[linux]"      # secretstorage for Linux keyring
 
 ```bash
 make install-dev     # Install with dev deps + Playwright
-make test            # Run all 1009 tests
+make test            # Run all 1045 tests
 make test-quick      # Skip slow/network tests
 make lint            # Flake8 linting
 make format          # Black formatting

@@ -19,7 +19,8 @@ def cmd_batch_export(args):
         sites = load_batch_config(args.site_config)
         print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
     except Exception as e:
-        print(f"❌ Failed to load site config: {e}")
+        logger.error(f"Failed to load site config: {e}", exc_info=True)
+        print(f"❌ Failed to load site config — verify JSON format is valid")
         return
 
     output_dir = args.output or "sessions_batch"
@@ -46,8 +47,8 @@ def cmd_batch_export(args):
             print(f"\n⚠️  Batch export completed with errors")
 
     except Exception as e:
-        logger.error(f"Batch export failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Batch export failed: {e}", exc_info=True)
+        print(f"❌ Batch export failed — check browser profile and output directory")
 
 
 def cmd_batch_load(args):
@@ -64,7 +65,8 @@ def cmd_batch_load(args):
             sites = load_batch_config(args.site_config)
             print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
         except Exception as e:
-            print(f"⚠️  Failed to load site config: {e}")
+            logger.error(f"Failed to load site config: {e}", exc_info=True)
+            print(f"⚠️  Failed to load site config — verify JSON format")
 
     print(f"\n📂 Sessions: {args.sessions_dir}")
     print(f"🌐 Target: {args.target_browser}")
@@ -88,8 +90,8 @@ def cmd_batch_load(args):
             print(f"\n⚠️  Batch load completed with errors")
 
     except Exception as e:
-        logger.error(f"Batch load failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Batch load failed: {e}", exc_info=True)
+        print(f"❌ Batch load failed — check sessions directory and target browser")
 
 
 def cmd_validate(args):
@@ -140,7 +142,8 @@ def cmd_validate(args):
                 invalid += 1
 
         except Exception as e:
-            print(f"   ❌ Error: {e}")
+            logger.debug(f"Validation error: {e}", exc_info=True)
+            print(f"   ❌ Validation error — session may be corrupted")
             invalid += 1
 
     print(f"\n📊 Summary: {valid} valid, {invalid} invalid")

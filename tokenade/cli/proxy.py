@@ -25,7 +25,7 @@ def cmd_proxy(args):
                         sessions.append(session)
                         print(f"  Loaded: {f.name} ({session.get('site_name', 'unknown')})")
                     except Exception as e:
-                        logger.warning(f"Failed to load {f}: {e}")
+                        logger.warning(f"Failed to load {f}: {e}", exc_info=True)
 
         if not sessions:
             print("❌ No session files found")
@@ -114,5 +114,5 @@ def cmd_proxy(args):
     except KeyboardInterrupt:
         print("\n\n⚠️  Proxy stopped by user")
     except Exception as e:
-        logger.error(f"Proxy failed: {e}")
-        print(f"❌ Failed: {e}")
+        logger.error(f"Proxy failed: {e}", exc_info=True)
+        print(f"❌ Proxy failed — check port is available and session file is valid")

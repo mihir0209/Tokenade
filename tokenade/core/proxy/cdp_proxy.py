@@ -47,7 +47,8 @@ def _strip_duplicate_headers(raw_data: bytes) -> bytes:
                 seen.add(key)
             fixed.append(line)
         return b'\r\n'.join(fixed) + rest
-    except Exception:
+    except (ValueError, UnicodeDecodeError, KeyError) as e:
+        logger.debug("Failed to strip duplicate headers, returning raw data: %s", e)
         return raw_data
 
 
@@ -80,6 +81,7 @@ try:
 except ImportError:
     HAS_PLAYWRIGHT = False
 
+from tokenade.core.errors import ProxyError, ConfigurationError
 from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
 from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
 from tokenade.core.importer.session_refresher import SessionRefresher, RefreshConfig
@@ -114,7 +116,8 @@ def _is_safe_url(url: str) -> bool:
         except ValueError:
             pass
         return True
-    except Exception:
+    except (ValueError, TypeError) as e:
+        logger.debug("URL safety check failed: %s", e)
         return False
 
 
@@ -674,7 +677,8 @@ self.addEventListener('activate', () => {
             
         except web.HTTPFound:
             raise
-        except Exception:
+        except Exception as e:
+            logger.exception("Failed to process browse request")
             return web.Response(text="Failed to process request", status=500)
     
     async def _navigate_page(self, page_id: str, url: str):
