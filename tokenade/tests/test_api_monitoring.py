@@ -24,4 +24,4 @@ class TestAPIMonitorEndpoints:
 
     def test_health_check_returns_version(self):
         from tokenade import __version__
-        assert __version__ == "3.5.0"
+        assert __version__ == "4.0.0"
