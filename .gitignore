@@ -59,3 +59,4 @@ test_output*.log
 /tmp/*.png
 
 temp_scripts/
+.tokenade_rotation_state
