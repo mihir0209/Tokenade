@@ -297,6 +297,14 @@ class TokenadeAPIServer:
         from aiohttp import web
         return web.Response(status=204)
     
+    async def _handle_dashboard(self, request):
+        """Serve the web dashboard."""
+        from aiohttp import web
+        dashboard_path = Path(__file__).parent / "dashboard" / "index.html"
+        if dashboard_path.exists():
+            return web.FileResponse(dashboard_path)
+        return self._error_response("Dashboard not found", 404)
+
     def create_app(self):
         """Create the aiohttp application."""
         from aiohttp import web
@@ -314,6 +322,10 @@ class TokenadeAPIServer:
         self._app.router.add_get("/api/monitor/status", self._handle_monitor_status)
         self._app.router.add_get("/api/monitor/sessions/{id}", self._handle_monitor_session)
         self._app.router.add_get("/api/monitor/sessions/{id}/cookies", self._handle_monitor_cookies)
+
+        self._app.router.add_get("/", self._handle_dashboard)
+        self._app.router.add_get("/dashboard", self._handle_dashboard)
+        self._app.router.add_get("/dashboard/", self._handle_dashboard)
 
         self._app.router.add_route("*", "/api/{tail:.*}", self._handle_options)
         
