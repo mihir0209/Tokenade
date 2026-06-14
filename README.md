@@ -410,7 +410,7 @@ tokenade/
 ├── cli.py                        # CLI entry point (21 commands)
 ├── handlers/                     # Site-specific handlers
 ├── extension/                    # Browser extension
-└── tests/                        # 688 tests
+└── tests/                        # 1009 tests
 ```
 
 ## .tokenade File Format
@@ -478,7 +478,7 @@ pip install -e ".[linux]"      # secretstorage for Linux keyring
 
 ```bash
 make install-dev     # Install with dev deps + Playwright
-make test            # Run all 688 tests
+make test            # Run all 1009 tests
 make test-quick      # Skip slow/network tests
 make lint            # Flake8 linting
 make format          # Black formatting
@@ -498,6 +498,7 @@ make docker-cleanup  # Remove all containers
 
 ## Documentation
 
+- [Use Cases & Competitor Comparison](USE-CASES.md) - All use cases, competitor analysis, feature matrix
 - [API Reference](docs/API.md) - Complete API documentation
 - [Architecture](docs/ARCHITECTURE.md) - System design and data flow
 - [Security](docs/SECURITY.md) - Security considerations
