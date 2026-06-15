@@ -144,24 +144,39 @@ class SessionSharer:
         session_id: str,
         password: Optional[str] = None,
     ) -> str:
-        """Generate a self-contained share URL."""
-        # Compress session data
-        session_json = json.dumps(session, separators=(",", ":"))
-        
-        # Add password to payload if provided
-        payload = {
-            "id": session_id,
-            "data": session,
-        }
+        """Generate an encrypted share URL.
+
+        If a password is provided, the payload is encrypted with a
+        password-derived key (PBKDF2 + AES-256-GCM).  Without a password
+        the data is encrypted with a random key that is embedded in the
+        URL (obfuscation only — anyone with the URL can decrypt).
+        """
+        payload_json = json.dumps(session, separators=(",", ":")).encode()
+
+        # Random salt and IV for AES-GCM
+        salt = secrets.token_bytes(16)
+        iv = secrets.token_bytes(12)
+
         if password:
-            payload["p"] = password
-        
-        # Encode as base64
-        payload_json = json.dumps(payload, separators=(",", ":"))
-        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-        
-        # Generate URL (using tokenade:// protocol for mobile apps)
-        # For web, use a simple HTML page that can decode the payload
+            # Derive key from password (PBKDF2-HMAC-SHA256, 200k iterations)
+            key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200000)
+        else:
+            # Random key (embedded later so the URL is self-contained)
+            key = secrets.token_bytes(32)
+
+        # AES-256-GCM encryption
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        aesgcm = AESGCM(key)
+        ciphertext = aesgcm.encrypt(iv, payload_json, None)  # includes tag
+
+        # Build binary payload: salt(16) + iv(12) + key(32, only if no password) + ciphertext
+        parts = [salt, iv]
+        if not password:
+            parts.append(key)
+        parts.append(ciphertext)
+        raw = b"".join(parts)
+
+        payload_b64 = base64.urlsafe_b64encode(raw).decode().rstrip("=")
         return f"tokenade://share/{payload_b64}"
     
     def create_qr_code(
@@ -255,36 +270,44 @@ class SessionSharer:
     
     def load_from_url(self, share_url: str, password: Optional[str] = None) -> Optional[Dict]:
         """
-        Load session from a share URL.
-        
+        Load session from an encrypted share URL.
+
         Returns:
-            Session data or None if invalid
+            Session data or None if invalid / wrong password
         """
         try:
             # Parse URL
             if share_url.startswith("tokenade://share/"):
                 payload_b64 = share_url[len("tokenade://share/"):]
             else:
-                # Try to decode as base64 directly
                 payload_b64 = share_url
-            
-            # Decode payload
-            payload_json = base64.urlsafe_b64decode(payload_b64 + "==").decode()
+
+            # Restore base64 padding
+            payload_b64 += "=" * (4 - len(payload_b64) % 4) if len(payload_b64) % 4 else ""
+
+            raw = base64.urlsafe_b64decode(payload_b64)
+
+            # Binary layout: salt(16) + iv(12) + [key(32)] + ciphertext
+            salt = raw[:16]
+            iv = raw[16:28]
+
+            if password:
+                # Derive key from password
+                key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200000)
+                ciphertext = raw[28:]
+            else:
+                # Key is embedded in the payload
+                key = raw[28:60]
+                ciphertext = raw[60:]
+
+            # AES-256-GCM decryption
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+            aesgcm = AESGCM(key)
+            payload_json = aesgcm.decrypt(iv, ciphertext, None)
             payload = json.loads(payload_json)
-            
-            session_id = payload.get("id")
-            session_data = payload.get("data")
-            url_password = payload.get("p")
-            
-            if not session_id or not session_data:
-                return None
-            
-            # Use password from URL if not provided
-            if not password and url_password:
-                password = url_password
-            
-            return session_data
-            
+
+            return payload
+
         except Exception as e:
             logger.error(f"Failed to load share URL: {e}")
             return None

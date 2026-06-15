@@ -91,12 +91,15 @@ class TestSessionSharer:
         assert loaded is not None
 
     def test_load_from_url_with_password_in_url(self, sharer, session):
-        # Password is embedded in URL, so load_from_url uses it automatically
+        # Password-protected URL requires the password to decrypt
         config = ShareConfig(password_protected=True, password="secret")
         url, session_id = sharer.create_share_link(session, config)
-        # Load without providing password - it should use the one from URL
-        loaded = sharer.load_from_url(url)
+        # Load with correct password
+        loaded = sharer.load_from_url(url, password="secret")
         assert loaded is not None
+        # Load without password fails (password is NOT embedded in URL)
+        loaded_no_pw = sharer.load_from_url(url)
+        assert loaded_no_pw is None
 
     def test_list_shared(self, sharer, session):
         sharer.create_share_link(session)
