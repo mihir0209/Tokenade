@@ -27,6 +27,7 @@ class LoadedPlugin:
     module: Any
     entry_class: Any
     instance: Any = None
+    enabled: bool = True
 
 
 class PluginLoader:
@@ -38,6 +39,8 @@ class PluginLoader:
         self._handlers: Dict[str, Any] = {}
         self._exporters: Dict[str, Any] = {}
         self._validators: Dict[str, Any] = {}
+        self._disabled: set = set()
+        self._load_disabled_list()
 
     def discover(self) -> List[Dict]:
         """Discover all installed plugins."""
@@ -69,12 +72,16 @@ class PluginLoader:
         loaded = 0
 
         for meta in plugins:
+            name = meta.get("name", "")
+            if name in self._disabled:
+                logger.debug(f"Skipping disabled plugin: {name}")
+                continue
             try:
                 result = self.load_plugin(meta)
                 if result is not None:
                     loaded += 1
             except Exception as e:
-                logger.error(f"Failed to load plugin {meta.get('name', '?')}: {e}", exc_info=True)
+                logger.error(f"Failed to load plugin {name}: {e}", exc_info=True)
 
         logger.info(f"Loaded {loaded}/{len(plugins)} plugins")
         return loaded
@@ -227,3 +234,53 @@ class PluginLoader:
         meta["_path"] = str(self.plugins_dir / name)
 
         return self.load_plugin(meta)
+
+    def _load_disabled_list(self):
+        """Load the list of disabled plugins."""
+        disabled_file = self.plugins_dir / ".disabled"
+        if disabled_file.exists():
+            try:
+                with open(disabled_file, "r") as f:
+                    self._disabled = set(line.strip() for line in f if line.strip())
+            except Exception:
+                self._disabled = set()
+
+    def _save_disabled_list(self):
+        """Save the list of disabled plugins."""
+        self.plugins_dir.mkdir(parents=True, exist_ok=True)
+        disabled_file = self.plugins_dir / ".disabled"
+        with open(disabled_file, "w") as f:
+            for name in sorted(self._disabled):
+                f.write(f"{name}\n")
+
+    def enable(self, name: str) -> bool:
+        """Enable a disabled plugin."""
+        if name not in self._disabled:
+            return True
+        self._disabled.discard(name)
+        self._save_disabled_list()
+        # Reload if already loaded
+        if name in self._loaded:
+            self._loaded[name].enabled = True
+        logger.info(f"Plugin enabled: {name}")
+        return True
+
+    def disable(self, name: str) -> bool:
+        """Disable a plugin without uninstalling."""
+        if name not in self._loaded and name not in self.discover_names():
+            return False
+        self._disabled.add(name)
+        self._save_disabled_list()
+        # Unload if currently loaded
+        if name in self._loaded:
+            self._loaded[name].enabled = False
+            self.unload(name)
+        logger.info(f"Plugin disabled: {name}")
+        return True
+
+    def discover_names(self) -> set:
+        """Get names of all discovered plugins."""
+        names = set()
+        for meta in self.discover():
+            names.add(meta.get("name", ""))
+        return names
