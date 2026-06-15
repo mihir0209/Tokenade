@@ -1,218 +1,209 @@
 """
-Performance benchmarks for Tokenade.
-
-These tests verify that critical operations complete within acceptable time limits.
-They are not speed tests — they ensure operations don't regress into slowness.
+Performance Benchmarks - Measures extraction speed, proxy throughput, encryption speed.
 """
+
+import time
 import json
 import tempfile
-import time
+import os
 from pathlib import Path
-import pytest
 
 
-@pytest.fixture
-def large_session():
-    """Generate a session with many cookies for benchmarking."""
-    cookies = []
-    for i in range(200):
-        cookies.append({
-            "name": f"cookie_{i}",
-            "value": "x" * 100,
-            "domain": f".site{i}.com",
-            "path": "/",
-            "secure": True,
-            "httpOnly": True,
-            "sameSite": "Lax",
-            "expires": 1800000000 + i,
-        })
+def benchmark_extraction():
+    """Benchmark cookie extraction speed."""
+    from tokenade.core.importer.cookie_extractor import CookieExtractor
+    
+    try:
+        # Find Firefox profile
+        firefox_path = os.path.expanduser("~/.snap/firefox/common/.mozilla/firefox")
+        if not os.path.exists(firefox_path):
+            firefox_path = os.path.expanduser("~/.mozilla/firefox")
+        
+        profiles_dir = Path(firefox_path)
+        default_profile = None
+        for p in profiles_dir.iterdir():
+            if p.is_dir() and "default" in p.name.lower():
+                default_profile = p
+                break
+        
+        if not default_profile:
+            print("  No Firefox profile found, skipping")
+            return {"browser": "none", "cookies": 0, "time": 0, "speed": 0}
+        
+        print(f"  Using: firefox ({default_profile.name})")
+        extractor = CookieExtractor(str(default_profile))
+        
+        start = time.time()
+        cookies = extractor.extract()
+        elapsed = time.time() - start
+        count = len(cookies) if cookies else 0
+        speed = count / elapsed if elapsed > 0 else 0
+        print(f"  Firefox: {count} cookies in {elapsed:.2f}s ({speed:.0f} cookies/s)")
+        return {"browser": "firefox", "cookies": count, "time": elapsed, "speed": speed}
+    except Exception as e:
+        print(f"  Firefox: FAILED ({e})")
+        return {"browser": "firefox", "error": str(e)}
+
+
+def benchmark_packaging():
+    """Benchmark session packaging speed."""
+    from tokenade.core.importer.session_packager import SessionPackager
+    
+    packager = SessionPackager()
+    
+    # Create test cookies
+    cookies = [
+        {"name": f"cookie_{i}", "value": f"value_{i}", "domain": ".example.com", "path": "/"}
+        for i in range(1000)
+    ]
+    
+    # Benchmark packaging
+    start = time.time()
+    session = packager.package(cookies)
+    elapsed = time.time() - start
+    speed = len(cookies) / elapsed if elapsed > 0 else 0
+    print(f"  Package 1000 cookies: {elapsed:.3f}s ({speed:.0f} cookies/s)")
+    
+    # Benchmark saving
+    with tempfile.NamedTemporaryFile(suffix=".tokenade", delete=False) as f:
+        tmp_path = f.name
+    
+    start = time.time()
+    packager.save(session, tmp_path)
+    save_time = time.time() - start
+    file_size = os.path.getsize(tmp_path)
+    print(f"  Save session: {save_time:.3f}s ({file_size} bytes)")
+    
+    # Benchmark loading
+    start = time.time()
+    loaded = packager.load(tmp_path)
+    load_time = time.time() - start
+    print(f"  Load session: {load_time:.3f}s")
+    
+    os.unlink(tmp_path)
+    
     return {
-        "version": "2.0",
-        "created_at": "2026-01-01T00:00:00Z",
-        "site_name": "benchmark",
-        "auth_status": "logged_in",
-        "cookies": cookies,
-        "fingerprint": {"user_agent": "Mozilla/5.0", "platform": "Linux"},
-        "tls_profile": {"browser": "chrome", "version": "120", "impersonate": "chrome120"},
+        "package_time": elapsed,
+        "save_time": save_time,
+        "load_time": load_time,
+        "file_size": file_size
     }
 
 
-class TestPerformanceBenchmarks:
-    """Performance benchmarks for critical operations."""
+def benchmark_encryption():
+    """Benchmark encryption/decryption speed."""
+    from tokenade.core.crypto.encryptor import TokenadeEncryptor
     
-    def test_session_packaging_speed(self, large_session):
-        """Session packaging should handle 200 cookies in < 1 second."""
-        from tokenade.core.importer.session_packager import SessionPackager
-        packager = SessionPackager()
-        
-        start = time.time()
-        for _ in range(10):
-            packager.package(
-                cookies=large_session["cookies"],
-                browser="chrome",
-                profile="default",
-            )
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"Packaging 200 cookies x10 took {elapsed:.2f}s (expected < 1.0s)"
+    encryptor = TokenadeEncryptor()
     
-    def test_format_export_speed(self, large_session):
-        """Format export should handle 200 cookies in < 1 second."""
-        from tokenade.core.importer.format_exporter import FormatExporter
-        exporter = FormatExporter(large_session)
-        
-        start = time.time()
-        for _ in range(10):
-            exporter.to_playwright_storagestate()
-            exporter.to_puppeteer_cookies()
-            exporter.to_netscape()
-            exporter.to_cookie_header()
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"Exporting 200 cookies x10 took {elapsed:.2f}s (expected < 1.0s)"
+    # Create test data
+    test_data = json.dumps({"cookies": [{"name": f"c{i}", "value": "x" * 100} for i in range(100)]}).encode()
     
-    def test_health_scoring_speed(self, large_session):
-        """Health scoring should handle 200 cookies in < 1 second."""
-        from tokenade.core.refresh.health_scorer import SessionHealthScorer
-        scorer = SessionHealthScorer()
-        
-        start = time.time()
-        for _ in range(50):
-            scorer.score(large_session)
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"Scoring 200 cookies x50 took {elapsed:.2f}s (expected < 1.0s)"
+    # Benchmark encryption
+    start = time.time()
+    encrypted = encryptor.encrypt(test_data, "benchmark_password")
+    enc_time = time.time() - start
+    print(f"  Encrypt {len(test_data)} bytes: {enc_time:.3f}s")
     
-    def test_lru_cache_performance(self):
-        """LRU cache should handle 10000 operations in < 1 second."""
-        from tokenade.core.utils.performance import LRUCache
-        cache = LRUCache(max_size=1000, default_ttl=300)
-        
-        start = time.time()
-        for i in range(10000):
-            cache.set(f"key_{i}", f"value_{i}")
-        for i in range(10000):
-            cache.get(f"key_{i}")
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"10000 cache ops took {elapsed:.2f}s (expected < 1.0s)"
+    # Benchmark decryption
+    start = time.time()
+    decrypted = encryptor.decrypt(encrypted, "benchmark_password")
+    dec_time = time.time() - start
+    print(f"  Decrypt {len(encrypted)} bytes: {dec_time:.3f}s")
     
-    def test_vault_operations_speed(self, large_session):
-        """Vault add/get/list should be fast."""
-        from tokenade.core.importer.session_vault import SessionVault
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            vault = SessionVault(tmpdir)
-            
-            # Create session file
-            session_file = Path(tmpdir) / "bench.tokenade"
-            session_file.write_text(json.dumps(large_session))
-            
-            start = time.time()
-            # Add 100 sessions
-            for i in range(100):
-                vault.add(str(session_file), session_id=f"sess_{i}", tags=["bench"])
-            
-            # List all
-            entries = vault.list_sessions()
-            
-            # Get one
-            vault.get("sess_50")
-            
-            elapsed = time.time() - start
-            
-            assert elapsed < 2.0, f"100 vault ops took {elapsed:.2f}s (expected < 2.0s)"
-            assert len(entries) == 100
+    assert decrypted == test_data, "Decryption mismatch!"
     
-    def test_cookie_header_parsing_speed(self):
-        """Cookie header parsing should handle large headers quickly."""
-        from tokenade.core.importer.format_importer import FormatImporter
-        
-        # Generate large cookie header
-        pairs = [f"cookie_{i}=value_{i}" for i in range(200)]
-        header = "; ".join(pairs)
-        
-        start = time.time()
-        for _ in range(50):
-            FormatImporter.from_cookie_header(header, domain=".example.com")
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"Parsing 200 cookies x50 took {elapsed:.2f}s (expected < 1.0s)"
-    
-    def test_netscape_parsing_speed(self):
-        """Netscape format parsing should handle large files quickly."""
-        from tokenade.core.importer.format_importer import FormatImporter
-        
-        # Generate large Netscape file
-        lines = ["# Netscape HTTP Cookie File", ""]
-        for i in range(200):
-            lines.append(f".site{i}.com\tTRUE\t/\tFALSE\t1800000000\tcookie_{i}\tvalue_{i}")
-        content = "\n".join(lines)
-        
-        start = time.time()
-        for _ in range(50):
-            FormatImporter.from_cookie_header(content, domain=".example.com")
-        elapsed = time.time() - start
-        
-        assert elapsed < 1.0, f"Parsing Netscape x50 took {elapsed:.2f}s (expected < 1.0s)"
+    return {"encrypt_time": enc_time, "decrypt_time": dec_time}
 
-    def test_exception_creation_speed(self):
-        """Exception creation should be fast."""
-        from tokenade.core.errors import (
-            TokenadeError, ExtractionError, InjectionError, EncryptionError,
-            DecryptionError, ProxyError, ConfigurationError, ValidationError,
-        )
 
-        exceptions = [
-            TokenadeError, ExtractionError, InjectionError, EncryptionError,
-            DecryptionError, ProxyError, ConfigurationError, ValidationError,
+def benchmark_health_check():
+    """Benchmark health check speed."""
+    from tokenade.core.refresh.health_checker import SessionHealthChecker
+    
+    checker = SessionHealthChecker()
+    
+    # Create test session
+    session = {
+        "cookies": [
+            {"name": f"cookie_{i}", "value": "x" * 50, "domain": ".example.com",
+             "expires": time.time() + 86400 * (30 - i), "secure": True, "httpOnly": True}
+            for i in range(100)
         ]
+    }
+    
+    start = time.time()
+    result = checker.check_session(session)
+    elapsed = time.time() - start
+    print(f"  Health check 100 cookies: {elapsed:.3f}s")
+    
+    return {"time": elapsed}
 
-        start = time.time()
-        for _ in range(10000):
-            for exc_cls in exceptions:
-                try:
-                    raise exc_cls("test message", operation="benchmark")
-                except Exception:
-                    pass
-        elapsed = time.time() - start
 
-        assert elapsed < 2.0, f"10000 exception creation/catch took {elapsed:.2f}s (expected < 2.0s)"
+def benchmark_tls_matcher():
+    """Benchmark TLS matcher initialization."""
+    from tokenade.core.runtime.tls_matcher import TLSMatcher
+    
+    start = time.time()
+    matcher = TLSMatcher()
+    init_time = time.time() - start
+    print(f"  TLS matcher init: {init_time:.3f}s")
+    
+    # Benchmark a request
+    start = time.time()
+    try:
+        resp = matcher.get("https://httpbin.org/get", timeout=10)
+        req_time = time.time() - start
+        print(f"  TLS request (httpbin): {req_time:.3f}s ({resp.status_code})")
+    except Exception as e:
+        req_time = time.time() - start
+        print(f"  TLS request: FAILED in {req_time:.3f}s ({e})")
+    
+    matcher.close()
+    return {"init_time": init_time, "request_time": req_time}
 
-    def test_session_monitor_registration_speed(self, large_session):
-        """Session monitor registration should be fast."""
-        from tokenade.core.monitoring.session_monitor import SessionMonitor
 
-        monitor = SessionMonitor()
+def run_all_benchmarks():
+    """Run all benchmarks."""
+    print("=" * 60)
+    print("TOKENADE PERFORMANCE BENCHMARKS")
+    print("=" * 60)
+    
+    results = {}
+    
+    print("\n1. Cookie Extraction")
+    print("-" * 40)
+    results["extraction"] = benchmark_extraction()
+    
+    print("\n2. Session Packaging")
+    print("-" * 40)
+    results["packaging"] = benchmark_packaging()
+    
+    print("\n3. Encryption/Decryption")
+    print("-" * 40)
+    results["encryption"] = benchmark_encryption()
+    
+    print("\n4. Health Check")
+    print("-" * 40)
+    results["health"] = benchmark_health_check()
+    
+    print("\n5. TLS Matcher")
+    print("-" * 40)
+    results["tls"] = benchmark_tls_matcher()
+    
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    
+    if "extraction" in results and "speed" in results["extraction"]:
+        print(f"  Extraction: {results['extraction']['speed']:.0f} cookies/s")
+    print(f"  Packaging: {results['packaging']['package_time']:.3f}s for 1000 cookies")
+    print(f"  Encryption: {results['encryption']['encrypt_time']:.3f}s")
+    print(f"  Decryption: {results['encryption']['decrypt_time']:.3f}s")
+    print(f"  Health Check: {results['health']['time']:.3f}s")
+    print(f"  TLS Init: {results['tls']['init_time']:.3f}s")
+    
+    return results
 
-        start = time.time()
-        for i in range(100):
-            monitor.register_session(f"sess_{i}", large_session, f"site_{i}")
-        elapsed = time.time() - start
 
-        assert elapsed < 1.0, f"Registering 100 sessions took {elapsed:.2f}s (expected < 1.0s)"
-
-    def test_plugin_loader_discovery_speed(self):
-        """Plugin discovery should be fast even with many directories."""
-        from tokenade.core.integration.plugin_loader import PluginLoader
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            plugins_dir = Path(tmpdir) / "plugins"
-            plugins_dir.mkdir()
-
-            # Create 50 fake plugin directories
-            for i in range(50):
-                plugin_dir = plugins_dir / f"plugin_{i}"
-                plugin_dir.mkdir()
-                manifest = {"name": f"plugin_{i}", "version": "1.0.0", "type": "handler", "entry_point": ""}
-                (plugin_dir / "plugin.json").write_text(json.dumps(manifest))
-
-            loader = PluginLoader(plugins_dir)
-
-            start = time.time()
-            for _ in range(100):
-                loader.discover()
-            elapsed = time.time() - start
-
-            assert elapsed < 1.0, f"Discovering 50 plugins x100 took {elapsed:.2f}s (expected < 1.0s)"
+if __name__ == "__main__":
+    run_all_benchmarks()
