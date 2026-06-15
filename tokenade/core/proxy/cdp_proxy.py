@@ -185,6 +185,9 @@ class CDPProxy:
         self._refresher: Optional[SessionRefresher] = None
         self._auto_refresh_config: Dict = {}
         
+        # Extension bridge (optional)
+        self._extension_bridge = None
+        
         # Statistics
         self.stats = {
             "requests": 0,
@@ -303,6 +306,8 @@ class CDPProxy:
         """Stop the proxy server and Playwright browser."""
         if self._refresher:
             await self._refresher.stop()
+        if self._extension_bridge:
+            self._extension_bridge.stop()
         if self._http_session and not self._http_session.closed:
             await self._http_session.close()
         if self._raw_server:
@@ -316,6 +321,40 @@ class CDPProxy:
             await self._playwright.stop()
         if self.tls_matcher:
             self.tls_matcher.close()
+    
+    def start_extension_bridge(self, bridge_port: int = 9224):
+        """Start the WebSocket bridge for browser extension communication.
+        
+        The bridge allows the browser extension to push cookie updates
+        to the proxy without requiring a restart.
+        
+        Args:
+            bridge_port: Port for the WebSocket bridge (default: 9224)
+        """
+        try:
+            from tokenade.core.proxy.extension_bridge import ExtensionBridge
+            
+            self._extension_bridge = ExtensionBridge(
+                host=self.config.host,
+                port=bridge_port,
+            )
+            
+            # Register handler for cookie updates from extension
+            def on_cookie_update(data):
+                if "cookies" in data:
+                    self.cookie_jar.add_cookies(data["cookies"])
+                    logger.info(f"Received {len(data['cookies'])} cookies from extension")
+            
+            self._extension_bridge.on_message("cookie_update", on_cookie_update)
+            
+            # Start bridge in background
+            asyncio.ensure_future(self._extension_bridge.start())
+            logger.info(f"Extension bridge started on ws://{self.config.host}:{bridge_port}")
+            
+        except ImportError:
+            logger.warning("websockets not installed. Install with: pip install websockets")
+        except Exception as e:
+            logger.error(f"Failed to start extension bridge: {e}")
     
     async def _on_session_refresh(self, new_session: Dict):
         """Callback when session is refreshed — hot-reload cookies."""
