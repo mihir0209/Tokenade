@@ -362,6 +362,13 @@ class SessionLoader:
         except Exception as e:
             logger.error(f"Session load failed: {e}")
             result["error"] = str(e)
+            # Close browser on error to prevent process leak
+            if self._browser:
+                try:
+                    self._browser.close()
+                    self._browser = None
+                except Exception:
+                    pass
 
         finally:
             self._last_result = result
