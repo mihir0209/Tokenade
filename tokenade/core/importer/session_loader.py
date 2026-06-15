@@ -403,10 +403,16 @@ class SessionLoader:
     def _build_default_site_config(self, package: Dict) -> Dict:
         """Build a minimal site config from package when none provided."""
         site_name = package.get("site_name", "unknown")
+
+        # Try to get from site_configs first
+        from tokenade.core.importer.site_configs import get_site_config
+        preset = get_site_config(site_name)
+        if preset:
+            return preset
+
         cookies = package.get("cookies", [])
         domains = list({c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")})
 
-        # Extract cookie names that look like session/auth cookies
         auth_cookie_names = []
         for c in cookies:
             name = c.get("name", "")

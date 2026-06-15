@@ -23,11 +23,21 @@ class TestExportLoadRoundtrip:
     def test_export_load_roundtrip(self):
         """Test full export → load roundtrip with validation."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Step 1: Create mock cookies
+            # Step 1: Create mock cookies (include all Google critical cookies)
             cookies = [
                 {"name": "SID", "value": "abc123", "domain": ".google.com", "path": "/", "secure": True},
                 {"name": "SSID", "value": "def456", "domain": ".google.com", "path": "/", "secure": True},
                 {"name": "APISID", "value": "ghi789", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "SAPISID", "value": "jkl012", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "HSID", "value": "mno345", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Secure-1PSID", "value": "pqr678", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Secure-3PSID", "value": "stu901", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Secure-1PAPISID", "value": "vwx234", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Secure-3PAPISID", "value": "yza567", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "OSID", "value": "bcd890", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Secure-OSID", "value": "efg123", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "__Host-GAPS", "value": "hij456", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "COMPASS", "value": "klm789", "domain": ".google.com", "path": "/", "secure": True},
             ]
 
             # Step 2: Package (export)
@@ -44,6 +54,10 @@ class TestExportLoadRoundtrip:
             # Step 3: Load
             mock_browser = MagicMock()
             mock_browser.get_cookies.return_value = cookies
+            # Mock navigate/evaluate/query_selector for validation
+            mock_browser.navigate.return_value = None
+            mock_browser.evaluate.return_value = None
+            mock_browser.query_selector.return_value = None  # No login indicator = logged in
 
             loader = SessionLoader()
 
@@ -53,8 +67,8 @@ class TestExportLoadRoundtrip:
 
             # Step 4: Verify
             assert result["success"] is True
-            assert result["cookies_total"] == 3
-            assert result["cookies_injected"] == 3
+            assert result["cookies_total"] == 13
+            assert result["cookies_injected"] == 13
             assert result["validation"]["valid"] is True
             assert result["validation"]["auth_status"] == "logged_in"
             assert result["site_name"] == "google"
@@ -105,6 +119,9 @@ class TestExportLoadRoundtrip:
 
             mock_browser = MagicMock()
             mock_browser.get_cookies.return_value = cookies
+            mock_browser.navigate.return_value = None
+            mock_browser.evaluate.return_value = None
+            mock_browser.query_selector.return_value = None
 
             loader = SessionLoader()
 
@@ -143,6 +160,9 @@ class TestCLIRoundtrip:
             # Test load via SessionLoader
             mock_browser = MagicMock()
             mock_browser.get_cookies.return_value = cookies
+            mock_browser.navigate.return_value = None
+            mock_browser.evaluate.return_value = None
+            mock_browser.query_selector.return_value = None
 
             loader = SessionLoader()
             with patch.object(loader, "fp_manager"):
