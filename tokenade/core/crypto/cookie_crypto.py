@@ -300,7 +300,13 @@ class LinuxCookieCrypto(CookieCrypto):
         return b"peanuts"
     
     def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
-        """Decrypt Linux Chrome cookie."""
+        """Decrypt Linux Chrome cookie.
+        
+        Linux Chrome uses AES-128-CBC with:
+        - v10 header (3 bytes)
+        - 16-byte IV (all 0x20 spaces)
+        - PBKDF2 key: sha1("peanuts", "saltysalt", 1 iteration, 16 bytes)
+        """
         if not encrypted_value:
             return ""
         
@@ -310,17 +316,25 @@ class LinuxCookieCrypto(CookieCrypto):
             
             version = encrypted_value[:3]
             if version in (b"v10", b"v11"):
-                nonce = encrypted_value[3:15]
-                ciphertext = encrypted_value[15:]
+                # Linux Chrome: AES-128-CBC with 16-byte IV
+                iv = encrypted_value[3:19]
+                ciphertext = encrypted_value[19:]
                 
                 # Derive key using PBKDF2
                 key_material = hashlib.pbkdf2_hmac(
                     "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
                 )
                 
-                cipher = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
-                decrypted = cipher.decrypt(ciphertext[:-16])
-                return decrypted.decode("utf-8")
+                cipher = AES.new(key_material, AES.MODE_CBC, iv)
+                decrypted = cipher.decrypt(ciphertext)
+                
+                # Remove PKCS7 padding
+                if decrypted:
+                    pad_len = decrypted[-1]
+                    if 1 <= pad_len <= 16:
+                        decrypted = decrypted[:-pad_len]
+                
+                return decrypted.decode("utf-8", errors="replace")
             else:
                 return encrypted_value.decode("utf-8", errors="ignore")
                 
@@ -329,7 +343,7 @@ class LinuxCookieCrypto(CookieCrypto):
             return None
     
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
-        """Encrypt cookie for Linux Chrome."""
+        """Encrypt cookie for Linux Chrome (AES-128-CBC)."""
         try:
             from Crypto.Cipher import AES
             from Crypto.Random import get_random_bytes
@@ -339,11 +353,18 @@ class LinuxCookieCrypto(CookieCrypto):
                 "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
             )
             
-            nonce = get_random_bytes(12)
-            cipher = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
-            ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode("utf-8"))
+            # 16-byte IV (all 0x20 spaces, matching Chrome's format)
+            iv = b" " * 16
             
-            return b"v10" + nonce + ciphertext + tag
+            # PKCS7 padding
+            plaintext_bytes = plaintext.encode("utf-8")
+            pad_len = 16 - (len(plaintext_bytes) % 16)
+            plaintext_bytes += bytes([pad_len] * pad_len)
+            
+            cipher = AES.new(key_material, AES.MODE_CBC, iv)
+            ciphertext = cipher.encrypt(plaintext_bytes)
+            
+            return b"v10" + iv + ciphertext
             
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
