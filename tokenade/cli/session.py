@@ -130,6 +130,15 @@ def cmd_export(args):
 
     browser_path = args.browser_path
     browser_name = args.browser_name or "unknown"
+    
+    # Apply config defaults
+    from tokenade.core.config import load_config
+    config = load_config()
+    if not browser_name or browser_name == "unknown":
+        browser_name = config.get("default_browser") or browser_name
+    if not args.profile:
+        args.profile = config.get("default_profile")
+
     if not browser_path and browser_name:
         discovery = BrowserProfileDiscovery()
         profiles = discovery.discover_all()

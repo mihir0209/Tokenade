@@ -13,6 +13,48 @@ from tokenade.cli.advanced import (
 )
 
 
+def cmd_config(args):
+    """Manage configuration (~/.tokenade/config.json)."""
+    from tokenade.core.config import load_config, DEFAULTS
+
+    config = load_config()
+
+    if args.config_command == "path":
+        print(config.config_path)
+
+    elif args.config_command == "show":
+        print(f"\n📋 Tokenade Config ({config.config_path})\n")
+        for key in sorted(DEFAULTS.keys()):
+            value = config.get(key)
+            default = DEFAULTS[key]
+            marker = "" if value != default else " (default)"
+            print(f"   {key}: {value}{marker}")
+
+    elif args.config_command == "get":
+        if not args.key:
+            print("❌ Usage: tokenade config get <key>")
+            return
+        value = config.get(args.key)
+        if value is None:
+            print(f"❌ Unknown config key: {args.key}")
+        else:
+            print(value)
+
+    elif args.config_command == "set":
+        if not args.key or not args.value:
+            print("❌ Usage: tokenade config set <key> <value>")
+            return
+        # Type coercion for booleans
+        value = args.value
+        if value.lower() in ("true", "false"):
+            value = value.lower() == "true"
+        elif value.isdigit():
+            value = int(value)
+        config.set(args.key, value)
+        config.save()
+        print(f"✅ Set {args.key} = {value}")
+
+
 def cmd_plugin(args):
     """Manage plugins."""
     from tokenade.core.integration.plugin_registry import PluginRegistry
@@ -116,6 +158,13 @@ Commands:
 
     # Setup
     setup_parser = subparsers.add_parser("setup", help="Setup accounts")
+
+    # Config
+    config_parser = subparsers.add_parser("config", help="Manage configuration")
+    config_parser.add_argument("config_command", choices=["show", "set", "get", "path"],
+                               help="Config action")
+    config_parser.add_argument("key", nargs="?", help="Config key")
+    config_parser.add_argument("value", nargs="?", help="Config value")
 
     # Extract
     extract_parser = subparsers.add_parser("extract", help="Extract tokens")
@@ -348,6 +397,7 @@ Commands:
 
     commands = {
         "setup": cmd_setup,
+        "config": cmd_config,
         "extract": cmd_extract,
         "transfer": cmd_transfer,
         "test": cmd_test,
