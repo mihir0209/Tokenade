@@ -23,6 +23,7 @@
 - Gmail: 149 cookies, CDP proxy, confirmed logged-in user
 - Gmail persistence: 5/5 runs, no session invalidation
 - Firefox extraction: Working
+- Brave extraction: 111 cookies from 46 domains, 34 critical, auth=logged_in (2026-06-15)
 
 ### Known Broken (needs fixing)
 1. Forward proxy: No HTTPS CONNECT tunneling (only HTTP works)
