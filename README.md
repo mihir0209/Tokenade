@@ -535,6 +535,9 @@ make docker-cleanup  # Remove all containers
 ## Documentation
 
 - [Use Cases & Competitor Comparison](USE-CASES.md) - All use cases, competitor analysis, feature matrix
+- [Site Configurations](docs/SITE_CONFIGS.md) - Preset configs, custom configs, validation
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and fixes
+- [Tutorials](docs/) - Getting started, plugin development, enterprise deployment
 - [API Reference](docs/API.md) - Complete API documentation
 - [Architecture](docs/ARCHITECTURE.md) - System design and data flow
 - [Security](docs/SECURITY.md) - Security considerations
