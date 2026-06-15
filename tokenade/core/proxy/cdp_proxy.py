@@ -1188,7 +1188,7 @@ self.addEventListener('activate', () => {
                 async with self._session_lock:
                     if self._http_session is None or self._http_session.closed:
                         connector = aiohttp.TCPConnector(
-                            ssl=False,
+                            ssl=None,  # Use default SSL verification
                             limit=100,
                             limit_per_host=30,
                             enable_cleanup_closed=True
