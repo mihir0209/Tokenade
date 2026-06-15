@@ -287,7 +287,7 @@ class SafariExtractor:
         """Attempt to decrypt a Safari cookie using macOS Keychain.
         
         Safari stores some cookie values encrypted with keys in the Keychain.
-        This method attempts to retrieve the decryption key.
+        Uses AES-128-CBC with PKCS7 padding.
         
         Returns decrypted value or None if decryption fails.
         """
@@ -303,16 +303,75 @@ class SafariExtractor:
                 capture_output=True, text=True, timeout=5
             )
             
-            if result.returncode == 0:
-                key = result.stdout.strip()
-                logger.debug(f"Found Safari encryption key")
-                # Actual decryption would use AES with this key
-                # For now, return the original value as we can't fully decrypt
-                return cookie_value
-            else:
+            if result.returncode != 0:
                 logger.debug("Safari encryption key not found in Keychain")
                 return cookie_value
+            
+            key_hex = result.stdout.strip()
+            key = bytes.fromhex(key_hex)
+            logger.debug(f"Found Safari encryption key ({len(key)} bytes)")
+            
+            # Try to decrypt the cookie value
+            return self._aes_cbc_decrypt(cookie_value, key)
                 
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             logger.debug(f"Keychain access failed: {e}")
+            return cookie_value
+        except Exception as e:
+            logger.debug(f"Safari decryption failed: {e}")
+            return cookie_value
+    
+    @staticmethod
+    def _aes_cbc_decrypt(cookie_value: str, key: bytes) -> str:
+        """Decrypt a Safari cookie value using AES-128-CBC.
+        
+        Safari cookie encryption format:
+        - First 3 bytes: version header (e.g., "v10")
+        - Next 16 bytes: IV
+        - Remaining bytes: AES-CBC encrypted data with PKCS7 padding
+        """
+        try:
+            from Crypto.Cipher import AES
+            import base64
+            
+            # Check if the value looks encrypted (base64 or hex)
+            try:
+                data = base64.b64decode(cookie_value)
+            except Exception:
+                # Try hex decoding
+                try:
+                    data = bytes.fromhex(cookie_value)
+                except Exception:
+                    # Not encrypted, return as-is
+                    return cookie_value
+            
+            if len(data) < 19:  # 3 (header) + 16 (IV)
+                return cookie_value
+            
+            # Parse header
+            header = data[:3]
+            if header not in (b"v10", b"v11"):
+                return cookie_value
+            
+            iv = data[3:19]
+            ciphertext = data[19:]
+            
+            # Truncate key if needed for AES-128
+            aes_key = key[:16] if len(key) >= 16 else key.ljust(16, b'\0')
+            
+            cipher = AES.new(aes_key, AES.MODE_CBC, iv)
+            decrypted = cipher.decrypt(ciphertext)
+            
+            # Remove PKCS7 padding
+            pad_len = decrypted[-1]
+            if 1 <= pad_len <= 16:
+                decrypted = decrypted[:-pad_len]
+            
+            return decrypted.decode("utf-8", errors="replace")
+            
+        except ImportError:
+            logger.debug("pycryptodome not installed for Safari decryption")
+            return cookie_value
+        except Exception as e:
+            logger.debug(f"AES decryption failed: {e}")
             return cookie_value
