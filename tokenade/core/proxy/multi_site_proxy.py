@@ -125,7 +125,7 @@ class MultiSiteProxy:
         # Start all proxies in background tasks
         tasks = []
         for item in self._proxies:
-            tasks.append(asyncio.create_task(item["proxy"]._run_async()))
+            tasks.append(asyncio.create_task(item["proxy"].start()))
 
         # Wait for proxies to start
         await asyncio.sleep(2)

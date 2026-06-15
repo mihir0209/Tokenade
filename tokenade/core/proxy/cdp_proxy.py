@@ -183,6 +183,7 @@ class CDPProxy:
         
         # Session auto-refresh
         self._refresher: Optional[SessionRefresher] = None
+        self._auto_refresh_config: Dict = {}
         
         # Statistics
         self.stats = {
@@ -256,9 +257,14 @@ class CDPProxy:
         
         # Start session auto-refresh monitor
         refresh_config = RefreshConfig(
-            auto_refresh=False,  # Don't auto-refresh by default, just monitor
-            source_browser=(self.session.get("source_device") or {}).get("browser"),
+            auto_refresh=self._auto_refresh_config.get("auto_refresh", False),
+            source_browser=self._auto_refresh_config.get(
+                "source_browser",
+                (self.session.get("source_device") or {}).get("browser"),
+            ),
         )
+        if self._auto_refresh_config.get("source_profile"):
+            refresh_config.source_profile = self._auto_refresh_config["source_profile"]
         self._refresher = SessionRefresher(
             session=self.session,
             config=refresh_config,

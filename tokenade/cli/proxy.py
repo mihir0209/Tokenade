@@ -93,11 +93,11 @@ def cmd_proxy(args):
             proxy = CDPProxy.from_session_file(str(session_file), config)
 
             if args.auto_refresh:
-                proxy._refresher.config.auto_refresh = True
+                proxy._auto_refresh_config["auto_refresh"] = True
                 if args.source_browser:
-                    proxy._refresher.config.source_browser = args.source_browser
+                    proxy._auto_refresh_config["source_browser"] = args.source_browser
                 if args.source_profile:
-                    proxy._refresher.config.source_profile = args.source_profile
+                    proxy._auto_refresh_config["source_profile"] = args.source_profile
                 print(f"🔄 Auto-refresh enabled from {args.source_browser or 'source browser'}")
 
         if not args.no_open_browser:
