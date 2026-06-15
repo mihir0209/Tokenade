@@ -1,6 +1,49 @@
 # Tokenade — Working Notes
 
-## Current State (2026-06-11)
+## Release Policy
+
+**DO NOT create releases or tags per feature.**
+
+- Development happens on `main` — commit directly
+- Version bumps in `pyproject.toml` are only done when explicitly asked
+- **No GitHub releases or tags** until features are battle-tested with positive real-world results
+- Only after confirmed working results (manual testing with real sites) should a version be tagged and released
+- PyPI publishes only happen when user explicitly requests it
+- This keeps the repo clean and avoids premature versioning
+
+## Current State (2026-06-15)
+
+### Version: 4.1.0 (unreleased — pending battle testing)
+- 1370 tests passing, 23 skipped, 0 failures
+- Coverage: 81%
+- Features built: CDP proxy, forward proxy, multi-site proxy, session refresh, sharing, encryption, health scoring, advanced validation, browser extension, web dashboard
+
+### Battle-Tested (confirmed working)
+- ChatGPT: 68 cookies, CDP proxy, confirmed logged-in user
+- Gmail: 149 cookies, CDP proxy, confirmed logged-in user
+- Gmail persistence: 5/5 runs, no session invalidation
+- Firefox extraction: Working
+
+### Known Broken (needs fixing)
+1. Forward proxy: No HTTPS CONNECT tunneling (only HTTP works)
+2. Multi-site proxy: Calls `proxy._run_async()` which doesn't exist on CDPProxy
+3. Auto-refresh: Config applied after `proxy.start()` already called
+4. Session sharing: Base64 only, NOT encrypted (security issue)
+5. Safari decryption: No-op (returns encrypted values)
+
+### Untested (exists but never verified)
+- Chrome/Edge/Brave cookie extraction
+- Session load into browser
+- Profile injection
+- Health check command
+- Session refresh command
+- Session merge/rotate
+- Advanced validation rules
+- Format export/import
+- Mobile extraction (Android/iOS)
+
+### Next Steps
+See `.agent/plans/next-steps.md` for detailed plan.
 
 CDP proxy is working end-to-end. Tested with ChatGPT (68 cookies, logged in as mihirpatil128@gmail.com).
 
