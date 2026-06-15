@@ -1,61 +1,92 @@
-# Manual Test Summary
+# E2E Test Summary — v4.1.0 Published Package
 
-**Date:** 2026-06-14
-**Version:** v3.4.0
-**Total Tests:** 35 manual tests across 8 categories
+## Date: 2026-06-16
 
-## Results Summary
+## Package
+- **Version:** 4.1.0
+- **PyPI:** https://pypi.org/project/tokenade/4.1.0/
+- **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v4.1.0
 
-| Category | Tests | Pass | Fail | Notes |
-|----------|-------|------|------|-------|
-| Cookie Extraction | 5 | 5 | 0 | Firefox (3043), Brave (105) |
-| Format Export | 7 | 7 | 0 | Playwright, Puppeteer, Netscape, Header |
-| CDP Proxy | 3 | 3 | 0 | Injects 158/167 cookies |
-| Health Scoring | 3 | 3 | 0 | OWASP scoring works (74.7/100) |
-| Session Vault | 5 | 5 | 0 | ACLs, versioning, expiry |
-| Anti-Detection | 6 | 6 | 0 | CDP cleaner, behavioral, forks |
-| CLI/API/SDK | 9 | 9 | 0 | All commands work |
-| Enterprise | 6 | 6 | 0 | Audit, RBAC, K8s, Docker |
-| **Total** | **35** | **35** | **0** | |
+## Test Results
 
-## Key Findings
+| # | Test | Result | Notes |
+|---|------|--------|-------|
+| 01 | PyPI Package Installation | PASS | Installed from PyPI, CLI works |
+| 02 | Firefox ChatGPT Export + Proxy | PASS | 31 cookies, logged in as Mihir Patil |
+| 03 | Firefox Gmail Export + Proxy | PASS | 123 cookies, 3,594 unread emails visible |
+| 04 | Health Check | PASS | 97.6% Gmail, 80.6% ChatGPT, 92.1% merged |
+| 05 | Session Management | PASS | List, merge (154→114 deduped), diff |
+| 06 | Encrypt/Decrypt | PASS | Roundtrip preserves data (17081→17147→17081) |
+| 07 | Session Sharing | PASS | AES-256-GCM encrypted, password protected |
+| 08 | Config Management | PASS | ~/.tokenade/config.json loaded correctly |
+| 09 | Plugin System | PASS | List command works (empty registry) |
+| 10 | TLS Fingerprint Matching | PASS | Chrome/120.0.0.0 JA3 hash, curl-cffi working |
 
-### Firefox (Snap)
-- Profile: `~/.snap/firefox/common/.mozilla/firefox/nj40lj6y.default`
-- Total cookies: 3043
-- Google cookies: 166 (logged_in)
-- GitHub cookies: 9 (logged_in)
+## Battle-Tested Sites
 
-### Brave
-- Profile: `~/.config/BraveSoftware/Brave-Browser/Default`
-- Total cookies: 105
-- Uses Chrome extractor (`browser='chrome'`)
+| Site | Browser | Cookies | Auth Status | Verified |
+|------|---------|---------|-------------|----------|
+| ChatGPT | Firefox | 31 | logged_in (Mihir Patil) | Screenshot |
+| Gmail | Firefox | 123 | logged_in (Mihir Patil, 3,594 unread) | Screenshot |
 
-### CDP Proxy
-- Successfully starts and injects cookies
-- Auto-refresh monitor activates
-- Binds to 127.0.0.1:9222
+## Commands Used
 
-### Health Scoring
-- OWASP-based scoring provides actionable insights
-- Entropy scoring: 23.2/25 (good token values)
-- Flag scoring: 16.5/25 (some cookies missing HttpOnly)
-- Freshness: 25.0/25 (recently created session)
-
-### Anti-Detection
-- 5 stealth scripts for CDP artifact removal
-- Bezier curve mouse paths (101 points)
-- Ease-out scroll patterns
-- Chromium fork detection works (Brave detected)
-
-## Git Tags Created
-
-```
-v3.0.0 - Dev Tooling
-v3.1.0 - Security & Multi-Format
-v3.2.0 - Session Lifecycle
-v3.3.0 - CLI & Testing
-v3.4.0 - Browser & Ecosystem
+### Export
+```bash
+tokenade export --browser-name firefox --domains "chatgpt.com,openai.com,cdn.openai.com" -o /tmp/e2e_chatgpt.tokenade
+tokenade export --browser-name firefox --domains "google.com,accounts.google.com,mail.google.com" -o /tmp/e2e_gmail.tokenade
 ```
 
-All tags point to commit `2ef32f8`.
+### Proxy
+```bash
+tokenade proxy -s /tmp/e2e_chatgpt.tokenade --port 9222 --no-open-browser
+tokenade proxy -s /tmp/e2e_gmail.tokenade --port 9222 --no-open-browser
+```
+
+### Health
+```bash
+tokenade health -s /tmp/e2e_gmail.tokenade
+tokenade health -s /tmp/e2e_chatgpt.tokenade
+```
+
+### Merge
+```bash
+tokenade sessions merge /tmp/e2e_chatgpt.tokenade /tmp/e2e_gmail.tokenade -o /tmp/e2e_merged.tokenade --site-name combined
+```
+
+### Diff
+```bash
+tokenade diff /tmp/e2e_chatgpt.tokenade /tmp/e2e_gmail.tokenade
+```
+
+### Encrypt/Decrypt
+```bash
+tokenade encrypt --input /tmp/e2e_chatgpt.tokenade --output /tmp/e2e_chatgpt_enc.tokenade --password testpassword123
+tokenade decrypt --input /tmp/e2e_chatgpt_enc.tokenade --output /tmp/e2e_chatgpt_dec.tokenade --password testpassword123
+```
+
+### Share
+```bash
+tokenade share --session /tmp/e2e_chatgpt.tokenade --password test123 --format url
+```
+
+### Config
+```bash
+tokenade config show
+```
+
+### Plugin
+```bash
+tokenade plugin list
+```
+
+### Validate
+```bash
+tokenade validate -d /tmp/
+```
+
+## Known Limitations
+1. **Cloudflare:** Headless Chromium triggers Cloudflare "Verify you are human" challenge on subsequent loads (first load succeeds)
+2. **Browser version warning:** Gmail shows "This browser version is no longer supported" for headless Chromium (cosmetic only)
+
+## Overall Verdict: ALL TESTS PASS
