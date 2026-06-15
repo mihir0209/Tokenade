@@ -55,6 +55,77 @@ def cmd_config(args):
         print(f"✅ Set {args.key} = {value}")
 
 
+def cmd_completion(args):
+    """Generate shell completion scripts."""
+    shell = args.shell
+    
+    if shell == "bash":
+        print('''# Tokenade bash completion
+_tokenade() {
+    local cur prev commands
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff plugin completion"
+    
+    if [[ ${cur} == -* ]] ; then
+        COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
+        return 0
+    fi
+    
+    COMPREPLY=( $(compgen -W "${commands}" -- ${cur}) )
+    return 0
+}
+complete -F _tokenade tokenade
+''')
+    elif shell == "zsh":
+        print('''# Tokenade zsh completion
+_tokenade() {
+    local commands
+    commands=(
+        'setup:Setup accounts'
+        'config:Manage configuration'
+        'extract:Extract tokens'
+        'export:Export session from browser'
+        'load:Load session file'
+        'inject-profile:Inject cookies into profile'
+        'proxy:Start proxy server'
+        'health:Check session health'
+        'refresh:Refresh session'
+        'encrypt:Encrypt session file'
+        'decrypt:Decrypt session file'
+        'sessions:Manage sessions'
+        'share:Share session'
+        'batch-export:Batch export'
+        'batch-load:Batch load'
+        'diff:Compare sessions'
+        'completion:Generate shell completion'
+    )
+    _describe 'tokenade' commands
+}
+compdef _tokenade tokenade
+''')
+    elif shell == "fish":
+        print('''# Tokenade fish completion
+complete -c tokenade -f
+complete -c tokenade -n "__fish_use_subcommand" -a "setup" -d "Setup accounts"
+complete -c tokenade -n "__fish_use_subcommand" -a "config" -d "Manage configuration"
+complete -c tokenade -n "__fish_use_subcommand" -a "extract" -d "Extract tokens"
+complete -c tokenade -n "__fish_use_subcommand" -a "export" -d "Export session"
+complete -c tokenade -n "__fish_use_subcommand" -a "load" -d "Load session"
+complete -c tokenade -n "__fish_use_subcommand" -a "proxy" -d "Start proxy"
+complete -c tokenade -n "__fish_use_subcommand" -a "health" -d "Check health"
+complete -c tokenade -n "__fish_use_subcommand" -a "encrypt" -d "Encrypt session"
+complete -c tokenade -n "__fish_use_subcommand" -a "decrypt" -d "Decrypt session"
+complete -c tokenade -n "__fish_use_subcommand" -a "sessions" -d "Manage sessions"
+complete -c tokenade -n "__fish_use_subcommand" -a "share" -d "Share session"
+complete -c tokenade -n "__fish_use_subcommand" -a "completion" -d "Shell completion"
+''')
+    else:
+        print(f"Unsupported shell: {shell}. Use bash, zsh, or fish.")
+        sys.exit(1)
+
+
 def cmd_plugin(args):
     """Manage plugins."""
     from tokenade.core.integration.plugin_registry import PluginRegistry
@@ -388,6 +459,10 @@ Commands:
     plugin_info_parser = plugin_sub.add_parser("info", help="Show plugin details")
     plugin_info_parser.add_argument("name", help="Plugin name")
 
+    # Shell Completion
+    completion_parser = subparsers.add_parser("completion", help="Generate shell completion scripts")
+    completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell type")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -421,6 +496,7 @@ Commands:
         "validate-rules": cmd_validate_rules,
         "diff": cmd_diff,
         "plugin": cmd_plugin,
+        "completion": cmd_completion,
     }
 
     try:
