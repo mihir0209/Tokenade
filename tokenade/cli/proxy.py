@@ -91,6 +91,11 @@ def cmd_proxy(args):
                 use_fingerprint=args.fingerprint,
             )
             proxy = CDPProxy.from_session_file(str(session_file), config)
+            
+            # Set impersonate target for TLS matching
+            if args.impersonate:
+                proxy._auto_refresh_config["impersonate"] = args.impersonate
+                print(f"🔒 TLS Impersonation: {args.impersonate}")
 
             if args.auto_refresh:
                 proxy._auto_refresh_config["auto_refresh"] = True

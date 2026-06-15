@@ -307,6 +307,7 @@ Commands:
     proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
     proxy_parser.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
     proxy_parser.add_argument("--fingerprint", action="store_true", help="Enable TLS fingerprint matching via curl-cffi (breaks cf_clearance)")
+    proxy_parser.add_argument("--impersonate", help="Browser to impersonate (e.g., chrome120, chrome131, firefox128, safari17_0)")
     proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
     proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
     proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
