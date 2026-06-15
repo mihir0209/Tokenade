@@ -162,11 +162,21 @@ def cmd_export(args):
     if args.domains:
         domain_filter = [d.strip() for d in args.domains.split(",") if d.strip()]
 
+    def _progress(current, total, stage):
+        if stage == "copying_database":
+            print(f"   📋 Copying cookie database...")
+        elif stage == "extracting_cookies":
+            if total > 0:
+                pct = int((current / total) * 100)
+                print(f"\r   ⏳ Extracting cookies... {current}/{total} ({pct}%)", end="", flush=True)
+        elif stage == "complete":
+            print(f"\r   ✅ Cookie extraction complete                    ", flush=True)
+
     try:
         if args.file_path:
             cookies = extractor.extract_from_file(args.file_path, args.format or "netscape")
         else:
-            cookies = extractor.extract(site_filter=None)
+            cookies = extractor.extract(site_filter=None, progress_callback=_progress)
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)
         print(f"❌ Extraction failed — check browser profile is accessible")

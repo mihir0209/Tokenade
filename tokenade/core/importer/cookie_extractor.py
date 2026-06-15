@@ -229,12 +229,16 @@ class CookieExtractor:
         """Copy database to temp file (browser may lock it)."""
         return copy_db(db_path)
 
-    def extract_chrome(self, site_filter: Optional[SiteFilter] = None) -> List[Dict]:
+    def extract_chrome(self, site_filter: Optional[SiteFilter] = None,
+                       progress_callback=None) -> List[Dict]:
         """Extract cookies from Chrome/Chromium/Edge."""
         cookies_db = os.path.join(self.profile_path, "Cookies")
         if not os.path.exists(cookies_db):
             logger.warning(f"Chrome cookies DB not found: {cookies_db}")
             return []
+
+        if progress_callback:
+            progress_callback(0, 1, "copying_database")
 
         temp_db = self._copy_db(cookies_db)
         cookies = []
@@ -253,6 +257,12 @@ class CookieExtractor:
                 ORDER BY host_key, name
             """)
 
+            rows = cursor.fetchall()
+            total = len(rows)
+
+            if progress_callback:
+                progress_callback(0, total, "extracting_cookies")
+
             crypto = self._get_crypto()
             key = None
 
@@ -266,10 +276,13 @@ class CookieExtractor:
 
             decrypt_success = 0
             decrypt_failed = 0
-            for row in cursor.fetchall():
+            for i, row in enumerate(rows):
                 (host_key, name, value, encrypted_value, path,
                  expires_utc, is_secure, is_httponly, samesite,
                  creation_utc, last_access_utc) = row
+
+                if progress_callback and i % 50 == 0:
+                    progress_callback(i, total, "extracting_cookies")
 
                 # Decrypt if needed
                 decrypted_value = value or ""
@@ -441,15 +454,29 @@ class CookieExtractor:
         logger.info(f"Extracted {len(all_storage)} localStorage entries from Firefox")
         return all_storage
 
-    def extract(self, site_filter: Optional[SiteFilter] = None) -> List[Dict]:
-        """Extract cookies based on browser type."""
+    def extract(self, site_filter: Optional[SiteFilter] = None,
+                progress_callback=None) -> List[Dict]:
+        """Extract cookies based on browser type.
+        
+        Args:
+            site_filter: Optional filter to apply
+            progress_callback: Optional callable(current, total, stage) for progress updates
+        """
+        if progress_callback:
+            progress_callback(0, 1, "starting")
+        
         if self.browser in ("chrome", "chromium", "edge", "brave"):
-            return self.extract_chrome(site_filter)
+            cookies = self.extract_chrome(site_filter)
         elif self.browser == "firefox":
-            return self.extract_firefox(site_filter)
+            cookies = self.extract_firefox(site_filter)
         else:
             logger.error(f"Unsupported browser: {self.browser}")
-            return []
+            cookies = []
+        
+        if progress_callback:
+            progress_callback(1, 1, "complete")
+        
+        return cookies
 
     @staticmethod
     def parse_netscape(content: str) -> List[Dict]:
