@@ -10,6 +10,12 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    import playwright
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+
 from tokenade.core.browser.manager import (
     BrowserConfig,
     BrowserManager,
@@ -110,6 +116,7 @@ class TestBrowserFactory(unittest.TestCase):
         self.assertIn("Google Chrome.app", path)
 
 
+@unittest.skipUnless(HAS_PLAYWRIGHT, "playwright not installed")
 class TestPlaywrightBrowserManager(unittest.TestCase):
     """Test PlaywrightBrowserManager with mocked Playwright."""
 

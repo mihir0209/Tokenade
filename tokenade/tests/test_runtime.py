@@ -258,6 +258,7 @@ class TestRuntimeEngine(unittest.TestCase):
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
             engine._session = mock_session
+            engine._tls_matcher = None
             
             mock_session.request.return_value = MockResponse(200)
             
