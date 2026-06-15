@@ -17,9 +17,204 @@ from typing import Optional, Dict
 from urllib.parse import urlparse
 
 import aiohttp
-from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+
+class _ForwardProxyProtocol(asyncio.Protocol):
+    """Raw asyncio protocol handling HTTP proxy and CONNECT tunneling."""
+
+    def __init__(self, proxy: "ForwardProxy"):
+        self.proxy = proxy
+        self.transport: Optional[asyncio.Transport] = None
+        self._buffer = b""
+
+    def connection_made(self, transport: asyncio.Transport):
+        self.transport = transport
+
+    def data_received(self, data: bytes):
+        self._buffer += data
+        # Check if we have a complete request
+        if b"\r\n\r\n" in self._buffer:
+            asyncio.ensure_future(self._process())
+
+    async def _process(self):
+        """Parse the incoming HTTP request and route it."""
+        try:
+            raw = self._buffer
+            self._buffer = b""
+
+            # Parse request line
+            first_line = raw.split(b"\r\n", 1)[0].decode("latin-1")
+            parts = first_line.split(" ", 2)
+            if len(parts) < 3:
+                self.transport.close()
+                return
+
+            method, target, _ = parts
+
+            if method.upper() == "CONNECT":
+                await self._handle_connect(raw, target)
+            else:
+                await self._handle_http(method, target, raw)
+        except Exception as e:
+            logger.error(f"Proxy protocol error: {e}")
+            self.transport.close()
+
+    async def _handle_connect(self, raw: bytes, target: str):
+        """Handle HTTPS CONNECT tunneling."""
+        self.proxy.stats["requests"] += 1
+
+        # Parse host:port from target
+        if ":" in target:
+            host, port = target.rsplit(":", 1)
+            port = int(port)
+        else:
+            host = target
+            port = 443
+
+        logger.debug(f"CONNECT tunnel to {host}:{port}")
+
+        try:
+            target_reader, target_writer = await asyncio.open_connection(host, port)
+        except Exception as e:
+            logger.error(f"CONNECT failed to {host}:{port}: {e}")
+            self.proxy.stats["errors"] += 1
+            self.transport.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            self.transport.close()
+            return
+
+        # Send 200 Connection Established
+        self.transport.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+
+        # Get raw socket for bidirectional piping
+        sock = self.transport.get_extra_info("socket")
+        if sock is None:
+            target_writer.close()
+            self.transport.close()
+            return
+
+        sock.setblocking(False)
+        loop = asyncio.get_event_loop()
+
+        async def pipe_client_to_target():
+            try:
+                while True:
+                    data = await loop.sock_recv(sock, 65536)
+                    if not data:
+                        break
+                    target_writer.write(data)
+                    await target_writer.drain()
+                    self.proxy.stats["bytes_sent"] += len(data)
+            except Exception:
+                pass
+            finally:
+                target_writer.close()
+
+        async def pipe_target_to_client():
+            try:
+                while True:
+                    data = await target_reader.read(65536)
+                    if not data:
+                        break
+                    await loop.sock_sendall(sock, data)
+                    self.proxy.stats["bytes_received"] += len(data)
+            except Exception:
+                pass
+
+        try:
+            await asyncio.gather(
+                pipe_client_to_target(),
+                pipe_target_to_client(),
+                return_exceptions=True,
+            )
+        except Exception as e:
+            logger.error(f"CONNECT tunnel error: {e}")
+            self.proxy.stats["errors"] += 1
+        finally:
+            try:
+                target_writer.close()
+                await target_writer.wait_closed()
+            except Exception:
+                pass
+
+    async def _handle_http(self, method: str, target: str, raw: bytes):
+        """Handle regular HTTP proxy requests with cookie injection."""
+        self.proxy.stats["requests"] += 1
+
+        # Build target URL
+        url = target
+        if not url.startswith(("http://", "https://")):
+            # Extract from raw headers
+            headers = self._parse_headers(raw)
+            host = headers.get("host", headers.get("Host", ""))
+            url = f"http://{host}{target}"
+
+        parsed = urlparse(url)
+        if not parsed.hostname:
+            self.transport.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+            self.transport.close()
+            return
+
+        # Get cookies for this domain
+        cookies = self.proxy._cookie_jar.get_for_request(url)
+
+        # Parse headers from raw request
+        headers = self._parse_headers(raw)
+        headers.pop("Proxy-Connection", None)
+        headers.pop("Proxy-Authorization", None)
+        headers.pop("Proxy-Host", None)
+
+        if cookies:
+            headers["cookie"] = cookies
+
+        # Extract body from raw bytes
+        header_end = raw.find(b"\r\n\r\n")
+        body = raw[header_end + 4 :] if header_end != -1 else None
+
+        try:
+            session = await self.proxy._get_session()
+            async with session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                data=body if method in ("POST", "PUT", "PATCH") else None,
+                ssl=False,
+                allow_redirects=False,
+            ) as resp:
+                resp_body = await resp.read()
+                self.proxy.stats["bytes_received"] += len(resp_body)
+
+                # Build response
+                resp_line = f"HTTP/1.1 {resp.status} {resp.reason}\r\n"
+                resp_headers = ""
+                for k, v in resp.headers.items():
+                    k_lower = k.lower()
+                    if k_lower not in ("transfer-encoding", "content-encoding", "connection"):
+                        resp_headers += f"{k}: {v}\r\n"
+
+                response = resp_line.encode() + resp_headers.encode() + b"\r\n" + resp_body
+                self.transport.write(response)
+        except Exception as e:
+            self.proxy.stats["errors"] += 1
+            logger.error(f"HTTP proxy error: {e}")
+            self.transport.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+
+        self.transport.close()
+
+    def _parse_headers(self, raw: bytes) -> Dict[str, str]:
+        """Parse headers from raw HTTP request bytes."""
+        header_section = raw.split(b"\r\n\r\n", 1)[0]
+        lines = header_section.split(b"\r\n")[1:]  # Skip request line
+        headers = {}
+        for line in lines:
+            if b":" in line:
+                key, value = line.split(b":", 1)
+                headers[key.decode("latin-1").strip().lower()] = value.decode("latin-1").strip()
+        return headers
+
+    def connection_lost(self, exc):
+        pass
 
 
 class ForwardProxy:
@@ -34,10 +229,11 @@ class ForwardProxy:
         self._tls_matcher = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
+        self._server: Optional[asyncio.AbstractServer] = None
         self.stats = {"requests": 0, "bytes_sent": 0, "bytes_received": 0, "errors": 0}
 
     async def start(self):
-        """Start the forward proxy server."""
+        """Start the forward proxy server using raw asyncio for CONNECT support."""
         from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
         from tokenade.core.runtime.tls_matcher import create_tls_matcher
 
@@ -52,14 +248,12 @@ class ForwardProxy:
             impersonate=tls_profile.get("impersonate"),
         )
 
-        app = web.Application()
-        app.router.add_route("*", "/{path:.*}", self._handle_request)
-        app.router.add_route("*", "", self._handle_request)
-
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
-        await site.start()
+        loop = asyncio.get_event_loop()
+        self._server = await loop.create_server(
+            lambda: _ForwardProxyProtocol(self),
+            self.host,
+            self.port,
+        )
 
         logger.info(f"Forward proxy listening on {self.host}:{self.port}")
         print(f"\n🔒 Forward proxy ready on {self.host}:{self.port}")
@@ -73,172 +267,9 @@ class ForwardProxy:
         finally:
             if self._http_session and not self._http_session.closed:
                 await self._http_session.close()
-            await runner.cleanup()
-
-    async def _handle_request(self, request: web.Request) -> web.Response:
-        """Handle proxied HTTP requests (including CONNECT tunneling)."""
-        self.stats["requests"] += 1
-
-        # Handle CONNECT method for HTTPS tunneling
-        if request.method == "CONNECT":
-            return await self._handle_connect(request)
-
-        # Build target URL
-        url = request.path_qs
-        if not url.startswith(("http://", "https://")):
-            # Regular proxy request: path contains the full URL
-            url = f"http://{request.headers.get('Host', request.host)}{request.path_qs}"
-
-        parsed = urlparse(url)
-        if not parsed.hostname:
-            return web.Response(text="Invalid URL", status=400)
-
-        # Get cookies for this domain
-        cookies = self._cookie_jar.get_for_request(url)
-
-        # Build headers
-        headers = dict(request.headers)
-        headers.pop("Proxy-Connection", None)
-        headers.pop("Proxy-Authorization", None)
-
-        if cookies:
-            headers["cookie"] = cookies
-
-        # Read body
-        body = await request.read() if request.method in ("POST", "PUT", "PATCH") else None
-
-        try:
-            async with self._get_session() as session:
-                async with session.request(
-                    method=request.method,
-                    url=url,
-                    headers=headers,
-                    data=body,
-                    ssl=False,
-                    allow_redirects=False,
-                ) as resp:
-                    resp_body = await resp.read()
-                    self.stats["bytes_received"] += len(resp_body)
-
-                    # Filter response headers
-                    resp_headers = dict(resp.headers)
-                    resp_headers.pop("Transfer-Encoding", None)
-                    resp_headers.pop("Content-Encoding", None)
-                    resp_headers.pop("Connection", None)
-
-                    return web.Response(
-                        status=resp.status,
-                        headers=resp_headers,
-                        body=resp_body,
-                    )
-        except Exception as e:
-            self.stats["errors"] += 1
-            logger.error(f"Forward proxy error: {e}")
-            return web.Response(text="Bad Gateway", status=502)
-
-    async def _handle_connect(self, request: web.Request) -> web.Response:
-        """Handle HTTPS CONNECT tunneling.
-
-        When a browser sends CONNECT proxy.example.com:443, we:
-        1. Open a TCP connection to the target host:port
-        2. Send "200 Connection Established" back to the client
-        3. Pipe data bidirectionally between client and target
-        """
-        # Parse target from Host header (host:port format)
-        host_header = request.headers.get("Host", "")
-        if ":" in host_header:
-            target_host, target_port = host_header.rsplit(":", 1)
-            target_port = int(target_port)
-        else:
-            target_host = host_header
-            target_port = 443
-
-        if not target_host:
-            return web.Response(text="Missing target host", status=400)
-
-        logger.debug(f"CONNECT tunnel to {target_host}:{target_port}")
-
-        try:
-            transport = request.transport
-            if transport is None:
-                return web.Response(text="No transport available", status=500)
-
-            # Open TCP connection to target
-            target_reader, target_writer = await asyncio.open_connection(
-                target_host, target_port
-            )
-        except Exception as e:
-            logger.error(f"CONNECT failed to {target_host}:{target_port}: {e}")
-            self.stats["errors"] += 1
-            return web.Response(text="Connection failed", status=502)
-
-        try:
-            # Send 200 Connection Established to client
-            transport.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-
-            # Get the raw socket from the transport for bidirectional piping
-            # asyncio transports wrap a socket; we can get it via _sock or _protocol
-            loop = asyncio.get_event_loop()
-            sock = None
-
-            # Try multiple ways to get the raw socket
-            if hasattr(transport, '_sock') and transport._sock:
-                sock = transport._sock
-            elif hasattr(transport, 'get_extra_info'):
-                sock = transport.get_extra_info('socket')
-
-            if sock is None:
-                logger.error("Could not get raw socket from transport")
-                target_writer.close()
-                return web.Response(text="Tunnel setup failed", status=500)
-
-            # Set non-blocking for async reads
-            sock.setblocking(False)
-
-            async def pipe_client_to_target():
-                """Read from client socket, write to target."""
-                try:
-                    while True:
-                        data = await loop.sock_recv(sock, 65536)
-                        if not data:
-                            break
-                        target_writer.write(data)
-                        await target_writer.drain()
-                        self.stats["bytes_sent"] += len(data)
-                except Exception:
-                    pass
-                finally:
-                    target_writer.close()
-
-            async def pipe_target_to_client():
-                """Read from target, write to client socket."""
-                try:
-                    while True:
-                        data = await target_reader.read(65536)
-                        if not data:
-                            break
-                        await loop.sock_sendall(sock, data)
-                        self.stats["bytes_received"] += len(data)
-                except Exception:
-                    pass
-
-            await asyncio.gather(
-                pipe_client_to_target(),
-                pipe_target_to_client(),
-                return_exceptions=True,
-            )
-
-        except Exception as e:
-            logger.error(f"CONNECT tunnel error: {e}")
-            self.stats["errors"] += 1
-        finally:
-            target_writer.close()
-            try:
-                await target_writer.wait_closed()
-            except Exception:
-                pass
-
-        return web.Response()
+            if self._server:
+                self._server.close()
+                await self._server.wait_closed()
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session with thread-safe init."""
