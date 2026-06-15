@@ -264,6 +264,8 @@ class CookieExtractor:
                 except Exception as e:
                     logger.debug(f"Could not get encryption key: {e}")
 
+            decrypt_success = 0
+            decrypt_failed = 0
             for row in cursor.fetchall():
                 (host_key, name, value, encrypted_value, path,
                  expires_utc, is_secure, is_httponly, samesite,
@@ -276,8 +278,19 @@ class CookieExtractor:
                         decrypted = crypto.decrypt_cookie(encrypted_value, key)
                         if decrypted is not None:
                             decrypted_value = decrypted
+                            decrypt_success += 1
+                        else:
+                            decrypt_failed += 1
+                            logger.warning(
+                                f"Decryption failed for cookie '{name}' on {host_key} "
+                                f"(encrypted_value present but decryption returned None)"
+                            )
                     except Exception as e:
-                        logger.debug(f"Failed to decrypt cookie {name}: {e}")
+                        decrypt_failed += 1
+                        logger.warning(f"Decryption error for cookie '{name}' on {host_key}: {e}")
+                elif encrypted_value and not key:
+                    decrypt_failed += 1
+                    logger.debug(f"Skipping encrypted cookie '{name}' (no decryption key)")
 
                 # Convert Chrome time to Unix timestamp
                 expires = None
@@ -315,6 +328,11 @@ class CookieExtractor:
         if site_filter:
             cookies = site_filter.filter_cookies(cookies)
 
+        if decrypt_failed > 0:
+            logger.warning(
+                f"Cookie decryption: {decrypt_success} succeeded, "
+                f"{decrypt_failed} failed (of {decrypt_success + decrypt_failed} encrypted)"
+            )
         logger.info(f"Extracted {len(cookies)} cookies from Chrome")
         return cookies
 

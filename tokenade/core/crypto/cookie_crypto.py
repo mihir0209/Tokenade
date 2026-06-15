@@ -191,7 +191,7 @@ class WindowsCookieCrypto(CookieCrypto):
                 return decrypted.decode("utf-8")
                 
         except Exception as e:
-            logger.debug(f"Decryption failed: {e}")
+            logger.warning(f"Decryption failed: {e}")
             return None
     
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
@@ -325,7 +325,7 @@ class LinuxCookieCrypto(CookieCrypto):
                 return encrypted_value.decode("utf-8", errors="ignore")
                 
         except Exception as e:
-            logger.debug(f"Linux decryption failed: {e}")
+            logger.warning(f"Linux decryption failed: {e}")
             return None
     
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
@@ -450,7 +450,7 @@ class MacCookieCrypto(CookieCrypto):
             else:
                 return encrypted_value.decode("utf-8", errors="ignore")
         except Exception as e:
-            logger.debug(f"macOS decryption failed: {e}")
+            logger.warning(f"macOS decryption failed: {e}")
             return None
 
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
