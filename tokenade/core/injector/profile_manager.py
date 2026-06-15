@@ -125,7 +125,18 @@ class ProfileManager:
             )
             
         except Exception as e:
-            logger.error(f"Cookie injection failed: {e}")
+            error_msg = str(e).lower()
+            hint = ""
+            if "database is locked" in error_msg or "SQLITE_BUSY" in str(e):
+                hint = " Close the browser before injecting cookies into its profile."
+            elif "no such table" in error_msg:
+                hint = f" Database schema mismatch. Expected 'cookies' or 'moz_cookies' table in {profile_path}"
+            elif "no such file" in error_msg or "not found" in error_msg:
+                hint = f" Profile path not found: {profile_path}"
+            elif "permission denied" in error_msg:
+                hint = f" Check file permissions for: {profile_path}"
+
+            logger.error(f"Cookie injection failed: {e}{hint}")
             return InjectionResult(
                 success=False,
                 cookies_injected=0,

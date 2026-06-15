@@ -185,7 +185,20 @@ class PlaywrightBrowserManager(BrowserManager):
             return self._page
             
         except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
+            error_msg = str(e).lower()
+            hint = ""
+            if "executable path" in error_msg or "not found" in error_msg:
+                hint = " Install browser: playwright install chromium"
+            elif "timeout" in error_msg:
+                hint = " Browser launch timed out. Try closing other browser instances."
+            elif "already connected" in error_msg or "address in use" in error_msg:
+                hint = " Port in use. Try a different port or close conflicting processes."
+            elif "permission denied" in error_msg:
+                hint = " Check file permissions for browser profile directory."
+            elif "playwright" in error_msg and "not installed" in error_msg:
+                hint = " Run: pip install playwright && playwright install chromium"
+
+            logger.error(f"Failed to launch browser ({self.config.browser_type}): {e}{hint}")
             self.close()
             raise
     

@@ -360,7 +360,18 @@ class SessionLoader:
             logger.info(f"Session load complete: {result['success']}")
 
         except Exception as e:
-            logger.error(f"Session load failed: {e}")
+            error_msg = str(e).lower()
+            hint = ""
+            if "no such file" in error_msg or "file not found" in error_msg:
+                hint = f" Session file not found: {file_path}"
+            elif "json" in error_msg or "decode" in error_msg:
+                hint = f" Invalid .tokenade file format: {file_path}"
+            elif "browser" in error_msg and ("launch" in error_msg or "start" in error_msg):
+                hint = " Install browser: playwright install chromium"
+            elif "permission denied" in error_msg:
+                hint = f" Check file permissions for: {file_path}"
+
+            logger.error(f"Session load failed: {e}{hint}")
             result["error"] = str(e)
             # Close browser on error to prevent process leak
             if self._browser:

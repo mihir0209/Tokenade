@@ -78,7 +78,18 @@ class _ForwardProxyProtocol(asyncio.Protocol):
         try:
             target_reader, target_writer = await asyncio.open_connection(host, port)
         except Exception as e:
-            logger.error(f"CONNECT failed to {host}:{port}: {e}")
+            error_msg = str(e).lower()
+            hint = ""
+            if "name or service not known" in error_msg or "nodename" in error_msg:
+                hint = f" DNS resolution failed for '{host}'. Check the hostname."
+            elif "connection refused" in error_msg:
+                hint = f" Target {host}:{port} refused the connection."
+            elif "timed out" in error_msg or "timeout" in error_msg:
+                hint = f" Connection to {host}:{port} timed out. Check network/firewall."
+            elif "network is unreachable" in error_msg:
+                hint = " Network is unreachable. Check your internet connection."
+
+            logger.error(f"CONNECT failed to {host}:{port}: {e}{hint}")
             self.proxy.stats["errors"] += 1
             self.transport.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
             self.transport.close()
@@ -197,7 +208,16 @@ class _ForwardProxyProtocol(asyncio.Protocol):
                 self.transport.write(response)
         except Exception as e:
             self.proxy.stats["errors"] += 1
-            logger.error(f"HTTP proxy error: {e}")
+            error_msg = str(e).lower()
+            hint = ""
+            if "name or service not known" in error_msg or "nodename" in error_msg:
+                hint = " DNS resolution failed. Check the URL."
+            elif "connection refused" in error_msg:
+                hint = " Target server refused the connection."
+            elif "timed out" in error_msg or "timeout" in error_msg:
+                hint = " Request timed out. Check network/firewall."
+
+            logger.error(f"HTTP proxy error for {method} {url}: {e}{hint}")
             self.transport.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
 
         self.transport.close()
