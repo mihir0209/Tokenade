@@ -1,4 +1,4 @@
-# Tokenade v3.0 — Browser Session Portability Tool
+# Tokenade v4.1 — Browser Session Portability Tool
 
 Extract browser sessions from one device, package them into portable `.tokenade` files, and browse as the donor on another device using a **CDP reverse proxy** with TLS fingerprint matching.
 
@@ -14,6 +14,9 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | **localStorage Support** | Extract/inject localStorage (Telegram, WhatsApp) |
 | **Encryption** | AES-256-GCM encryption for session files |
 | **Multi-Browser** | Cross-browser support (extract from Firefox, inject into Chrome) |
+| **Session Refresh** | Auto-refresh expiring cookies with multi-browser fallback |
+| **Health Scoring** | OWASP-based session health scoring and validation |
+| **Site Configs** | Preset configs for GitHub, Discord, Reddit, Google, OpenAI |
 
 ### Advanced
 
@@ -159,6 +162,16 @@ so servers see the donor's fingerprint, not yours.
 
 **Unique advantage**: Tokenade is the only CLI tool that matches TLS fingerprints for cross-browser session portability.
 
+## What's New in v4.1
+
+- **Site Configs** — Preset configs for GitHub, Discord, Reddit, Google, OpenAI with validation URLs and CSS selectors
+- **Progress Indicators** — Real-time progress bar during cookie extraction
+- **Better Error Messages** — Contextual hints for common failures (missing browser, locked DB, DNS errors)
+- **Config File** — `~/.tokenade/config.json` for persistent defaults
+- **Forward Proxy Rewrite** — Raw asyncio protocol for proper HTTPS CONNECT tunneling
+- **Decryption Logging** — Cookie decryption failures now surface as warnings instead of silent fallback
+- **Session Loader Cleanup** — Browser processes now properly closed on error
+
 ## Quick Start (3 commands)
 
 ### Step 1 — Export cookies from your browser
@@ -270,6 +283,26 @@ tokenade inject-profile -s session.tokenade --browser firefox --profile "default
 tokenade inject-profile -s session.tokenade --browser firefox --profile "default" --dry-run
 ```
 
+### Configuration
+
+```bash
+# View all config
+tokenade config show
+
+# Set defaults
+tokenade config set default_browser brave
+tokenade config set stealth_level maximum
+tokenade config set proxy_port 9223
+
+# Get a value
+tokenade config get default_browser
+
+# Config file location
+tokenade config path
+```
+
+Config is stored at `~/.tokenade/config.json`.
+
 ## Docker
 
 ```bash
@@ -379,15 +412,17 @@ tokenade/
 │   │   └── engine.py             # CookieJar, FingerprintMatcher
 │   ├── importer/
 │   │   ├── browser_discovery.py  # Find browser profiles
-│   │   ├── cookie_extractor.py   # Extract cookies from SQLite
+│   │   ├── cookie_extractor.py   # Extract cookies from SQLite (with progress)
 │   │   ├── local_storage_extractor.py
 │   │   ├── session_packager.py   # Package into .tokenade (with LRU cache)
 │   │   ├── session_loader.py     # Load .tokenade into browser
 │   │   ├── session_refresher.py  # Auto-refresh with WebSocket notifications
-│   │   ├── session_sharer.py     # Email, webhook, HMAC signatures
+│   │   ├── session_sharer.py     # Email, webhook, HMAC signatures, QR codes
 │   │   ├── session_manager.py    # Multi-session management
 │   │   ├── session_comparator.py # Session diff tool
 │   │   ├── advanced_validator.py # Custom validation rules
+│   │   ├── validator.py          # Composable validation strategies
+│   │   ├── site_configs.py       # Preset configs for popular sites
 │   │   ├── safari_extractor.py   # Safari binary cookie parser
 │   │   ├── tor_extractor.py      # Tor Browser extraction
 │   │   ├── adb_extractor.py      # Android ADB extraction
@@ -405,12 +440,13 @@ tokenade/
 │   │   └── profile_manager.py    # Direct profile injection
 │   ├── batch/
 │   │   └── operations.py         # Batch export/load
+│   ├── config.py                 # ~/.tokenade/config.json support
 │   └── utils/
 │       └── performance.py        # LRU cache, connection pooling, parallel extraction
-├── cli.py                        # CLI entry point (21 commands)
+├── cli/                          # CLI commands (22 commands)
 ├── handlers/                     # Site-specific handlers
 ├── extension/                    # Browser extension
-└── tests/                        # 1045 tests
+└── tests/                        # 1383 tests
 ```
 
 ## .tokenade File Format
@@ -478,7 +514,7 @@ pip install -e ".[linux]"      # secretstorage for Linux keyring
 
 ```bash
 make install-dev     # Install with dev deps + Playwright
-make test            # Run all 1045 tests
+make test            # Run all 1383 tests
 make test-quick      # Skip slow/network tests
 make lint            # Flake8 linting
 make format          # Black formatting
