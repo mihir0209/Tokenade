@@ -98,6 +98,152 @@ _BLOCKED_NETWORKS = [
     ipaddress.ip_network("fc00::/7"),
 ]
 
+# Comprehensive stealth script that bypasses bot detection
+# Applied to every page when no fingerprint data is available
+_COMPREHENSIVE_STEALTH_SCRIPT = """
+(function() {
+    'use strict';
+
+    // ===== 1. Remove navigator.webdriver =====
+    // Must use Object.defineProperty on the prototype, not delete
+    Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
+        get: () => undefined,
+        configurable: true
+    });
+
+    // ===== 2. Add window.chrome (required by many sites) =====
+    if (!window.chrome) {
+        window.chrome = {};
+    }
+    if (!window.chrome.runtime) {
+        window.chrome.runtime = {
+            connect: function() {},
+            sendMessage: function() {},
+            onMessage: { addListener: function() {}, removeListener: function() {} },
+            onConnect: { addListener: function() {}, removeListener: function() {} }
+        };
+    }
+
+    // ===== 3. Fix navigator.plugins to be a real PluginArray =====
+    const pluginData = [
+        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+    ];
+
+    const pluginArray = Object.create(PluginArray.prototype);
+    pluginData.forEach((p, i) => {
+        const plugin = Object.create(Plugin.prototype);
+        Object.defineProperties(plugin, {
+            name: { get: () => p.name, configurable: true },
+            filename: { get: () => p.filename, configurable: true },
+            description: { get: () => p.description, configurable: true },
+            length: { get: () => 0, configurable: true }
+        });
+        pluginArray[i] = plugin;
+    });
+    Object.defineProperty(pluginArray, 'length', { get: () => pluginData.length, configurable: true });
+    pluginArray.item = function(i) { return this[i] || null; };
+    pluginArray.namedItem = function(n) { return pluginData.find(p => p.name === n) ? this[pluginData.findIndex(p => p.name === n)] : null; };
+    pluginArray.refresh = function() {};
+
+    Object.defineProperty(navigator, 'plugins', { get: () => pluginArray, configurable: true });
+
+    // ===== 4. Fix navigator.languages =====
+    Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+        configurable: true
+    });
+    Object.defineProperty(navigator, 'language', {
+        get: () => 'en-US',
+        configurable: true
+    });
+
+    // ===== 5. Fix navigator.permissions.query =====
+    const origQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (params) => {
+        if (params.name === 'notifications') {
+            return Promise.resolve({ state: Notification.permission });
+        }
+        return origQuery(params);
+    };
+
+    // ===== 6. Remove headless indicators =====
+    // Fix window.outerWidth/outerHeight (0 in headless)
+    if (window.outerWidth === 0) {
+        Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth, configurable: true });
+    }
+    if (window.outerHeight === 0) {
+        Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85, configurable: true });
+    }
+
+    // ===== 7. WebGL fingerprint consistency =====
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(param) {
+        // UNMASKED_VENDOR_WEBGL
+        if (param === 37445) return 'Google Inc. (Intel)';
+        // UNMASKED_RENDERER_WEBGL
+        if (param === 37446) return 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 630, OpenGL 4.6)';
+        return getParameter.call(this, param);
+    };
+
+    // ===== 8. Remove DevTools protocol indicators =====
+    const origGetter = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgent');
+    if (origGetter && origGetter.get) {
+        const ua = origGetter.get.call(navigator);
+        if (ua.includes('HeadlessChrome')) {
+            Object.defineProperty(navigator, 'userAgent', {
+                get: () => ua.replace('HeadlessChrome', 'Chrome'),
+                configurable: true
+            });
+        }
+    }
+
+    // ===== 9. Console.debug override (some bots use it) =====
+    const origDebug = console.debug;
+    console.debug = function() { return origDebug.apply(this, arguments); };
+
+    // ===== 10. Fix screen dimensions for headless =====
+    if (screen.width === 0 || screen.height === 0) {
+        Object.defineProperty(screen, 'width', { get: () => 1920, configurable: true });
+        Object.defineProperty(screen, 'height', { get: () => 1080, configurable: true });
+        Object.defineProperty(screen, 'availWidth', { get: () => 1920, configurable: true });
+        Object.defineProperty(screen, 'availHeight', { get: () => 1040, configurable: true });
+        Object.defineProperty(screen, 'colorDepth', { get: () => 24, configurable: true });
+        Object.defineProperty(screen, 'pixelDepth', { get: () => 24, configurable: true });
+    }
+
+    // ===== 11. navigator.connection =====
+    if (!navigator.connection) {
+        Object.defineProperty(navigator, 'connection', {
+            get: () => ({
+                effectiveType: '4g',
+                rtt: 50,
+                downlink: 10,
+                saveData: false
+            }),
+            configurable: true
+        });
+    }
+
+    // ===== 12. Remove automation-related properties =====
+    const cdcProps = Object.getOwnPropertyNames(window).filter(p => p.startsWith('cdc_'));
+    cdcProps.forEach(p => { try { delete window[p]; } catch(e) {} });
+
+    // ===== 13. Override toString to hide patches =====
+    const nativeToString = Function.prototype.toString;
+    Function.prototype.toString = function() {
+        if (this === navigator.permissions.query) {
+            return 'function query() { [native code] }';
+        }
+        if (this === navigator.plugins.item) {
+            return 'function item() { [native code] }';
+        }
+        return nativeToString.call(this);
+    };
+})();
+"""
+
 
 def _is_safe_url(url: str) -> bool:
     """Check if a URL is safe to proxy (not targeting internal networks)."""
@@ -244,6 +390,9 @@ class CDPProxy:
             ),
         )
         
+        # Inject stealth fingerprint spoofing script
+        await self._inject_stealth_script()
+        
         # Inject donor cookies
         await self._inject_cookies()
         
@@ -370,6 +519,56 @@ class CDPProxy:
             logger.info("Session hot-reloaded successfully")
         except Exception as e:
             logger.error(f"Failed to hot-reload session: {e}")
+    
+    async def _inject_stealth_script(self):
+        """Inject fingerprint spoofing stealth script into browser context."""
+        try:
+            from tokenade.core.fingerprint.stealth import StealthScriptBuilder
+            from tokenade.core.fingerprint.manager import BrowserFingerprint
+            
+            fp_data = self.session.get("fingerprint")
+            if not fp_data:
+                logger.debug("No fingerprint data, using comprehensive stealth script")
+                script = _COMPREHENSIVE_STEALTH_SCRIPT
+                await self._context.add_init_script(script)
+                logger.info("Injected comprehensive stealth script (no fingerprint data)")
+                return
+            
+            # Build fingerprint from session data
+            fingerprint = BrowserFingerprint(
+                user_agent=fp_data.get("user_agent", ""),
+                platform=fp_data.get("platform", "Linux x86_64"),
+                language=fp_data.get("language", "en-US"),
+                languages=fp_data.get("languages", ["en-US", "en"]),
+                hardware_concurrency=fp_data.get("hardware_concurrency", 8),
+                device_memory=fp_data.get("device_memory", 8),
+                screen_width=fp_data.get("screen_width", 1920),
+                screen_height=fp_data.get("screen_height", 1080),
+                color_depth=fp_data.get("color_depth", 24),
+                device_pixel_ratio=fp_data.get("device_pixel_ratio", 1),
+                webgl_vendor=fp_data.get("webgl_vendor", ""),
+                webgl_renderer=fp_data.get("webgl_renderer", ""),
+                canvas_fingerprint=fp_data.get("canvas_fingerprint", ""),
+                plugins=fp_data.get("plugins", []),
+                max_touch_points=fp_data.get("max_touch_points", 0),
+            )
+            
+            # Build stealth script
+            builder = StealthScriptBuilder(fingerprint)
+            stealth_level = self._auto_refresh_config.get("stealth_level", "maximum")
+            script = builder.build(level=stealth_level)
+            
+            # Inject into all future pages
+            await self._context.add_init_script(script)
+            logger.info(f"Injected stealth fingerprint script (level={stealth_level})")
+            
+        except Exception as e:
+            logger.warning(f"Failed to inject stealth script: {e}")
+            # Fallback: minimal automation cleanup
+            try:
+                await self._context.add_init_script(_COMPREHENSIVE_STEALTH_SCRIPT)
+            except Exception:
+                pass
     
     async def _inject_cookies(self):
         """Inject donor cookies into the Playwright browser context."""
