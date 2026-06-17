@@ -879,6 +879,10 @@ class CDPProxy:
         app.router.add_get("/json/list", self._handle_cdp_list)
         app.router.add_get("/json/list/", self._handle_cdp_list)
         
+        # Stealth script helper (for CDP clients to fetch and inject)
+        app.router.add_get("/stealth.js", self._handle_stealth_js)
+        app.router.add_get("/stealth.js/", self._handle_stealth_js)
+        
         # Reverse proxy catch-all (must be last)
         app.router.add_route("*", "/{path:.*}", self._handle_proxy)
         
@@ -1714,6 +1718,15 @@ self.addEventListener('activate', () => {
                     return web.json_response(data)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=502)
+    
+    async def _handle_stealth_js(self, request: web.Request) -> web.Response:
+        """Return the comprehensive stealth script as JavaScript.
+        
+        CDP clients can fetch this and inject via:
+            stealth = requests.get("http://127.0.0.1:9222/stealth.js").text
+            await ctx.add_init_script(stealth)
+        """
+        return web.Response(text=_COMPREHENSIVE_STEALTH_SCRIPT, content_type='application/javascript')
     
     def _build_target_url(self, request: web.Request) -> Optional[str]:
         """Build target URL from request."""

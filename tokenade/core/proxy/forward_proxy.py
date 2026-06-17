@@ -76,7 +76,9 @@ class _ForwardProxyProtocol(asyncio.Protocol):
         logger.debug(f"CONNECT tunnel to {host}:{port}")
 
         try:
-            target_reader, target_writer = await asyncio.open_connection(host, port)
+            target_reader, target_writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=10
+            )
         except Exception as e:
             error_msg = str(e).lower()
             hint = ""
@@ -98,20 +100,21 @@ class _ForwardProxyProtocol(asyncio.Protocol):
         # Send 200 Connection Established
         self.transport.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
 
-        # Get raw socket for bidirectional piping
-        sock = self.transport.get_extra_info("socket")
-        if sock is None:
-            target_writer.close()
-            self.transport.close()
-            return
-
-        sock.setblocking(False)
+        # Upgrade transport to a StreamReader for bidirectional piping
         loop = asyncio.get_event_loop()
+        client_reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(client_reader)
+        client_transport = self.transport
+        client_transport.set_protocol(protocol)
+        protocol.connection_made(client_transport)
+        
+        # Cancel the old data_received handler by replacing protocol
+        # Now we have: client_reader (from client) <-> target_reader/target_writer (to target)
 
         async def pipe_client_to_target():
             try:
                 while True:
-                    data = await loop.sock_recv(sock, 65536)
+                    data = await client_reader.read(65536)
                     if not data:
                         break
                     target_writer.write(data)
@@ -120,7 +123,10 @@ class _ForwardProxyProtocol(asyncio.Protocol):
             except Exception:
                 pass
             finally:
-                target_writer.close()
+                try:
+                    target_writer.close()
+                except Exception:
+                    pass
 
         async def pipe_target_to_client():
             try:
@@ -128,7 +134,7 @@ class _ForwardProxyProtocol(asyncio.Protocol):
                     data = await target_reader.read(65536)
                     if not data:
                         break
-                    await loop.sock_sendall(sock, data)
+                    client_transport.write(data)
                     self.proxy.stats["bytes_received"] += len(data)
             except Exception:
                 pass
@@ -168,7 +174,9 @@ class _ForwardProxyProtocol(asyncio.Protocol):
             return
 
         # Get cookies for this domain
-        cookies = self.proxy._cookie_jar.get_for_request(url)
+        cookies = ""
+        if self.proxy._cookie_jar:
+            cookies = self.proxy._cookie_jar.get_for_request(url)
 
         # Parse headers from raw request
         headers = self._parse_headers(raw)
