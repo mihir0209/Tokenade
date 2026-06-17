@@ -152,11 +152,16 @@ def cmd_export(args):
             browser_path = str(matching[0].path)
             print(f"📁 Using profile: {matching[0].name}")
         else:
-            print(f"❌ No profile found for {browser_name}")
+            print(f"❌ No profile found for '{browser_name}'")
+            print(f"   Run 'tokenade export --list-profiles' to see available profiles")
+            if args.profile:
+                print(f"   Profile '{args.profile}' not found — check spelling and try again")
             return
 
     if not browser_path:
-        print("❌ No browser path specified. Use --browser-name or --browser-path")
+        print("❌ No browser path specified.")
+        print("   Use --browser-name (e.g., --browser-name firefox) or --browser-path /path/to/profile")
+        print("   Run 'tokenade export --list-profiles' to discover available profiles")
         return
 
     print(f"\n🍪 Extracting cookies from: {browser_path}")

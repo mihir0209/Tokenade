@@ -120,4 +120,19 @@ def cmd_proxy(args):
         print("\n\n⚠️  Proxy stopped by user")
     except Exception as e:
         logger.error(f"Proxy failed: {e}", exc_info=True)
-        print(f"❌ Proxy failed — check port is available and session file is valid")
+        error_str = str(e).lower()
+        if "address already in use" in error_str or "eaddrinuse" in error_str:
+            print(f"❌ Port {args.port} is already in use.")
+            print(f"   Try: tokenade proxy -s {args.session} --port {args.port + 1}")
+            print(f"   Or kill the existing process: lsof -ti:{args.port} | xargs kill")
+        elif "session" in error_str and ("not found" in error_str or "no such file" in error_str):
+            print(f"❌ Session file not found: {args.session}")
+            print(f"   Export one first: tokenade export --browser-name firefox --domains 'example.com' -o session.tokenade")
+        elif "playwright" in error_str or "chromium" in error_str or "executable" in error_str:
+            print(f"❌ Chromium browser not found.")
+            print(f"   Install: playwright install chromium")
+        elif "permission" in error_str or "access" in error_str:
+            print(f"❌ Permission denied — check file and directory permissions")
+        else:
+            print(f"❌ Proxy failed: {e}")
+            print(f"   Check logs for details: ~/.tokenade/logs/")

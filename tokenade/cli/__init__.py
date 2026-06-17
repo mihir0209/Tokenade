@@ -510,5 +510,7 @@ Commands:
         if isinstance(e, TokenadeError):
             print(f"\n❌ {e}")
         else:
-            print(f"\n❌ An unexpected error occurred. Check logs for details.")
+            print(f"\n❌ Unexpected error: {e}")
+            print(f"   Run with --verbose for full traceback")
+            print(f"   Logs: ~/.tokenade/logs/")
         sys.exit(1)

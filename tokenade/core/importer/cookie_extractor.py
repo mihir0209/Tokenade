@@ -470,7 +470,11 @@ class CookieExtractor:
         elif self.browser == "firefox":
             cookies = self.extract_firefox(site_filter)
         else:
-            logger.error(f"Unsupported browser: {self.browser}")
+            supported = "chrome, chromium, edge, brave, firefox"
+            logger.error(
+                f"Unsupported browser: '{self.browser}'. "
+                f"Supported browsers: {supported}"
+            )
             cookies = []
         
         if progress_callback:

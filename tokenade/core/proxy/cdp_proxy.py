@@ -373,19 +373,42 @@ class CDPProxy:
         
         # Start Playwright browser
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=self.config.headless,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-                "--window-size=1920,1080",
-                "--window-position=0,0",
-                f"--remote-debugging-port={self._cdp_port}",
-                "--headless=new",
-            ]
-        )
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                headless=self.config.headless,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                    "--window-size=1920,1080",
+                    "--window-position=0,0",
+                    f"--remote-debugging-port={self._cdp_port}",
+                    "--headless=new",
+                ]
+            )
+        except Exception as e:
+            error_str = str(e).lower()
+            if "executable" in error_str or "not found" in error_str or "no such" in error_str:
+                raise RuntimeError(
+                    "Chromium browser not found. Install it with:\n"
+                    "  playwright install chromium\n\n"
+                    f"Original error: {e}"
+                ) from e
+            elif "timeout" in error_str:
+                raise RuntimeError(
+                    "Chromium launch timed out. The system may be under heavy load.\n"
+                    "Try: tokenade proxy -s <session> --visible\n\n"
+                    f"Original error: {e}"
+                ) from e
+            else:
+                raise RuntimeError(
+                    f"Failed to launch Chromium: {e}\n\n"
+                    "Troubleshooting:\n"
+                    "  1. Run: playwright install chromium\n"
+                    "  2. Check disk space and memory\n"
+                    "  3. Try: tokenade proxy -s <session> --visible"
+                ) from e
         
         # Use the default browser context (visible to external CDP connections)
         self._context = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context(
