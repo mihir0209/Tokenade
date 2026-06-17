@@ -691,7 +691,7 @@ class CDPProxy:
                 
                 while True:
                     try:
-                        raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5)
                         data = json_mod.loads(raw)
                         
                         method = data.get("method", "")

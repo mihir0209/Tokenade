@@ -41,7 +41,7 @@
 - `ctx.add_init_script()` on the external CDP context works perfectly for stealth injection
 - The proxy's own `add_init_script` does NOT persist to external CDP connections (by design)
 - **Architecture:** Proxy handles cookies + TLS + session management; Client handles stealth/fingerprint via `ctx.add_init_script()` + `Emulation.setUserAgentOverride`
-- Future: proxy will serve `/stealth.js` endpoint so clients can fetch and inject with one line
+- `/stealth.js` endpoint now serves the comprehensive stealth script for easy client injection
 
 ### All Phases Complete
 - Phase 1: Battle-tested all 6 core features ✅
@@ -50,11 +50,39 @@
 - Phase 4: Documentation (README, SITE_CONFIGS, TROUBLESHOOTING) ✅
 - Phase 5: Safari decryption, extension bridge, plugin enable/disable ✅
 
+### Forward Proxy Battle-Tested (2026-06-17)
+- **HTTPS CONNECT tunneling:** Google 200/82KB, DuckDuckGo 200/169KB
+- **HTTP forwarding:** example.com 200/388B
+- **Architecture fix:** Replaced `loop.sock_recv` on Protocol transport with stream-based bidirectional piping
+- **Crash fix:** Null check on `_cookie_jar` before `get_for_request()` in HTTP handler
+
+### Multi-Site Proxy Battle-Tested (2026-06-17)
+- **2 sessions loaded:** GitHub (port 9221, 9 cookies) + Gmail (port 9222, 123 cookies)
+- **SharedConnectionPool:** Thread-safe connection sharing between sessions
+- **Master GUI:** Combined session UI on base port
+
+### Stealth Script Battle-Tested (2026-06-17)
+- **`/stealth.js` endpoint:** Serves comprehensive stealth script as JavaScript
+- **Bot detection:** ALL GREEN on bot.sannysoft.com
+  - navigator.webdriver: None (hidden)
+  - window.chrome: object with runtime (real Chrome)
+  - navigator.plugins: 3 (Chrome PDF Plugin, Chrome PDF Viewer, Native Client)
+  - navigator.userAgent: Chrome/120 (not HeadlessChrome)
+  - navigator.languages: ['en-US', 'en']
+  - screen: 1920x1080
+  - WebGL: Intel UHD Graphics 630
+
+### Other Battle-Tests (2026-06-17)
+- **Health check:** 97.6% score, 3 expired cookies on Gmail session
+- **Session merge:** Gmail (123 cookies) + GitHub (9 cookies) → 94 merged (deduplicated), all domains from both present
+- **Profile injection:** Direct Brave profile injection working
+
 ### What's Next
-- Add `/stealth.js` helper endpoint to CDP proxy
-- Battle-test forward proxy HTTPS, multi-site proxy, session refresh
-- Battle-test more sites (Twitter/X, LinkedIn, Netflix)
+- Battle-test session refresh (`--auto-refresh` with live browser)
+- Battle-test Twitter/X, LinkedIn, Netflix with CDP proxy
 - Better error messages for common failures
+- Fix CDP monitor auto-attach thread isolation (currently blocks event loop briefly)
+- Publish v5.0.0 after battle-testing new features
 
 ## Manual Step-by-Step Procedure
 
@@ -184,7 +212,7 @@ External CDP Client (Playwright/Puppeteer)
 ```python
 from playwright.async_api import async_playwright
 
-STEALTH_JS = """..."""  # From proxy's /stealth.js endpoint (coming soon)
+    STEALTH_JS = requests.get("http://127.0.0.1:9222/stealth.js").text  # From proxy's /stealth.js endpoint
 
 async with async_playwright() as p:
     browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
@@ -266,10 +294,29 @@ async with async_playwright() as p:
   - window.outerWidth/outerHeight: 1920/1080 (not 0)
   - WebGL: Intel UHD Graphics 630 (realistic vendor/renderer)
 
+### Forward Proxy Test (2026-06-17)
+- Google HTTPS (connect_over_cdp → CONNECT tunnel): 200, 82KB
+- DuckDuckGo HTTPS: 200, 169KB
+- example.com HTTP: 200, 388B
+
+### Multi-Site Proxy Test (2026-06-17)
+- 2 sessions: GitHub (9 cookies, port 9221) + Gmail (123 cookies, port 9222)
+- SharedConnectionPool: Thread-safe, working
+- Master GUI: Combined session UI on base port
+
+### Health Check Test (2026-06-17)
+- Gmail session: 97.6% health score, 3 expired cookies
+- Report generated with recommendations
+
+### Session Merge Test (2026-06-17)
+- Gmail (123) + GitHub (9) → 94 cookies (deduplicated)
+- All domains from both sessions preserved (28 unique domains)
+
 ## Files Modified
 
 - `tokenade/cli.py` — Added `--cdp`/`--legacy` flags, `--domains` for export, updated help
-- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list` endpoints, remote debugging port
+- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach
+- `tokenade/core/proxy/forward_proxy.py` — Fixed CONNECT tunneling (stream-based piping), fixed HTTP handler crash
 - `tokenade/core/proxy/__init__.py` — Exports CDPProxy as primary
 - `README.md` — Rewritten with step-by-step procedure
 - `.agent/working.md` — This file
