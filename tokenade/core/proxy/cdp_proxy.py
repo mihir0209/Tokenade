@@ -317,6 +317,7 @@ class CDPProxy:
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
+        self._cdp_session = None  # Browser-level CDP session for global injection
         self._pages: Dict[str, Page] = {}  # url -> page
         self._page_meta: Dict[str, Dict] = {}  # url -> {"created": timestamp}
         self._max_pages = 20
@@ -330,6 +331,9 @@ class CDPProxy:
         # Session auto-refresh
         self._refresher: Optional[SessionRefresher] = None
         self._auto_refresh_config: Dict = {}
+        
+        # CDP remote debugging port (browser listens here, proxy forwards)
+        self._cdp_port = (self.config.port or 9222) + 1
         
         # Extension bridge (optional)
         self._extension_bridge = None
@@ -378,11 +382,13 @@ class CDPProxy:
                 "--disable-blink-features=AutomationControlled",
                 "--window-size=1920,1080",
                 "--window-position=0,0",
+                f"--remote-debugging-port={self._cdp_port}",
+                "--headless=new",
             ]
         )
         
-        # Create browser context with donor cookies
-        self._context = await self._browser.new_context(
+        # Use the default browser context (visible to external CDP connections)
+        self._context = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context(
             viewport={"width": 1920, "height": 960},
             user_agent=(self.session.get("fingerprint") or {}).get(
                 "user_agent",
@@ -390,11 +396,21 @@ class CDPProxy:
             ),
         )
         
-        # Inject stealth fingerprint spoofing script
-        await self._inject_stealth_script()
+        # Get browser-level CDP session for global injection
+        # This injects stealth/cookies at the browser level so ALL connections see them
+        try:
+            self._cdp_session = await self._browser.new_browser_cdp_session()
+            await self._inject_via_cdp()
+        except Exception as e:
+            logger.warning(f"CDP-level injection failed, falling back to context injection: {e}")
         
-        # Inject donor cookies
+        # Also inject via Playwright context API (for pages opened through this context)
+        await self._inject_stealth_script()
         await self._inject_cookies()
+        
+        # Also inject via raw CDP WebSocket at the browser level
+        # This ensures cookies/stealth are visible to ALL CDP connections
+        asyncio.ensure_future(self._inject_via_raw_cdp())
         
         # Start aiohttp server with duplicate-header tolerance
         self._app = self._create_app()
@@ -519,6 +535,203 @@ class CDPProxy:
             logger.info("Session hot-reloaded successfully")
         except Exception as e:
             logger.error(f"Failed to hot-reload session: {e}")
+    
+    async def _inject_via_cdp(self):
+        """Inject stealth script and cookies via CDP protocol (browser-level, visible to all connections)."""
+        if not self._cdp_session:
+            return
+        
+        try:
+            # 1. Inject stealth script via Page.addScriptToEvaluateOnNewDocument
+            await self._cdp_session.send("Page.addScriptToEvaluateOnNewDocument", {
+                "source": _COMPREHENSIVE_STEALTH_SCRIPT
+            })
+            logger.info("Injected stealth script via CDP (browser-level)")
+        except Exception as e:
+            logger.warning(f"CDP stealth injection failed: {e}")
+        
+        try:
+            # 2. Enable Network domain for cookie injection
+            await self._cdp_session.send("Network.enable")
+        except Exception:
+            pass
+        
+        # 3. Inject cookies via Network.setCookie
+        cookies = self.session.get("cookies", [])
+        injected = 0
+        for cookie in cookies:
+            try:
+                params = {
+                    "name": cookie.get("name", ""),
+                    "value": cookie.get("value", ""),
+                    "domain": cookie.get("domain", ""),
+                    "path": cookie.get("path", "/"),
+                }
+                if cookie.get("secure"):
+                    params["secure"] = True
+                if cookie.get("httpOnly"):
+                    params["httpOnly"] = True
+                
+                same_site = cookie.get("sameSite", "").lower()
+                if same_site == "strict":
+                    params["sameSite"] = "Strict"
+                elif same_site == "lax":
+                    params["sameSite"] = "Lax"
+                elif same_site == "none":
+                    params["sameSite"] = "None"
+                
+                expires = cookie.get("expires")
+                if expires:
+                    if isinstance(expires, (int, float)) and expires > 1262304000000:
+                        expires = expires / 1000
+                    params["expires"] = expires
+                
+                await self._cdp_session.send("Network.setCookie", params)
+                injected += 1
+            except Exception:
+                pass
+        
+        logger.info(f"Injected {injected}/{len(cookies)} cookies via CDP (browser-level)")
+    
+    async def _inject_via_raw_cdp(self):
+        """Inject cookies and stealth via raw CDP WebSocket at the browser level."""
+        import json as json_mod
+        try:
+            import websockets
+        except ImportError:
+            logger.warning("websockets not installed, skipping raw CDP injection")
+            return
+        
+        try:
+            import urllib.request
+            resp = urllib.request.urlopen(f"http://127.0.0.1:{self._cdp_port}/json/version", timeout=5)
+            version_info = json_mod.loads(resp.read())
+            ws_url = version_info.get("webSocketDebuggerUrl")
+            if not ws_url:
+                return
+        except Exception as e:
+            logger.warning(f"Failed to get CDP WebSocket URL: {e}")
+            return
+        
+        fp_data = self.session.get("fingerprint") or {}
+        user_agent = fp_data.get("user_agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        user_agent = user_agent.replace("HeadlessChrome", "Chrome")
+        cookies = self.session.get("cookies", [])
+        
+        try:
+            async with websockets.connect(ws_url, max_size=10*1024*1024) as ws:
+                msg_counter = [0]
+                buffered_events = []
+                
+                async def send_cdp_and_wait(method, params=None, session_id=None):
+                    """Send CDP command, read messages until we get the response, buffer events."""
+                    nonlocal msg_counter
+                    msg_counter[0] += 1
+                    mid = msg_counter[0]
+                    msg = {"id": mid, "method": method}
+                    if params:
+                        msg["params"] = params
+                    if session_id:
+                        msg["sessionId"] = session_id
+                    await ws.send(json_mod.dumps(msg))
+                    
+                    deadline = time.time() + 10
+                    while time.time() < deadline:
+                        try:
+                            raw = await asyncio.wait_for(ws.recv(), timeout=10)
+                            data = json_mod.loads(raw)
+                            if "id" in data and data["id"] == mid:
+                                return data
+                            elif "method" in data:
+                                buffered_events.append(data)
+                        except asyncio.TimeoutError:
+                            break
+                    return None
+                
+                # 1. Inject cookies
+                await send_cdp_and_wait("Storage.enable")
+                
+                storage_cookies = []
+                for cookie in cookies:
+                    try:
+                        c = {
+                            "name": cookie.get("name", ""),
+                            "value": cookie.get("value", ""),
+                            "domain": cookie.get("domain", ""),
+                            "path": cookie.get("path", "/"),
+                        }
+                        if cookie.get("secure"): c["secure"] = True
+                        if cookie.get("httpOnly"): c["httpOnly"] = True
+                        ss = cookie.get("sameSite", "").lower()
+                        if ss in ("strict", "lax", "none"):
+                            c["sameSite"] = ss.capitalize()
+                        exp = cookie.get("expires")
+                        if exp:
+                            if isinstance(exp, (int, float)) and exp > 1262304000000:
+                                exp = exp / 1000
+                            c["expires"] = exp
+                        storage_cookies.append(c)
+                    except Exception:
+                        pass
+                
+                r = await send_cdp_and_wait("Storage.setCookies", {"cookies": storage_cookies})
+                logger.info(f"Raw CDP: Storage.setCookies result: {r}")
+                
+                # 2. Auto-attach
+                r = await send_cdp_and_wait("Target.setAutoAttach", {
+                    "autoAttach": True,
+                    "waitForDebuggerOnStart": False,
+                    "flatten": True,
+                })
+                logger.info(f"Raw CDP: Target.setAutoAttach result: {r}")
+                
+                # 3. Event loop — inject stealth into new targets
+                logger.info(f"CDP monitor started: {len(cookies)} cookies, watching for targets")
+                
+                while True:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                        data = json_mod.loads(raw)
+                        
+                        method = data.get("method", "")
+                        params = data.get("params", {})
+                        
+                        if method == "Target.attachedToTarget":
+                            session_id = params.get("sessionId")
+                            target_info = params.get("targetInfo", {})
+                            if session_id and target_info.get("type") == "page":
+                                try:
+                                    msg_counter[0] += 1
+                                    mid = msg_counter[0]
+                                    await ws.send(json_mod.dumps({
+                                        "id": mid,
+                                        "method": "Page.addScriptToEvaluateOnNewDocument",
+                                        "params": {"source": _COMPREHENSIVE_STEALTH_SCRIPT, "runImmediately": True},
+                                        "sessionId": session_id,
+                                    }))
+                                    msg_counter[0] += 1
+                                    mid2 = msg_counter[0]
+                                    await ws.send(json_mod.dumps({
+                                        "id": mid2,
+                                        "method": "Emulation.setUserAgentOverride",
+                                        "params": {"userAgent": user_agent, "platform": "Linux x86_64"},
+                                        "sessionId": session_id,
+                                    }))
+                                    logger.debug(f"Injected stealth into {target_info.get('url', 'new')[:40]}")
+                                except Exception as e:
+                                    logger.debug(f"Target injection failed: {e}")
+                    
+                    except asyncio.TimeoutError:
+                        continue
+                    except websockets.ConnectionClosed:
+                        break
+                    except Exception as e:
+                        logger.debug(f"CDP monitor error: {e}")
+                        continue
+        
+        except Exception as e:
+            logger.warning(f"Raw CDP injection failed: {e}")
     
     async def _inject_stealth_script(self):
         """Inject fingerprint spoofing stealth script into browser context."""
@@ -659,6 +872,12 @@ class CDPProxy:
         app.router.add_post("/session/refresh", self._handle_session_refresh)
         app.router.add_post("/browse", self._handle_browse_post)
         app.router.add_get("/page/{page_id}", self._handle_page)
+        
+        # Chrome DevTools Protocol passthrough (for Playwright connect_over_cdp)
+        app.router.add_get("/json/version", self._handle_cdp_version)
+        app.router.add_get("/json/version/", self._handle_cdp_version)
+        app.router.add_get("/json/list", self._handle_cdp_list)
+        app.router.add_get("/json/list/", self._handle_cdp_list)
         
         # Reverse proxy catch-all (must be last)
         app.router.add_route("*", "/{path:.*}", self._handle_proxy)
@@ -1473,6 +1692,28 @@ self.addEventListener('activate', () => {
     async def _handle_stats(self, request: web.Request) -> web.Response:
         """Return proxy statistics as JSON."""
         return web.json_response(self.stats)
+    
+    async def _handle_cdp_version(self, request: web.Request) -> web.Response:
+        """Proxy /json/version to the actual Chrome CDP endpoint."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://127.0.0.1:{self._cdp_port}/json/version") as resp:
+                    data = await resp.json()
+                    return web.json_response(data)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=502)
+    
+    async def _handle_cdp_list(self, request: web.Request) -> web.Response:
+        """Proxy /json/list to the actual Chrome CDP endpoint."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://127.0.0.1:{self._cdp_port}/json/list") as resp:
+                    data = await resp.json()
+                    return web.json_response(data)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=502)
     
     def _build_target_url(self, request: web.Request) -> Optional[str]:
         """Build target URL from request."""
