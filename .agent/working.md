@@ -76,13 +76,17 @@
 - **Health check:** 97.6% score, 3 expired cookies on Gmail session
 - **Session merge:** Gmail (123 cookies) + GitHub (9 cookies) → 94 merged (deduplicated), all domains from both present
 - **Profile injection:** Direct Brave profile injection working
+- **Twitter/X:** 40 cookies from Firefox, CDP proxy, logged in as donor user — PASS
+- **LinkedIn:** 161 cookies from Firefox, CDP proxy, logged in as donor user — PASS (re-exported after user re-logged in)
+- **Netflix:** Skipped (user not logged in Firefox)
 
 ### What's Next
 - Battle-test session refresh (`--auto-refresh` with live browser)
-- Battle-test Twitter/X, LinkedIn, Netflix with CDP proxy
-- Better error messages for common failures
-- Fix CDP monitor auto-attach thread isolation (currently blocks event loop briefly)
 - Publish v5.0.0 after battle-testing new features
+- Fix CDP monitor auto-attach thread isolation (currently blocks event loop briefly)
+- Local fingerprint proxy
+- Web dashboard React UI
+- Distributed sessions
 
 ## Manual Step-by-Step Procedure
 
@@ -312,11 +316,30 @@ async with async_playwright() as p:
 - Gmail (123) + GitHub (9) → 94 cookies (deduplicated)
 - All domains from both sessions preserved (28 unique domains)
 
+### Twitter/X Test (2026-06-17)
+- 40 cookies from Firefox, CDP proxy on port 9222
+- Auth status: logged_in (user confirmed visually)
+- Domains: twitter.com, x.com, abs.twimg.com
+
+### LinkedIn Test (2026-06-17)
+- 161 cookies from Firefox, CDP proxy on port 9222
+- Auth status: logged_in (user confirmed visually, re-exported after fresh login)
+- Domains: linkedin.com, www.linkedin.com, media.licdn.com
+
+### Visible Mode Fix (2026-06-17)
+- `--headless=new` was hardcoded in CDP proxy args even when `--visible` flag was passed
+- Fixed: only append `--headless=new` when `config.headless=True`
+- Result: `--visible` now properly shows Chromium window
+
 ## Files Modified
 
 - `tokenade/cli.py` — Added `--cdp`/`--legacy` flags, `--domains` for export, updated help
-- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach
+- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach, fixed visible mode (`--headless=new` was hardcoded), better launch error messages
 - `tokenade/core/proxy/forward_proxy.py` — Fixed CONNECT tunneling (stream-based piping), fixed HTTP handler crash
 - `tokenade/core/proxy/__init__.py` — Exports CDPProxy as primary
+- `tokenade/cli/proxy.py` — Better error messages (port-in-use, missing session, missing playwright)
+- `tokenade/cli/__init__.py` — CLI catch-all shows error message + log path + --verbose hint
+- `tokenade/cli/session.py` — No profile found suggests --list-profiles
+- `tokenade/core/importer/cookie_extractor.py` — Shows supported browsers on unsupported input
 - `README.md` — Rewritten with step-by-step procedure
 - `.agent/working.md` — This file

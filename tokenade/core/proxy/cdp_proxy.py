@@ -373,19 +373,21 @@ class CDPProxy:
         
         # Start Playwright browser
         self._playwright = await async_playwright().start()
+        launch_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+            "--window-size=1920,1080",
+            "--window-position=0,0",
+            f"--remote-debugging-port={self._cdp_port}",
+        ]
+        if self.config.headless:
+            launch_args.append("--headless=new")
         try:
             self._browser = await self._playwright.chromium.launch(
                 headless=self.config.headless,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled",
-                    "--window-size=1920,1080",
-                    "--window-position=0,0",
-                    f"--remote-debugging-port={self._cdp_port}",
-                    "--headless=new",
-                ]
+                args=launch_args,
             )
         except Exception as e:
             error_str = str(e).lower()
