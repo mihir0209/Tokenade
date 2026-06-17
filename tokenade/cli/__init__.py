@@ -6,7 +6,7 @@ import sys
 from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
-from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare
+from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare, cmd_sync
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
@@ -66,7 +66,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff plugin completion"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion"
     
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -459,6 +459,26 @@ Commands:
     plugin_info_parser = plugin_sub.add_parser("info", help="Show plugin details")
     plugin_info_parser.add_argument("name", help="Plugin name")
 
+    # Sync
+    sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")
+    sync_sub = sync_parser.add_subparsers(dest="sync_command", help="Sync commands")
+
+    sync_add_parser = sync_sub.add_parser("add", help="Add a sync target")
+    sync_add_parser.add_argument("--name", "-n", required=True, help="Target name (e.g., gmail)")
+    sync_add_parser.add_argument("--domains", "-d", required=True, help="Comma-separated domains")
+    sync_add_parser.add_argument("--browser", "-b", default="firefox", help="Browser (default: firefox)")
+    sync_add_parser.add_argument("--profile", "-p", help="Browser profile name")
+    sync_add_parser.add_argument("--output-dir", "-o", help="Output directory (default: ~/.tokenade/synced)")
+
+    sync_remove_parser = sync_sub.add_parser("remove", help="Remove a sync target")
+    sync_remove_parser.add_argument("--name", "-n", required=True, help="Target name")
+
+    sync_sub.add_parser("list", help="List sync targets")
+    sync_sub.add_parser("once", help="Run one-time sync")
+
+    sync_start_parser = sync_sub.add_parser("start", help="Start sync daemon")
+    sync_start_parser.add_argument("--interval", "-i", type=int, default=60, help="Check interval in seconds")
+
     # Shell Completion
     completion_parser = subparsers.add_parser("completion", help="Generate shell completion scripts")
     completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell type")
@@ -493,6 +513,7 @@ Commands:
         "sessions": cmd_sessions,
         "share": cmd_share,
         "unshare": cmd_unshare,
+        "sync": cmd_sync,
         "validate-rules": cmd_validate_rules,
         "diff": cmd_diff,
         "plugin": cmd_plugin,

@@ -262,3 +262,75 @@ def cmd_unshare(args):
         print(f"✅ Revoked shared session: {args.session_id}")
     else:
         print(f"❌ Failed to revoke session: {args.session_id}")
+
+
+def cmd_sync(args):
+    """Sync session daemon commands."""
+    from tokenade.core.importer.session_sync import SessionSyncDaemon, SyncTarget
+
+    daemon = SessionSyncDaemon.load_config()
+
+    if args.sync_command == "add":
+        if not args.name or not args.domains:
+            print("❌ --name and --domains are required")
+            return
+
+        domains = [d.strip() for d in args.domains.split(",")]
+        target = SyncTarget(
+            name=args.name,
+            domains=domains,
+            browser=args.browser or "firefox",
+            browser_profile=args.profile,
+            output_dir=args.output_dir or "~/.tokenade/synced",
+        )
+        daemon.add_target(target)
+        daemon.save_config()
+        print(f"✅ Sync target added: {target.name}")
+        print(f"   Browser: {target.browser}")
+        print(f"   Domains: {', '.join(target.domains)}")
+        print(f"   Output: {target.output_dir}")
+
+    elif args.sync_command == "remove":
+        if not args.name:
+            print("❌ --name is required")
+            return
+        daemon.remove_target(args.name)
+        daemon.save_config()
+        print(f"✅ Sync target removed: {args.name}")
+
+    elif args.sync_command == "list":
+        statuses = daemon.get_status()
+        if not statuses:
+            print("No sync targets configured")
+            return
+        print(f"\n{'='*60}")
+        print("Session Sync Targets")
+        print(f"{'='*60}")
+        for s in statuses:
+            print(f"\n📁 {s['name']}")
+            print(f"   Browser: {s['browser']}")
+            print(f"   Domains: {', '.join(s['domains'])}")
+            print(f"   Last sync: {s['last_sync'] or 'never'}")
+            print(f"   Cookies: {s['last_cookie_count']}")
+            print(f"   Sync count: {s['sync_count']}")
+            if s['error']:
+                print(f"   Error: {s['error']}")
+        print(f"\n{'='*60}\n")
+
+    elif args.sync_command == "once":
+        print("🔄 Running one-time sync...")
+        results = daemon.check_once()
+        for name, changed in results.items():
+            status = "✅ synced" if changed else "⏭️  unchanged"
+            print(f"   {name}: {status}")
+
+    elif args.sync_command == "start":
+        interval = args.interval or 60
+        print(f"🔄 Starting sync daemon (interval: {interval}s)...")
+        print(f"   Targets: {len(daemon._targets)}")
+        print("   Press Ctrl+C to stop\n")
+        try:
+            daemon.start(interval=interval)
+        except KeyboardInterrupt:
+            daemon.stop()
+            print("\n⏹️  Daemon stopped")
