@@ -385,6 +385,8 @@ Commands:
     proxy_parser.add_argument("--auto-refresh", action="store_true", help="Auto-refresh session from source browser when cookies expire")
     proxy_parser.add_argument("--source-browser", help="Source browser for auto-refresh (e.g., firefox, chrome)")
     proxy_parser.add_argument("--source-profile", help="Source profile for auto-refresh (e.g., default, Profile 1)")
+    proxy_parser.add_argument("--auto-navigate", action="store_true", help="Auto-navigate to site URL when proxy starts")
+    proxy_parser.add_argument("--target-url", help="Override default navigation URL")
 
     # Sessions (subcommand group)
     sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")

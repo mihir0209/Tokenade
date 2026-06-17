@@ -76,6 +76,35 @@ SITE_DETECTION = {
             "session",
         ],
     },
+    "twitter": {
+        "domains": [
+            "x.com",
+            "twitter.com",
+            ".x.com",
+            ".twitter.com",
+            "api.x.com",
+            "api.twitter.com",
+        ],
+        "critical_cookies": [
+            "auth_token",
+            "ct0",
+            "twid",
+            "guest_id",
+        ],
+    },
+    "linkedin": {
+        "domains": [
+            "linkedin.com",
+            "www.linkedin.com",
+            ".linkedin.com",
+            "media.licdn.com",
+        ],
+        "critical_cookies": [
+            "li_at",
+            "JSESSIONID",
+            "lidc",
+        ],
+    },
     "openai": {
         "domains": [
             "openai.com",

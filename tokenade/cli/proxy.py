@@ -105,11 +105,23 @@ def cmd_proxy(args):
                     proxy._auto_refresh_config["source_profile"] = args.source_profile
                 print(f"🔄 Auto-refresh enabled from {args.source_browser or 'source browser'}")
 
+            # Set auto-navigate URL
+            if args.auto_navigate or args.target_url:
+                target = args.target_url or proxy._get_site_url()
+                proxy._auto_refresh_config["target_url"] = target
+                print(f"🌐 Auto-navigate: {target}")
+
         if not args.no_open_browser:
             def open_browser_thread():
                 import time
                 time.sleep(2)
-                webbrowser.open(f"http://127.0.0.1:{args.port}")
+                url = f"http://127.0.0.1:{args.port}"
+                if args.auto_navigate or args.target_url:
+                    target = getattr(proxy, '_auto_refresh_config', {}).get('target_url')
+                    if target:
+                        # Navigate directly to the site proxy URL
+                        url = f"http://127.0.0.1:{args.port}/browse?url={target}"
+                webbrowser.open(url)
 
             threading.Thread(target=open_browser_thread, daemon=True).start()
 

@@ -172,7 +172,8 @@ class TestCmdProxy:
                          host="127.0.0.1", mode="cdp", legacy=False, no_gui=True,
                          visible=False, timeout=30, fingerprint=True, verbose=False,
                          auto_refresh=False, source_browser=None, source_profile=None,
-                         impersonate=None, no_open_browser=True)
+                         impersonate=None, no_open_browser=True,
+                         auto_navigate=False, target_url=None)
         cmd_proxy(args)
         assert "required" in capsys.readouterr().out.lower()
 
@@ -181,7 +182,8 @@ class TestCmdProxy:
                          host="127.0.0.1", mode="cdp", legacy=False, no_gui=True,
                          visible=False, timeout=30, fingerprint=True, verbose=False,
                          auto_refresh=False, source_browser=None, source_profile=None,
-                         impersonate=None, no_open_browser=True)
+                         impersonate=None, no_open_browser=True,
+                         auto_navigate=False, target_url=None)
         cmd_proxy(args)
         assert "not found" in capsys.readouterr().out.lower()
 
@@ -195,7 +197,8 @@ class TestCmdProxy:
                          host="127.0.0.1", mode="cdp", legacy=False, no_gui=True,
                          visible=False, timeout=30, fingerprint=True, verbose=False,
                          auto_refresh=False, source_browser=None, source_profile=None,
-                         impersonate=None, no_open_browser=True)
+                         impersonate=None, no_open_browser=True,
+                         auto_navigate=False, target_url=None)
         cmd_proxy(args)
         assert "no session files" in capsys.readouterr().out.lower()
 
@@ -214,7 +217,8 @@ class TestCmdProxy:
                          host="127.0.0.1", mode="cdp", legacy=False, no_gui=True,
                          visible=False, timeout=30, fingerprint=True, verbose=False,
                          auto_refresh=False, source_browser=None, source_profile=None,
-                         impersonate=None, no_open_browser=True)
+                         impersonate=None, no_open_browser=True,
+                         auto_navigate=False, target_url=None)
         cmd_proxy(args)
         mock_proxy.run.assert_called_once()
 
@@ -234,6 +238,7 @@ class TestCmdProxy:
                          host="127.0.0.1", mode="forward", legacy=False, no_gui=True,
                          visible=False, timeout=30, fingerprint=True, verbose=False,
                          auto_refresh=False, source_browser=None, source_profile=None,
-                         impersonate=None, no_open_browser=True)
+                         impersonate=None, no_open_browser=True,
+                         auto_navigate=False, target_url=None)
         cmd_proxy(args)
         mock_run.assert_called_once()

@@ -86,7 +86,7 @@
 - **Netflix:** Skipped (user not logged in Firefox)
 
 ### What's Next
-- Battle-test Netflix (user will log in later)
+- (all battle-tests complete, features shipped)
 
 ## Manual Step-by-Step Procedure
 

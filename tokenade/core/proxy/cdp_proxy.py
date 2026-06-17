@@ -469,6 +469,12 @@ class CDPProxy:
         cookies = self.session.get("cookies", [])
         tls_profile = self.session.get("tls_profile", {})
         
+        # Auto-load site config based on session's site_name
+        from tokenade.core.importer.site_configs import get_site_config
+        site_config = get_site_config(site_name)
+        if site_config:
+            logger.info(f"Auto-loaded site config for '{site_name}'")
+        
         # Check session health
         expiry_info = self._refresher.check_expiry()
         
@@ -476,7 +482,7 @@ class CDPProxy:
         print(f"\n{'='*60}")
         print(f"Tokenade CDP Proxy Server")
         print(f"{'='*60}")
-        print(f"Site: {site_name}")
+        print(f"Site: {site_name}" + (f" ({site_config['name']})" if site_config else ""))
         print(f"Cookies: {len(cookies)}")
         if expiry_info.expired_count:
             print(f"⚠️  Expired cookies: {expiry_info.expired_count} — re-export recommended")
@@ -489,6 +495,7 @@ class CDPProxy:
         print(f"TLS Profile: {tls_profile.get('impersonate', 'unknown')}")
         print(f"Browser: Chromium (Playwright)")
         print(f"Headless: {self.config.headless}")
+        print(f"Default URL: {self._get_site_url()}")
         print(f"\nGUI: http://127.0.0.1:{self.config.port}")
         print(f"{'='*60}\n")
     
@@ -1781,22 +1788,50 @@ self.addEventListener('activate', () => {
         
         return None
     
+    # Default URLs for known sites
+    _SITE_URLS = {
+        "google": "https://mail.google.com",
+        "gmail": "https://mail.google.com",
+        "github": "https://github.com",
+        "discord": "https://discord.com/channels/@me",
+        "reddit": "https://www.reddit.com",
+        "openai": "https://chatgpt.com",
+        "chatgpt": "https://chatgpt.com",
+        "twitter": "https://x.com",
+        "x": "https://x.com",
+        "linkedin": "https://www.linkedin.com/feed/",
+        "netflix": "https://www.netflix.com/browse",
+        "youtube": "https://www.youtube.com",
+        "amazon": "https://www.amazon.com",
+        "spotify": "https://open.spotify.com",
+        "microsoft": "https://www.microsoft.com",
+    }
+
     def _get_site_url(self) -> str:
         """Get the default URL for the session's site."""
+        from tokenade.core.importer.site_configs import get_site_config
+        
         site_name = self.session.get("site_name", "unknown")
         if site_name and site_name != "unknown":
-            # Try to infer from cookie domains
+            # 1. Try site config's validate_url
+            config = get_site_config(site_name)
+            if config and config.get("validate_url"):
+                return config["validate_url"]
+            
+            # 2. Try known site URL mapping
+            if site_name.lower() in self._SITE_URLS:
+                return self._SITE_URLS[site_name.lower()]
+            
+            # 3. Infer from cookie domains
             cookies = self.session.get("cookies", [])
             domains = set()
             for c in cookies:
                 d = c.get("domain", "")
                 if d:
                     domains.add(d.lstrip("."))
-            # Find most specific domain matching site_name
             for d in sorted(domains, key=len):
                 if site_name.lower() in d.lower():
                     return f"https://{d}"
-            # Fallback: use first non-empty domain
             if domains:
                 return f"https://{min(domains, key=len)}"
             return f"https://www.{site_name}.com"
