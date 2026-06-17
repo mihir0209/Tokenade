@@ -323,6 +323,9 @@ class TokenadeAPIServer:
         self._app.router.add_get("/api/monitor/sessions/{id}", self._handle_monitor_session)
         self._app.router.add_get("/api/monitor/sessions/{id}/cookies", self._handle_monitor_cookies)
 
+        self._app.router.add_get("/api/sync", self._handle_sync_list)
+        self._app.router.add_post("/api/sync/run", self._handle_sync_run)
+
         self._app.router.add_get("/", self._handle_dashboard)
         self._app.router.add_get("/dashboard", self._handle_dashboard)
         self._app.router.add_get("/dashboard/", self._handle_dashboard)
@@ -330,6 +333,20 @@ class TokenadeAPIServer:
         self._app.router.add_route("*", "/api/{tail:.*}", self._handle_options)
         
         return self._app
+    
+    async def _handle_sync_list(self, request):
+        """List sync targets."""
+        from tokenade.core.importer.session_sync import SessionSyncDaemon
+        daemon = SessionSyncDaemon.load_config()
+        targets = daemon.get_status()
+        return web.json_response({"targets": targets})
+    
+    async def _handle_sync_run(self, request):
+        """Run one-time sync."""
+        from tokenade.core.importer.session_sync import SessionSyncDaemon
+        daemon = SessionSyncDaemon.load_config()
+        results = daemon.check_once()
+        return web.json_response({"results": results})
     
     async def start(self):
         """Start the API server."""
