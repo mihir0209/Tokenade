@@ -87,8 +87,6 @@
 
 ### What's Next
 - Battle-test Netflix (user will log in later)
-- React dashboard UI upgrade
-- Publish v5.0.0 after Netflix battle-test
 
 ## Manual Step-by-Step Procedure
 
@@ -336,9 +334,11 @@ async with async_playwright() as p:
 ## Files Modified
 
 - `tokenade/cli.py` — Added `--cdp`/`--legacy` flags, `--domains` for export, updated help
-- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach, fixed visible mode (`--headless=new` was hardcoded), better launch error messages
+- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach + thread isolation (run_in_executor), fixed visible mode (`--headless=new` was hardcoded), better launch error messages
 - `tokenade/core/proxy/forward_proxy.py` — Fixed CONNECT tunneling (stream-based piping), fixed HTTP handler crash
 - `tokenade/core/proxy/__init__.py` — Exports CDPProxy as primary
+- `tokenade/core/api/server.py` — Added /api/sync and /api/sync/run endpoints
+- `tokenade/core/api/dashboard/index.html` — Modern dashboard UI with stats, tabs, sync, detail overlay, toast notifications
 - `tokenade/cli/proxy.py` — Better error messages (port-in-use, missing session, missing playwright)
 - `tokenade/cli/__init__.py` — CLI catch-all shows error message + log path + --verbose hint, sync command
 - `tokenade/cli/session.py` — No profile found suggests --list-profiles
