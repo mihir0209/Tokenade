@@ -50,6 +50,11 @@
 - Phase 4: Documentation (README, SITE_CONFIGS, TROUBLESHOOTING) ✅
 - Phase 5: Safari decryption, extension bridge, plugin enable/disable ✅
 
+### New Features (2026-06-17)
+- Session sync daemon: `tokenade sync add/remove/list/once/start`
+- Local fingerprint proxy already existed (server.py, forward_proxy.py)
+- Better error messages: CDP proxy launch, port-in-use, CLI catch-all, unsupported browser, no profile
+
 ### Forward Proxy Battle-Tested (2026-06-17)
 - **HTTPS CONNECT tunneling:** Google 200/82KB, DuckDuckGo 200/169KB
 - **HTTP forwarding:** example.com 200/388B
@@ -81,12 +86,9 @@
 - **Netflix:** Skipped (user not logged in Firefox)
 
 ### What's Next
-- Battle-test session refresh (`--auto-refresh` with live browser)
-- Publish v5.0.0 after battle-testing new features
-- Fix CDP monitor auto-attach thread isolation (currently blocks event loop briefly)
-- Local fingerprint proxy
-- Web dashboard React UI
-- Distributed sessions
+- Battle-test Netflix (user will log in later)
+- React dashboard UI upgrade
+- Publish v5.0.0 after Netflix battle-test
 
 ## Manual Step-by-Step Procedure
 
@@ -338,8 +340,10 @@ async with async_playwright() as p:
 - `tokenade/core/proxy/forward_proxy.py` — Fixed CONNECT tunneling (stream-based piping), fixed HTTP handler crash
 - `tokenade/core/proxy/__init__.py` — Exports CDPProxy as primary
 - `tokenade/cli/proxy.py` — Better error messages (port-in-use, missing session, missing playwright)
-- `tokenade/cli/__init__.py` — CLI catch-all shows error message + log path + --verbose hint
+- `tokenade/cli/__init__.py` — CLI catch-all shows error message + log path + --verbose hint, sync command
 - `tokenade/cli/session.py` — No profile found suggests --list-profiles
+- `tokenade/cli/management.py` — Sync daemon CLI commands
 - `tokenade/core/importer/cookie_extractor.py` — Shows supported browsers on unsupported input
+- `tokenade/core/importer/session_sync.py` — NEW: Session sync daemon
 - `README.md` — Rewritten with step-by-step procedure
 - `.agent/working.md` — This file
