@@ -6,6 +6,12 @@ session setup, request methods, fingerprint mapping.
 import unittest
 from unittest.mock import MagicMock, patch
 
+try:
+    from curl_cffi import requests as _curl_requests
+    _has_curl_cffi = True
+except ImportError:
+    _has_curl_cffi = False
+
 from tokenade.core.runtime.tls_matcher import (
     TLSMatcher,
     TLSFingerprint,
@@ -81,6 +87,9 @@ class TestTLSMatcherInit(unittest.TestCase):
 
 
 class TestTLSMatcherSetupSession(unittest.TestCase):
+    @unittest.skipUnless(
+        _has_curl_cffi, "curl-cffi not installed"
+    )
     def test_curl_cffi_installed(self):
         mock_session = MagicMock()
         mock_requests = MagicMock()
@@ -137,6 +146,9 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
         # Firefox may or may not be supported depending on curl-cffi version
         # Just verify no crash
 
+    @unittest.skipUnless(
+        _has_curl_cffi, "curl-cffi not installed"
+    )
     def test_other_error_reraises(self):
         # curl-cffi is installed, so mock the Session constructor to raise non-firefox error
         with patch(
