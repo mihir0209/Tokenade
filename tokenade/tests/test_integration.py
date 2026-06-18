@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tokenade.core.integration.docker_manager import DockerSessionManager, DockerContainer  # noqa: E402
 
 try:
-    import yaml  # noqa: F401
+    import yaml
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
@@ -343,7 +343,6 @@ class TestKubernetesManagerDeploymentYaml(unittest.TestCase):
     """Test generate_deployment_yaml output."""
 
     def test_generate_deployment_yaml_valid(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_deployment_yaml()
         data = yaml.safe_load(output)
@@ -356,7 +355,6 @@ class TestKubernetesManagerDeploymentYaml(unittest.TestCase):
         self.assertEqual(containers[0]["name"], "tokenade")
 
     def test_generate_deployment_yaml_with_configmap(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_deployment_yaml(session_configmap="my-sessions")
         data = yaml.safe_load(output)
@@ -364,7 +362,6 @@ class TestKubernetesManagerDeploymentYaml(unittest.TestCase):
         self.assertEqual(volumes[0]["configMap"]["name"], "my-sessions")
 
     def test_generate_deployment_yaml_custom_config(self):
-        import yaml
         config = KubernetesConfig(
             namespace="production",
             replicas=3,
@@ -386,7 +383,6 @@ class TestKubernetesManagerSidecarYaml(unittest.TestCase):
     """Test generate_sidecar_yaml output."""
 
     def test_generate_sidecar_yaml_valid(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_sidecar_yaml(
             main_container_image="myapp:latest",
@@ -403,7 +399,6 @@ class TestKubernetesManagerSidecarYaml(unittest.TestCase):
         self.assertIn("proxy", sidecar["args"])
 
     def test_generate_sidecar_yaml_shares_volume(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_sidecar_yaml(
             main_container_image="app:v1",
@@ -419,7 +414,6 @@ class TestKubernetesManagerServiceYaml(unittest.TestCase):
     """Test generate_service_yaml output."""
 
     def test_generate_service_yaml_valid(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_service_yaml()
         data = yaml.safe_load(output)
@@ -437,7 +431,6 @@ class TestKubernetesManagerConfigMapYaml(unittest.TestCase):
     """Test generate_configmap_yaml output."""
 
     def test_generate_configmap_yaml_valid(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_configmap_yaml({
             "session1.tokenade": "data1",
@@ -451,7 +444,6 @@ class TestKubernetesManagerConfigMapYaml(unittest.TestCase):
         self.assertIn("session2.tokenade", data["data"])
 
     def test_generate_configmap_yaml_empty(self):
-        import yaml
         mgr = KubernetesManager()
         output = mgr.generate_configmap_yaml({})
         data = yaml.safe_load(output)

@@ -9,7 +9,7 @@ from tokenade.core.runtime.tls_matcher import TLSMatcher, TLSFingerprint, create
 
 def _has_curl_cffi():
     try:
-        from curl_cffi import requests
+        import curl_cffi.requests  # noqa: F401
         return True
     except ImportError:
         return False
