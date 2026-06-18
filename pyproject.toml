@@ -41,6 +41,7 @@ enterprise = ["ldap3>=2.9"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-aiohttp>=1.0.0",
     "pytest-cov>=4.0.0",
     "hypothesis>=6.0.0",
     "black>=23.0.0",
