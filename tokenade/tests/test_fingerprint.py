@@ -1,6 +1,5 @@
 """Tests for fingerprint matcher."""
 
-import pytest
 from tokenade.core.runtime.engine import FingerprintMatcher
 
 

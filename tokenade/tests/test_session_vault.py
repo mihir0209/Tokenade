@@ -29,7 +29,7 @@ def sample_session():
         "created_at": "2026-01-01T00:00:00Z",
         "cookies": [
             {"name": "user_session", "value": "abc", "domain": ".github.com", "path": "/"},
-            {"name": "_gh_sess", "value": "def", "domain": ".github.com", "path": "/"},
+            {"name": "_gh_sess", "value": "de", "domain": ".github.com", "path": "/"},
         ],
     }
 
@@ -84,7 +84,7 @@ class TestAddAndRetrieve:
         assert vault.get("nonexistent") is None
 
     def test_add_with_tags(self, vault, session_file):
-        sid = vault.add(session_file, tags=["production", "team-a"])
+        vault.add(session_file, tags=["production", "team-a"])
         entries = vault.list_sessions()
         assert len(entries) == 1
         assert "production" in entries[0].tags
@@ -97,7 +97,7 @@ class TestAddAndRetrieve:
         assert vault.check_permission(sid, "alice", "delete")
 
     def test_add_with_expiry(self, vault, session_file):
-        sid = vault.add(session_file, expires_in_seconds=3600)
+        vault.add(session_file, expires_in_seconds=3600)
         entries = vault.list_sessions()
         assert entries[0].expires_at is not None
 

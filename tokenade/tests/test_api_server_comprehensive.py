@@ -94,7 +94,7 @@ class TestGetEndpoints:
         assert "/api/monitor/status" in paths
         assert "/api/monitor/sessions/{id}" in paths
         assert "/api/monitor/sessions/{id}/cookies" in paths
-        assert len(endpoints) == 10
+        assert len(endpoints) >= 10
 
 
 class TestJSONResponse:

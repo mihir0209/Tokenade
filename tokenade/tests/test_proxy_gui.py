@@ -1,6 +1,5 @@
 """Tests for proxy GUI and page generation."""
 
-import json
 import pytest
 from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
 

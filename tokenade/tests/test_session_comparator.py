@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from tokenade.core.importer.session_comparator import SessionComparator, DiffResult
+from tokenade.core.importer.session_comparator import SessionComparator
 
 
 @pytest.fixture

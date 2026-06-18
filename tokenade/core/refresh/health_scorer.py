@@ -11,7 +11,7 @@ Evaluates session security posture based on OWASP session management guidelines:
 import time
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 import logging
 
 logger = logging.getLogger(__name__)

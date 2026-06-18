@@ -14,19 +14,19 @@ logger = logging.getLogger(__name__)
 def inject_stealth_script(browser_manager, fingerprint: BrowserFingerprint, level: str = "maximum") -> bool:
     """
     Inject stealth script into browser.
-    
+
     Args:
         browser_manager: Browser manager with evaluate() and add_init_script support
         fingerprint: Fingerprint data to spoof
         level: Stealth level (basic, advanced, maximum)
-        
+
     Returns:
         True if injection successful
     """
     try:
         builder = StealthScriptBuilder(fingerprint)
         script = builder.build(level)
-        
+
         # Try add_init_script first (Playwright)
         if hasattr(browser_manager, '_context') and browser_manager._context:
             try:
@@ -35,16 +35,16 @@ def inject_stealth_script(browser_manager, fingerprint: BrowserFingerprint, leve
                 return True
             except Exception as e:
                 logger.warning(f"add_init_script failed: {e}")
-        
+
         # Fallback: evaluate in page
         if hasattr(browser_manager, 'evaluate'):
             browser_manager.evaluate(f"() => {{ {script} }}")
             logger.info("Stealth script injected via evaluate")
             return True
-        
+
         logger.error("No injection method available")
         return False
-        
+
     except Exception as e:
         logger.error(f"Failed to inject stealth script: {e}")
         return False
@@ -53,10 +53,10 @@ def inject_stealth_script(browser_manager, fingerprint: BrowserFingerprint, leve
 def validate_injection(browser_manager) -> Dict[str, Any]:
     """
     Verify spoofing is active by checking overridden APIs.
-    
+
     Args:
         browser_manager: Browser manager with evaluate()
-        
+
     Returns:
         Validation results dictionary
     """
@@ -72,7 +72,7 @@ def validate_injection(browser_manager) -> Dict[str, Any]:
         pluginsLength: navigator.plugins.length,
         chromeRuntime: !!window.chrome?.runtime
     })"""
-    
+
     try:
         result = browser_manager.evaluate(script)
         return {

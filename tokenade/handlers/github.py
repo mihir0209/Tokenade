@@ -6,9 +6,7 @@ GitHub uses standard session cookies (user_session, __Host-*) which are
 less fingerprint-sensitive than Google, making it a good Level 2 example.
 """
 
-import json
 import logging
-import re
 from typing import Dict, List, Optional
 
 from tokenade.handlers.base import (

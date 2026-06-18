@@ -11,9 +11,8 @@ Handles site-specific filtering so users only export what they need.
 import json
 import os
 import sqlite3
-import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import logging
 
 from tokenade.core.importer.db_utils import copy_db
@@ -45,7 +44,7 @@ class LocalStorageExtractor:
 
         Firefox stores localStorage in:
           profile/storage/default/https+++domain/ls/data.sqlite
-        
+
         Each file has tables:
         - database: origin metadata
         - data: key-value pairs (key, value)
@@ -122,7 +121,7 @@ class LocalStorageExtractor:
             import plyvel
         except ImportError:
             logger.error("plyvel library required for Chrome localStorage extraction. "
-                        "Install with: pip install plyvel")
+                         "Install with: pip install plyvel")
             return {}
 
         local_storage = {}

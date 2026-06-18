@@ -8,7 +8,7 @@ configured strategies and combines results.
 import time
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ class ValidationStrategy(ABC):
     @abstractmethod
     def validate(self, browser_manager, context: Dict) -> ValidationResult:
         """Run validation and return result."""
-        pass
 
     @abstractmethod
     def name(self) -> str:
@@ -437,7 +436,7 @@ class SessionValidator:
                 result = strategy.validate(browser_manager, site_config)
                 results.append(result)
                 logger.info(f"  [{name}] {'PASS' if result.valid else 'FAIL'} "
-                           f"(confidence={result.confidence}): {result.reason}")
+                            f"(confidence={result.confidence}): {result.reason}")
             except Exception as e:
                 logger.error(f"  [{name}] ERROR: {e}")
                 results.append(ValidationResult(

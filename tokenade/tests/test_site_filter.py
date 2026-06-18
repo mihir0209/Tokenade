@@ -1,6 +1,5 @@
 """Tests for site filter."""
 
-import pytest
 from tokenade.core.importer.cookie_extractor import SiteFilter
 
 

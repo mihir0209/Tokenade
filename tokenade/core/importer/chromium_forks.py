@@ -10,10 +10,9 @@ Auto-detects and extracts cookies from Chromium-based browsers:
 """
 import os
 import sys
-import json
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
-from dataclasses import dataclass, field
+from typing import List
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ class ChromiumForkInfo:
 
 class ChromiumForkDetector:
     """Detect installed Chromium-based browsers."""
-    
+
     # Browser-specific profile locations by platform
     BROWSER_PATHS = {
         "arc": {
@@ -94,7 +93,7 @@ class ChromiumForkDetector:
             ],
         },
     }
-    
+
     def detect_all(self) -> List[ChromiumForkInfo]:
         """Detect all installed Chromium forks."""
         platform = sys.platform
@@ -104,13 +103,13 @@ class ChromiumForkDetector:
             plat_key = "darwin"
         else:
             plat_key = "windows"
-        
+
         detected = []
-        
+
         for browser_name, paths in self.BROWSER_PATHS.items():
             plat_paths = paths.get(plat_key, [])
             found_paths = []
-            
+
             for p in plat_paths:
                 if p is None:
                     continue
@@ -120,7 +119,7 @@ class ChromiumForkDetector:
                     profile_dirs = self._find_profiles(p)
                     if profile_dirs:
                         found_paths.extend(profile_dirs)
-            
+
             if found_paths:
                 detected.append(ChromiumForkInfo(
                     name=browser_name.title(),
@@ -129,28 +128,28 @@ class ChromiumForkDetector:
                     is_default=browser_name in ("chrome", "edge"),
                     notes=self._get_notes(browser_name),
                 ))
-        
+
         return detected
-    
+
     def _find_profiles(self, base_path: Path) -> List[Path]:
         """Find profile directories within a browser's User Data."""
         profiles = []
-        
+
         # Check for Profiles directory (multi-profile browsers)
         profiles_dir = base_path / "Profiles"
         if profiles_dir.exists():
             for item in profiles_dir.iterdir():
                 if item.is_dir() and (item / "Cookies").exists():
                     profiles.append(item)
-        
+
         # Check for numbered profiles (Profile 1, Profile 2, etc.)
         for i in range(1, 10):
             profile = base_path.parent / f"Profile {i}"
             if profile.exists() and (profile / "Cookies").exists():
                 profiles.append(profile)
-        
+
         return profiles
-    
+
     def _get_notes(self, browser_name: str) -> str:
         """Get notes about a browser."""
         notes = {
@@ -161,7 +160,7 @@ class ChromiumForkDetector:
             "edge": "Microsoft Edge is Chromium-based with Microsoft account integration.",
         }
         return notes.get(browser_name, "")
-    
+
     def get_browser_type_for_extractor(self, fork: ChromiumForkInfo) -> str:
         """Map fork type to CookieExtractor browser parameter."""
         mapping = {

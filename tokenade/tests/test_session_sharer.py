@@ -6,7 +6,7 @@ import json
 import time
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 from tokenade.core.importer.session_sharer import (
     SessionSharer,
     ShareConfig,
@@ -123,15 +123,15 @@ class TestSessionSharer:
     def test_load_shared_max_uses(self, sharer, session):
         config = ShareConfig(max_uses=2)
         _, session_id = sharer.create_share_link(session, config)
-        
+
         # First use
         loaded = sharer.load_shared(session_id)
         assert loaded is not None
-        
+
         # Second use
         loaded = sharer.load_shared(session_id)
         assert loaded is not None
-        
+
         # Third use should fail
         loaded = sharer.load_shared(session_id)
         assert loaded is None
@@ -141,7 +141,7 @@ class TestSessionSharer:
         result = generate_share_html(session, output_path)
         assert result == output_path
         assert Path(output_path).exists()
-        
+
         content = Path(output_path).read_text()
         assert "Tokenade Shared Session" in content
         assert session["site_name"] in content
@@ -187,7 +187,7 @@ class TestSessionSharer:
         sharer.create_version(session, changes="Version 1")
         other_session = {"site_name": "other_site", "cookies": []}
         sharer.create_version(other_session, changes="Other")
-        
+
         versions = sharer.list_versions(site_name="test_site")
         assert len(versions) == 1
 
@@ -250,7 +250,7 @@ class TestSessionSharerEmail:
             "site_name": "gmail",
             "cookies": [
                 {"name": "SID", "value": "abc", "domain": ".google.com", "path": "/"},
-                {"name": "HSID", "value": "def", "domain": ".google.com", "path": "/"},
+                {"name": "HSID", "value": "de", "domain": ".google.com", "path": "/"},
             ],
         }
 
@@ -486,9 +486,9 @@ class TestSessionSharerVersioning:
         return SessionSharer(storage_dir=str(tmp_path / "shared"))
 
     def test_create_multiple_versions(self, sharer, session):
-        v1 = sharer.create_version(session, changes="Initial")
-        v2 = sharer.create_version(session, changes="Added cookies")
-        v3 = sharer.create_version(session, changes="Removed stale")
+        sharer.create_version(session, changes="Initial")
+        sharer.create_version(session, changes="Added cookies")
+        sharer.create_version(session, changes="Removed stale")
 
         versions = sharer.list_versions()
         assert len(versions) == 3

@@ -1,7 +1,6 @@
 """Tests for session loader."""
 
 import json
-import pytest
 from tokenade.core.importer.session_loader import SessionLoader
 
 

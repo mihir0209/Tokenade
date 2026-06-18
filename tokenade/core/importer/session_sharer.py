@@ -16,7 +16,6 @@ import base64
 import hashlib
 import json
 import logging
-import os
 import secrets
 import smtplib
 import time
@@ -74,7 +73,7 @@ class SharedSession:
 class SessionSharer:
     """
     Generate shareable encrypted session links and QR codes.
-    
+
     Features:
     - Time-limited links (configurable expiry)
     - Usage-limited links (optional max uses)
@@ -85,13 +84,13 @@ class SessionSharer:
     - Session versioning (track changes over time)
     - Self-contained links (no server needed)
     """
-    
+
     def __init__(self, storage_dir: Optional[str] = None):
         self.storage_dir = Path(storage_dir or "~/.tokenade/shared").expanduser()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.versions_dir = self.storage_dir / "versions"
         self.versions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def create_share_link(
         self,
         session: Dict,
@@ -99,24 +98,24 @@ class SessionSharer:
     ) -> Tuple[str, str]:
         """
         Create a shareable encrypted session link.
-        
+
         Returns:
             Tuple of (share_url, session_id)
         """
         config = config or ShareConfig()
-        
+
         # Generate session ID
         session_id = secrets.token_urlsafe(16)
-        
+
         # Create expiry timestamp
         created_at = time.time()
         expires_at = created_at + (config.expiry_hours * 3600)
-        
+
         # Hash password if provided
         password_hash = None
         if config.password_protected and config.password:
             password_hash = hashlib.sha256(config.password.encode()).hexdigest()
-        
+
         # Create shared session
         shared = SharedSession(
             session_id=session_id,
@@ -127,17 +126,17 @@ class SessionSharer:
             password_hash=password_hash,
             session_data=session,
         )
-        
+
         # Save to storage
         self._save_shared(shared)
-        
+
         # Generate share URL (self-contained, no server needed)
         share_url = self._generate_share_url(session, session_id, config.password)
-        
+
         logger.info(f"Created share link: {session_id} (expires in {config.expiry_hours}h)")
-        
+
         return share_url, session_id
-    
+
     def _generate_share_url(
         self,
         session: Dict,
@@ -178,7 +177,7 @@ class SessionSharer:
 
         payload_b64 = base64.urlsafe_b64encode(raw).decode().rstrip("=")
         return f"tokenade://share/{payload_b64}"
-    
+
     def create_qr_code(
         self,
         session: Dict,
@@ -187,22 +186,21 @@ class SessionSharer:
     ) -> str:
         """
         Generate a QR code for mobile transfer.
-        
+
         Returns:
             Path to QR code image
         """
         try:
             import qrcode
-            from qrcode.image.styledpil import StyledPilImage
         except ImportError:
             raise ImportError(
                 "qrcode is required for QR code generation. "
                 "Install with: pip install qrcode[pil]"
             )
-        
+
         # Create share URL
         share_url, session_id = self.create_share_link(session, config)
-        
+
         # Generate QR code
         qr = qrcode.QRCode(
             version=1,
@@ -212,19 +210,19 @@ class SessionSharer:
         )
         qr.add_data(share_url)
         qr.make(fit=True)
-        
+
         # Create QR code image
         img = qr.make_image(fill_color="black", back_color="white")
-        
+
         # Save to file
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         img.save(str(output_path))
-        
+
         logger.info(f"QR code saved to {output_path}")
-        
+
         return str(output_path)
-    
+
     def load_shared(
         self,
         session_id: str,
@@ -232,26 +230,26 @@ class SessionSharer:
     ) -> Optional[Dict]:
         """
         Load a shared session by ID.
-        
+
         Returns:
             Session data or None if expired/invalid
         """
         shared = self._load_shared(session_id)
         if not shared:
             return None
-        
+
         # Check expiry
         if time.time() > shared.expires_at:
             logger.warning(f"Shared session {session_id} has expired")
             self._delete_shared(session_id)
             return None
-        
+
         # Check usage limit
         if shared.max_uses > 0 and shared.use_count >= shared.max_uses:
             logger.warning(f"Shared session {session_id} has reached max uses")
             self._delete_shared(session_id)
             return None
-        
+
         # Check password
         if shared.password_hash:
             if not password:
@@ -261,13 +259,13 @@ class SessionSharer:
             if password_hash != shared.password_hash:
                 logger.warning(f"Invalid password for shared session {session_id}")
                 return None
-        
+
         # Increment use count
         shared.use_count += 1
         self._save_shared(shared)
-        
+
         return shared.session_data
-    
+
     def load_from_url(self, share_url: str, password: Optional[str] = None) -> Optional[Dict]:
         """
         Load session from an encrypted share URL.
@@ -311,23 +309,23 @@ class SessionSharer:
         except Exception as e:
             logger.error(f"Failed to load share URL: {e}")
             return None
-    
+
     def list_shared(self) -> list:
         """List all active shared sessions."""
         shared_list = []
-        
+
         for path in self.storage_dir.glob("*.json"):
             try:
                 with open(path, "r") as f:
                     data = json.load(f)
-                
+
                 shared = SharedSession(**data)
-                
+
                 # Check if expired
                 if time.time() > shared.expires_at:
                     self._delete_shared(shared.session_id)
                     continue
-                
+
                 shared_list.append({
                     "session_id": shared.session_id,
                     "created_at": shared.created_at,
@@ -338,9 +336,9 @@ class SessionSharer:
                 })
             except Exception as e:
                 logger.warning(f"Failed to load shared session {path}: {e}")
-        
+
         return shared_list
-    
+
     def revoke_share(self, session_id: str) -> bool:
         """Revoke a shared session."""
         try:
@@ -349,7 +347,7 @@ class SessionSharer:
             return True
         except Exception:
             return False
-    
+
     def send_email(
         self,
         session: Dict,
@@ -358,7 +356,7 @@ class SessionSharer:
     ) -> Tuple[bool, str]:
         """
         Send session share link via email.
-        
+
         Returns:
             Tuple of (success, message)
         """
@@ -366,13 +364,13 @@ class SessionSharer:
             return False, "SMTP host not configured"
         if not config.email_recipients:
             return False, "No email recipients"
-        
+
         # Create share link
         share_url, session_id = self.create_share_link(session, config)
-        
+
         site_name = session.get("site_name", "Unknown")
         subject = subject or f"Tokenade Session Share: {site_name}"
-        
+
         # Build email body
         body = f"""Tokenade Shared Session
 
@@ -390,14 +388,14 @@ Or open this link directly in your browser to download the session file.
 ---
 Generated by Tokenade v2.5.0
 """
-        
+
         try:
             msg = MIMEMultipart()
             msg["From"] = config.smtp_from or config.smtp_user
             msg["To"] = ", ".join(config.email_recipients)
             msg["Subject"] = subject
             msg.attach(MIMEText(body, "plain"))
-            
+
             with smtplib.SMTP(config.smtp_host, config.smtp_port) as server:
                 server.starttls()
                 if config.smtp_user and config.smtp_password:
@@ -407,14 +405,14 @@ Generated by Tokenade v2.5.0
                     config.email_recipients,
                     msg.as_string(),
                 )
-            
+
             logger.info(f"Email sent to {len(config.email_recipients)} recipients")
             return True, f"Email sent to {len(config.email_recipients)} recipients"
-            
+
         except Exception as e:
             logger.error(f"Email send failed: {e}")
             return False, str(e)
-    
+
     def send_webhook(
         self,
         session: Dict,
@@ -422,25 +420,25 @@ Generated by Tokenade v2.5.0
     ) -> Tuple[bool, str]:
         """
         Send session data to a webhook URL via HTTP POST.
-        
+
         Returns:
             Tuple of (success, message)
         """
         import hmac
         import urllib.request
         import urllib.error
-        
+
         if not config.webhook_url:
             return False, "Webhook URL not configured"
-        
+
         # Validate URL
         parsed = urlparse(config.webhook_url)
         if parsed.scheme not in ("http", "https"):
             return False, "Invalid webhook URL scheme"
-        
+
         # Create share link
         share_url, session_id = self.create_share_link(session, config)
-        
+
         # Build payload
         payload = {
             "event": "session_shared",
@@ -452,7 +450,7 @@ Generated by Tokenade v2.5.0
             "password_protected": config.password_protected,
             "timestamp": time.time(),
         }
-        
+
         # Sign payload if secret is provided
         headers = {"Content-Type": "application/json"}
         if config.webhook_secret:
@@ -462,7 +460,7 @@ Generated by Tokenade v2.5.0
                 hashlib.sha256,
             ).hexdigest()
             headers["X-Tokenade-Signature"] = f"sha256={signature}"
-        
+
         try:
             data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             req = urllib.request.Request(
@@ -471,24 +469,24 @@ Generated by Tokenade v2.5.0
                 headers=headers,
                 method="POST",
             )
-            
+
             with urllib.request.urlopen(req, timeout=10) as resp:
                 status_code = resp.getcode()
                 response_text = resp.read().decode("utf-8", errors="replace")
-            
+
             if 200 <= status_code < 300:
                 logger.info(f"Webhook delivered to {config.webhook_url}")
                 return True, f"Webhook delivered (HTTP {status_code})"
             else:
                 return False, f"Webhook failed (HTTP {status_code}): {response_text}"
-                
+
         except urllib.error.HTTPError as e:
             logger.error(f"Webhook delivery failed: HTTP {e.code}")
             return False, f"Webhook failed (HTTP {e.code}): {e.read().decode('utf-8', errors='replace')}"
         except Exception as e:
             logger.error(f"Webhook delivery failed: {e}")
             return False, str(e)
-    
+
     def create_version(
         self,
         session: Dict,
@@ -496,13 +494,13 @@ Generated by Tokenade v2.5.0
     ) -> str:
         """
         Create a new version of a session.
-        
+
         Returns:
             Version ID
         """
         site_name = session.get("site_name", "unknown")
         version_id = f"{site_name}_{int(time.time())}_{secrets.token_hex(4)}"
-        
+
         version = SessionVersion(
             version_id=version_id,
             created_at=time.time(),
@@ -510,7 +508,7 @@ Generated by Tokenade v2.5.0
             changes=changes,
             session_data=session,
         )
-        
+
         # Save version
         version_path = self.versions_dir / f"{version_id}.json"
         with open(version_path, "w") as f:
@@ -521,22 +519,22 @@ Generated by Tokenade v2.5.0
                 "changes": version.changes,
                 "session_data": version.session_data,
             }, f, indent=2)
-        
+
         logger.info(f"Created session version: {version_id}")
         return version_id
-    
+
     def list_versions(self, site_name: Optional[str] = None) -> List[Dict]:
         """List all session versions, optionally filtered by site name."""
         versions = []
-        
+
         for path in self.versions_dir.glob("*.json"):
             try:
                 with open(path, "r") as f:
                     data = json.load(f)
-                
+
                 if site_name and not data.get("version_id", "").startswith(site_name):
                     continue
-                
+
                 versions.append({
                     "version_id": data["version_id"],
                     "created_at": data["created_at"],
@@ -545,27 +543,27 @@ Generated by Tokenade v2.5.0
                 })
             except Exception as e:
                 logger.warning(f"Failed to load version {path}: {e}")
-        
+
         return sorted(versions, key=lambda v: v["created_at"], reverse=True)
-    
+
     def load_version(self, version_id: str) -> Optional[Dict]:
         """Load a specific session version."""
         version_path = self.versions_dir / f"{version_id}.json"
-        
+
         if not version_path.exists():
             return None
-        
+
         try:
             with open(version_path, "r") as f:
                 data = json.load(f)
             return data.get("session_data")
         except Exception:
             return None
-    
+
     def rollback_version(self, version_id: str) -> Optional[Dict]:
         """
         Rollback to a previous session version.
-        
+
         Returns:
             The session data from the specified version, or None
         """
@@ -573,11 +571,11 @@ Generated by Tokenade v2.5.0
         if session_data:
             logger.info(f"Rolled back to version: {version_id}")
         return session_data
-    
+
     def _save_shared(self, shared: SharedSession):
         """Save shared session to storage."""
         path = self.storage_dir / f"{shared.session_id}.json"
-        
+
         data = {
             "session_id": shared.session_id,
             "created_at": shared.created_at,
@@ -587,24 +585,24 @@ Generated by Tokenade v2.5.0
             "password_hash": shared.password_hash,
             "session_data": shared.session_data,
         }
-        
+
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
-    
+
     def _load_shared(self, session_id: str) -> Optional[SharedSession]:
         """Load shared session from storage."""
         path = self.storage_dir / f"{session_id}.json"
-        
+
         if not path.exists():
             return None
-        
+
         try:
             with open(path, "r") as f:
                 data = json.load(f)
             return SharedSession(**data)
         except Exception:
             return None
-    
+
     def _delete_shared(self, session_id: str):
         """Delete shared session from storage."""
         path = self.storage_dir / f"{session_id}.json"
@@ -615,11 +613,11 @@ Generated by Tokenade v2.5.0
 def generate_share_html(session: Dict, output_path: str) -> str:
     """
     Generate an HTML page that can decode and display a shared session.
-    
+
     This allows sharing via simple HTML files that work offline.
     """
     session_json = json.dumps(session, indent=2)
-    
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -628,7 +626,7 @@ def generate_share_html(session: Dict, output_path: str) -> str:
     <title>Tokenade Shared Session</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0a0a0a; color: #fff; min-height: 100vh;
             display: flex; justify-content: center; align-items: center;
@@ -636,8 +634,8 @@ def generate_share_html(session: Dict, output_path: str) -> str:
         .container {{ max-width: 600px; padding: 40px; width: 100%; }}
         h1 {{ color: #00ff88; margin-bottom: 20px; }}
         .info {{ color: #888; margin-bottom: 30px; line-height: 1.6; }}
-        .card {{ 
-            background: #1a1a1a; border-radius: 12px; padding: 24px; 
+        .card {{
+            background: #1a1a1a; border-radius: 12px; padding: 24px;
             margin-bottom: 20px; border: 1px solid #333;
         }}
         .card h3 {{ color: #00ff88; margin-bottom: 12px; }}
@@ -645,14 +643,14 @@ def generate_share_html(session: Dict, output_path: str) -> str:
         .info-label {{ color: #888; }}
         .info-value {{ color: #fff; font-weight: 500; }}
         .btn {{
-            background: #00ff88; color: #000; padding: 12px 24px; 
+            background: #00ff88; color: #000; padding: 12px 24px;
             border-radius: 8px; border: none; font-size: 1em; font-weight: 600;
             cursor: pointer; width: 100%; margin-top: 20px;
         }}
         .btn:hover {{ background: #00cc6a; }}
         .btn:disabled {{ background: #333; color: #666; cursor: not-allowed; }}
-        .status {{ 
-            padding: 8px 16px; border-radius: 20px; 
+        .status {{
+            padding: 8px 16px; border-radius: 20px;
             display: inline-block; margin: 10px 0;
         }}
         .status-ok {{ background: #00ff8822; color: #00ff88; border: 1px solid #00ff88; }}
@@ -665,7 +663,7 @@ def generate_share_html(session: Dict, output_path: str) -> str:
         <p class="info">
             This page contains a shared browser session. Click below to download the session file.
         </p>
-        
+
         <div class="card">
             <h3>Session Info</h3>
             <div class="info-row">
@@ -681,19 +679,19 @@ def generate_share_html(session: Dict, output_path: str) -> str:
                 <span class="info-value">{session.get('created_at', 'unknown')}</span>
             </div>
         </div>
-        
+
         <button class="btn" onclick="downloadSession()">
             Download Session File (.tokenade)
         </button>
-        
+
         <p class="info" style="margin-top: 20px; font-size: 0.9em;">
             Use with Tokenade: <code>tokenade proxy -s downloaded_file.tokenade</code>
         </p>
     </div>
-    
+
     <script>
         const sessionData = {session_json};
-        
+
         function downloadSession() {{
             const blob = new Blob([JSON.stringify(sessionData, null, 2)], {{ type: 'application/json' }});
             const url = URL.createObjectURL(blob);
@@ -708,8 +706,8 @@ def generate_share_html(session: Dict, output_path: str) -> str:
     </script>
 </body>
 </html>"""
-    
+
     with open(output_path, "w") as f:
         f.write(html)
-    
+
     return output_path

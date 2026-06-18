@@ -6,10 +6,7 @@ Netscape/curl format, HTTP cookie headers, and raw JSON.
 """
 
 import json
-import time
-from typing import Dict, List, Optional
-from http.cookiejar import MozillaCookieJar
-from io import StringIO
+from typing import Dict, List
 import logging
 
 logger = logging.getLogger(__name__)

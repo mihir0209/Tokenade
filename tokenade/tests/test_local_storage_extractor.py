@@ -14,7 +14,6 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from pathlib import Path
 
 from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 
@@ -29,9 +28,9 @@ class TestLocalStorageExtractor(unittest.TestCase):
 
         # Create Firefox-style storage/default/https+++domain/ls/data.sqlite
         storage_base = os.path.join(self.profile_path, "storage", "default")
-        
+
         self.ls_dbs = {}
-        
+
         for domain, entries in [
             ("https+++learner.pceterp.in", [("name", "PIMPRI CHINCHWAD EDUCATION TRUST"), ("token", "abc123xyz"), ("user_id", "12345")]),
             ("https+++example.com", [("theme", "dark")]),
@@ -39,7 +38,7 @@ class TestLocalStorageExtractor(unittest.TestCase):
             ls_dir = os.path.join(storage_base, domain, "ls")
             os.makedirs(ls_dir, exist_ok=True)
             db_path = os.path.join(ls_dir, "data.sqlite")
-            
+
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute("""

@@ -9,8 +9,7 @@ import os
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,18 +28,18 @@ class BrowserConfig:
     ignore_default_args: List[str] = field(default_factory=list)
     env: Optional[Dict[str, str]] = None
     proxy: Optional[Dict[str, str]] = None
-    
+
     # Anti-detection flags
     disable_blink_features: bool = True
     no_sandbox: bool = True
     disable_dev_shm_usage: bool = True
     no_first_run: bool = True
     no_default_browser_check: bool = True
-    
+
     # Fingerprint spoofing
     fingerprint: Optional[Dict] = None
     stealth_level: str = "maximum"  # basic, advanced, maximum
-    
+
     def __post_init__(self):
         """Apply default anti-detection args if not overridden."""
         default_args = []
@@ -54,13 +53,13 @@ class BrowserConfig:
             default_args.append("--no-default-browser-check")
         if self.disable_blink_features:
             default_args.append("--disable-blink-features=AutomationControlled")
-        
+
         # Merge with user args (user args take precedence)
         existing = set(self.args)
         for arg in default_args:
             if arg.split("=")[0] not in {a.split("=")[0] for a in existing}:
                 self.args.append(arg)
-        
+
         if "--enable-automation" not in self.ignore_default_args:
             self.ignore_default_args.append("--enable-automation")
 
@@ -68,47 +67,41 @@ class BrowserConfig:
 class BrowserManager(ABC):
     """
     Abstract base class for browser management.
-    
+
     Implementations handle specific browser automation backends
     (Playwright, Selenium, etc.)
     """
-    
+
     def __init__(self, config: BrowserConfig):
         self.config = config
         self._context = None
         self._browser = None
         self._playwright = None
-        
+
     @abstractmethod
     def launch(self) -> Any:
         """Launch browser and return context/page handle."""
-        pass
-    
+
     @abstractmethod
     def close(self):
         """Close browser and cleanup resources."""
-        pass
-    
+
     @abstractmethod
     def get_cookies(self, urls: Optional[List[str]] = None) -> List[Dict]:
         """Get cookies from browser context."""
-        pass
-    
+
     @abstractmethod
     def add_cookies(self, cookies: List[Dict]):
         """Add cookies to browser context."""
-        pass
-    
+
     @abstractmethod
     def navigate(self, url: str, wait_until: str = "networkidle", timeout: int = 30000) -> Any:
         """Navigate to URL and return response."""
-        pass
-    
+
     @abstractmethod
     def evaluate(self, expression: str) -> Any:
         """Evaluate JavaScript in browser context."""
-        pass
-    
+
     @property
     def is_active(self) -> bool:
         """Check if browser context is active."""
@@ -120,33 +113,33 @@ class PlaywrightBrowserManager(BrowserManager):
     Playwright-based browser manager implementation.
     Production-grade with proper error handling and resource management.
     """
-    
+
     def __init__(self, config: BrowserConfig):
         super().__init__(config)
         self._page = None
-        
+
     def launch(self) -> Any:
         """Launch browser using Playwright."""
         try:
             from playwright.sync_api import sync_playwright
-            
+
             self._playwright = sync_playwright().start()
-            
+
             launch_options = {
                 "headless": self.config.headless,
                 "args": self.config.args,
                 "ignore_default_args": self.config.ignore_default_args,
             }
-            
+
             if self.config.executable_path:
                 launch_options["executable_path"] = self.config.executable_path
             if self.config.channel:
                 launch_options["channel"] = self.config.channel
             if self.config.proxy:
                 launch_options["proxy"] = self.config.proxy
-            
+
             browser_type = getattr(self._playwright, self.config.browser_type)
-            
+
             if self.config.user_data_dir:
                 # Persistent context (saves session data)
                 self._context = browser_type.launch_persistent_context(
@@ -164,26 +157,26 @@ class PlaywrightBrowserManager(BrowserManager):
                     context_options["env"] = self.config.env
                 self._context = self._browser.new_context(**context_options)
                 self._page = self._context.new_page()
-            
+
             # Inject stealth script if fingerprint provided
             if self.config.fingerprint:
                 try:
                     from ..fingerprint.injector import inject_stealth_script
                     from ..fingerprint.manager import BrowserFingerprint
-                    
+
                     if isinstance(self.config.fingerprint, dict):
                         fingerprint = BrowserFingerprint.from_dict(self.config.fingerprint)
                     else:
                         fingerprint = self.config.fingerprint
-                    
+
                     inject_stealth_script(self, fingerprint, self.config.stealth_level)
                     logger.info(f"Stealth script injected at level: {self.config.stealth_level}")
                 except Exception as e:
                     logger.warning(f"Failed to inject stealth script: {e}")
-            
+
             logger.info(f"Browser launched: {self.config.browser_type}, headless={self.config.headless}")
             return self._page
-            
+
         except Exception as e:
             error_msg = str(e).lower()
             hint = ""
@@ -201,7 +194,7 @@ class PlaywrightBrowserManager(BrowserManager):
             logger.error(f"Failed to launch browser ({self.config.browser_type}): {e}{hint}")
             self.close()
             raise
-    
+
     def close(self):
         """Close browser and cleanup Playwright."""
         try:
@@ -217,25 +210,25 @@ class PlaywrightBrowserManager(BrowserManager):
             logger.info("Browser closed and resources cleaned up")
         except Exception as e:
             logger.warning(f"Error during browser cleanup: {e}")
-    
+
     def get_cookies(self, urls: Optional[List[str]] = None) -> List[Dict]:
         """Get cookies from browser context."""
         if not self._context:
             raise RuntimeError("Browser not launched")
         return self._context.cookies(urls)
-    
+
     def add_cookies(self, cookies: List[Dict]):
         """Add cookies to browser context."""
         if not self._context:
             raise RuntimeError("Browser not launched")
         self._context.add_cookies(cookies)
-    
+
     def navigate(self, url: str, wait_until: str = "networkidle", timeout: int = 30000) -> Any:
         """Navigate to URL."""
         if not self._page:
             raise RuntimeError("Browser not launched")
         return self._page.goto(url, wait_until=wait_until, timeout=timeout)
-    
+
     def evaluate(self, expression: str) -> Any:
         """Evaluate JavaScript."""
         if not self._page:
@@ -247,7 +240,7 @@ class PlaywrightBrowserManager(BrowserManager):
         if not self._page:
             raise RuntimeError("Browser not launched")
         return self._page.evaluate(expression, arg)
-    
+
     def query_selector(self, selector: str, timeout: Optional[int] = None):
         """Query element on page."""
         if not self._page:
@@ -255,7 +248,7 @@ class PlaywrightBrowserManager(BrowserManager):
         if timeout:
             return self._page.wait_for_selector(selector, timeout=timeout)
         return self._page.query_selector(selector)
-    
+
     def click(self, selector: str, timeout: int = 5000):
         """Click element on page."""
         if not self._page:
@@ -264,7 +257,7 @@ class PlaywrightBrowserManager(BrowserManager):
         if element:
             element.click()
         return element
-    
+
     def fill(self, selector: str, value: str, timeout: int = 5000):
         """Fill input field."""
         if not self._page:
@@ -277,30 +270,30 @@ class PlaywrightBrowserManager(BrowserManager):
 
 class BrowserFactory:
     """Factory for creating browser managers."""
-    
+
     _registry: Dict[str, type] = {
         "playwright": PlaywrightBrowserManager,
     }
-    
+
     @classmethod
     def register(cls, name: str, manager_class: type):
         """Register a new browser manager implementation."""
         cls._registry[name] = manager_class
-    
+
     @classmethod
     def create(cls, backend: str = "playwright", **config_kwargs) -> BrowserManager:
         """Create browser manager instance."""
         if backend not in cls._registry:
             raise ValueError(f"Unknown browser backend: {backend}. Available: {list(cls._registry.keys())}")
-        
+
         config = BrowserConfig(**config_kwargs)
         return cls._registry[backend](config)
-    
+
     @classmethod
     def detect_chrome_path(cls) -> Optional[str]:
         """Auto-detect Chrome executable path based on OS."""
         os_type = platform.system()
-        
+
         paths = {
             "Windows": [
                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -317,7 +310,7 @@ class BrowserFactory:
                 "/Applications/Chromium.app/Contents/MacOS/Chromium",
             ],
         }
-        
+
         for path in paths.get(os_type, []):
             if os.path.exists(path):
                 return path

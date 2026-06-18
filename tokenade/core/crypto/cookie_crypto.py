@@ -12,11 +12,9 @@ import json
 import base64
 import sqlite3
 import shutil
-import struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,7 +38,7 @@ class DecryptedCookie:
     samesite: int = -1
     source_scheme: int = 2
     source_port: int = 443
-    
+
     def to_playwright_format(self) -> Dict:
         """Convert to Playwright cookie format."""
         cookie = {
@@ -53,14 +51,14 @@ class DecryptedCookie:
             cookie["secure"] = True
         if self.is_httponly:
             cookie["httpOnly"] = True
-        
+
         # Convert Chrome time to Unix timestamp for expires
         if self.expires_utc > 0:
             chrome_epoch_offset = 11644473600
             expires = int((self.expires_utc / 1000000) - chrome_epoch_offset)
             if expires > 0:
                 cookie["expires"] = expires
-        
+
         # SameSite mapping
         if self.samesite == 1:
             cookie["sameSite"] = "Lax"
@@ -68,9 +66,9 @@ class DecryptedCookie:
             cookie["sameSite"] = "Strict"
         elif self.is_secure:
             cookie["sameSite"] = "None"
-        
+
         return cookie
-    
+
     def to_chrome_db_format(self) -> Tuple[Tuple, Dict]:
         """Convert to Chrome database format."""
         return (
@@ -99,36 +97,32 @@ class DecryptedCookie:
 
 class CookieCrypto(ABC):
     """Abstract base for platform-specific cookie cryptography."""
-    
+
     @abstractmethod
     def get_encryption_key(self, browser_data_dir: str) -> Optional[bytes]:
         """Get the encryption key for this platform."""
-        pass
-    
+
     @abstractmethod
     def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
         """Decrypt a single cookie value."""
-        pass
-    
+
     @abstractmethod
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
         """Encrypt a cookie value for this platform."""
-        pass
-    
+
     @abstractmethod
     def extract_cookies(self, cookies_db_path: str, browser_data_dir: Optional[str] = None) -> List[DecryptedCookie]:
         """Extract and decrypt all cookies from database."""
-        pass
 
 
 class WindowsCookieCrypto(CookieCrypto):
     """Windows DPAPI + AES-256-GCM cookie decryption."""
-    
+
     def __init__(self):
         self._dpapi = None
         self._aes = None
         self._ensure_imports()
-    
+
     def _ensure_imports(self):
         """Lazy import Windows-specific modules."""
         try:
@@ -139,47 +133,47 @@ class WindowsCookieCrypto(CookieCrypto):
         except ImportError:
             logger.error("Windows crypto requires: pip install pywin32 pycryptodome")
             raise
-    
+
     def get_encryption_key(self, browser_data_dir: str) -> Optional[bytes]:
         """Get Chrome's encryption key from Local State file."""
         local_state_path = os.path.join(browser_data_dir, "Local State")
-        
+
         if not os.path.exists(local_state_path):
             logger.warning(f"Local State not found: {local_state_path}")
             return None
-        
+
         try:
             with open(local_state_path, "r", encoding="utf-8") as f:
                 local_state = json.load(f)
-            
+
             encrypted_key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])
             encrypted_key = encrypted_key[5:]  # Remove DPAPI prefix
-            
+
             decrypted_key = self._dpapi.CryptUnprotectData(
                 encrypted_key, None, None, None, 0
             )[1]
-            
+
             return decrypted_key
-            
+
         except Exception as e:
             logger.error(f"Failed to get encryption key: {e}")
             return None
-    
+
     def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
         """Decrypt Windows Chrome cookie (AES-256-GCM)."""
         if not encrypted_value:
             return ""
-        
+
         try:
             version = encrypted_value[:3]
-            
+
             if version in (b"v10", b"v11"):
                 nonce = encrypted_value[3:15]
                 ciphertext = encrypted_value[15:]
-                
+
                 cipher = self._aes.new(key, self._aes.MODE_GCM, nonce=nonce)
                 decrypted = cipher.decrypt(ciphertext[:-16])
-                
+
                 # Skip first 32 bytes (metadata)
                 decrypted = decrypted[32:]
                 return decrypted.decode("utf-8")
@@ -189,23 +183,23 @@ class WindowsCookieCrypto(CookieCrypto):
                     encrypted_value, None, None, None, 0
                 )[1]
                 return decrypted.decode("utf-8")
-                
+
         except Exception as e:
             logger.warning(f"Decryption failed: {e}")
             return None
-    
+
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
         """Encrypt for Windows (not typically needed for our use case)."""
         raise NotImplementedError("Windows encryption not implemented - use native Chrome")
-    
+
     def extract_cookies(self, cookies_db_path: str, browser_data_dir: Optional[str] = None) -> List[DecryptedCookie]:
         """Extract all cookies from Windows Chrome database."""
         if not os.path.exists(cookies_db_path):
             logger.error(f"Cookie database not found: {cookies_db_path}")
             return []
-        
+
         key = self.get_encryption_key(browser_data_dir) if browser_data_dir else None
-        
+
         # Copy database (Chrome locks it)
         temp_db = cookies_db_path + ".temp"
         try:
@@ -213,12 +207,12 @@ class WindowsCookieCrypto(CookieCrypto):
         except Exception as e:
             logger.error(f"Cannot copy database: {e}")
             return []
-        
+
         cookies = []
         try:
             conn = sqlite3.connect(temp_db)
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 SELECT host_key, name, value, encrypted_value, path,
                        expires_utc, is_secure, is_httponly, creation_utc,
@@ -227,20 +221,20 @@ class WindowsCookieCrypto(CookieCrypto):
                 FROM cookies
                 ORDER BY host_key, name
             """)
-            
+
             for row in cursor.fetchall():
                 (host_key, name, value, encrypted_value, path,
                  expires_utc, is_secure, is_httponly, creation_utc,
                  last_access_utc, has_expires, is_persistent, priority,
                  samesite, source_scheme) = row
-                
+
                 decrypted_value = None
                 if encrypted_value and key:
                     decrypted_value = self.decrypt_cookie(encrypted_value, key)
-                
+
                 if decrypted_value is None:
                     decrypted_value = value or ""
-                
+
                 cookies.append(DecryptedCookie(
                     name=name,
                     value=decrypted_value,
@@ -257,31 +251,30 @@ class WindowsCookieCrypto(CookieCrypto):
                     samesite=samesite,
                     source_scheme=source_scheme,
                 ))
-            
+
             conn.close()
-            
+
         finally:
             if os.path.exists(temp_db):
                 os.remove(temp_db)
-        
+
         logger.info(f"Extracted {len(cookies)} cookies from {cookies_db_path}")
         return cookies
 
 
 class LinuxCookieCrypto(CookieCrypto):
     """Linux cookie handling - uses plain text or system keyring."""
-    
+
     def __init__(self):
         self._keyring_available = self._check_keyring()
-    
+
     def _check_keyring(self) -> bool:
         """Check if system keyring is available."""
         try:
-            import secretstorage
             return True
         except ImportError:
             return False
-    
+
     def get_encryption_key(self, browser_data_dir: str) -> Optional[bytes]:
         """Get Linux Chrome encryption key."""
         if self._keyring_available:
@@ -294,14 +287,14 @@ class LinuxCookieCrypto(CookieCrypto):
                         return item.get_secret()
             except Exception as e:
                 logger.debug(f"Keyring access failed: {e}")
-        
+
         # Fallback to "peanuts" key
         logger.debug("Using fallback 'peanuts' key")
         return b"peanuts"
-    
+
     def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
         """Decrypt Linux Chrome cookie.
-        
+
         Linux Chrome uses AES-128-CBC with:
         - v10 header (3 bytes)
         - 16-byte IV (all 0x20 spaces)
@@ -309,80 +302,79 @@ class LinuxCookieCrypto(CookieCrypto):
         """
         if not encrypted_value:
             return ""
-        
+
         try:
             from Crypto.Cipher import AES
             import hashlib
-            
+
             version = encrypted_value[:3]
             if version in (b"v10", b"v11"):
                 # Linux Chrome: AES-128-CBC with 16-byte IV
                 iv = encrypted_value[3:19]
                 ciphertext = encrypted_value[19:]
-                
+
                 # Derive key using PBKDF2
                 key_material = hashlib.pbkdf2_hmac(
                     "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
                 )
-                
+
                 cipher = AES.new(key_material, AES.MODE_CBC, iv)
                 decrypted = cipher.decrypt(ciphertext)
-                
+
                 # Remove PKCS7 padding
                 if decrypted:
                     pad_len = decrypted[-1]
                     if 1 <= pad_len <= 16:
                         decrypted = decrypted[:-pad_len]
-                
+
                 return decrypted.decode("utf-8", errors="replace")
             else:
                 return encrypted_value.decode("utf-8", errors="ignore")
-                
+
         except Exception as e:
             logger.warning(f"Linux decryption failed: {e}")
             return None
-    
+
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
         """Encrypt cookie for Linux Chrome (AES-128-CBC)."""
         try:
             from Crypto.Cipher import AES
-            from Crypto.Random import get_random_bytes
             import hashlib
-            
+
             key_material = hashlib.pbkdf2_hmac(
                 "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
             )
-            
+
             # 16-byte IV (all 0x20 spaces, matching Chrome's format)
             iv = b" " * 16
-            
+
             # PKCS7 padding
             plaintext_bytes = plaintext.encode("utf-8")
             pad_len = 16 - (len(plaintext_bytes) % 16)
             plaintext_bytes += bytes([pad_len] * pad_len)
-            
+
             cipher = AES.new(key_material, AES.MODE_CBC, iv)
             ciphertext = cipher.encrypt(plaintext_bytes)
-            
+
             return b"v10" + iv + ciphertext
-            
+
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
             raise
-    
+
     def extract_cookies(self, cookies_db_path: str, browser_data_dir: Optional[str] = None) -> List[DecryptedCookie]:
         """Extract cookies from Linux Chrome database."""
         if not os.path.exists(cookies_db_path):
             logger.error(f"Cookie database not found: {cookies_db_path}")
             return []
-        
+
         key = self.get_encryption_key(browser_data_dir) if browser_data_dir else None
-        
+
         cookies = []
         try:
             conn = sqlite3.connect(cookies_db_path)
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 SELECT host_key, name, value, encrypted_value, path,
                        expires_utc, is_secure, is_httponly, creation_utc,
@@ -391,20 +383,20 @@ class LinuxCookieCrypto(CookieCrypto):
                 FROM cookies
                 ORDER BY host_key, name
             """)
-            
+
             for row in cursor.fetchall():
                 (host_key, name, value, encrypted_value, path,
                  expires_utc, is_secure, is_httponly, creation_utc,
                  last_access_utc, has_expires, is_persistent, priority,
                  samesite, source_scheme) = row
-                
+
                 decrypted_value = None
                 if encrypted_value and key:
                     decrypted_value = self.decrypt_cookie(encrypted_value, key)
-                
+
                 if decrypted_value is None:
                     decrypted_value = value or ""
-                
+
                 cookies.append(DecryptedCookie(
                     name=name,
                     value=decrypted_value,
@@ -421,12 +413,12 @@ class LinuxCookieCrypto(CookieCrypto):
                     samesite=samesite,
                     source_scheme=source_scheme,
                 ))
-            
+
             conn.close()
-            
+
         except Exception as e:
             logger.error(f"Failed to extract cookies: {e}")
-        
+
         return cookies
 
 
@@ -500,7 +492,7 @@ class MacCookieCrypto(CookieCrypto):
 
 class CookieCryptoFactory:
     """Factory for platform-specific cookie crypto."""
-    
+
     @staticmethod
     def get_platform() -> str:
         """Detect current platform."""
@@ -511,12 +503,12 @@ class CookieCryptoFactory:
             return "nt"
         else:
             return os.name
-    
+
     @classmethod
     def create(cls, platform_override: Optional[str] = None) -> CookieCrypto:
         """Create appropriate crypto handler."""
         platform = platform_override or cls.get_platform()
-        
+
         if platform == "nt" or platform_override == "windows":
             return WindowsCookieCrypto()
         elif platform == "darwin" or platform_override == "darwin":

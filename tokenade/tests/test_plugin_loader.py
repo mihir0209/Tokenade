@@ -1,8 +1,6 @@
 """Tests for plugin loader."""
 
 import json
-import pytest
-from pathlib import Path
 
 from tokenade.core.integration.plugin_loader import PluginLoader, LoadedPlugin
 
@@ -234,9 +232,9 @@ class TestPluginLoaderGetters:
 
     def test_list_exporters(self, tmp_path):
         loader = PluginLoader(plugins_dir=tmp_path)
-        loader._exporters["f"] = "exporter_f"
+        loader._exporters[""] = "exporter_f"
         result = loader.list_exporters()
-        assert result == {"f": "exporter_f"}
+        assert result == {"": "exporter_f"}
 
     def test_list_validators(self, tmp_path):
         loader = PluginLoader(plugins_dir=tmp_path)

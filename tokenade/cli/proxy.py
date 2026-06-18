@@ -31,9 +31,9 @@ def cmd_proxy(args):
             print("❌ No session files found")
             return
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TOKENADE - Multi-Site Proxy ({len(sessions)} sessions)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         from tokenade.core.proxy.multi_site_proxy import MultiSiteProxy
         proxy = MultiSiteProxy(sessions, base_port=args.port, host=args.host)
@@ -91,7 +91,7 @@ def cmd_proxy(args):
                 use_fingerprint=args.fingerprint,
             )
             proxy = CDPProxy.from_session_file(str(session_file), config)
-            
+
             # Set impersonate target for TLS matching
             if args.impersonate:
                 proxy._auto_refresh_config["impersonate"] = args.impersonate
@@ -125,7 +125,7 @@ def cmd_proxy(args):
 
             threading.Thread(target=open_browser_thread, daemon=True).start()
 
-        print(f"\n🚀 Starting proxy server...")
+        print("\n🚀 Starting proxy server...")
         proxy.run()
 
     except KeyboardInterrupt:
@@ -139,12 +139,12 @@ def cmd_proxy(args):
             print(f"   Or kill the existing process: lsof -ti:{args.port} | xargs kill")
         elif "session" in error_str and ("not found" in error_str or "no such file" in error_str):
             print(f"❌ Session file not found: {args.session}")
-            print(f"   Export one first: tokenade export --browser-name firefox --domains 'example.com' -o session.tokenade")
+            print("   Export one first: tokenade export --browser-name firefox --domains 'example.com' -o session.tokenade")
         elif "playwright" in error_str or "chromium" in error_str or "executable" in error_str:
-            print(f"❌ Chromium browser not found.")
-            print(f"   Install: playwright install chromium")
+            print("❌ Chromium browser not found.")
+            print("   Install: playwright install chromium")
         elif "permission" in error_str or "access" in error_str:
-            print(f"❌ Permission denied — check file and directory permissions")
+            print("❌ Permission denied — check file and directory permissions")
         else:
             print(f"❌ Proxy failed: {e}")
-            print(f"   Check logs for details: ~/.tokenade/logs/")
+            print("   Check logs for details: ~/.tokenade/logs/")

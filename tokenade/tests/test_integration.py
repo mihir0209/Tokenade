@@ -12,8 +12,8 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.core.integration.docker_manager import DockerSessionManager, DockerContainer
-from tokenade.core.integration.kubernetes import KubernetesManager, KubernetesConfig
+from tokenade.core.integration.docker_manager import DockerSessionManager, DockerContainer  # noqa: E402
+from tokenade.core.integration.kubernetes import KubernetesManager, KubernetesConfig  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ class TestDockerSessionManagerCreateContainer(unittest.TestCase):
         mgr = DockerSessionManager(image_name="tokenade:latest")
 
         with patch("os.path.isfile", return_value=True), \
-             patch("os.path.abspath", return_value="/tmp/session.tokenade"):
+                patch("os.path.abspath", return_value="/tmp/session.tokenade"):
             container_id = mgr.create_session_container(
                 session_file="/tmp/session.tokenade",
                 name="test-container",
@@ -99,7 +99,7 @@ class TestDockerSessionManagerCreateContainer(unittest.TestCase):
         mock_run.side_effect = sp.CalledProcessError(1, "docker", stderr="error")
         mgr = DockerSessionManager()
         with patch("os.path.isfile", return_value=True), \
-             patch("os.path.abspath", return_value="/tmp/s.tokenade"):
+                patch("os.path.abspath", return_value="/tmp/s.tokenade"):
             result = mgr.create_session_container(
                 session_file="/tmp/s.tokenade",
                 name="fail",
@@ -228,7 +228,7 @@ class TestDockerSessionManagerRunBatch(unittest.TestCase):
         mgr = DockerSessionManager()
 
         with patch("os.path.isfile", return_value=True), \
-             patch("os.path.abspath", side_effect=lambda x: x):
+                patch("os.path.abspath", side_effect=lambda x: x):
             results = mgr.run_batch(
                 session_files=["/tmp/s1.tokenade", "/tmp/s2.tokenade"],
                 prefix="batch",

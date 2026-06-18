@@ -1,6 +1,5 @@
 """Tests for SSRF protection."""
 
-import pytest
 from tokenade.core.proxy.cdp_proxy import _is_safe_url
 
 

@@ -9,12 +9,10 @@ Handles:
 """
 
 import json
-import os
 import platform
-import socket
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 import logging
 
 from tokenade.core.importer.cookie_extractor import SiteFilter, SITE_DETECTION
@@ -94,7 +92,7 @@ class SessionPackager:
                     session_like += 1
                 # Session token patterns
                 name_lower = name.lower()
-                if any(kw in name_lower for kw in ("session", "token", "auth", "sid", "csrf", "xsrf")):
+                if any(kw in name_lower for kw in ("session", "token", "auth", "sid", "csr", "xsrf")):
                     session_like += 1
 
             if session_like >= 2:
@@ -196,28 +194,28 @@ class SessionPackager:
         ls_info = f", {len(local_storage)} localStorage" if local_storage else ""
         logger.info(f"Packaged session: {site_name} ({len(cookies)} cookies, {critical_count} critical{ls_info})")
         return package
-    
+
     def _detect_tls_profile(self, browser: str, fingerprint: Optional[Dict] = None) -> Dict:
         """
         Detect TLS profile from browser name and fingerprint.
-        
+
         Note: curl-cffi only supports Chrome impersonation, not Firefox.
         We always use Chrome impersonation for TLS matching.
-        
+
         Args:
             browser: Browser name
             fingerprint: Optional fingerprint dict
-            
+
         Returns:
             TLS profile dict
         """
         from tokenade.core.runtime.tls_matcher import IMPERSONATE_TARGETS
-        
+
         # Always use Chrome for TLS impersonation (Firefox not supported by curl-cffi)
         tls_browser = "chrome"
         version = "120"
         impersonate = "chrome120"
-        
+
         # Try to extract Chrome version from user agent
         if fingerprint and fingerprint.get("user_agent"):
             ua = fingerprint["user_agent"]
@@ -230,7 +228,7 @@ class SessionPackager:
                     if target_key.startswith(f"chrome{version}"):
                         impersonate = target_key
                         break
-        
+
         return {
             "browser": tls_browser,
             "version": version,
@@ -344,7 +342,7 @@ class SessionPackager:
 
         fp = package.get("fingerprint")
         if fp:
-            lines.append(f"Fingerprint: collected")
+            lines.append("Fingerprint: collected")
             lines.append(f"  User Agent: {fp.get('user_agent', 'unknown')[:60]}...")
             lines.append(f"  Screen: {fp.get('screen_width', 0)}x{fp.get('screen_height', 0)}")
         else:

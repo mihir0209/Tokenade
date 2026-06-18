@@ -56,7 +56,7 @@ class TestEncryptorEdgeCases:
     def test_truncated_ciphertext(self):
         enc = TokenadeEncryptor()
         encrypted = enc.encrypt(b"test", "pass")
-        truncated = encrypted[:len(encrypted)//2]
+        truncated = encrypted[:len(encrypted) // 2]
         with pytest.raises(ValueError):
             enc.decrypt(truncated, "pass")
 

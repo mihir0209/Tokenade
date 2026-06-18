@@ -9,7 +9,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Type
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,8 @@
-# Tokenade - Production-grade token shifting tool
+# Tokenade - Production-grade session portability tool
 # Multi-stage build for minimal image size
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -13,15 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Copy project files
+COPY pyproject.toml README.md requirements.txt ./
+COPY tokenade/ ./tokenade/
+
+# Install tokenade package
+RUN pip install --no-cache-dir --user .
 
 # Stage 2: Runtime image
 FROM python:3.11-slim
 
 LABEL maintainer="Tokenade Team"
-LABEL description="Production-grade token shifting and session portability tool"
+LABEL description="Production-grade session portability tool"
 
 WORKDIR /app
 
@@ -51,25 +54,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 \
     # Secret storage for Linux
     libsecret-1-0 \
-    secret-tool \
     # General utilities
     curl \
     jq \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
-
-# Copy application code
-COPY tokenade/ ./tokenade/
-COPY setup.py .
-COPY README.md .
-COPY requirements.txt .
-
-# Install tokenade package
-RUN pip install --no-cache-dir -e .
 
 # Install Playwright browsers
 RUN playwright install chromium && playwright install-deps chromium

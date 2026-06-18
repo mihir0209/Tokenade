@@ -1,12 +1,9 @@
 """Tests for session monitoring."""
 
 import time
-import pytest
 from tokenade.core.monitoring.session_monitor import (
     SessionMonitor,
     MonitorConfig,
-    SessionStatus,
-    CookieStatus,
 )
 
 

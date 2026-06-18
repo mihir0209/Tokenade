@@ -13,12 +13,12 @@
 
 ## Current State (2026-06-17)
 
-### Version: 4.1.0 (released)
-- **PyPI:** https://pypi.org/project/tokenade/4.1.0/
-- **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v4.1.0
-- 1375 tests passing, 8 skipped, 0 failures
-- Coverage: 81%
-- Features built: CDP proxy (with CDP WebSocket injection), forward proxy, multi-site proxy, session refresh, sharing, encryption, health scoring, advanced validation, browser extension, web dashboard
+### Version: 5.0.0 (released)
+- **PyPI:** https://pypi.org/project/tokenade/5.0.0/
+- **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v5.0.0
+- 1632 tests passing, 7 skipped, 0 failures
+- Coverage: 84%
+- Features built: CDP proxy (with CDP WebSocket injection), forward proxy, multi-site proxy, session refresh, sharing, encryption, health scoring, advanced validation, browser extension, web dashboard, session sync daemon, dashboard with WebSocket/diff/timeline/quick-actions
 
 ### Battle-Tested (confirmed working)
 - ChatGPT: 68 cookies, CDP proxy, confirmed logged-in user
@@ -49,11 +49,21 @@
 - Phase 3: Better errors, progress indicators, config file ✅
 - Phase 4: Documentation (README, SITE_CONFIGS, TROUBLESHOOTING) ✅
 - Phase 5: Safari decryption, extension bridge, plugin enable/disable ✅
+- Phase 6: Quality/refactor/dashboard/docs ✅
+  - Fixed API endpoint import bug, 45 session_sync tests, 9 flaky tests fixed
+  - Refactored cdp_proxy.py (1870→477 lines, -75%): split into 6 modules
+  - Refactored server.py (1295→384 lines, -70%): split into 4 modules
+  - Dashboard expanded: WebSocket, session diff, timeline, quick actions
+  - Docs: API.md, ARCHITECTURE.md, TUTORIALS.md, TROUBLESHOOTING.md
 
 ### New Features (2026-06-17)
 - Session sync daemon: `tokenade sync add/remove/list/once/start`
 - Local fingerprint proxy already existed (server.py, forward_proxy.py)
 - Better error messages: CDP proxy launch, port-in-use, CLI catch-all, unsupported browser, no profile
+- Dashboard: WebSocket real-time updates, session diff view, session timeline, quick actions
+- Refactored CDP proxy: cdp_stealth.py, cdp_injection.py, cdp_gui.py, cdp_routing.py, cdp_api.py
+- Refactored legacy proxy: server_utils.py, server_gui.py, server_routing.py
+- Comprehensive docs: API.md, ARCHITECTURE.md, TUTORIALS.md, TROUBLESHOOTING.md
 
 ### Forward Proxy Battle-Tested (2026-06-17)
 - **HTTPS CONNECT tunneling:** Google 200/82KB, DuckDuckGo 200/169KB
@@ -86,7 +96,10 @@
 - **Netflix:** Skipped (user not logged in Firefox)
 
 ### What's Next
-- (all battle-tests complete, features shipped)
+- Phase 7: Coverage push to 90%+ (see `.agent/plans/phase7-plan.md`)
+- Core crypto modules need more tests (cookie_crypto 68%, encryptor 68%)
+- Integration modules need tests (kubernetes 20%, docker 55%, webhooks 39%)
+- Feature modules need tests (advanced_validator 50%, fingerprint/manager 65%)
 
 ## Manual Step-by-Step Procedure
 
@@ -334,16 +347,36 @@ async with async_playwright() as p:
 ## Files Modified
 
 - `tokenade/cli.py` — Added `--cdp`/`--legacy` flags, `--domains` for export, updated help
-- `tokenade/core/proxy/cdp_proxy.py` — CDP proxy with raw CDP WebSocket injection, `/json/version`, `/json/list`, `/stealth.js` endpoints, remote debugging port, CDP monitor with auto-attach + thread isolation (run_in_executor), fixed visible mode (`--headless=new` was hardcoded), better launch error messages
+- `tokenade/core/proxy/cdp_proxy.py` — Slim orchestrator (477 lines), delegates to cdp_stealth/injection/gui/routing/api modules. Re-exports backward-compat constants.
+- `tokenade/core/proxy/cdp_stealth.py` — NEW: Stealth script, URL safety, blocked networks, site URLs
+- `tokenade/core/proxy/cdp_injection.py` — NEW: CDP/WebSocket/localStorage injection
+- `tokenade/core/proxy/cdp_gui.py` — NEW: GUI HTML templates
+- `tokenade/core/proxy/cdp_routing.py` — NEW: Request routing, forwarding via curl-cffi/aiohttp
+- `tokenade/core/proxy/cdp_api.py` — NEW: CDP API endpoints (json/version, json/list, stealth.js, status, stats)
+- `tokenade/core/proxy/server.py` — Slim orchestrator (384 lines), delegates to server_utils/gui/routing modules
+- `tokenade/core/proxy/server_utils.py` — NEW: ProxyResponse, URL rewriting, content rewriting
+- `tokenade/core/proxy/server_gui.py` — NEW: Legacy proxy GUI templates
+- `tokenade/core/proxy/server_routing.py` — NEW: Legacy proxy request forwarding
 - `tokenade/core/proxy/forward_proxy.py` — Fixed CONNECT tunneling (stream-based piping), fixed HTTP handler crash
 - `tokenade/core/proxy/__init__.py` — Exports CDPProxy as primary
-- `tokenade/core/api/server.py` — Added /api/sync and /api/sync/run endpoints
-- `tokenade/core/api/dashboard/index.html` — Modern dashboard UI with stats, tabs, sync, detail overlay, toast notifications
+- `tokenade/core/api/server.py` — Added /api/sync and /api/sync/run endpoints (fixed missing `from aiohttp import web` import)
+- `tokenade/core/api/dashboard/index.html` — Modern dashboard with WebSocket, session diff, timeline, quick actions
+- `tokenade/core/importer/session_sync.py` — NEW: Session sync daemon
 - `tokenade/cli/proxy.py` — Better error messages (port-in-use, missing session, missing playwright)
 - `tokenade/cli/__init__.py` — CLI catch-all shows error message + log path + --verbose hint, sync command
 - `tokenade/cli/session.py` — No profile found suggests --list-profiles
 - `tokenade/cli/management.py` — Sync daemon CLI commands
 - `tokenade/core/importer/cookie_extractor.py` — Shows supported browsers on unsupported input
-- `tokenade/core/importer/session_sync.py` — NEW: Session sync daemon
+- `tokenade/tests/test_session_sync.py` — NEW: 45 tests for session_sync module
+- `tokenade/tests/test_api_monitoring.py` — Fixed version assertion
+- `tokenade/tests/test_proxy_modules.py` — Fixed ExtensionBridge broadcast tests
+- `tokenade/tests/test_performance.py` — Fixed ConnectionPool/RateLimiter tests
+- `tokenade/tests/test_api_server_comprehensive.py` — Fixed endpoints count assertion
+- `tokenade/tests/test_proxy.py` — Updated to test extracted module functions
+- `pyproject.toml` — Added `asyncio_default_fixture_loop_scope = "function"`
 - `README.md` — Rewritten with step-by-step procedure
+- `docs/API.md` — NEW: Comprehensive API documentation
+- `docs/ARCHITECTURE.md` — NEW: Architecture documentation
+- `docs/TUTORIALS.md` — NEW: 10 comprehensive tutorials
+- `docs/TROUBLESHOOTING.md` — NEW: Troubleshooting guide
 - `.agent/working.md` — This file

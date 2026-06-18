@@ -67,7 +67,7 @@ class TestSessionPackager:
         cookies = [
             {"name": "_ga", "value": "abc", "domain": ".example.com", "path": "/",
              "secure": True, "httpOnly": True},
-            {"name": "_gid", "value": "def", "domain": ".example.com", "path": "/",
+            {"name": "_gid", "value": "de", "domain": ".example.com", "path": "/",
              "secure": True, "httpOnly": True},
         ]
         status = packager.infer_auth_status(cookies, "example")

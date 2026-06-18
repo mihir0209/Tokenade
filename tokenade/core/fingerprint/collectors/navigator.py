@@ -8,11 +8,11 @@ from .base import BaseCollector
 
 class NavigatorCollector(BaseCollector):
     """Collects navigator properties for fingerprint spoofing."""
-    
+
     @property
     def api_name(self) -> str:
         return "navigator"
-    
+
     def collect(self, browser_manager) -> Dict[str, Any]:
         """Collect navigator properties."""
         script = """() => ({
@@ -40,13 +40,13 @@ class NavigatorCollector(BaseCollector):
             webdriver: navigator.webdriver !== undefined,
             permissions: (navigator.permissions || {}).query !== undefined
         })"""
-        
+
         try:
             result = browser_manager.evaluate(script)
             return result if isinstance(result, dict) else {}
-        except Exception as e:
+        except Exception:
             return {}
-    
+
     def get_script_template(self) -> str:
         return """
 // Navigator spoofing
@@ -67,7 +67,7 @@ class NavigatorCollector(BaseCollector):
         cookieEnabled: {{cookieEnabled}},
         onLine: {{onLine}}
     };
-    
+
     for (const [key, value] of Object.entries(navProps)) {
         try {
             Object.defineProperty(navigator, key, {
@@ -77,20 +77,20 @@ class NavigatorCollector(BaseCollector):
             });
         } catch(e) {}
     }
-    
+
     // Remove webdriver
     delete navigator.webdriver;
-    
+
     // Spoof bluetooth
     if ({{bluetooth}} === false) {
         delete navigator.bluetooth;
     }
-    
+
     // Spoof usb
     if ({{usb}} === false) {
         delete navigator.usb;
     }
-    
+
     // Spoof keyboard
     if ({{keyboard}} === false) {
         delete navigator.keyboard;

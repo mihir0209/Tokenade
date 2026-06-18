@@ -7,7 +7,7 @@ import json
 import logging
 import hashlib
 import hmac
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, List
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
 from urllib.error import URLError
@@ -28,22 +28,22 @@ class WebhookConfig:
 
 class WebhookIntegration:
     """Send notifications to various platforms."""
-    
+
     def __init__(self, config: WebhookConfig):
         self.config = config
-    
+
     def send_session_event(self, event_type: str, session_data: Dict) -> bool:
         """Send a session event notification.
-        
+
         Args:
             event_type: 'export', 'share', 'refresh', 'expired'
             session_data: Session metadata
-            
+
         Returns:
             Success boolean
         """
         payload = self._build_payload(event_type, session_data)
-        
+
         if self.config.type == "slack":
             formatted = self._format_slack(payload)
             return self._http_post(self.config.url, formatted)
@@ -57,19 +57,19 @@ class WebhookIntegration:
             return self._send_telegram(payload)
         else:
             return self._http_post(self.config.url, payload)
-    
+
     def _build_payload(self, event_type: str, session_data: Dict) -> Dict:
         """Build notification payload."""
         site = session_data.get("site_name", "unknown")
         cookies = session_data.get("cookie_count", 0)
-        
+
         messages = {
             "export": f"Session exported for {site} ({cookies} cookies)",
             "share": f"Session shared for {site}",
             "refresh": f"Session refreshed for {site}",
             "expired": f"Session expired for {site}",
         }
-        
+
         return {
             "event_type": event_type,
             "message": messages.get(event_type, f"Session event: {event_type}"),
@@ -77,7 +77,7 @@ class WebhookIntegration:
             "cookie_count": cookies,
             "timestamp": session_data.get("created_at", ""),
         }
-    
+
     def _format_slack(self, payload: Dict) -> Dict:
         """Format payload for Slack incoming webhook."""
         return {
@@ -92,7 +92,7 @@ class WebhookIntegration:
                 }
             ]
         }
-    
+
     def _format_discord(self, payload: Dict) -> Dict:
         """Format payload for Discord webhook."""
         return {
@@ -108,7 +108,7 @@ class WebhookIntegration:
                 }
             ]
         }
-    
+
     def _format_teams(self, payload: Dict) -> Dict:
         """Format payload for Microsoft Teams webhook."""
         return {
@@ -125,29 +125,29 @@ class WebhookIntegration:
                 }
             ]
         }
-    
+
     def _send_telegram(self, payload: Dict) -> bool:
         """Send to Telegram via Bot API."""
         if not self.config.bot_token:
             logger.error("Telegram bot token required")
             return False
-        
+
         text = f"*Tokenade: {payload['event_type'].title()}*\n{payload['message']}\nSite: {payload['site_name']}"
-        
+
         url = f"https://api.telegram.org/bot{self.config.bot_token}/sendMessage"
         telegram_payload = {
             "chat_id": self.config.channel,
             "text": text,
             "parse_mode": "Markdown",
         }
-        
+
         return self._http_post(url, telegram_payload)
-    
+
     def _http_post(self, url: str, payload: Dict) -> bool:
         """Send HTTP POST request."""
         try:
             data = json.dumps(payload).encode("utf-8")
-            
+
             req = Request(
                 url,
                 data=data,
@@ -157,7 +157,7 @@ class WebhookIntegration:
                 },
                 method="POST"
             )
-            
+
             if self.config.secret:
                 signature = hmac.HMAC(
                     self.config.secret.encode(),
@@ -165,12 +165,12 @@ class WebhookIntegration:
                     hashlib.sha256
                 ).hexdigest()
                 req.add_header("X-Tokenade-Signature", signature)
-            
+
             ctx = ssl.create_default_context()
-            
+
             response = urlopen(req, context=ctx, timeout=10)
             return response.status < 400
-            
+
         except URLError as e:
             logger.error(f"Webhook request failed: {e}")
             return False
@@ -181,28 +181,28 @@ class WebhookIntegration:
 
 class WebhookManager:
     """Manage multiple webhook configurations."""
-    
+
     def __init__(self):
         self._webhooks: Dict[str, WebhookConfig] = {}
-    
+
     def add(self, name: str, config: WebhookConfig):
         """Add a webhook configuration."""
         self._webhooks[name] = config
-    
+
     def remove(self, name: str) -> bool:
         """Remove a webhook configuration."""
         return self._webhooks.pop(name, None) is not None
-    
+
     def send(self, name: str, event_type: str, session_data: Dict) -> bool:
         """Send event to a specific webhook."""
         config = self._webhooks.get(name)
         if not config:
             logger.error(f"Webhook not found: {name}")
             return False
-        
+
         integration = WebhookIntegration(config)
         return integration.send_session_event(event_type, session_data)
-    
+
     def broadcast(self, event_type: str, session_data: Dict) -> Dict[str, bool]:
         """Send event to all configured webhooks."""
         results = {}
@@ -210,7 +210,7 @@ class WebhookManager:
             integration = WebhookIntegration(config)
             results[name] = integration.send_session_event(event_type, session_data)
         return results
-    
+
     def list_webhooks(self) -> List[Dict]:
         """List all configured webhooks."""
         return [

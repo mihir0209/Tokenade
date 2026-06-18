@@ -1,6 +1,5 @@
 """Tests for local storage extractor."""
 
-import os
 import sqlite3
 import pytest
 from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor

@@ -20,7 +20,7 @@ def cmd_batch_export(args):
         print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
     except Exception as e:
         logger.error(f"Failed to load site config: {e}", exc_info=True)
-        print(f"❌ Failed to load site config — verify JSON format is valid")
+        print("❌ Failed to load site config — verify JSON format is valid")
         return
 
     output_dir = args.output or "sessions_batch"
@@ -42,13 +42,13 @@ def cmd_batch_export(args):
         print("\n" + generate_batch_report(result))
 
         if result.success:
-            print(f"\n✅ Batch export completed successfully")
+            print("\n✅ Batch export completed successfully")
         else:
-            print(f"\n⚠️  Batch export completed with errors")
+            print("\n⚠️  Batch export completed with errors")
 
     except Exception as e:
         logger.error(f"Batch export failed: {e}", exc_info=True)
-        print(f"❌ Batch export failed — check browser profile and output directory")
+        print("❌ Batch export failed — check browser profile and output directory")
 
 
 def cmd_batch_load(args):
@@ -66,7 +66,7 @@ def cmd_batch_load(args):
             print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
         except Exception as e:
             logger.error(f"Failed to load site config: {e}", exc_info=True)
-            print(f"⚠️  Failed to load site config — verify JSON format")
+            print("⚠️  Failed to load site config — verify JSON format")
 
     print(f"\n📂 Sessions: {args.sessions_dir}")
     print(f"🌐 Target: {args.target_browser}")
@@ -85,13 +85,13 @@ def cmd_batch_load(args):
         print("\n" + generate_batch_report(result))
 
         if result.success:
-            print(f"\n✅ Batch load completed successfully")
+            print("\n✅ Batch load completed successfully")
         else:
-            print(f"\n⚠️  Batch load completed with errors")
+            print("\n⚠️  Batch load completed with errors")
 
     except Exception as e:
         logger.error(f"Batch load failed: {e}", exc_info=True)
-        print(f"❌ Batch load failed — check sessions directory and target browser")
+        print("❌ Batch load failed — check sessions directory and target browser")
 
 
 def cmd_validate(args):
@@ -125,7 +125,7 @@ def cmd_validate(args):
 
             cookies = data.get("cookies", [])
             if not cookies:
-                print(f"   ⚠️  No cookies")
+                print("   ⚠️  No cookies")
             else:
                 print(f"   ✅ {len(cookies)} cookies")
 
@@ -135,7 +135,7 @@ def cmd_validate(args):
 
             status = data.get("auth_status", "unknown")
             if status == "logged_in":
-                print(f"   ✅ Status: logged_in")
+                print("   ✅ Status: logged_in")
                 valid += 1
             else:
                 print(f"   ⚠️  Status: {status}")
@@ -143,7 +143,7 @@ def cmd_validate(args):
 
         except Exception as e:
             logger.debug(f"Validation error: {e}", exc_info=True)
-            print(f"   ❌ Validation error — session may be corrupted")
+            print("   ❌ Validation error — session may be corrupted")
             invalid += 1
 
     print(f"\n📊 Summary: {valid} valid, {invalid} invalid")
@@ -186,7 +186,7 @@ def cmd_validate_rules(args):
     passed = sum(1 for r in results if r.passed)
     failed = sum(1 for r in results if not r.passed)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     for result in results:
         status = "✅" if result.passed else "❌"
         duration = f" ({result.duration_ms:.0f}ms)" if result.duration_ms else ""
@@ -195,9 +195,9 @@ def cmd_validate_rules(args):
             for k, v in result.details.items():
                 print(f"   {k}: {v}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Results: {passed} passed, {failed} failed")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     if failed:
         import sys
@@ -231,35 +231,35 @@ def cmd_diff(args):
 
     if args.verbose:
         if result.cookies_only_in_a:
-            print(f"\n  Cookies only in A:")
+            print("\n  Cookies only in A:")
             for c in result.cookies_only_in_a:
                 print(f"    - {c.get('name')} ({c.get('domain')})")
         if result.cookies_only_in_b:
-            print(f"\n  Cookies only in B:")
+            print("\n  Cookies only in B:")
             for c in result.cookies_only_in_b:
                 print(f"    - {c.get('name')} ({c.get('domain')})")
         if result.cookies_modified:
-            print(f"\n  Cookies modified:")
+            print("\n  Cookies modified:")
             for m in result.cookies_modified:
                 print(f"    - {m['key']}")
                 print(f"      A: {m['a'].get('value', '')[:50]}...")
                 print(f"      B: {m['b'].get('value', '')[:50]}...")
         if result.localStorage_only_in_a:
-            print(f"\n  localStorage only in A:")
+            print("\n  localStorage only in A:")
             for k in result.localStorage_only_in_a:
                 print(f"    - {k}")
         if result.localStorage_only_in_b:
-            print(f"\n  localStorage only in B:")
+            print("\n  localStorage only in B:")
             for k in result.localStorage_only_in_b:
                 print(f"    - {k}")
         if result.localStorage_modified:
-            print(f"\n  localStorage modified:")
+            print("\n  localStorage modified:")
             for k, v in result.localStorage_modified.items():
                 print(f"    - {k}")
                 print(f"      A: {v['a'][:50]}...")
                 print(f"      B: {v['b'][:50]}...")
         if result.metadata_diffs:
-            print(f"\n  Metadata differences:")
+            print("\n  Metadata differences:")
             for field, vals in result.metadata_diffs.items():
                 print(f"    - {field}: {vals['a']} -> {vals['b']}")
 
@@ -345,7 +345,7 @@ def cmd_test(args):
 
     if args.variations:
         print("\n🧪 Testing fingerprint variations...")
-        results = tester.test_fingerprint_variations(
+        tester.test_fingerprint_variations(
             session_data=session_data,
             base_fp_name=args.source_fp or "default",
             handler_class=GoogleHandler,
@@ -365,7 +365,7 @@ def cmd_test(args):
             handler_class=GoogleHandler,
             test_api=args.test_api,
         )
-        results = [result]
+        [result]
 
         if args.validate_stealth and fp:
             print("\n🔍 Validating stealth injection...")
@@ -430,7 +430,7 @@ def cmd_setup(args):
         )
 
         browser = BrowserFactory.create(**config.__dict__)
-        page = browser.launch()
+        browser.launch()
 
         try:
             handler = GoogleHandler(browser)
@@ -449,8 +449,8 @@ def cmd_setup(args):
                 manager.save_accounts(accounts, use_keyring=True, encrypt_file=False)
 
                 print(f"✅ Account #{account_num} setup complete")
-                print(f"   Password stored in system keyring" if manager._keyring_available
-                      else f"   ⚠️  Keyring unavailable — run 'tokenade setup --encrypt' for secure storage")
+                print("   Password stored in system keyring" if manager._keyring_available
+                      else "   ⚠️  Keyring unavailable — run 'tokenade setup --encrypt' for secure storage")
             else:
                 print(f"❌ Login failed for account #{account_num}")
 

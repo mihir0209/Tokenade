@@ -5,8 +5,7 @@ Imports session data from Playwright storageState, Netscape, HTTP cookie headers
 """
 
 import json
-import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 from pathlib import Path
 import logging
 
@@ -82,7 +81,7 @@ class FormatImporter:
             parts = line.split("\t")
             if len(parts) >= 7:
                 domain = parts[0]
-                tailmatch = parts[1]
+                parts[1]
                 cookie_path = parts[2]
                 secure_str = parts[3]
                 expires_str = parts[4]
@@ -237,7 +236,7 @@ class FormatImporter:
             return "netscape"
 
         # Check for tab-separated lines with typical Netscape structure
-        lines = [l for l in content.splitlines() if l.strip() and not l.startswith("#")]
+        lines = [line for line in content.splitlines() if line.strip() and not line.startswith("#")]
         if lines:
             first_line = lines[0]
             parts = first_line.split("\t")

@@ -2,34 +2,32 @@
 Unit tests for site handlers (base, Google, GitHub).
 """
 
-import json
 import os
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.handlers.base import (
+from tokenade.handlers.base import (  # noqa: E402
     AuthStatus,
     ExtractedToken,
     HandlerRegistry,
     SessionData,
-    SiteHandler,
     TokenType,
 )
-from tokenade.handlers.google import GoogleHandler
-from tokenade.handlers.github import GitHubHandler
+from tokenade.handlers.google import GoogleHandler  # noqa: E402
+from tokenade.handlers.github import GitHubHandler  # noqa: E402
 
 
 class MockResponse:
     """Mock response object for browser navigation."""
+
     def __init__(self, status=200, json_data=None):
         self.status = status
         self._json = json_data or {}
-    
+
     def json(self):
         return self._json
 

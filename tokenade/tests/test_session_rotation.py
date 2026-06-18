@@ -163,10 +163,10 @@ class TestLogoutDetection:
     def test_github_auth_cookie_removed(self, monitor):
         monitor.snapshot([
             {"name": "user_session", "value": "abc", "domain": ".github.com", "path": "/"},
-            {"name": "_gh_sess", "value": "def", "domain": ".github.com", "path": "/"},
+            {"name": "_gh_sess", "value": "de", "domain": ".github.com", "path": "/"},
         ])
         cookies = [
-            {"name": "_gh_sess", "value": "def", "domain": ".github.com", "path": "/"},
+            {"name": "_gh_sess", "value": "de", "domain": ".github.com", "path": "/"},
         ]
         event = monitor.detect_changes(cookies)
         assert event is not None

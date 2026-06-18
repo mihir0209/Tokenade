@@ -1,6 +1,5 @@
 """Tests for browser discovery."""
 
-import pytest
 from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery, BrowserProfile
 
 

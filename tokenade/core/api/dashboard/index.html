@@ -149,6 +149,52 @@
       border-radius: 6px; font-size: 0.82em; color: var(--red); margin-top: 4px;
     }
 
+    /* Timeline */
+    .timeline { margin-top: 20px; }
+    .timeline-header { font-weight: 600; color: var(--text2); font-size: 0.85em; margin-bottom: 12px; }
+    .timeline-item {
+      display: flex; gap: 12px; padding: 10px 0; border-left: 2px solid var(--border);
+      padding-left: 16px; margin-left: 4px; position: relative;
+    }
+    .timeline-item::before {
+      content: ''; position: absolute; left: -5px; top: 14px; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--accent); border: 2px solid var(--surface);
+    }
+    .timeline-item.error::before { background: var(--red); }
+    .timeline-item.warning::before { background: var(--yellow); }
+    .timeline-time { font-size: 0.75em; color: var(--text3); min-width: 60px; }
+    .timeline-msg { font-size: 0.82em; color: var(--text); }
+    .timeline-msg code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-size: 0.9em; }
+
+    /* Diff View */
+    .diff-container { margin-top: 16px; }
+    .diff-header { font-weight: 600; color: var(--text2); font-size: 0.85em; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .diff-stats { display: flex; gap: 12px; }
+    .diff-stat { font-size: 0.78em; }
+    .diff-stat.added { color: var(--accent); }
+    .diff-stat.removed { color: var(--red); }
+    .diff-stat.unchanged { color: var(--text3); }
+    .diff-table { width: 100%; font-size: 0.82em; }
+    .diff-table td { padding: 4px 8px; border: none; font-family: 'SF Mono', Monaco, monospace; }
+    .diff-table tr.added td { background: #00ff8810; }
+    .diff-table tr.removed td { background: #ff6b6b10; }
+    .diff-table tr.unchanged td { color: var(--text3); }
+    .diff-table .marker { width: 20px; text-align: center; font-weight: 700; }
+    .diff-table .marker.added { color: var(--accent); }
+    .diff-table .marker.removed { color: var(--red); }
+
+    /* Quick Actions */
+    .quick-actions {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px;
+    }
+    .action-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px; cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .action-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .action-card .action-icon { font-size: 1.5em; margin-bottom: 6px; }
+    .action-card .action-label { font-size: 0.78em; color: var(--text2); font-weight: 500; }
+
     /* Empty state */
     .empty-state {
       text-align: center; padding: 60px 20px; color: var(--text3);
@@ -177,15 +223,25 @@
     /* Animations */
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
     /* Responsive */
-    @media (max-width: 1024px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 1024px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .quick-actions { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 768px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .quick-actions { grid-template-columns: 1fr 1fr; }
       .toolbar { flex-direction: column; gap: 8px; }
       .detail-panel { width: 95%; }
       .cookie-row { grid-template-columns: 1fr 80px; }
       .cookie-row .hide-mobile { display: none; }
+      .header { flex-direction: column; gap: 8px; }
+    }
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .quick-actions { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -211,6 +267,26 @@
     </div>
 
     <div id="dashboard" style="display: none;">
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <div class="action-card" onclick="refreshAll()">
+          <div class="action-icon">🔄</div>
+          <div class="action-label">Refresh All</div>
+        </div>
+        <div class="action-card" onclick="exportAllSessions()">
+          <div class="action-icon">📦</div>
+          <div class="action-label">Export Sessions</div>
+        </div>
+        <div class="action-card" onclick="runSync()">
+          <div class="action-icon">⚡</div>
+          <div class="action-label">Run Sync</div>
+        </div>
+        <div class="action-card" onclick="showDiff()">
+          <div class="action-icon">🔍</div>
+          <div class="action-label">Compare Sessions</div>
+        </div>
+      </div>
+
       <!-- Stats -->
       <div class="stats-grid">
         <div class="stat-card">
@@ -221,7 +297,7 @@
         <div class="stat-card">
           <div class="label">Cookies</div>
           <div class="value blue" id="total-cookies">0</div>
-          <div class="sub" id="cookies-sub">across all sessions</div>
+          <div class="sub">across all sessions</div>
         </div>
         <div class="stat-card">
           <div class="label">Healthy</div>
@@ -249,6 +325,8 @@
       <div class="tabs">
         <div class="tab active" data-tab="sessions">Sessions</div>
         <div class="tab" data-tab="sync">Sync</div>
+        <div class="tab" data-tab="timeline">Timeline</div>
+        <div class="tab" data-tab="diff">Diff</div>
       </div>
 
       <!-- Sessions Tab -->
@@ -302,6 +380,47 @@
           </table>
         </div>
       </div>
+
+      <!-- Timeline Tab -->
+      <div id="tab-timeline" style="display: none;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button class="btn btn-primary" onclick="loadTimeline()">Refresh</button>
+            <select id="timeline-filter" class="btn" onchange="loadTimeline()">
+              <option value="all">All Events</option>
+              <option value="export">Exports</option>
+              <option value="sync">Syncs</option>
+              <option value="error">Errors</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrapper" style="padding: 16px;">
+          <div id="timeline-container">
+            <div class="empty-state">
+              <div class="icon">📊</div>
+              <p>No events recorded yet.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Diff Tab -->
+      <div id="tab-diff" style="display: none;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <select id="diff-session-a" class="btn" onchange="loadDiff()"><option value="">Select session A...</option></select>
+            <span style="color:var(--text3);padding:0 8px;">vs</span>
+            <select id="diff-session-b" class="btn" onchange="loadDiff()"><option value="">Select session B...</option></select>
+            <button class="btn btn-primary" onclick="loadDiff()">Compare</button>
+          </div>
+        </div>
+        <div id="diff-container">
+          <div class="empty-state">
+            <div class="icon">🔍</div>
+            <p>Select two sessions to compare their cookies.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -316,12 +435,26 @@
     </div>
   </div>
 
+  <!-- Diff Overlay -->
+  <div class="detail-overlay" id="diff-overlay" onclick="closeDiff(event)">
+    <div class="detail-panel" style="max-width:800px" onclick="event.stopPropagation()">
+      <div class="detail-header">
+        <h2 id="diff-title">Session Comparison</h2>
+        <button class="btn btn-icon" onclick="closeDiff()">✕</button>
+      </div>
+      <div id="diff-content"></div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
   <script>
     const API = window.location.origin;
     let refreshTimer;
+    let ws;
+    let sessionCache = [];
+    let timelineEvents = JSON.parse(localStorage.getItem('tokenade_timeline') || '[]');
 
     // --- API ---
     async function api(path, opts) {
@@ -338,14 +471,49 @@
       setTimeout(() => el.classList.remove('visible'), 2500);
     }
 
+    // --- Timeline ---
+    function addTimelineEvent(type, msg) {
+      timelineEvents.unshift({ type, msg, time: new Date().toISOString() });
+      if (timelineEvents.length > 200) timelineEvents = timelineEvents.slice(0, 200);
+      localStorage.setItem('tokenade_timeline', JSON.stringify(timelineEvents));
+    }
+
+    function renderTimeline(events) {
+      const container = document.getElementById('timeline-container');
+      if (!events.length) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">📊</div><p>No events recorded yet.</p></div>`;
+        return;
+      }
+      container.innerHTML = `<div class="timeline">
+        ${events.slice(0, 50).map(e => `
+          <div class="timeline-item ${e.type === 'error' ? 'error' : e.type === 'warning' ? 'warning' : ''}">
+            <div class="timeline-time">${timeAgo(e.time)}</div>
+            <div class="timeline-msg">${e.msg}</div>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    async function loadTimeline() {
+      const filter = document.getElementById('timeline-filter')?.value || 'all';
+      let events = [...timelineEvents];
+      if (filter !== 'all') {
+        events = events.filter(e => e.type === filter);
+      }
+      renderTimeline(events);
+    }
+
     // --- Tabs ---
     document.querySelectorAll('.tab').forEach(t => {
       t.onclick = () => {
         document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
         t.classList.add('active');
-        document.getElementById('tab-sessions').style.display = t.dataset.tab === 'sessions' ? '' : 'none';
-        document.getElementById('tab-sync').style.display = t.dataset.tab === 'sync' ? '' : 'none';
+        ['sessions', 'sync', 'timeline', 'diff'].forEach(id => {
+          document.getElementById(`tab-${id}`).style.display = t.dataset.tab === id ? '' : 'none';
+        });
         if (t.dataset.tab === 'sync') loadSyncTargets();
+        if (t.dataset.tab === 'timeline') loadTimeline();
+        if (t.dataset.tab === 'diff') populateDiffSelects();
       };
     });
 
@@ -395,6 +563,7 @@
     async function loadSessions() {
       try {
         const { sessions = [] } = await api('/api/sessions');
+        sessionCache = sessions;
         document.getElementById('total-sessions').textContent = sessions.length;
         document.getElementById('session-count').textContent = `${sessions.length} sessions`;
 
@@ -537,12 +706,115 @@
         document.getElementById('detail-overlay').classList.remove('visible');
     }
 
+    // --- Diff ---
+    function populateDiffSelects() {
+      const opts = sessionCache.map(s => {
+        const id = s.path.split('/').pop().replace('.tokenade', '').replace('.json', '');
+        return `<option value="${id}">${s.site_name || id} (${s.cookie_count} cookies)</option>`;
+      }).join('');
+      const ph = '<option value="">Select session...</option>';
+      document.getElementById('diff-session-a').innerHTML = ph + opts;
+      document.getElementById('diff-session-b').innerHTML = ph + opts;
+    }
+
+    function showDiff() {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelector('[data-tab="diff"]').classList.add('active');
+      ['sessions', 'sync', 'timeline', 'diff'].forEach(id => {
+        document.getElementById(`tab-${id}`).style.display = id === 'diff' ? '' : 'none';
+      });
+      populateDiffSelects();
+    }
+
+    async function loadDiff() {
+      const a = document.getElementById('diff-session-a').value;
+      const b = document.getElementById('diff-session-b').value;
+      if (!a || !b) return;
+      if (a === b) { toast('Select two different sessions', 'error'); return; }
+
+      try {
+        const [dataA, dataB] = await Promise.all([
+          api(`/api/sessions/${a}`),
+          api(`/api/sessions/${b}`)
+        ]);
+
+        const cookiesA = dataA.cookies || [];
+        const cookiesB = dataB.cookies || [];
+        const mapA = {};
+        const mapB = {};
+        cookiesA.forEach(c => { mapA[c.name + '|' + c.domain] = c; });
+        cookiesB.forEach(c => { mapB[c.name + '|' + c.domain] = c; });
+
+        const allKeys = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
+        let added = 0, removed = 0, unchanged = 0, modified = 0;
+        let rows = '';
+
+        allKeys.forEach(key => {
+          const ca = mapA[key];
+          const cb = mapB[key];
+          if (ca && !cb) {
+            removed++;
+            rows += `<tr class="removed"><td class="marker removed">-</td><td>${ca.name}</td><td>${ca.domain}</td></tr>`;
+          } else if (!ca && cb) {
+            added++;
+            rows += `<tr class="added"><td class="marker added">+</td><td>${cb.name}</td><td>${cb.domain}</td></tr>`;
+          } else {
+            unchanged++;
+            rows += `<tr class="unchanged"><td class="marker"> </td><td>${ca.name}</td><td>${ca.domain}</td></tr>`;
+          }
+        });
+
+        document.getElementById('diff-title').textContent = `${a} vs ${b}`;
+        document.getElementById('diff-content').innerHTML = `
+          <div class="diff-container">
+            <div class="diff-header">
+              <div class="diff-stats">
+                <span class="diff-stat added">+${added} added</span>
+                <span class="diff-stat removed">-${removed} removed</span>
+                <span class="diff-stat unchanged">${unchanged} unchanged</span>
+              </div>
+            </div>
+            <table class="diff-table">
+              <thead><tr><th></th><th>Name</th><th>Domain</th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:20px">No differences found</td></tr>'}</tbody>
+            </table>
+          </div>
+        `;
+        document.getElementById('diff-overlay').classList.add('visible');
+      } catch (e) {
+        toast(`Diff failed: ${e.message}`, 'error');
+      }
+    }
+
+    function closeDiff(e) {
+      if (!e || e.target === document.getElementById('diff-overlay'))
+        document.getElementById('diff-overlay').classList.remove('visible');
+    }
+
+    // --- Quick Actions ---
+    async function exportAllSessions() {
+      try {
+        const data = await api('/api/sessions');
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `tokenade-sessions-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Sessions exported');
+        addTimelineEvent('export', `Exported ${data.sessions?.length || 0} sessions`);
+      } catch (e) {
+        toast(`Export failed: ${e.message}`, 'error');
+      }
+    }
+
     async function deleteSession(path) {
       if (!confirm('Delete this session?')) return;
       try {
         const id = path.split('/').pop().replace('.tokenade', '').replace('.json', '');
         await api(`/api/sessions/${id}`, { method: 'DELETE' });
         toast('Session deleted');
+        addTimelineEvent('export', `Deleted session ${id}`);
         await loadSessions();
       } catch (e) {
         toast(`Delete failed: ${e.message}`, 'error');
@@ -553,11 +825,41 @@
       try {
         await api('/api/sync/run', { method: 'POST' });
         toast('Sync completed');
+        addTimelineEvent('sync', 'Sync completed via dashboard');
         await loadSyncTargets();
       } catch {
-        // sync API may not be available
         toast('Sync API not available', 'error');
       }
+    }
+
+    // --- WebSocket ---
+    function connectWebSocket() {
+      try {
+        const wsUrl = `ws://${window.location.host}/ws/events`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          addTimelineEvent('info', 'WebSocket connected');
+        };
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'session_update') {
+              loadSessions();
+              addTimelineEvent(data.event || 'info', data.message || `Session updated: ${data.session_id || ''}`);
+            } else if (data.type === 'sync_complete') {
+              loadSyncTargets();
+              addTimelineEvent('sync', data.message || 'Sync completed');
+            } else if (data.type === 'health_change') {
+              loadMonitor();
+              addTimelineEvent(data.severity || 'info', data.message || 'Health status changed');
+            }
+          } catch {}
+        };
+        ws.onclose = () => {
+          setTimeout(connectWebSocket, 5000);
+        };
+        ws.onerror = () => {};
+      } catch {}
     }
 
     // --- Refresh ---
@@ -583,10 +885,14 @@
       document.getElementById('dashboard').style.display = '';
       await refreshAll();
       refreshTimer = setInterval(refreshAll, 15000);
+      connectWebSocket();
     }
 
-    // Keyboard shortcut
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeDetail(); closeDiff(); }
+      if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); refreshAll(); }
+    });
 
     init();
   </script>

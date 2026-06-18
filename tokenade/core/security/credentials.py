@@ -13,7 +13,6 @@ Features:
 
 import json
 import logging
-import os
 from base64 import b64decode, b64encode
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -3,8 +3,6 @@
 import json
 import time
 import urllib.error
-import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from tokenade.core.integration.plugin_registry import Plugin, PluginRegistry
@@ -251,3 +249,164 @@ class TestPluginRegistryUpdate:
                 mock.return_value = mock_response
                 count = registry.update("myplugin")
                 assert count == 1
+
+    def test_update_plugin_not_in_registry(self, tmp_path):
+        d = tmp_path / "myplugin"
+        d.mkdir()
+        (d / "plugin.json").write_text(json.dumps({
+            "name": "myplugin", "version": "1.0",
+        }))
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        with patch.object(registry, "_fetch_registry", return_value=[]):
+            count = registry.update()
+            assert count == 0
+
+
+class TestPluginRegistryDownload:
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_network_error(self, mock_urlopen, tmp_path):
+        mock_urlopen.side_effect = urllib.error.URLError("fail")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "bad", "files": ["a.py"]})
+        assert result is False
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_success(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"content"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "myplug", "files": ["handler.py"]})
+        assert result is True
+        assert (tmp_path / "myplug" / "plugin.json").exists()
+        assert (tmp_path / "myplug" / "handler.py").exists()
+
+
+class TestPluginRegistryExtra:
+    def test_list_bad_json_manifest(self, tmp_path):
+        d = tmp_path / "broken"
+        d.mkdir()
+        (d / "plugin.json").write_text("NOT JSON {{{")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry.list_installed()
+        assert result == []
+
+    def test_list_os_error_manifest(self, tmp_path):
+        d = tmp_path / "unreadable"
+        d.mkdir()
+        (d / "plugin.json").write_bytes(b"\x00\x01\x02")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry.list_installed()
+        assert result == []
+
+    def test_fetch_corrupt_cache_falls_back(self, tmp_path):
+        cache = tmp_path / ".registry_cache.json"
+        cache.write_text("NOT JSON {{{")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        with patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen") as mock:
+            mock.side_effect = urllib.error.URLError("down")
+            result = registry._fetch_registry()
+            assert result == []
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_fetch_success_from_network(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps([
+            {"name": "remote-plugin", "version": "1.0"}
+        ]).encode("utf-8")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._fetch_registry()
+        assert len(result) == 1
+        assert result[0]["name"] == "remote-plugin"
+        assert registry._cache_file.exists()
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_fetch_wraps_dict_response(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"plugins": [{"name": "p1"}]}).encode("utf-8")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._fetch_registry()
+        assert len(result) == 1
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_fetch_timeout(self, mock_urlopen, tmp_path):
+        mock_urlopen.side_effect = urllib.error.URLError("timed out")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._fetch_registry()
+        assert result == []
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_fetch_os_error(self, mock_urlopen, tmp_path):
+        mock_urlopen.side_effect = OSError("disk full")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._fetch_registry()
+        assert result == []
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_fetch_json_decode_error(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"not json"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._fetch_registry()
+        assert result == []
+
+    def test_update_skips_non_matching_name(self, tmp_path):
+        d = tmp_path / "myplugin"
+        d.mkdir()
+        (d / "plugin.json").write_text(json.dumps({
+            "name": "myplugin", "version": "1.0",
+        }))
+        d2 = tmp_path / "other"
+        d2.mkdir()
+        (d2 / "plugin.json").write_text(json.dumps({
+            "name": "other", "version": "1.0",
+        }))
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        with patch.object(registry, "_fetch_registry", return_value=[
+            {"name": "myplugin", "version": "2.0", "files": []},
+            {"name": "other", "version": "2.0", "files": []},
+        ]):
+            with patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen") as mock:
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"name":"x"}'
+                mock_resp.__enter__ = lambda s: s
+                mock_resp.__exit__ = MagicMock(return_value=False)
+                mock.return_value = mock_resp
+                count = registry.update("myplugin")
+                assert count == 1
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_network_error(self, mock_urlopen, tmp_path):
+        mock_urlopen.side_effect = urllib.error.URLError("fail")
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "bad", "files": ["a.py"]})
+        assert result is False
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_success(self, mock_urlopen, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"content"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "myplug", "files": ["handler.py"]})
+        assert result is True
+        assert (tmp_path / "myplug" / "plugin.json").exists()
+        assert (tmp_path / "myplug" / "handler.py").exists()

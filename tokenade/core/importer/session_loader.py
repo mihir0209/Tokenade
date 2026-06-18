@@ -12,12 +12,12 @@ Handles:
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 import logging
 
 from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
 from tokenade.core.fingerprint.manager import FingerprintManager, BrowserFingerprint
-from tokenade.core.fingerprint.injector import inject_stealth_script, validate_injection
+from tokenade.core.fingerprint.injector import inject_stealth_script
 from tokenade.core.importer.validator import SessionValidator
 from tokenade.handlers.base import AuthStatus, SessionData
 
@@ -351,7 +351,7 @@ class SessionLoader:
                 if not site_config:
                     site_config = self._build_default_site_config(package)
                 result["validation"] = self.validate_session(self._browser, site_config)
-                has_cookies = result["cookies_injected"] > 0
+                result["cookies_injected"] > 0
                 has_local_storage = result["local_storage_injected"] > 0
                 result["success"] = result["validation"].get("valid", False) or has_local_storage
             else:
@@ -460,7 +460,7 @@ class SessionLoader:
             try:
                 # Load session data into runtime
                 package = self.load_file(file_path)
-                session = SessionData(
+                SessionData(
                     site_name=package.get("site_name", "unknown"),
                     auth_status=AuthStatus(package.get("auth_status", "unknown")),
                     tokens=package.get("tokens", []),

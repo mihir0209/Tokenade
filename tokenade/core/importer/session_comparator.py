@@ -2,8 +2,7 @@
 
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -25,10 +24,13 @@ class DiffResult:
     @property
     def has_changes(self) -> bool:
         return bool(
-            self.cookies_only_in_a or self.cookies_only_in_b or
-            self.cookies_modified or self.localStorage_only_in_a or
-            self.localStorage_only_in_b or self.localStorage_modified or
-            self.metadata_diffs
+            self.cookies_only_in_a
+            or self.cookies_only_in_b
+            or self.cookies_modified
+            or self.localStorage_only_in_a
+            or self.localStorage_only_in_b
+            or self.localStorage_modified
+            or self.metadata_diffs
         )
 
     def summary(self) -> str:
@@ -98,11 +100,11 @@ class SessionComparator:
                 result.localStorage_common[key] = ls_a[key]
 
         # Compare metadata
-        for field in ("site_name", "auth_status", "version", "created_at"):
-            va = session_a.get(field)
-            vb = session_b.get(field)
+        for fld in ("site_name", "auth_status", "version", "created_at"):
+            va = session_a.get(fld)
+            vb = session_b.get(fld)
             if va != vb:
-                result.metadata_diffs[field] = {"a": va, "b": vb}
+                result.metadata_diffs[fld] = {"a": va, "b": vb}
 
         # Compare source_device
         da = session_a.get("source_device", {})

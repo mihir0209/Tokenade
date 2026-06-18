@@ -2,7 +2,6 @@
 
 import json
 import pytest
-from pathlib import Path
 
 from tokenade.core.importer.format_exporter import FormatExporter
 from tokenade.core.importer.format_importer import FormatImporter
@@ -181,12 +180,12 @@ class TestNetscape:
 
     def test_tab_separated(self, exporter):
         lines = exporter.to_netscape().strip().split("\n")
-        data_lines = [l for l in lines if not l.startswith("#") and l.strip()]
+        data_lines = [line for line in lines if not line.startswith("#") and line.strip()]
         assert len(data_lines) == 5
 
     def test_fields(self, exporter):
         lines = exporter.to_netscape().strip().split("\n")
-        data_lines = [l for l in lines if not l.startswith("#") and l.strip()]
+        data_lines = [line for line in lines if not line.startswith("#") and line.strip()]
         parts = data_lines[0].split("\t")
         assert len(parts) == 7
         domain, tailmatch, path, secure, expires, name, value = parts
@@ -197,15 +196,15 @@ class TestNetscape:
 
     def test_tailmatch_false_for_bare_domain(self, exporter):
         lines = exporter.to_netscape().strip().split("\n")
-        data_lines = [l for l in lines if not l.startswith("#") and l.strip()]
-        api_line = [l for l in data_lines if "api.example.com" in l][0]
+        data_lines = [line for line in lines if not line.startswith("#") and line.strip()]
+        api_line = [line for line in data_lines if "api.example.com" in line][0]
         parts = api_line.split("\t")
         assert parts[1] == "FALSE"
 
     def test_secure_flag(self, exporter):
         lines = exporter.to_netscape().strip().split("\n")
-        data_lines = [l for l in lines if not l.startswith("#") and l.strip()]
-        tracking_line = [l for l in data_lines if "tracking_id" in l][0]
+        data_lines = [line for line in lines if not line.startswith("#") and line.strip()]
+        tracking_line = [line for line in data_lines if "tracking_id" in line][0]
         parts = tracking_line.split("\t")
         assert parts[3] == "FALSE"
 

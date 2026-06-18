@@ -6,7 +6,6 @@ Tests invariants that must hold for all possible inputs.
 import pytest
 from hypothesis import given, strategies as st, assume, settings, HealthCheck
 import json
-import time
 
 # Only run if hypothesis is available
 hypothesis = pytest.importorskip("hypothesis")
@@ -39,7 +38,7 @@ session_strategy = st.fixed_dictionaries({
 
 class TestFormatExporterProperties:
     """Property-based tests for FormatExporter."""
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_playwright_storagestate_is_valid_json(self, session):
@@ -50,7 +49,7 @@ class TestFormatExporterProperties:
         parsed = json.loads(result)
         assert "cookies" in parsed
         assert isinstance(parsed["cookies"], list)
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_puppeteer_cookies_is_valid_json(self, session):
@@ -63,7 +62,7 @@ class TestFormatExporterProperties:
             assert "name" in cookie
             assert "value" in cookie
             assert "domain" in cookie
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_netscape_format_starts_with_header(self, session):
@@ -72,7 +71,7 @@ class TestFormatExporterProperties:
         exporter = FormatExporter(session)
         result = exporter.to_netscape()
         assert result.startswith("# Netscape HTTP Cookie File") or result == ""
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_cookie_header_format(self, session):
@@ -88,7 +87,7 @@ class TestFormatExporterProperties:
                     assert "=" in pair
         else:
             assert result == ""
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_json_roundtrip_preserves_data(self, session):
@@ -103,7 +102,7 @@ class TestFormatExporterProperties:
 
 class TestSessionPackagerProperties:
     """Property-based tests for SessionPackager."""
-    
+
     @given(st.lists(cookie_strategy, min_size=1, max_size=30))
     @settings(max_examples=30, suppress_health_check=[HealthCheck.filter_too_much])
     def test_package_preserves_cookie_count(self, cookies):
@@ -112,7 +111,7 @@ class TestSessionPackagerProperties:
         packager = SessionPackager()
         result = packager.package(cookies=cookies, browser="chrome", profile="default")
         assert len(result["cookies"]) == len(cookies)
-    
+
     @given(st.lists(cookie_strategy, min_size=1, max_size=30))
     @settings(max_examples=30, suppress_health_check=[HealthCheck.filter_too_much])
     def test_package_has_required_fields(self, cookies):
@@ -129,7 +128,7 @@ class TestSessionPackagerProperties:
 
 class TestLRUCacheProperties:
     """Property-based tests for LRU cache."""
-    
+
     @given(st.integers(min_value=1, max_value=100))
     @settings(max_examples=20)
     def test_cache_never_exceeds_max_size(self, max_size):
@@ -139,7 +138,7 @@ class TestLRUCacheProperties:
         for i in range(max_size + 10):
             cache.set(f"key_{i}", f"value_{i}")
         assert len(cache) <= max_size
-    
+
     @given(st.text(min_size=1, max_size=50), st.text(min_size=0, max_size=200))
     @settings(max_examples=50)
     def test_cache_set_get_roundtrip(self, key, value):
@@ -154,7 +153,7 @@ class TestLRUCacheProperties:
 
 class TestHealthScorerProperties:
     """Property-based tests for health scorer."""
-    
+
     @given(session_strategy)
     @settings(max_examples=50)
     def test_score_always_between_0_and_100(self, session):
@@ -163,7 +162,7 @@ class TestHealthScorerProperties:
         scorer = SessionHealthScorer()
         result = scorer.score(session)
         assert 0 <= result.total_score <= 100
-    
+
     @given(st.just({"cookies": [], "auth_status": "logged_out", "site_name": "test"}))
     def test_empty_session_scores_zero(self, session):
         """Empty session should score 0."""
@@ -175,7 +174,7 @@ class TestHealthScorerProperties:
 
 class TestVaultProperties:
     """Property-based tests for session vault."""
-    
+
     @given(
         session_id=st.text(min_size=1, max_size=50).filter(lambda x: "\x00" not in x and x.isalnum() and x != "test"),
         max_versions=st.integers(min_value=1, max_value=10),
@@ -187,10 +186,10 @@ class TestVaultProperties:
         import tempfile
         import json
         from pathlib import Path
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             vault = SessionVault(tmpdir, max_versions=max_versions)
-            
+
             # Create a dummy session file in a separate directory
             source_dir = Path(tmpdir) / "source"
             source_dir.mkdir()
@@ -201,15 +200,15 @@ class TestVaultProperties:
                 "cookies": [{"name": "c", "value": "v", "domain": ".test.com", "path": "/"}],
             }
             session_file.write_text(json.dumps(session_data))
-            
+
             # Add initial
             sid = vault.add(str(session_file), session_id=session_id)
-            
+
             # Update multiple times
             for i in range(max_versions + 5):
                 session_data["cookies"][0]["value"] = f"v{i}"
                 session_file.write_text(json.dumps(session_data))
                 vault.update(sid, str(session_file))
-            
+
             entry = vault._index.get(sid)
             assert len(entry.versions) <= max_versions

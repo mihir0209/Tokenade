@@ -4,13 +4,11 @@ Tests AuditLogger, RoleBasedAccessControl, and LDAPAuthenticator.
 """
 
 import json
-import os
 import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from tokenade.core.security.audit import (
     AuditLogger,
@@ -117,7 +115,7 @@ class TestAuditLogger:
         log_path = tmp_path / "audit.log"
         logger = AuditLogger(log_path=str(log_path))
 
-        now = time.time()
+        time.time()
         logger.log_event("login")
         time.sleep(0.01)
         cutoff = time.time()
@@ -133,7 +131,7 @@ class TestAuditLogger:
         log_path = tmp_path / "audit.log"
         logger = AuditLogger(log_path=str(log_path))
 
-        now = time.time()
+        time.time()
         logger.log_event("login")
         time.sleep(0.01)
         cutoff = time.time()
@@ -595,6 +593,7 @@ class TestLDAPAuthenticator:
             def __init__(self, dn=None, cn=None):
                 self.entry_dn = dn
                 self.cn = cn
+
             def __str__(self):
                 return self.cn or ""
 
@@ -642,6 +641,7 @@ class TestLDAPAuthenticator:
             def __init__(self, dn=None, cn=None):
                 self.entry_dn = dn
                 self.cn = cn
+
             def __str__(self):
                 return self.cn or ""
 

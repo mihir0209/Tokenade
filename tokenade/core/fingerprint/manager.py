@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BrowserFingerprint:
     """Complete browser fingerprint for session continuity."""
-    
+
     # User Agent
     user_agent: str = ""
-    
+
     # Screen/Viewport
     screen_width: int = 1920
     screen_height: int = 1080
@@ -30,7 +30,7 @@ class BrowserFingerprint:
     viewport_height: int = 1080
     device_pixel_ratio: float = 1.0
     color_depth: int = 24
-    
+
     # Platform
     platform: str = ""
     os_type: str = ""
@@ -38,33 +38,33 @@ class BrowserFingerprint:
     languages: List[str] = field(default_factory=lambda: ["en-US"])
     timezone: str = "UTC"
     timezone_offset: int = 0
-    
+
     # Hardware
     hardware_concurrency: int = 4
     device_memory: float = 8.0
     max_touch_points: int = 0
-    
+
     # WebGL
     webgl_vendor: str = ""
     webgl_renderer: str = ""
-    
+
     # Canvas/Fonts
     canvas_fingerprint: str = ""
     fonts: List[str] = field(default_factory=list)
-    
+
     # Plugins
     plugins: List[Dict] = field(default_factory=list)
-    
+
     # Chrome-specific
     chrome_version: str = ""
-    
+
     # Network
     accept_language: str = "en-US,en;q=0.9"
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
         return asdict(self)
-    
+
     def to_playwright_context(self) -> Dict:
         """Convert to Playwright context options."""
         return {
@@ -85,16 +85,16 @@ class BrowserFingerprint:
             "color_scheme": "light",
             "reduced_motion": "no-preference",
         }
-    
+
     def to_json(self) -> str:
         """Serialize to JSON."""
         return json.dumps(asdict(self), indent=2)
-    
+
     @classmethod
     def from_json(cls, data: str) -> "BrowserFingerprint":
         """Deserialize from JSON."""
         return cls(**json.loads(data))
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "BrowserFingerprint":
         """Create from dictionary."""
@@ -103,18 +103,18 @@ class BrowserFingerprint:
 
 class FingerprintCollector:
     """Collects fingerprints from a running browser instance."""
-    
+
     @staticmethod
     def collect_from_browser(browser_manager) -> BrowserFingerprint:
         """Collect fingerprint from active browser."""
         fp = BrowserFingerprint()
-        
+
         try:
             # User agent
             fp.user_agent = browser_manager.evaluate(
                 "() => navigator.userAgent"
             )
-            
+
             # Screen info
             screen_info = browser_manager.evaluate("""() => ({
                 width: screen.width,
@@ -128,7 +128,7 @@ class FingerprintCollector:
             fp.screen_height = screen_info.get("height", 1080)
             fp.color_depth = screen_info.get("colorDepth", 24)
             fp.device_pixel_ratio = screen_info.get("pixelRatio", 1.0)
-            
+
             # Viewport
             viewport = browser_manager.evaluate("""() => ({
                 width: window.innerWidth,
@@ -136,15 +136,15 @@ class FingerprintCollector:
             })""")
             fp.viewport_width = viewport.get("width", 1920)
             fp.viewport_height = viewport.get("height", 1080)
-            
+
             # Platform
             fp.platform = browser_manager.evaluate("() => navigator.platform")
             fp.os_type = platform.system()
-            
+
             # Language
             fp.language = browser_manager.evaluate("() => navigator.language")
             fp.languages = browser_manager.evaluate("() => navigator.languages")
-            
+
             # Timezone
             fp.timezone = browser_manager.evaluate(
                 "() => Intl.DateTimeFormat().resolvedOptions().timeZone"
@@ -152,7 +152,7 @@ class FingerprintCollector:
             fp.timezone_offset = browser_manager.evaluate(
                 "() => new Date().getTimezoneOffset()"
             )
-            
+
             # Hardware
             fp.hardware_concurrency = browser_manager.evaluate(
                 "() => navigator.hardwareConcurrency"
@@ -163,7 +163,7 @@ class FingerprintCollector:
             fp.max_touch_points = browser_manager.evaluate(
                 "() => navigator.maxTouchPoints"
             ) or 0
-            
+
             # WebGL
             try:
                 webgl = browser_manager.evaluate("""() => {
@@ -180,7 +180,7 @@ class FingerprintCollector:
                 fp.webgl_renderer = webgl.get("renderer", "")
             except Exception:
                 pass
-            
+
             # Plugins
             try:
                 plugins = browser_manager.evaluate("""() => {
@@ -193,14 +193,14 @@ class FingerprintCollector:
                 fp.plugins = plugins or []
             except Exception:
                 pass
-            
+
             logger.info("Fingerprint collected successfully")
-            
+
         except Exception as e:
             logger.warning(f"Some fingerprint fields could not be collected: {e}")
-        
+
         return fp
-    
+
     @staticmethod
     def collect_from_system() -> BrowserFingerprint:
         """Collect fingerprint from current system (fallback)."""
@@ -209,44 +209,44 @@ class FingerprintCollector:
         fp.platform = platform.platform()
         fp.language = os.environ.get("LANG", "en-US").split(".")[0]
         fp.languages = [fp.language]
-        
+
         # Try to get timezone
         try:
             import tzlocal
             fp.timezone = str(tzlocal.get_localzone())
         except Exception:
             pass
-        
+
         return fp
 
 
 class FingerprintManager:
     """Manages fingerprint storage, retrieval, and application."""
-    
+
     def __init__(self, storage_dir: str = ".fingerprints"):
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(exist_ok=True)
-    
+
     def save(self, name: str, fingerprint: BrowserFingerprint) -> str:
         """Save fingerprint to storage."""
         path = self.storage_dir / f"{name}.json"
         path.write_text(fingerprint.to_json())
         logger.info(f"Fingerprint saved: {path}")
         return str(path)
-    
+
     def load(self, name: str) -> Optional[BrowserFingerprint]:
         """Load fingerprint from storage."""
         path = self.storage_dir / f"{name}.json"
         if not path.exists():
             logger.warning(f"Fingerprint not found: {name}")
             return None
-        
+
         return BrowserFingerprint.from_json(path.read_text())
-    
+
     def list(self) -> List[str]:
         """List all stored fingerprints."""
         return [f.stem for f in self.storage_dir.glob("*.json")]
-    
+
     def delete(self, name: str) -> bool:
         """Delete a fingerprint."""
         path = self.storage_dir / f"{name}.json"
@@ -254,25 +254,25 @@ class FingerprintManager:
             path.unlink()
             return True
         return False
-    
+
     def apply_to_config(self, name: str, config: Dict) -> Dict:
         """Apply fingerprint to browser config dict."""
         fp = self.load(name)
         if not fp:
             return config
-        
+
         config.update(fp.to_playwright_context())
         return config
-    
+
     def compare(self, fp1: BrowserFingerprint, fp2: BrowserFingerprint) -> Dict[str, Any]:
         """Compare two fingerprints and return differences."""
         differences = {}
-        
-        for field in BrowserFingerprint.__dataclass_fields__:
-            val1 = getattr(fp1, field)
-            val2 = getattr(fp2, field)
-            
+
+        for fld in BrowserFingerprint.__dataclass_fields__:
+            val1 = getattr(fp1, fld)
+            val2 = getattr(fp2, fld)
+
             if val1 != val2:
-                differences[field] = {"source": val1, "target": val2}
-        
+                differences[fld] = {"source": val1, "target": val2}
+
         return differences

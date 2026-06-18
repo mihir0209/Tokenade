@@ -39,7 +39,7 @@ def cmd_encrypt(args):
 
         result = encrypt_session(str(input_file), password, output)
 
-        print(f"\n✅ Encrypted successfully")
+        print("\n✅ Encrypted successfully")
         print(f"   Output: {result}")
 
         input_size = input_file.stat().st_size
@@ -48,7 +48,7 @@ def cmd_encrypt(args):
 
     except Exception as e:
         logger.error(f"Encryption failed: {e}", exc_info=True)
-        print(f"❌ Encryption failed — check input file is readable")
+        print("❌ Encryption failed — check input file is readable")
 
 
 def cmd_decrypt(args):
@@ -81,7 +81,7 @@ def cmd_decrypt(args):
 
         result = decrypt_session(str(input_file), password, output)
 
-        print(f"\n✅ Decrypted successfully")
+        print("\n✅ Decrypted successfully")
         print(f"   Output: {result}")
 
         input_size = input_file.stat().st_size
@@ -89,11 +89,11 @@ def cmd_decrypt(args):
         print(f"   Size: {input_size} -> {output_size} bytes")
 
     except ValueError as e:
-        print(f"❌ Wrong password or corrupted file")
+        print("❌ Wrong password or corrupted file")
         logger.debug(f"Decryption error: {e}")
     except Exception as e:
         logger.error(f"Decryption failed: {e}", exc_info=True)
-        print(f"❌ Decryption failed — verify password and file integrity")
+        print("❌ Decryption failed — verify password and file integrity")
 
 
 def cmd_rekey(args):
@@ -145,12 +145,12 @@ def cmd_rekey(args):
         with open(output, 'wb') as f:
             f.write(rekeyed)
 
-        print(f"\n✅ Rekeyed successfully")
+        print("\n✅ Rekeyed successfully")
         print(f"   Output: {output}")
 
     except ValueError as e:
-        print(f"❌ Wrong old password or corrupted file")
+        print("❌ Wrong old password or corrupted file")
         logger.debug(f"Rekey error: {e}")
     except Exception as e:
         logger.error(f"Rekey failed: {e}", exc_info=True)
-        print(f"❌ Rekey failed — verify old password and file integrity")
+        print("❌ Rekey failed — verify old password and file integrity")

@@ -1,10 +1,6 @@
 """Tests for CLI refactor - importability, dispatch, config, output, completions."""
 import json
-import os
-import sys
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -41,7 +37,7 @@ class TestCommandImports:
             cmd_validate_rules, cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
         )
         for fn in (cmd_batch_export, cmd_batch_load, cmd_validate,
-                    cmd_validate_rules, cmd_diff, cmd_fingerprint, cmd_test, cmd_setup):
+                   cmd_validate_rules, cmd_diff, cmd_fingerprint, cmd_test, cmd_setup):
             assert callable(fn)
 
     def test_all_commands_reachable_from_package(self):
@@ -119,7 +115,7 @@ class TestMainDispatch:
     @patch("tokenade.cli.cmd_load")
     def test_load_dispatch(self, mock_cmd):
         from tokenade.cli import main
-        with patch("sys.argv", ["tokenade", "load", "-f", "test.tokenade"]):
+        with patch("sys.argv", ["tokenade", "load", "-", "test.tokenade"]):
             main()
         mock_cmd.assert_called_once()
 

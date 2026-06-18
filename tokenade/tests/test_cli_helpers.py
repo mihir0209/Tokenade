@@ -1,9 +1,6 @@
 """Tests for CLI commands."""
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestCLIDiff:

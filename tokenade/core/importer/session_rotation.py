@@ -4,9 +4,6 @@ Session Rotation - Auto-detect login events and rotate sessions.
 Monitors cookie changes during proxy operation to detect login events
 and trigger automatic session re-export.
 """
-import json
-import time
-import copy
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Callable
 from datetime import datetime, timezone

@@ -34,12 +34,12 @@ def cmd_sessions(args):
         print("=" * 70)
 
         for s in sessions:
-            size = f"{s.file_size / 1024:.1f}K" if s.file_size < 1024*1024 else f"{s.file_size / (1024*1024):.1f}M"
+            size = f"{s.file_size / 1024:.1f}K" if s.file_size < 1024 * 1024 else f"{s.file_size / (1024 * 1024):.1f}M"
             print(f"{s.site_name:<20} {s.cookie_count:<10} {s.source_browser or 'unknown':<12} {size:<10} {Path(s.path).name}")
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"Total: {len(sessions)} sessions")
-        print(f"{'='*70}\n")
+        print(f"{'=' * 70}\n")
 
     elif args.sessions_command == "merge":
         for f in args.files:
@@ -85,7 +85,7 @@ def cmd_sessions(args):
         print(f"Total size: {stats['total_size_bytes'] / 1024:.1f} KB")
         print(f"Sites: {', '.join(stats['unique_sites']) or 'none'}")
         print(f"Browsers: {', '.join(stats['unique_browsers']) or 'none'}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
     else:
         print("❌ Specify a sessions subcommand: list, merge, rotate, stats")
@@ -108,9 +108,11 @@ def cmd_health(args):
         if not sessions_path.exists():
             print(f"❌ Directory not found: {args.sessions_dir}")
             return
-        session_files = [str(f) for f in sessions_path.glob("*.tokenade")] + \
-                       [str(f) for f in sessions_path.glob("*.session")] + \
-                       [str(f) for f in sessions_path.glob("*.json")]
+        session_files = (
+            [str(f) for f in sessions_path.glob("*.tokenade")]
+            + [str(f) for f in sessions_path.glob("*.session")]
+            + [str(f) for f in sessions_path.glob("*.json")]
+        )
 
     if not session_files:
         print("❌ No session files found")
@@ -171,16 +173,16 @@ def cmd_refresh(args):
         )
 
         if result.success:
-            print(f"\n✅ Refresh successful")
+            print("\n✅ Refresh successful")
             print(f"   Refreshed: {result.cookies_refreshed}/{result.cookies_total} cookies")
         else:
-            print(f"\n❌ Refresh failed")
+            print("\n❌ Refresh failed")
             if result.error:
                 print(f"   Error: {result.error}")
 
     except Exception as e:
         logger.error(f"Session refresh failed: {e}", exc_info=True)
-        print(f"❌ Refresh failed — check source browser is running and session is valid")
+        print("❌ Refresh failed — check source browser is running and session is valid")
 
 
 def cmd_share(args):
@@ -212,7 +214,7 @@ def cmd_share(args):
     if args.max_uses:
         print(f"🔢 Max uses: {args.max_uses}")
     if args.password:
-        print(f"🔑 Password protected: Yes")
+        print("🔑 Password protected: Yes")
 
     if args.format == "qr":
         output_path = args.output or f"{session_file.stem}_qr.png"
@@ -229,7 +231,7 @@ def cmd_share(args):
         print(f"\n🔗 Share URL: {share_url}")
         print(f"🆔 Session ID: {session_id}")
 
-    print(f"\n{'='*60}\n")
+    print(f"\n{'=' * 60}\n")
 
 
 def cmd_unshare(args):
@@ -255,7 +257,7 @@ def cmd_unshare(args):
             print(f"   Uses: {s['use_count']}/{s['max_uses'] or '∞'}")
             print(f"   Password: {'Yes' if s['has_password'] else 'No'}")
 
-        print(f"\n{'='*60}\n")
+        print(f"\n{'=' * 60}\n")
         return
 
     if sharer.revoke_share(args.session_id):
@@ -303,9 +305,9 @@ def cmd_sync(args):
         if not statuses:
             print("No sync targets configured")
             return
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("Session Sync Targets")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for s in statuses:
             print(f"\n📁 {s['name']}")
             print(f"   Browser: {s['browser']}")
@@ -315,7 +317,7 @@ def cmd_sync(args):
             print(f"   Sync count: {s['sync_count']}")
             if s['error']:
                 print(f"   Error: {s['error']}")
-        print(f"\n{'='*60}\n")
+        print(f"\n{'=' * 60}\n")
 
     elif args.sync_command == "once":
         print("🔄 Running one-time sync...")

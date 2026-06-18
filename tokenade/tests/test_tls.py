@@ -1,6 +1,5 @@
 """Tests for TLS matcher."""
 
-import pytest
 from tokenade.core.runtime.tls_matcher import TLSMatcher, create_tls_matcher
 
 

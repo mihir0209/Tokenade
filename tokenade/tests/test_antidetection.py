@@ -1,8 +1,6 @@
 """Tests for CDPCleaner and BehavioralInjector."""
 
 import re
-import math
-import pytest
 
 from tokenade.core.antidetection.cdp_cleaner import CDPCleaner
 from tokenade.core.antidetection.behavioral import BehavioralInjector

@@ -1,7 +1,7 @@
 """Tokenade configuration file support."""
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_CONFIG_DIR = Path.home() / ".tokenade"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"

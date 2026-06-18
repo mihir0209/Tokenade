@@ -3,7 +3,6 @@
 import json
 import time
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from tokenade.core.importer.format_importer import FormatImporter

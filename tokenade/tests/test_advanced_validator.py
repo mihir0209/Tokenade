@@ -1,10 +1,7 @@
 """Tests for advanced_validator module."""
 
-import asyncio
 import json
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from tokenade.core.importer.advanced_validator import (
     ValidationResult, ValidationRule, AdvancedValidator,
@@ -83,7 +80,7 @@ class TestAdvancedValidator:
         cookies = [
             {"name": "SID", "value": "abc", "domain": ".google.com", "path": "/",
              "secure": True, "httpOnly": True, "sameSite": "lax", "expires": 1700000000},
-            {"name": "NID", "value": "def", "domain": ".google.com", "sameSite": "invalid"},
+            {"name": "NID", "value": "de", "domain": ".google.com", "sameSite": "invalid"},
         ]
         pw = v._prepare_cookies(cookies)
         assert len(pw) == 2

@@ -8,11 +8,11 @@ from .base import BaseCollector
 
 class PluginsCollector(BaseCollector):
     """Collects plugin and MIME type data."""
-    
+
     @property
     def api_name(self) -> str:
         return "plugins"
-    
+
     def collect(self, browser_manager) -> Dict[str, Any]:
         """Collect plugin data."""
         script = """() => ({
@@ -32,20 +32,20 @@ class PluginsCollector(BaseCollector):
             pluginsLength: navigator.plugins.length,
             mimeTypesLength: navigator.mimeTypes.length
         })"""
-        
+
         try:
             result = browser_manager.evaluate(script)
             return result if isinstance(result, dict) else {}
-        except Exception as e:
+        except Exception:
             return {}
-    
+
     def get_script_template(self) -> str:
         return """
 // Plugins spoofing
 (function() {
     const pluginsData = {{plugins}};
     const mimeTypesData = {{mimeTypes}};
-    
+
     // Create fake PluginArray
     const fakePlugins = pluginsData.map(p => ({
         name: p.name,
@@ -56,7 +56,7 @@ class PluginsCollector(BaseCollector):
         item: function(index) { return this[index]; },
         namedItem: function(name) { return this.find(pl => pl.name === name); }
     }));
-    
+
     // Create fake MimeTypeArray
     const fakeMimeTypes = mimeTypesData.map(m => ({
         type: m.type,
@@ -66,7 +66,7 @@ class PluginsCollector(BaseCollector):
         item: function(index) { return this[index]; },
         namedItem: function(name) { return this.find(mt => mt.type === name); }
     }));
-    
+
     Object.defineProperty(navigator, 'plugins', {
         get: function() {
             const arr = fakePlugins;
@@ -77,7 +77,7 @@ class PluginsCollector(BaseCollector):
         },
         configurable: true
     });
-    
+
     Object.defineProperty(navigator, 'mimeTypes', {
         get: function() {
             const arr = fakeMimeTypes;

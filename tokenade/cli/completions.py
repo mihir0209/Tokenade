@@ -9,7 +9,7 @@ BASH_COMPLETION = dedent("""\
         cur="${COMP_WORDS[COMP_CWORD]}"
         prev="${COMP_WORDS[COMP_CWORD-1]}"
         commands="setup extract transfer test fingerprint export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff"
-        
+
         if [[ ${cur} == -* ]]; then
             COMPREPLY=( $(compgen -W "--help --version --browser-name --domains --output --port --host --visible --session --format --password --expiry --profile --site-config --list-profiles" -- ${cur}) )
         else
@@ -23,13 +23,13 @@ BASH_COMPLETION = dedent("""\
 ZSH_COMPLETION = dedent("""\
     #compdef tokenade
     # Tokenade zsh completion
-    
+
     _tokenade() {
         _arguments \
             '1:command:(setup extract transfer test fingerprint export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff)' \
             '*::arg:->args'
     }
-    
+
     _tokenade "$@"
 """)
 

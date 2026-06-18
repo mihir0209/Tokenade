@@ -18,7 +18,6 @@ logger = logging.getLogger("tokenade")
 
 def cmd_extract(args):
     """Extract tokens from saved browser sessions."""
-    from datetime import datetime
     from tokenade.core.security.credentials import CredentialManager
 
     print("\n" + "=" * 80)
@@ -130,7 +129,7 @@ def cmd_export(args):
 
     browser_path = args.browser_path
     browser_name = args.browser_name or "unknown"
-    
+
     # Apply config defaults
     from tokenade.core.config import load_config
     config = load_config()
@@ -153,7 +152,7 @@ def cmd_export(args):
             print(f"📁 Using profile: {matching[0].name}")
         else:
             print(f"❌ No profile found for '{browser_name}'")
-            print(f"   Run 'tokenade export --list-profiles' to see available profiles")
+            print("   Run 'tokenade export --list-profiles' to see available profiles")
             if args.profile:
                 print(f"   Profile '{args.profile}' not found — check spelling and try again")
             return
@@ -178,13 +177,13 @@ def cmd_export(args):
 
     def _progress(current, total, stage):
         if stage == "copying_database":
-            print(f"   📋 Copying cookie database...")
+            print("   📋 Copying cookie database...")
         elif stage == "extracting_cookies":
             if total > 0:
                 pct = int((current / total) * 100)
                 print(f"\r   ⏳ Extracting cookies... {current}/{total} ({pct}%)", end="", flush=True)
         elif stage == "complete":
-            print(f"\r   ✅ Cookie extraction complete                    ", flush=True)
+            print("\r   ✅ Cookie extraction complete                    ", flush=True)
 
     try:
         if args.file_path:
@@ -193,7 +192,7 @@ def cmd_export(args):
             cookies = extractor.extract(site_filter=None, progress_callback=_progress)
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)
-        print(f"❌ Extraction failed — check browser profile is accessible")
+        print("❌ Extraction failed — check browser profile is accessible")
         return
 
     print(f"   📊 Total cookies: {len(cookies)}")
@@ -257,7 +256,7 @@ def cmd_export(args):
                     print("   ⚠️  No localStorage data found")
         except Exception as e:
             logger.warning(f"localStorage extraction failed: {e}", exc_info=True)
-            print(f"   ⚠️  localStorage extraction skipped — browser may be running")
+            print("   ⚠️  localStorage extraction skipped — browser may be running")
     else:
         try:
             ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
@@ -336,7 +335,7 @@ def cmd_load(args):
         )
 
         if result["success"]:
-            print(f"\n✅ Session loaded successfully")
+            print("\n✅ Session loaded successfully")
             print(f"   Site: {result.get('site_name', 'unknown')}")
             print(f"   Cookies: {result['cookies_injected']}/{result['cookies_total']}")
 
@@ -352,13 +351,13 @@ def cmd_load(args):
                 print("\n⚡ Loading into RuntimeEngine...")
                 print("   ✅ RuntimeEngine ready")
         else:
-            print(f"\n❌ Session load failed")
+            print("\n❌ Session load failed")
             if result.get("error"):
                 print(f"   Error: {result['error']}")
 
     except Exception as e:
         logger.error(f"Load failed: {e}", exc_info=True)
-        print(f"❌ Load failed — verify session file is valid and not corrupted")
+        print("❌ Load failed — verify session file is valid and not corrupted")
     finally:
         loader.close()
 
@@ -461,13 +460,13 @@ def cmd_inject_profile(args):
                 session = json.load(f)
 
             cookies = session.get('cookies', [])
-            print(f"\n📊 Session info:")
+            print("\n📊 Session info:")
             print(f"   Site: {session.get('site_name', 'unknown')}")
             print(f"   Cookies: {len(cookies)}")
             print(f"   Auth status: {session.get('auth_status', 'unknown')}")
 
             if cookies:
-                print(f"\n🍪 Sample cookies:")
+                print("\n🍪 Sample cookies:")
                 for cookie in cookies[:5]:
                     print(f"   • {cookie.get('name')}: {cookie.get('domain')}")
                 if len(cookies) > 5:
@@ -481,15 +480,15 @@ def cmd_inject_profile(args):
             )
 
             if result.success:
-                print(f"\n✅ Injection successful")
+                print("\n✅ Injection successful")
                 print(f"   Injected: {result.cookies_injected}/{result.cookies_total} cookies")
                 if result.backup_path:
                     print(f"   Backup: {result.backup_path}")
             else:
-                print(f"\n❌ Injection failed")
+                print("\n❌ Injection failed")
                 if result.error:
                     print(f"   Error: {result.error}")
 
     except Exception as e:
         logger.error(f"Profile injection failed: {e}", exc_info=True)
-        print(f"❌ Profile injection failed — check browser is not running")
+        print("❌ Profile injection failed — check browser is not running")

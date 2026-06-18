@@ -2,9 +2,7 @@
 
 import json
 import sqlite3
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from tokenade.core.injector.profile_manager import (
     InjectionResult,

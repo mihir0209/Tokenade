@@ -9,7 +9,6 @@ import threading
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -228,9 +227,9 @@ class SessionMonitor:
         expired_weight = 0.0
 
         score = (
-            status.healthy_cookies * healthy_weight +
-            status.warning_cookies * warning_weight +
-            status.expired_cookies * expired_weight
+            status.healthy_cookies * healthy_weight
+            + status.warning_cookies * warning_weight
+            + status.expired_cookies * expired_weight
         ) / total * 100
 
         status.health_score = round(score, 1)

@@ -22,7 +22,7 @@ class TestSessionManager:
             ("google", [{"name": "SID", "value": "abc", "domain": ".google.com", "path": "/"}]),
             ("github", [{"name": "user_session", "value": "xyz", "domain": ".github.com", "path": "/"}]),
             ("google_extra", [{"name": "SID", "value": "abc", "domain": ".google.com", "path": "/"},
-                              {"name": "HSID", "value": "def", "domain": ".google.com", "path": "/"}]),
+                              {"name": "HSID", "value": "de", "domain": ".google.com", "path": "/"}]),
         ]):
             session = {
                 "version": "2.0",
@@ -67,7 +67,7 @@ class TestSessionManager:
         )
         assert result == output
         assert Path(output).exists()
-        
+
         merged = json.loads(Path(output).read_text())
         assert merged["site_name"] == "merged"
         assert len(merged["cookies"]) == 2  # One from each file
@@ -75,7 +75,7 @@ class TestSessionManager:
     def test_merge_sessions_deduplication(self, manager, session_files, tmp_path):
         # Merge two files with same cookie
         output = str(tmp_path / "merged.tokenade")
-        result = manager.merge_sessions(
+        manager.merge_sessions(
             [session_files[0], session_files[2]],  # Both have SID cookie
             output,
         )

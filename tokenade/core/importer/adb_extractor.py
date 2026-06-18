@@ -7,14 +7,12 @@ databases from the device and parsing them locally.
 
 import os
 import shutil
-import sqlite3
 import subprocess
 import tempfile
 import logging
 from typing import Dict, List, Optional
 
 from tokenade.core.importer.cookie_extractor import CookieExtractor, SiteFilter
-from tokenade.core.importer.db_utils import copy_db
 
 logger = logging.getLogger(__name__)
 

@@ -8,11 +8,11 @@ from .base import BaseCollector
 
 class ScreenCollector(BaseCollector):
     """Collects screen and window properties."""
-    
+
     @property
     def api_name(self) -> str:
         return "screen"
-    
+
     def collect(self, browser_manager) -> Dict[str, Any]:
         """Collect screen and window properties."""
         script = """() => ({
@@ -32,13 +32,13 @@ class ScreenCollector(BaseCollector):
             screenLeft: window.screenLeft || window.screenX || 0,
             screenTop: window.screenTop || window.screenY || 0
         })"""
-        
+
         try:
             result = browser_manager.evaluate(script)
             return result if isinstance(result, dict) else {}
-        except Exception as e:
+        except Exception:
             return {}
-    
+
     def get_script_template(self) -> str:
         return """
 // Screen spoofing
@@ -53,7 +53,7 @@ class ScreenCollector(BaseCollector):
         colorDepth: {{screenColorDepth}},
         pixelDepth: {{screenPixelDepth}}
     };
-    
+
     for (const [key, value] of Object.entries(screenProps)) {
         try {
             Object.defineProperty(screen, key, {
@@ -63,7 +63,7 @@ class ScreenCollector(BaseCollector):
             });
         } catch(e) {}
     }
-    
+
     // Window dimensions
     Object.defineProperty(window, 'outerWidth', {
         get: function() { return {{outerWidth}}; },

@@ -2,7 +2,7 @@
 
 import pytest
 from tokenade.core.crypto.encryptor import (
-    TokenadeEncryptor, MAGIC, VERSION, SALT_SIZE, NONCE_SIZE, HMAC_SIZE
+    TokenadeEncryptor, MAGIC, VERSION, SALT_SIZE, NONCE_SIZE
 )
 
 
@@ -59,7 +59,7 @@ class TestEncryptorRoundTrip:
         encrypted = enc.encrypt(b"test", "pass")
         assert encrypted[:len(MAGIC)] == MAGIC
         import struct
-        version = struct.unpack('>I', encrypted[len(MAGIC):len(MAGIC)+4])[0]
+        version = struct.unpack('>I', encrypted[len(MAGIC):len(MAGIC) + 4])[0]
         assert version == VERSION
 
     def test_different_nonces(self):

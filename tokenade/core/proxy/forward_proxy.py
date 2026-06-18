@@ -12,7 +12,6 @@ Supports:
 
 import asyncio
 import logging
-import time
 from typing import Optional, Dict
 from urllib.parse import urlparse
 
@@ -101,13 +100,13 @@ class _ForwardProxyProtocol(asyncio.Protocol):
         self.transport.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
 
         # Upgrade transport to a StreamReader for bidirectional piping
-        loop = asyncio.get_event_loop()
+        asyncio.get_event_loop()
         client_reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(client_reader)
         client_transport = self.transport
         client_transport.set_protocol(protocol)
         protocol.connection_made(client_transport)
-        
+
         # Cancel the old data_received handler by replacing protocol
         # Now we have: client_reader (from client) <-> target_reader/target_writer (to target)
 

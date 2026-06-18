@@ -1,17 +1,13 @@
 """Tests for Safari, Tor Browser, and ADB extractors."""
 
-import os
 import struct
 import subprocess
-import sys
-import tempfile
 import sqlite3
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tokenade.core.importer.safari_extractor import SafariExtractor, MAC_EPOCH_OFFSET
+from tokenade.core.importer.safari_extractor import SafariExtractor
 from tokenade.core.importer.tor_extractor import TorExtractor
 from tokenade.core.importer.adb_extractor import ADBExtractor
 from tokenade.core.importer.cookie_extractor import SiteFilter

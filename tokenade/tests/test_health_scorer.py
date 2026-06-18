@@ -1,6 +1,5 @@
 """Tests for OWASP-based session health scorer."""
 
-import math
 import time
 from datetime import datetime, timezone, timedelta
 

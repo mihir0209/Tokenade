@@ -1,168 +1,832 @@
-# Tokenade API Reference
+# Tokenade API Documentation
 
-## Python SDK
+## Overview
 
-### TokenadeClient
+Tokenade exposes two HTTP servers:
 
-```python
-from tokenade.sdk import TokenadeClient
+| Server | Default Port | Purpose |
+|---|---|---|
+| **REST API** | `9224` | Session management, monitoring, export/share, sync |
+| **CDP Proxy** | `9222` | Playwright-based reverse proxy with TLS fingerprint matching |
 
-client = TokenadeClient()
-```
+Both servers run on `127.0.0.1` by default and can be configured to bind to other interfaces.
 
-#### Methods
-
-##### `extract(browser, domains=None, output=None) -> ExtractionResult`
-
-Extract cookies from a browser.
-
-```python
-result = client.extract(
-    browser="firefox",
-    domains=["github.com"],
-    output="github.tokenade"
-)
-print(result.success)  # True
-print(result.session_path)  # "github.tokenade"
-```
-
-##### `load(session_path) -> dict`
-
-Load a session file.
-
-```python
-session = client.load("github.tokenade")
-print(session["site_name"])  # "github"
-print(len(session["cookies"]))  # 42
-```
-
-##### `health_check(session_path) -> dict`
-
-Check session health score.
-
-```python
-health = client.health_check("github.tokenade")
-print(health["score"])  # 85.0
-print(health["issues"])  # ["Cookie 'sid' missing Secure flag"]
-```
-
-##### `share(session_path, password=None, expiry_hours=24) -> str`
-
-Create a shareable link.
-
-```python
-link = client.share("github.tokenade", password="secret", expiry_hours=48)
-print(link)  # "https://..."
-```
-
-##### `export_playwright(session_path) -> str`
-
-Export as Playwright storageState.
-
-```python
-state_json = client.export_playwright("github.tokenade")
-# Use with Playwright:
-# context = browser.new_context(storage_state=state_json)
-```
+The REST API is built with **aiohttp** and provides JSON endpoints for session operations, health monitoring, and integration with external tools. The CDP Proxy serves a web GUI, proxies browser requests through curl-cffi with the donor's TLS profile, and exposes CDP-compatible endpoints for browser automation tools.
 
 ---
 
-## REST API
+## Authentication
 
-Start the API server:
+The REST API supports optional API key authentication. When configured, requests must include the key via one of:
 
-```bash
-tokenade serve --port 9224
+```
+Authorization: Bearer <api_key>
 ```
 
-### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/sessions` | List all sessions |
-| GET | `/api/sessions/{id}` | Get session details |
-| DELETE | `/api/sessions/{id}` | Delete session |
-| GET | `/api/proxy/status` | Proxy status |
-| POST | `/api/export` | Export session |
-| POST | `/api/share` | Create share link |
-| GET | `/api/monitor/status` | Monitoring status |
-| GET | `/api/monitor/sessions/{id}` | Session monitoring details |
-| GET | `/api/monitor/sessions/{id}/cookies` | Cookie expiry timeline |
-
-### Authentication
-
-All endpoints require either:
-- `Authorization: Bearer <api_key>` header
-- `X-API-Key: <api_key>` header
-
-### Examples
-
-```bash
-# List sessions
-curl -H "X-API-Key: my-key" http://localhost:9224/api/sessions
-
-# Check session health
-curl -H "X-API-Key: my-key" http://localhost:9224/api/monitor/status
-
-# Export session
-curl -X POST -H "Content-Type: application/json" -H "X-API-Key: my-key" \
-  -d '{"browser": "chrome", "domains": ["github.com"]}' \
-  http://localhost:9224/api/export
 ```
+X-API-Key: <api_key>
+```
+
+If no API key is configured, all endpoints are open (default behavior).
+
+Set the API key in `APIServerConfig`:
+
+```python
+from tokenade.core.api.server import APIServerConfig
+
+config = APIServerConfig(api_key="your-secret-key")
+```
+
+The CDP Proxy does **not** require authentication — it is intended for local use only.
 
 ---
 
-## CLI Reference
+## REST API Endpoints
 
-### Export
+Base URL: `http://127.0.0.1:9224`
 
-```bash
-tokenade export --browser-name firefox --domains "github.com" -o github.tokenade
+### Health Check
+
+```
+GET /api/health
 ```
 
-### Proxy
+Returns server health status and version info.
 
-```bash
-tokenade proxy -s github.tokenade --port 9222
+**Response** `200 OK`:
+
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "sessions_dir": "/home/user/.tokenade/sessions"
+}
 ```
 
-### Health
+**Example:**
 
 ```bash
-tokenade health -s github.tokenade
+curl http://127.0.0.1:9224/api/health
 ```
 
-### Plugin Management
-
-```bash
-tokenade plugin list                    # List installed plugins
-tokenade plugin list --available        # Show registry plugins
-tokenade plugin install <name>          # Install from registry
-tokenade plugin uninstall <name>        # Remove plugin
-tokenade plugin info <name>             # Show plugin details
-```
+---
 
 ### Sessions
 
-```bash
-tokenade sessions list -d ./sessions    # List sessions
-tokenade sessions merge s1.tokenade s2.tokenade -o merged.tokenade
-tokenade sessions rotate s1.tokenade s2.tokenade
-tokenade sessions stats *.tokenade
+#### List Sessions
+
+```
+GET /api/sessions
 ```
 
-### Security
+Returns all imported sessions in the sessions directory.
 
-```bash
-tokenade encrypt -s session.tokenade -o encrypted.tokenade
-tokenade decrypt -s encrypted.tokenade -o session.tokenade
-tokenade rekey -s encrypted.tokenade
+**Response** `200 OK`:
+
+```json
+{
+  "sessions": [
+    {
+      "path": "/home/user/.tokenade/sessions/discord_abc123.tokenade",
+      "site_name": "discord",
+      "cookie_count": 24,
+      "created_at": "2026-01-15T10:30:00Z",
+      "source_browser": "chrome",
+      "file_size": 12480
+    }
+  ],
+  "total": 1
+}
 ```
 
-### Sharing
+**Example:**
 
 ```bash
-tokenade share -s session.tokenade --password x --expiry 48
-tokenade unshare --list
+curl http://127.0.0.1:9224/api/sessions
 ```
+
+---
+
+#### Get Session
+
+```
+GET /api/sessions/{id}
+```
+
+Returns full session details including all cookies and metadata.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | Session file ID (partial match supported) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": "abc123",
+  "file": "/home/user/.tokenade/sessions/discord_abc123.tokenade",
+  "session": {
+    "version": "2.0",
+    "site_name": "discord",
+    "auth_status": "logged_in",
+    "cookies": [
+      {
+        "name": "__dcfduid",
+        "value": "...",
+        "domain": ".discord.com",
+        "path": "/",
+        "secure": true,
+        "httpOnly": true,
+        "sameSite": "None",
+        "expires": 1735689600
+      }
+    ],
+    "tokens": [],
+    "local_storage": {},
+    "fingerprint": {
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ..."
+    },
+    "tls_profile": {
+      "browser": "chrome",
+      "version": "120",
+      "impersonate": "chrome120"
+    }
+  }
+}
+```
+
+**Response** `404 Not Found`:
+
+```json
+{
+  "error": "Session not found"
+}
+```
+
+**Example:**
+
+```bash
+curl http://127.0.0.1:9224/api/sessions/abc123
+```
+
+---
+
+#### Delete Session
+
+```
+DELETE /api/sessions/{id}
+```
+
+Deletes a session file from disk.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `id` | string | Session file ID (partial match supported) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "deleted": true
+}
+```
+
+**Response** `404 Not Found`:
+
+```json
+{
+  "error": "Session not found"
+}
+```
+
+**Example:**
+
+```bash
+curl -X DELETE http://127.0.0.1:9224/api/sessions/abc123
+```
+
+---
+
+### Proxy Status
+
+```
+GET /api/proxy/status
+```
+
+Returns current proxy status. This endpoint always returns the proxy as not running — it is informational only. Use `tokenade proxy` to start the actual proxy.
+
+**Response** `200 OK`:
+
+```json
+{
+  "proxy_running": false,
+  "message": "Use 'tokenade proxy' to start the proxy"
+}
+```
+
+---
+
+### Monitoring
+
+#### Monitor Status
+
+```
+GET /api/monitor/status
+```
+
+Returns aggregate monitoring status across all tracked sessions. Returns `monitoring: false` if the monitor has not been started.
+
+**Response** `200 OK` (monitor running):
+
+```json
+{
+  "monitoring": true,
+  "sessions_monitored": 3,
+  "average_health_score": 0.85,
+  "sessions": [
+    {
+      "session_id": "abc123",
+      "site_name": "discord",
+      "health_score": 0.92,
+      "cookie_count": 24,
+      "healthy_cookies": 20,
+      "warning_cookies": 3,
+      "expired_cookies": 1
+    }
+  ]
+}
+```
+
+**Response** `200 OK` (monitor not started):
+
+```json
+{
+  "monitoring": false,
+  "message": "Monitor not started"
+}
+```
+
+**Example:**
+
+```bash
+curl http://127.0.0.1:9224/api/monitor/status
+```
+
+---
+
+#### Session Health Details
+
+```
+GET /api/monitor/sessions/{id}
+```
+
+Returns detailed health information for a single monitored session.
+
+**Response** `200 OK`:
+
+```json
+{
+  "session_id": "abc123",
+  "site_name": "discord",
+  "health_score": 0.92,
+  "cookie_count": 24,
+  "healthy_cookies": 20,
+  "warning_cookies": 3,
+  "expired_cookies": 1,
+  "last_check": 1735689600.0,
+  "last_refresh": 1735686000.0,
+  "refresh_count": 2,
+  "issues": ["1 cookie expired"],
+  "recommendations": ["Re-export session from source browser"],
+  "cookies": [
+    {
+      "name": "__dcfduid",
+      "domain": ".discord.com",
+      "health": "healthy",
+      "remaining_seconds": 31536000,
+      "secure": true,
+      "http_only": true,
+      "same_site": "None"
+    },
+    {
+      "name": "session_id",
+      "domain": ".discord.com",
+      "health": "warning",
+      "remaining_seconds": 1800,
+      "secure": true,
+      "http_only": true,
+      "same_site": "Lax"
+    }
+  ]
+}
+```
+
+**Response** `404 Not Found`:
+
+```json
+{
+  "error": "Session not monitored"
+}
+```
+
+---
+
+#### Cookie Expiry Timeline
+
+```
+GET /api/monitor/sessions/{id}/cookies
+```
+
+Returns cookies sorted by remaining TTL (ascending) for expiry timeline visualization.
+
+**Response** `200 OK`:
+
+```json
+{
+  "session_id": "abc123",
+  "now": 1735689600.0,
+  "cookies": [
+    {
+      "name": "session_id",
+      "domain": ".discord.com",
+      "expires_at": 1735691400.0,
+      "remaining_seconds": 1800,
+      "health": "warning"
+    },
+    {
+      "name": "__dcfduid",
+      "domain": ".discord.com",
+      "expires_at": 1736985600.0,
+      "remaining_seconds": 31536000,
+      "health": "healthy"
+    }
+  ]
+}
+```
+
+---
+
+### Export Session
+
+```
+POST /api/export
+```
+
+Export cookies from a source browser into a `.tokenade` session file.
+
+**Request Body:**
+
+```json
+{
+  "browser": "chrome",
+  "domains": ["discord.com", "google.com"],
+  "output": "/tmp/discord.tokenade"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `browser` | string | No | Source browser name (default: `"chrome"`) |
+| `domains` | string[] | No | Filter cookies by domain |
+| `output` | string | No | Output file path |
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true,
+  "output": "Exported 24 cookies from Chrome"
+}
+```
+
+**Response** `500 Internal Server Error`:
+
+```json
+{
+  "error": "No Chrome profile found"
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://127.0.0.1:9224/api/export \
+  -H "Content-Type: application/json" \
+  -d '{"browser": "chrome", "domains": ["discord.com"]}'
+```
+
+---
+
+### Share Session
+
+```
+POST /api/share
+```
+
+Create an encrypted, shareable link for a session file.
+
+**Request Body:**
+
+```json
+{
+  "session_file": "/home/user/.tokenade/sessions/discord_abc123.tokenade",
+  "password": "optional-password",
+  "expiry_hours": 24
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_file` | string | Yes | Path to the `.tokenade` file |
+| `password` | string | No | Encryption password |
+| `expiry_hours` | number | No | Link expiry in hours (default: 24) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true,
+  "output": "Share link: https://share.tokenade.com/abc123"
+}
+```
+
+---
+
+### Sync
+
+#### List Sync Targets
+
+```
+GET /api/sync
+```
+
+Returns configured session sync targets and their status.
+
+**Response** `200 OK`:
+
+```json
+{
+  "targets": [
+    {
+      "name": "local-sync",
+      "source_dir": "/home/user/.tokenade/sessions",
+      "active": true,
+      "last_sync": 1735689600.0
+    }
+  ]
+}
+```
+
+---
+
+#### Trigger Sync
+
+```
+POST /api/sync/run
+```
+
+Run a one-time synchronization of all configured sync targets.
+
+**Response** `200 OK`:
+
+```json
+{
+  "results": [
+    {
+      "target": "local-sync",
+      "synced": 5,
+      "errors": []
+    }
+  ]
+}
+```
+
+---
+
+## CDP Proxy Endpoints
+
+Base URL: `http://127.0.0.1:9222`
+
+The CDP Proxy uses a Playwright-based Chromium browser to render pages. All requests are intercepted via `page.route()` and forwarded through curl-cffi with the donor's TLS fingerprint and cookies.
+
+### CDP Version Info
+
+```
+GET /json/version
+```
+
+Returns Chrome DevTools Protocol version information, proxied from the underlying Chromium instance.
+
+**Response** `200 OK`:
+
+```json
+{
+  "Browser": "Chromium/120.0.0.0",
+  "Protocol-Version": "1.3",
+  "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) ...",
+  "V8-Version": "12.0.267.8",
+  "WebKit-Version": "537.36",
+  "webSocketDebuggerUrl": "ws://127.0.0.1:9223/devtools/browser/..."
+}
+```
+
+**Example:**
+
+```bash
+curl http://127.0.0.1:9222/json/version
+```
+
+---
+
+### List Browser Targets
+
+```
+GET /json/list
+```
+
+Returns all open browser targets (tabs, iframes, service workers).
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "PAGE_ID",
+    "type": "page",
+    "title": "Discord",
+    "url": "https://discord.com/channels/@me",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9223/devtools/page/..."
+  }
+]
+```
+
+---
+
+### Stealth Script
+
+```
+GET /stealth.js
+```
+
+Returns a comprehensive JavaScript stealth script that patches browser APIs to avoid bot detection. Served as `application/javascript`.
+
+The script includes:
+
+- WebDriver detection bypass
+- `navigator.plugins` and `navigator.languages` spoofing
+- WebGL vendor/renderer override
+- Canvas fingerprint noise
+- AudioContext fingerprint noise
+- Chrome runtime spoofing
+- Permissions API patching
+- Network information spoofing
+- Screen resolution consistency checks
+
+**Example:**
+
+```bash
+curl http://127.0.0.1:9222/stealth.js
+```
+
+---
+
+### Proxy Status
+
+```
+GET /status
+```
+
+Returns CDP proxy runtime status.
+
+**Response** `200 OK`:
+
+```json
+{
+  "status": "running",
+  "site": "discord",
+  "cookies": 24,
+  "tls_profile": {
+    "browser": "chrome",
+    "version": "120",
+    "impersonate": "chrome120"
+  },
+  "uptime": 3600.5
+}
+```
+
+**Example:**
+
+```bash
+curl http://127.0.0.1:9222/status
+```
+
+---
+
+### Proxy Statistics
+
+```
+GET /stats
+```
+
+Returns request statistics for the current proxy session.
+
+**Response** `200 OK`:
+
+```json
+{
+  "requests": 142,
+  "bytes_sent": 524288,
+  "bytes_received": 1048576,
+  "errors": 3,
+  "start_time": 1735686000.0
+}
+```
+
+---
+
+### Session Status
+
+```
+GET /session/status
+```
+
+Returns the session refresh monitor status, including cookie expiry information.
+
+**Response** `200 OK`:
+
+```json
+{
+  "total_cookies": 24,
+  "healthy": 20,
+  "expiring_soon": 3,
+  "expired": 1,
+  "next_expiry_human": "2 hours 30 minutes",
+  "refresh_enabled": true,
+  "last_refresh": 1735686000.0
+}
+```
+
+**Response** `503 Service Unavailable`:
+
+```json
+{
+  "error": "Refresh monitor not active"
+}
+```
+
+---
+
+### Force Session Refresh
+
+```
+POST /session/refresh
+```
+
+Trigger an immediate session refresh from the source browser. Re-extracts cookies and hot-reloads them into the running proxy without downtime.
+
+**Response** `200 OK`:
+
+```json
+{
+  "status": "refreshed",
+  "cookies": 24
+}
+```
+
+**Response** `503 Service Unavailable`:
+
+```json
+{
+  "error": "Refresh monitor not active"
+}
+```
+
+**Response** `500 Internal Server Error`:
+
+```json
+{
+  "error": "Refresh failed"
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://127.0.0.1:9222/session/refresh
+```
+
+---
+
+## Session Format (`.tokenade`)
+
+Sessions are stored as JSON files in `~/.tokenade/sessions/`. The package structure:
+
+```json
+{
+  "version": "2.0",
+  "created_at": "2026-01-15T10:30:00Z",
+  "source_device": {
+    "browser": "chrome",
+    "profile": "Default",
+    "platform": "Linux",
+    "hostname": "anonymous"
+  },
+  "site_name": "discord",
+  "auth_status": "logged_in",
+  "cookies": [
+    {
+      "name": "__dcfduid",
+      "value": "...",
+      "domain": ".discord.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None",
+      "expires": 1735689600,
+      "storeId": "0"
+    }
+  ],
+  "tokens": [],
+  "local_storage": {
+    "key": "value"
+  },
+  "fingerprint": {
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "viewport": { "width": 1920, "height": 1080 },
+    "platform": "Linux"
+  },
+  "tls_profile": {
+    "browser": "chrome",
+    "version": "120",
+    "impersonate": "chrome120",
+    "http_version": "2"
+  },
+  "metadata": {
+    "extraction_method": "sqlite_direct",
+    "cookie_count": 24,
+    "critical_cookie_count": 5,
+    "local_storage_count": 12
+  }
+}
+```
+
+### Field Reference
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | string | Package format version |
+| `created_at` | string | ISO 8601 creation timestamp |
+| `source_device.browser` | string | Source browser name |
+| `source_device.profile` | string | Source browser profile |
+| `source_device.platform` | string | OS platform |
+| `source_device.hostname` | string | Source hostname (anonymized) |
+| `site_name` | string | Detected site name or `"unknown"` |
+| `auth_status` | string | `logged_in`, `logged_out`, `session_expired`, `unknown` |
+| `cookies` | array | Browser cookie objects |
+| `tokens` | array | OAuth/session tokens |
+| `local_storage` | object | Key-value localStorage data |
+| `fingerprint` | object | Browser fingerprint (viewport, user agent, etc.) |
+| `tls_profile` | object | TLS impersonation target for curl-cffi |
+| `metadata` | object | Extraction metadata and counts |
+
+---
+
+## Error Responses
+
+All error responses follow a consistent format:
+
+```json
+{
+  "error": "Human-readable error message"
+}
+```
+
+### Common Status Codes
+
+| Status | Meaning |
+|---|---|
+| `200` | Success |
+| `400` | Bad request / invalid input |
+| `401` | Unauthorized (invalid or missing API key) |
+| `404` | Resource not found |
+| `500` | Internal server error |
+| `502` | Upstream error (CDP proxy cannot reach Chromium) |
+| `503` | Service unavailable (e.g., monitor not started) |
+
+---
+
+## CORS
+
+The REST API includes CORS headers on all responses:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+```
+
+Preflight `OPTIONS` requests return `204 No Content`.

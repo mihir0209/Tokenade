@@ -8,11 +8,11 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.core.runtime.engine import (
+from tokenade.core.runtime.engine import (  # noqa: E402
     CookieJar,
     RuntimeConfig,
     RuntimeEngine,
@@ -23,13 +23,14 @@ from tokenade.core.runtime.engine import (
 
 class MockResponse:
     """Mock requests.Response."""
+
     def __init__(self, status_code=200, json_data=None, cookies=None, content=b"test"):
         self.status_code = status_code
         self._json = json_data or {}
         self.cookies = cookies or {}
         self.content = content
         self.headers = {"content-type": "application/json"}
-    
+
     def json(self):
         return self._json
 
@@ -82,7 +83,7 @@ class TestCookieJar(unittest.TestCase):
             "path": "/",
         }
         self.jar.add_cookie(cookie)
-        
+
         cookies = self.jar.to_list()
         self.assertEqual(len(cookies), 1)
         self.assertEqual(cookies[0]["name"], "session")
@@ -102,7 +103,7 @@ class TestCookieJar(unittest.TestCase):
         """Test formatting cookies for HTTP request."""
         self.jar.add_cookie({"name": "a", "value": "1", "domain": ".example.com"})
         self.jar.add_cookie({"name": "b", "value": "2", "domain": ".example.com"})
-        
+
         cookie_str = self.jar.get_for_request("https://example.com/path")
         self.assertIn("a=1", cookie_str)
         self.assertIn("b=2", cookie_str)
@@ -131,12 +132,12 @@ class TestRuntimeEngineTokens(unittest.TestCase):
             {"token_type": "oauth", "value": "token123"},
             {"token_type": "refresh", "value": "refresh456"},
         ])
-        
+
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
-            
+
             self.assertEqual(engine.tokens["oauth"]["value"], "token123")
             self.assertEqual(engine.tokens["refresh"]["value"], "refresh456")
             engine.close()
@@ -144,12 +145,12 @@ class TestRuntimeEngineTokens(unittest.TestCase):
     def test_tokens_empty(self):
         """Test empty tokens list."""
         config = RuntimeConfig()
-        
+
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
-            
+
             self.assertEqual(engine.tokens, {})
             engine.close()
 
@@ -165,7 +166,7 @@ class TestRuntimeEngine(unittest.TestCase):
             rate_limit=0,
             use_tls_match=False,
         )
-        
+
         with patch("requests.Session") as mock_session_class:
             self.mock_session = MagicMock()
             mock_session_class.return_value = self.mock_session
@@ -218,7 +219,7 @@ class TestRuntimeEngine(unittest.TestCase):
             "domain": ".example.com",
             "path": "/",
         })
-        
+
         mock_response = MockResponse(200)
         self.mock_session.request.return_value = mock_response
 
@@ -231,8 +232,7 @@ class TestRuntimeEngine(unittest.TestCase):
 
     def test_request_updates_cookie_jar(self):
         """Test response cookies update jar."""
-        from http.cookiejar import Cookie
-        
+
         mock_response = MockResponse(200)
         mock_cookie = MagicMock()
         mock_cookie.name = "new_cookie"
@@ -241,7 +241,7 @@ class TestRuntimeEngine(unittest.TestCase):
         mock_cookie.path = "/"
         mock_cookie.secure = True
         mock_response.cookies = [mock_cookie]
-        
+
         self.mock_session.request.return_value = mock_response
 
         self.engine.get("https://example.com/page")
@@ -252,21 +252,21 @@ class TestRuntimeEngine(unittest.TestCase):
     def test_rate_limiting(self):
         """Test rate limiting between requests."""
         config = RuntimeConfig(rate_limit=0.1)
-        
+
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
             engine._session = mock_session
             engine._tls_matcher = None
-            
+
             mock_session.request.return_value = MockResponse(200)
-            
+
             start = time.time()
             engine.get("https://example.com/1")
             engine.get("https://example.com/2")
             elapsed = time.time() - start
-            
+
             self.assertGreaterEqual(elapsed, 0.1)
             engine.close()
 
@@ -275,10 +275,10 @@ class TestRuntimeEngine(unittest.TestCase):
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
-            
+
             with RuntimeEngine(self.config) as engine:
                 self.assertIsNotNone(engine)
-            
+
             mock_session.close.assert_called_once()
 
     def test_put_request(self):
@@ -306,16 +306,16 @@ class TestRuntimeEngine(unittest.TestCase):
     def test_custom_headers(self):
         """Test custom headers are applied."""
         config = RuntimeConfig(custom_headers={"X-Custom": "value"}, use_tls_match=False)
-        
+
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
             engine._session = mock_session
-            
+
             mock_session.request.return_value = MockResponse(200)
             engine.get("https://example.com")
-            
+
             call_args = mock_session.request.call_args
             headers = call_args[1]["headers"]
             self.assertEqual(headers["X-Custom"], "value")
@@ -324,12 +324,12 @@ class TestRuntimeEngine(unittest.TestCase):
     def test_proxy_config(self):
         """Test proxy configuration."""
         config = RuntimeConfig(proxy="http://proxy:8080")
-        
+
         with patch("requests.Session") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
             engine = RuntimeEngine(config)
-            
+
             self.assertEqual(engine._session.proxies["http"], "http://proxy:8080")
             engine.close()
 
@@ -446,7 +446,7 @@ class TestCreateEngineFromSession(unittest.TestCase):
             "cookies": [{"name": "sid", "value": "abc"}],
             "tokens": [{"type": "oauth", "value": "token"}],
         }
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(session_data, f)
             temp_path = f.name
@@ -455,9 +455,9 @@ class TestCreateEngineFromSession(unittest.TestCase):
             with patch("requests.Session") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session_class.return_value = mock_session
-                
+
                 engine = create_engine_from_session(temp_path)
-                
+
                 self.assertEqual(engine.config.user_agent, "Mozilla/5.0")
                 self.assertEqual(len(engine.cookie_jar.to_list()), 1)
                 engine.close()

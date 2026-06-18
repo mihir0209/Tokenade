@@ -8,11 +8,11 @@ from .base import BaseCollector
 
 class CanvasCollector(BaseCollector):
     """Collects Canvas 2D fingerprint data."""
-    
+
     @property
     def api_name(self) -> str:
         return "canvas"
-    
+
     def collect(self, browser_manager) -> Dict[str, Any]:
         """Collect canvas fingerprint."""
         script = """() => {
@@ -20,7 +20,7 @@ class CanvasCollector(BaseCollector):
             canvas.width = 280;
             canvas.height = 60;
             const ctx = canvas.getContext('2d');
-            
+
             // Draw fingerprinting pattern
             ctx.textBaseline = 'top';
             ctx.font = '14px Arial';
@@ -31,26 +31,26 @@ class CanvasCollector(BaseCollector):
             ctx.fillText('Tokenade Canvas FP', 2, 15);
             ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
             ctx.fillText('Tokenade Canvas FP', 4, 17);
-            
+
             return {
                 dataUrl: canvas.toDataURL(),
                 width: canvas.width,
                 height: canvas.height
             };
         }"""
-        
+
         try:
             result = browser_manager.evaluate(script)
             return result if isinstance(result, dict) else {}
-        except Exception as e:
+        except Exception:
             return {}
-    
+
     def get_script_template(self) -> str:
         return """
 // Canvas spoofing - return pre-computed data URL
 (function() {
     const canvasDataUrl = "{{dataUrl}}";
-    
+
     const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
     HTMLCanvasElement.prototype.toDataURL = function(type, quality) {
         // Only spoof fingerprinting canvases (small ones with text)
@@ -59,7 +59,7 @@ class CanvasCollector(BaseCollector):
         }
         return origToDataURL.call(this, type, quality);
     };
-    
+
     // Also spoof getImageData for fingerprinting detection
     const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
     CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {

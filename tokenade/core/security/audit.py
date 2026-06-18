@@ -15,7 +15,7 @@ import os
 import shutil
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -526,7 +526,7 @@ class LDAPAuthenticator:
             return []
 
         try:
-            from ldap3 import ALL, Connection, Server
+            pass
 
             conn = self._get_connection()
             if conn is None:

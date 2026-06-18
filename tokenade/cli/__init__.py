@@ -58,7 +58,7 @@ def cmd_config(args):
 def cmd_completion(args):
     """Generate shell completion scripts."""
     shell = args.shell
-    
+
     if shell == "bash":
         print('''# Tokenade bash completion
 _tokenade() {
@@ -67,12 +67,12 @@ _tokenade() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion"
-    
+
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
         return 0
     fi
-    
+
     COMPREPLY=( $(compgen -W "${commands}" -- ${cur}) )
     return 0
 }
@@ -153,16 +153,16 @@ def cmd_plugin(args):
     elif args.plugin_command == "install":
         print(f"\n📥 Installing plugin: {args.name}")
         if registry.install(args.name):
-            print(f"   ✅ Plugin installed successfully")
+            print("   ✅ Plugin installed successfully")
         else:
-            print(f"   ❌ Failed to install plugin")
+            print("   ❌ Failed to install plugin")
 
     elif args.plugin_command == "uninstall":
         print(f"\n🗑️  Uninstalling plugin: {args.name}")
         if registry.uninstall(args.name):
-            print(f"   ✅ Plugin uninstalled successfully")
+            print("   ✅ Plugin uninstalled successfully")
         else:
-            print(f"   ❌ Failed to uninstall plugin (not installed or dependency conflict)")
+            print("   ❌ Failed to uninstall plugin (not installed or dependency conflict)")
 
     elif args.plugin_command == "info":
         installed = loader.discover()
@@ -184,6 +184,7 @@ def cmd_plugin(args):
 
     else:
         print("Usage: tokenade plugin {list|install|uninstall|info}")
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -228,7 +229,7 @@ Commands:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Setup
-    setup_parser = subparsers.add_parser("setup", help="Setup accounts")
+    subparsers.add_parser("setup", help="Setup accounts")
 
     # Config
     config_parser = subparsers.add_parser("config", help="Manage configuration")
@@ -244,7 +245,7 @@ Commands:
     # Transfer
     transfer_parser = subparsers.add_parser("transfer", help="Transfer session")
     transfer_parser.add_argument("-s", "--session", required=True, help="Session file path")
-    transfer_parser.add_argument("-f", "--fingerprint", help="Target fingerprint name")
+    transfer_parser.add_argument("-", "--fingerprint", help="Target fingerprint name")
     transfer_parser.add_argument("-p", "--profile-dir", default="browser_data/transfer", help="Profile directory")
     transfer_parser.add_argument("--visible", action="store_true", help="Show browser window")
     transfer_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth injection level")
@@ -289,7 +290,7 @@ Commands:
 
     # Load
     load_parser = subparsers.add_parser("load", help="Load session file into browser")
-    load_parser.add_argument("--file", "-f", required=True, help="Path to session file")
+    load_parser.add_argument("--file", "-", required=True, help="Path to session file")
     load_parser.add_argument("--site-config", help="Path to JSON site config file for validation")
     load_parser.add_argument("--fingerprint", help="Target fingerprint name")
     load_parser.add_argument("--stealth-level", choices=["basic", "advanced", "maximum"], default="maximum", help="Stealth level")
@@ -305,7 +306,7 @@ Commands:
     inject_parser.add_argument("--session", "-s", required=True, help="Path to session file")
     inject_parser.add_argument("--profile", "-p", required=True, help="Browser profile path")
     inject_parser.add_argument("--browser", "-b", choices=["chrome", "brave", "edge", "firefox", "opera", "vivaldi"],
-                              default="chrome", help="Browser name")
+                               default="chrome", help="Browser name")
     inject_parser.add_argument("--no-backup", action="store_true", help="Skip backup creation")
     inject_parser.add_argument("--dry-run", action="store_true", help="Show what would be injected without making changes")
 
@@ -336,7 +337,7 @@ Commands:
     batch_export_parser = subparsers.add_parser("batch-export", help="Batch export multiple sites")
     batch_export_parser.add_argument("--site-config", "-s", required=True, help="Site config JSON file")
     batch_export_parser.add_argument("--browser", "-b", choices=["chrome", "firefox", "edge", "brave"],
-                                   default="firefox", help="Browser name")
+                                     default="firefox", help="Browser name")
     batch_export_parser.add_argument("--browser-path", help="Custom browser profile path")
     batch_export_parser.add_argument("--profile", "-p", help="Profile name")
     batch_export_parser.add_argument("--output", "-o", help="Output directory")
@@ -346,7 +347,7 @@ Commands:
     batch_load_parser = subparsers.add_parser("batch-load", help="Batch load multiple sessions")
     batch_load_parser.add_argument("--sessions-dir", "-d", required=True, help="Sessions directory")
     batch_load_parser.add_argument("--target-browser", "-t", choices=["chrome", "firefox", "edge", "brave"],
-                                  default="chrome", help="Target browser")
+                                   default="chrome", help="Target browser")
     batch_load_parser.add_argument("--site-config", "-s", help="Site config JSON file for validation")
     batch_load_parser.add_argument("--profile-dir", help="Target profile directory")
     batch_load_parser.add_argument("--validate", action="store_true", help="Validate sessions")
@@ -361,7 +362,7 @@ Commands:
     refresh_parser = subparsers.add_parser("refresh", help="Refresh session from source browser")
     refresh_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
     refresh_parser.add_argument("--source-browser", "-b", choices=["chrome", "firefox", "edge", "brave"],
-                               required=True, help="Source browser name")
+                                required=True, help="Source browser name")
     refresh_parser.add_argument("--source-browser-path", help="Custom source browser profile path")
     refresh_parser.add_argument("--source-profile", help="Source profile name")
     refresh_parser.add_argument("--site-config", help="Site config JSON file for filtering")
@@ -372,7 +373,7 @@ Commands:
     proxy_parser.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
     proxy_parser.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
     proxy_parser.add_argument("--mode", choices=["gui", "forward"], default="gui",
-                             help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
+                              help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
     proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
     proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
@@ -410,7 +411,7 @@ Commands:
     sessions_rotate_parser = sessions_sub.add_parser("rotate", help="Select next session (rotation)")
     sessions_rotate_parser.add_argument("files", nargs="+", help="Session files to rotate through")
     sessions_rotate_parser.add_argument("--strategy", choices=["round-robin", "random"], default="round-robin",
-                                       help="Rotation strategy")
+                                        help="Rotation strategy")
     sessions_rotate_parser.add_argument("--state-file", help="State file for round-robin")
 
     # sessions stats
@@ -422,7 +423,7 @@ Commands:
     share_parser.add_argument("--session", "-s", required=True, help="Session file to share")
     share_parser.add_argument("--output", "-o", help="Output file path (HTML or QR image)")
     share_parser.add_argument("--format", choices=["url", "html", "qr"], default="url",
-                             help="Output format: url (default), html, qr")
+                              help="Output format: url (default), html, qr")
     share_parser.add_argument("--expiry", type=int, default=24, help="Link expiry in hours (default: 24)")
     share_parser.add_argument("--max-uses", type=int, default=0, help="Max uses (0 = unlimited)")
     share_parser.add_argument("--password", "-p", help="Password protect the link")
@@ -534,6 +535,6 @@ Commands:
             print(f"\n❌ {e}")
         else:
             print(f"\n❌ Unexpected error: {e}")
-            print(f"   Run with --verbose for full traceback")
-            print(f"   Logs: ~/.tokenade/logs/")
+            print("   Run with --verbose for full traceback")
+            print("   Logs: ~/.tokenade/logs/")
         sys.exit(1)

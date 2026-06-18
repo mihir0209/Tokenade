@@ -16,8 +16,6 @@ Usage:
 
 import asyncio
 import logging
-import time
-from pathlib import Path
 from typing import Optional, Dict, List
 
 import aiohttp
@@ -29,11 +27,11 @@ logger = logging.getLogger(__name__)
 class SharedConnectionPool:
     """
     Shared aiohttp connection pool for multiple CDPProxy instances.
-    
+
     Avoids creating separate TCP connectors per proxy, reducing
     file descriptor usage and enabling connection reuse across sites.
     """
-    
+
     def __init__(
         self,
         max_connections: int = 200,
@@ -45,7 +43,7 @@ class SharedConnectionPool:
         self._timeout = timeout
         self._session: Optional[aiohttp.ClientSession] = None
         self._lock = asyncio.Lock()
-    
+
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create the shared aiohttp session."""
         async with self._lock:
@@ -63,11 +61,11 @@ class SharedConnectionPool:
                     auto_decompress=False,
                 )
                 logger.info(
-                    f"Shared connection pool created: "
+                    "Shared connection pool created: "
                     f"max={self._max_connections}, per_host={self._max_per_host}"
                 )
             return self._session
-    
+
     async def close(self):
         """Close the shared session."""
         async with self._lock:
@@ -75,7 +73,7 @@ class SharedConnectionPool:
                 await self._session.close()
                 self._session = None
                 logger.info("Shared connection pool closed")
-    
+
     @property
     def stats(self) -> Dict:
         """Get pool statistics."""
@@ -162,10 +160,10 @@ class MultiSiteProxy:
         """Serve the master multi-site GUI."""
         tabs_html = ""
         for i, item in enumerate(self._proxies):
-            site_name = item["session"].get("site_name", f"site_{i}")
-            port = item["port"]
-            cookies = len(item["session"].get("cookies", []))
             active = "active" if i == 0 else ""
+            site_name = item["session"].get("site_name", "unknown")
+            cookies = len(item["session"].get("cookies", []))
+            port = item["port"]
             tabs_html += f'''
             <div class="tab {active}" onclick="switchTab({i}, {port})">
                 <span class="site-name">{site_name}</span>
@@ -174,8 +172,8 @@ class MultiSiteProxy:
 
         iframe_html = ""
         for i, item in enumerate(self._proxies):
-            port = item["port"]
             display = "block" if i == 0 else "none"
+            port = item["port"]
             iframe_html += f'''
             <iframe id="frame{i}" src="http://{self.host}:{port}"
                     style="display:{display};width:100%;height:calc(100vh - 60px);border:none;"
@@ -244,9 +242,9 @@ class MultiSiteProxy:
 
     def _print_status(self):
         """Print startup status."""
-        print(f"\n{'='*60}")
-        print(f"Tokenade Multi-Site Proxy")
-        print(f"{'='*60}")
+        print(f"\n{'=' * 60}")
+        print("Tokenade Multi-Site Proxy")
+        print(f"{'=' * 60}")
         print(f"Master GUI: http://{self.host}:{self.base_port}")
         print(f"Sessions: {len(self._proxies)}")
         print()
@@ -254,4 +252,4 @@ class MultiSiteProxy:
             site = item["session"].get("site_name", "unknown")
             cookies = len(item["session"].get("cookies", []))
             print(f"  - {site}: {cookies} cookies -> port {item['port']}")
-        print(f"\n{'='*60}\n")
+        print(f"\n{'=' * 60}\n")

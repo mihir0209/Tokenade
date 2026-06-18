@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch, mock_open
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.cli import setup_logging, main
-from tokenade.cli.advanced import cmd_fingerprint, cmd_validate
+from tokenade.cli import setup_logging, main  # noqa: E402
+from tokenade.cli.advanced import cmd_fingerprint, cmd_validate  # noqa: E402
 
 
 class TestSetupLogging(unittest.TestCase):

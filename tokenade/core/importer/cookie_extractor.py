@@ -6,16 +6,14 @@ Supports site-specific filtering so users only export what they need.
 
 import json
 import os
-import shutil
 import sqlite3
-import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import logging
 
 from tokenade.core.importer.db_utils import copy_db
 
-from tokenade.core.crypto.cookie_crypto import CookieCryptoFactory, DecryptedCookie
+from tokenade.core.crypto.cookie_crypto import CookieCryptoFactory
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +323,7 @@ class CookieExtractor:
                             decrypt_failed += 1
                             logger.warning(
                                 f"Decryption failed for cookie '{name}' on {host_key} "
-                                f"(encrypted_value present but decryption returned None)"
+                                "(encrypted_value present but decryption returned None)"
                             )
                     except Exception as e:
                         decrypt_failed += 1
@@ -438,10 +436,10 @@ class CookieExtractor:
     def extract_firefox_local_storage(self, domains: Optional[List[str]] = None) -> Dict[str, str]:
         """
         Extract localStorage from Firefox profile for given domains.
-        
+
         Args:
             domains: List of domains to extract localStorage for (e.g., ['web.telegram.org'])
-        
+
         Returns:
             Dict mapping localStorage keys to values (flattened across all domains)
         """
@@ -449,15 +447,15 @@ class CookieExtractor:
         if not os.path.exists(storage_base):
             logger.warning(f"Firefox storage directory not found: {storage_base}")
             return {}
-        
+
         all_storage = {}
-        
+
         for domain in (domains or []):
             dir_name = "https+++" + domain.replace("/", "+")
             ls_path = os.path.join(storage_base, dir_name, "ls", "data.sqlite")
             if not os.path.exists(ls_path):
                 continue
-            
+
             temp_db = self._copy_db(ls_path)
             conn = None
             try:
@@ -479,21 +477,21 @@ class CookieExtractor:
                         pass
                 if os.path.exists(temp_db):
                     os.remove(temp_db)
-        
+
         logger.info(f"Extracted {len(all_storage)} localStorage entries from Firefox")
         return all_storage
 
     def extract(self, site_filter: Optional[SiteFilter] = None,
                 progress_callback=None) -> List[Dict]:
         """Extract cookies based on browser type.
-        
+
         Args:
             site_filter: Optional filter to apply
             progress_callback: Optional callable(current, total, stage) for progress updates
         """
         if progress_callback:
             progress_callback(0, 1, "starting")
-        
+
         if self.browser in ("chrome", "chromium", "edge", "brave"):
             cookies = self.extract_chrome(site_filter)
         elif self.browser == "firefox":
@@ -505,10 +503,10 @@ class CookieExtractor:
                 f"Supported browsers: {supported}"
             )
             cookies = []
-        
+
         if progress_callback:
             progress_callback(1, 1, "complete")
-        
+
         return cookies
 
     @staticmethod

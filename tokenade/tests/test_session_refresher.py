@@ -1,7 +1,6 @@
 """Tests for session auto-refresher with WebSocket notifications and multi-browser fallback."""
 
 import asyncio
-import json
 import time
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -350,6 +349,7 @@ class TestSessionRefresher:
                 }
 
                 call_count = 0
+
                 def extract_side_effect(**kwargs):
                     nonlocal call_count
                     call_count += 1

@@ -5,16 +5,15 @@ Tests cross-platform cookie encryption/decryption with mocked
 platform-specific dependencies.
 """
 
-import json
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 # Ensure tokenade is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.core.crypto.cookie_crypto import (
+from tokenade.core.crypto.cookie_crypto import (  # noqa: E402
     DecryptedCookie,
     CookieCryptoFactory,
     LinuxCookieCrypto,

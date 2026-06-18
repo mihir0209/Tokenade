@@ -8,42 +8,42 @@ from .base import BaseCollector
 
 class AudioCollector(BaseCollector):
     """Collects AudioContext fingerprint data."""
-    
+
     @property
     def api_name(self) -> str:
         return "audio"
-    
+
     def collect(self, browser_manager) -> Dict[str, Any]:
         """Collect audio fingerprint."""
         script = """() => {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return {};
-                
+
                 const ctx = new AudioContext();
                 const oscillator = ctx.createOscillator();
                 const analyser = ctx.createAnalyser();
                 const gain = ctx.createGain();
-                
+
                 oscillator.connect(analyser);
                 analyser.connect(gain);
                 gain.connect(ctx.destination);
-                
+
                 oscillator.type = 'triangle';
                 oscillator.frequency.value = 10000;
-                
+
                 gain.gain.value = 0;
                 oscillator.start(0);
-                
+
                 const fftSize = analyser.fftSize;
                 const buffer = new Uint8Array(fftSize);
                 analyser.getByteFrequencyData(buffer);
-                
+
                 const hash = buffer.slice(0, 50).join(',');
-                
+
                 oscillator.stop();
                 ctx.close();
-                
+
                 return {
                     sampleRate: ctx.sampleRate,
                     channelCount: ctx.destination.channelCount,
@@ -55,13 +55,13 @@ class AudioCollector(BaseCollector):
                 return {};
             }
         }"""
-        
+
         try:
             result = browser_manager.evaluate(script)
             return result if isinstance(result, dict) else {}
-        except Exception as e:
+        except Exception:
             return {}
-    
+
     def get_script_template(self) -> str:
         return """
 // Audio spoofing
@@ -71,19 +71,19 @@ class AudioCollector(BaseCollector):
     const channelCountMode = "{{channelCountMode}}";
     const fftSize = {{fftSize}};
     const audioHash = "{{hash}}";
-    
+
     const origAudioContext = window.AudioContext || window.webkitAudioContext;
     if (!origAudioContext) return;
-    
+
     window.AudioContext = function() {
         const ctx = new origAudioContext();
-        
+
         // Override sample rate
         Object.defineProperty(ctx, 'sampleRate', {
             get: function() { return sampleRate; },
             configurable: true
         });
-        
+
         // Override destination
         if (ctx.destination) {
             Object.defineProperty(ctx.destination, 'channelCount', {
@@ -95,7 +95,7 @@ class AudioCollector(BaseCollector):
                 configurable: true
             });
         }
-        
+
         // Override analyser
         const origCreateAnalyser = ctx.createAnalyser;
         ctx.createAnalyser = function() {
@@ -104,7 +104,7 @@ class AudioCollector(BaseCollector):
                 get: function() { return fftSize; },
                 configurable: true
             });
-            
+
             const origGetByteFrequencyData = analyser.getByteFrequencyData;
             analyser.getByteFrequencyData = function(array) {
                 // Fill with pre-computed hash data
@@ -114,10 +114,10 @@ class AudioCollector(BaseCollector):
                 }
                 return array;
             };
-            
+
             return analyser;
         };
-        
+
         return ctx;
     };
 })();

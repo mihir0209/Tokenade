@@ -8,11 +8,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.core.security.credentials import (
+from tokenade.core.security.credentials import (  # noqa: E402
     AccountCredentials,
     CredentialManager,
     SecureSessionStorage,
@@ -52,7 +52,7 @@ class TestAccountCredentials(unittest.TestCase):
         self.assertNotIn("password", data)
         self.assertEqual(data["site"], "github")
         self.assertEqual(data["metadata"], {"2fa": True})
-        
+
         # With include_password=True
         data_with_pw = acc.to_dict(include_password=True)
         self.assertEqual(data_with_pw["password"], "secret123")
@@ -341,7 +341,7 @@ class TestSecureSessionStorage(unittest.TestCase):
     def test_sessions_dir_created(self):
         """Test sessions directory is created if missing."""
         new_dir = os.path.join(self.test_dir, "new_sessions")
-        storage = SecureSessionStorage(sessions_dir=new_dir)
+        SecureSessionStorage(sessions_dir=new_dir)
         self.assertTrue(os.path.exists(new_dir))
 
 

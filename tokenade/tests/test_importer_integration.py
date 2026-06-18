@@ -4,15 +4,12 @@ Integration tests for Session Import/Export feature.
 Tests the full donor → receiver workflow end-to-end.
 """
 
-import json
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery, BrowserProfile
-from tokenade.core.importer.cookie_extractor import CookieExtractor, SiteFilter
+from tokenade.core.importer.cookie_extractor import SiteFilter
 from tokenade.core.importer.session_packager import SessionPackager
 from tokenade.core.importer.session_loader import SessionLoader
 
@@ -75,11 +72,11 @@ class TestExportLoadRoundtrip:
 
     def test_export_load_site_specific_only(self):
         """Test that only specified site cookies are exported."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             # Mixed cookies from multiple sites
             cookies = [
                 {"name": "SID", "value": "abc", "domain": ".google.com", "path": "/"},
-                {"name": "SSID", "value": "def", "domain": ".google.com", "path": "/"},
+                {"name": "SSID", "value": "de", "domain": ".google.com", "path": "/"},
                 {"name": "user_session", "value": "xyz", "domain": ".github.com", "path": "/"},
                 {"name": "random", "value": "x", "domain": "example.com", "path": "/"},
             ]
@@ -180,7 +177,7 @@ class TestSiteDetectionIntegration:
         """Test Google detection through full pipeline."""
         cookies = [
             {"name": "SID", "value": "abc", "domain": ".google.com"},
-            {"name": "SSID", "value": "def", "domain": ".google.com"},
+            {"name": "SSID", "value": "de", "domain": ".google.com"},
         ]
 
         packager = SessionPackager()

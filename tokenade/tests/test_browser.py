@@ -5,18 +5,16 @@ Unit tests for browser manager module.
 import os
 import sys
 import unittest
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    import playwright
     HAS_PLAYWRIGHT = True
 except ImportError:
     HAS_PLAYWRIGHT = False
 
-from tokenade.core.browser.manager import (
+from tokenade.core.browser.manager import (  # noqa: E402
     BrowserConfig,
     BrowserManager,
     PlaywrightBrowserManager,
@@ -77,12 +75,23 @@ class TestBrowserFactory(unittest.TestCase):
     def test_register_backend(self):
         """Test registering custom backend."""
         class CustomManager(BrowserManager):
-            def launch(self): pass
-            def close(self): pass
-            def get_cookies(self, urls=None): return []
-            def add_cookies(self, cookies): pass
-            def navigate(self, url, wait_until="networkidle", timeout=30000): pass
-            def evaluate(self, expression): pass
+            def launch(self):
+                pass
+
+            def close(self):
+                pass
+
+            def get_cookies(self, urls=None):
+                return []
+
+            def add_cookies(self, cookies):
+                pass
+
+            def navigate(self, url, wait_until="networkidle", timeout=30000):
+                pass
+
+            def evaluate(self, expression):
+                pass
 
         BrowserFactory.register("custom", CustomManager)
         manager = BrowserFactory.create("custom")
@@ -166,7 +175,7 @@ class TestPlaywrightBrowserManager(unittest.TestCase):
         mock_playwright.chromium.launch_persistent_context.return_value = mock_context
         mock_context.pages = [mock_page]
 
-        page = manager.launch()
+        manager.launch()
 
         self.assertTrue(manager.is_active)
         mock_playwright.chromium.launch_persistent_context.assert_called_once()
