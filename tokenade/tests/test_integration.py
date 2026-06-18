@@ -13,6 +13,12 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tokenade.core.integration.docker_manager import DockerSessionManager, DockerContainer  # noqa: E402
+
+try:
+    import yaml  # noqa: F401
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
 from tokenade.core.integration.kubernetes import KubernetesManager, KubernetesConfig  # noqa: E402
 
 
@@ -332,6 +338,7 @@ class TestKubernetesManagerAvailability(unittest.TestCase):
         self.assertTrue(mgr.is_available())
 
 
+@unittest.skipUnless(HAS_YAML, "PyYAML not installed")
 class TestKubernetesManagerDeploymentYaml(unittest.TestCase):
     """Test generate_deployment_yaml output."""
 
@@ -374,6 +381,7 @@ class TestKubernetesManagerDeploymentYaml(unittest.TestCase):
         self.assertIn("8080", container["args"])
 
 
+@unittest.skipUnless(HAS_YAML, "PyYAML not installed")
 class TestKubernetesManagerSidecarYaml(unittest.TestCase):
     """Test generate_sidecar_yaml output."""
 
@@ -406,6 +414,7 @@ class TestKubernetesManagerSidecarYaml(unittest.TestCase):
         self.assertEqual(volumes[0]["configMap"]["name"], "cm-sessions")
 
 
+@unittest.skipUnless(HAS_YAML, "PyYAML not installed")
 class TestKubernetesManagerServiceYaml(unittest.TestCase):
     """Test generate_service_yaml output."""
 
@@ -423,6 +432,7 @@ class TestKubernetesManagerServiceYaml(unittest.TestCase):
         self.assertEqual(ports[0]["port"], 9222)
 
 
+@unittest.skipUnless(HAS_YAML, "PyYAML not installed")
 class TestKubernetesManagerConfigMapYaml(unittest.TestCase):
     """Test generate_configmap_yaml output."""
 
