@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 try:
-    from curl_cffi import requests as _curl_requests
+    from curl_cffi import requests as _curl_requests  # noqa: F401
     _has_curl_cffi = True
 except ImportError:
     _has_curl_cffi = False
