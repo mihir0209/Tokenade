@@ -2,11 +2,11 @@
 Comprehensive tests for profile_manager.py — InjectionResult, ProfileManager,
 inject_cookies, resolve_database_path, backup, inject_chromium/firefox, etc.
 """
+
 import os
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
 
 from tokenade.core.injector.profile_manager import (
     InjectionResult,
@@ -17,15 +17,26 @@ from tokenade.core.injector.profile_manager import (
 
 class TestInjectionResult(unittest.TestCase):
     def test_defaults(self):
-        r = InjectionResult(success=False, cookies_injected=0, cookies_total=5, profile_path="/tmp")
+        r = InjectionResult(
+            success=False,
+            cookies_injected=0,
+            cookies_total=5,
+            profile_path="/tmp",
+        )
         self.assertFalse(r.success)
         self.assertEqual(r.cookies_total, 5)
         self.assertIsNone(r.backup_path)
         self.assertIsNone(r.error)
 
     def test_full(self):
-        r = InjectionResult(success=True, cookies_injected=10, cookies_total=10, profile_path="/tmp",
-                            backup_path="/tmp.bak", error="none")
+        r = InjectionResult(
+            success=True,
+            cookies_injected=10,
+            cookies_total=10,
+            profile_path="/tmp",
+            backup_path="/tmp.bak",
+            error="none",
+        )
         self.assertTrue(r.success)
 
 
@@ -110,8 +121,17 @@ class TestProfileManagerInjectCookies(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            cookies = [{"name": "sid", "value": "abc", "domain": ".github.com", "path": "/"}]
-            result = m.inject_cookies(tmpdir, cookies, "chrome", backup=False, verify=False)
+            cookies = [
+                {
+                    "name": "sid",
+                    "value": "abc",
+                    "domain": ".github.com",
+                    "path": "/",
+                }
+            ]
+            result = m.inject_cookies(
+                tmpdir, cookies, "chrome", backup=False, verify=False
+            )
             self.assertTrue(result.success)
             self.assertEqual(result.cookies_injected, 1)
 
@@ -128,8 +148,17 @@ class TestProfileManagerInjectCookies(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            cookies = [{"name": "sid", "value": "abc", "domain": ".github.com", "path": "/"}]
-            result = m.inject_cookies(tmpdir, cookies, "firefox", backup=False, verify=False)
+            cookies = [
+                {
+                    "name": "sid",
+                    "value": "abc",
+                    "domain": ".github.com",
+                    "path": "/",
+                }
+            ]
+            result = m.inject_cookies(
+                tmpdir, cookies, "firefox", backup=False, verify=False
+            )
             self.assertTrue(result.success)
             self.assertEqual(result.cookies_injected, 1)
 
@@ -139,7 +168,9 @@ class TestProfileManagerInjectCookies(unittest.TestCase):
             db_path = os.path.join(tmpdir, "Default", "Cookies")
             os.makedirs(os.path.dirname(db_path))
             open(db_path, "w").close()
-            result = m.inject_cookies(tmpdir, [{"name": "t"}], "safari", backup=False)
+            result = m.inject_cookies(
+                tmpdir, [{"name": "t"}], "safari", backup=False
+            )
             self.assertFalse(result.success)
 
     def test_inject_with_expiry(self):
@@ -160,9 +191,21 @@ class TestProfileManagerInjectCookies(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            cookies = [{"name": "sid", "value": "abc", "domain": ".x.com", "path": "/",
-                        "expires": 1700000000, "secure": True, "httpOnly": True, "sameSite": "Strict"}]
-            result = m.inject_cookies(tmpdir, cookies, "chrome", backup=False, verify=False)
+            cookies = [
+                {
+                    "name": "sid",
+                    "value": "abc",
+                    "domain": ".x.com",
+                    "path": "/",
+                    "expires": 1700000000,
+                    "secure": True,
+                    "httpOnly": True,
+                    "sameSite": "Strict",
+                }
+            ]
+            result = m.inject_cookies(
+                tmpdir, cookies, "chrome", backup=False, verify=False
+            )
             self.assertTrue(result.success)
 
     def test_inject_with_large_expiry(self):
@@ -183,9 +226,19 @@ class TestProfileManagerInjectCookies(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            cookies = [{"name": "sid", "value": "abc", "domain": ".x.com", "path": "/",
-                        "expires": 1700000000000, "sameSite": "None"}]
-            result = m.inject_cookies(tmpdir, cookies, "chrome", backup=False, verify=False)
+            cookies = [
+                {
+                    "name": "sid",
+                    "value": "abc",
+                    "domain": ".x.com",
+                    "path": "/",
+                    "expires": 1700000000000,
+                    "sameSite": "None",
+                }
+            ]
+            result = m.inject_cookies(
+                tmpdir, cookies, "chrome", backup=False, verify=False
+            )
             self.assertTrue(result.success)
 
 
@@ -205,8 +258,31 @@ class TestProfileManagerCountCookies(unittest.TestCase):
                 source_port INTEGER, last_update_utc INTEGER, source_type INTEGER,
                 has_cross_site_ancestor INTEGER
             )""")
-            conn.execute("INSERT INTO cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (0, ".x.com", "", "t", "v", b"", "/", 0, 0, 0, 0, 0, 0, 1, 1, 1, 443, 0, 0, 0))
+            conn.execute(
+                "INSERT INTO cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    0,
+                    ".x.com",
+                    "",
+                    "t",
+                    "v",
+                    b"",
+                    "/",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    1,
+                    1,
+                    443,
+                    0,
+                    0,
+                    0,
+                ),
+            )
             conn.commit()
             conn.close()
             count = m._count_cookies(db_path, "chrome")
@@ -222,8 +298,10 @@ class TestProfileManagerCountCookies(unittest.TestCase):
                 expiry INTEGER, lastAccessed INTEGER, creationTime INTEGER,
                 isSecure INTEGER, isHttpOnly INTEGER, sameSite INTEGER, schemeMap INTEGER
             )""")
-            conn.execute("INSERT INTO moz_cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                         ("x.com", "t", "v", ".x.com", "/", 0, 0, 0, 0, 0, 1, 1))
+            conn.execute(
+                "INSERT INTO moz_cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("x.com", "t", "v", ".x.com", "/", 0, 0, 0, 0, 0, 1, 1),
+            )
             conn.commit()
             conn.close()
             count = m._count_cookies(db_path, "firefox")
@@ -281,7 +359,20 @@ class TestInjectSessionToProfile(unittest.TestCase):
             session_file = os.path.join(tmpdir, "test.tokenade")
             with open(session_file, "w") as f:
                 import json
-                json.dump({"cookies": [{"name": "t", "value": "v", "domain": ".x.com", "path": "/"}]}, f)
+
+                json.dump(
+                    {
+                        "cookies": [
+                            {
+                                "name": "t",
+                                "value": "v",
+                                "domain": ".x.com",
+                                "path": "/",
+                            }
+                        ]
+                    },
+                    f,
+                )
 
             profile_dir = os.path.join(tmpdir, "profile")
             os.makedirs(os.path.join(profile_dir, "Default"))
@@ -299,7 +390,9 @@ class TestInjectSessionToProfile(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            result = inject_session_to_profile(session_file, profile_dir, "chrome", backup=False)
+            result = inject_session_to_profile(
+                session_file, profile_dir, "chrome", backup=False
+            )
             self.assertTrue(result.success)
 
 

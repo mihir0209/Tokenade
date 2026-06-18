@@ -1,6 +1,7 @@
 """
 Comprehensive tests for server_gui.py — handle_gui and handle_browse_page.
 """
+
 import asyncio
 import concurrent.futures
 import unittest
@@ -10,7 +11,7 @@ from tokenade.core.proxy.server_gui import handle_gui, handle_browse_page
 
 
 def _run_async(coro):
-    """Run async coroutine in a new event loop via ThreadPoolExecutor."""
+    """Run async coroutine in a new event loop."""
     with concurrent.futures.ThreadPoolExecutor() as pool:
         future = pool.submit(asyncio.run, coro)
         return future.result(timeout=10)
@@ -31,7 +32,6 @@ class TestHandleGui(unittest.TestCase):
         return proxy
 
     def test_handle_gui_returns_html(self):
-        import asyncio
         proxy = self._make_proxy()
         request = MagicMock()
         result = _run_async(handle_gui(proxy, request))
@@ -39,21 +39,18 @@ class TestHandleGui(unittest.TestCase):
         self.assertIn(b"Tokenade Proxy", result.body)
 
     def test_handle_gui_shows_site_name(self):
-        import asyncio
         proxy = self._make_proxy()
         request = MagicMock()
         result = _run_async(handle_gui(proxy, request))
         self.assertIn(b"github", result.body)
 
     def test_handle_gui_shows_cookie_count(self):
-        import asyncio
         proxy = self._make_proxy()
         request = MagicMock()
         result = _run_async(handle_gui(proxy, request))
         self.assertIn(b"1", result.body)
 
     def test_handle_gui_with_target_url(self):
-        import asyncio
         proxy = self._make_proxy()
         proxy._target_url = "https://custom.example.com"
         request = MagicMock()
@@ -61,7 +58,6 @@ class TestHandleGui(unittest.TestCase):
         self.assertEqual(result.status, 200)
 
     def test_handle_gui_shows_port(self):
-        import asyncio
         proxy = self._make_proxy()
         proxy.config.port = 8080
         request = MagicMock()
@@ -77,7 +73,6 @@ class TestHandleBrowsePage(unittest.TestCase):
         return proxy
 
     def test_handle_browse_page(self):
-        import asyncio
         proxy = self._make_proxy()
         request = MagicMock()
         result = _run_async(handle_browse_page(proxy, request))
@@ -85,7 +80,6 @@ class TestHandleBrowsePage(unittest.TestCase):
         self.assertIn(b"Browse", result.body)
 
     def test_handle_browse_page_with_target(self):
-        import asyncio
         proxy = self._make_proxy()
         proxy._target_url = "https://example.com"
         request = MagicMock()

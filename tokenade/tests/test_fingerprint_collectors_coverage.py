@@ -2,10 +2,10 @@
 Comprehensive tests for fingerprint collectors — battery, webrtc, canvas,
 plugins, screen, webgl collectors.
 """
-import unittest
-from unittest.mock import MagicMock, patch
 
-from tokenade.core.fingerprint.collectors.base import BaseCollector
+import unittest
+from unittest.mock import MagicMock
+
 from tokenade.core.fingerprint.collectors.battery import BatteryCollector
 from tokenade.core.fingerprint.collectors.webrtc import WebRTCCollector
 from tokenade.core.fingerprint.collectors.canvas import CanvasCollector
@@ -17,19 +17,22 @@ from tokenade.core.fingerprint.collectors.webgl import WebGLCollector
 class TestBaseCollector(unittest.TestCase):
     def test_build_script_bool(self):
         collector = BatteryCollector()
-        template = "charging: {{charging}}"
         result = collector.build_script({"charging": True})
         self.assertIn("charging: true", result)
 
     def test_build_script_int(self):
         collector = BatteryCollector()
-        template = "level: {{level}}"
         result = collector.build_script({"level": 5})
         self.assertIn("level: 5", result)
 
     def test_build_script_battery_template(self):
         collector = BatteryCollector()
-        data = {"charging": False, "level": 0.75, "chargingTime": 3600, "dischargingTime": 7200}
+        data = {
+            "charging": False,
+            "level": 0.75,
+            "chargingTime": 3600,
+            "dischargingTime": 7200,
+        }
         result = collector.build_script(data)
         self.assertIn("charging: false", result)
         self.assertIn("level: 0.75", result)
@@ -50,16 +53,28 @@ class TestBaseCollector(unittest.TestCase):
 
     def test_build_script_plugins(self):
         collector = PluginsCollector()
-        data = {"plugins": [{"name": "PDF"}], "mimeTypes": [{"type": "application/pdf"}]}
+        data = {
+            "plugins": [{"name": "PDF"}],
+            "mimeTypes": [{"type": "application/pdf"}],
+        }
         result = collector.build_script(data)
         self.assertIn("PDF", result)
 
     def test_build_script_screen(self):
         collector = ScreenCollector()
-        data = {"screenWidth": 1920, "screenHeight": 1080, "screenAvailWidth": 1920,
-                "screenAvailHeight": 1040, "screenAvailLeft": 0, "screenAvailTop": 0,
-                "screenColorDepth": 24, "screenPixelDepth": 24,
-                "outerWidth": 1920, "outerHeight": 1080, "devicePixelRatio": 1.0}
+        data = {
+            "screenWidth": 1920,
+            "screenHeight": 1080,
+            "screenAvailWidth": 1920,
+            "screenAvailHeight": 1040,
+            "screenAvailLeft": 0,
+            "screenAvailTop": 0,
+            "screenColorDepth": 24,
+            "screenPixelDepth": 24,
+            "outerWidth": 1920,
+            "outerHeight": 1080,
+            "devicePixelRatio": 1.0,
+        }
         result = collector.build_script(data)
         self.assertIn("1920", result)
 
@@ -72,7 +87,12 @@ class TestBatteryCollector(unittest.TestCase):
     def test_collect_success(self):
         c = BatteryCollector()
         bm = MagicMock()
-        bm.evaluate.return_value = {"charging": True, "level": 1.0, "chargingTime": 0, "dischargingTime": 3600}
+        bm.evaluate.return_value = {
+            "charging": True,
+            "level": 1.0,
+            "chargingTime": 0,
+            "dischargingTime": 3600,
+        }
         result = c.collect(bm)
         self.assertTrue(result["charging"])
 
@@ -136,7 +156,11 @@ class TestCanvasCollector(unittest.TestCase):
     def test_collect_success(self):
         c = CanvasCollector()
         bm = MagicMock()
-        bm.evaluate.return_value = {"dataUrl": "data:image/png;base64,abc", "width": 280, "height": 60}
+        bm.evaluate.return_value = {
+            "dataUrl": "data:image/png;base64,abc",
+            "width": 280,
+            "height": 60,
+        }
         result = c.collect(bm)
         self.assertEqual(result["width"], 280)
 
@@ -168,7 +192,12 @@ class TestPluginsCollector(unittest.TestCase):
     def test_collect_success(self):
         c = PluginsCollector()
         bm = MagicMock()
-        bm.evaluate.return_value = {"plugins": [], "mimeTypes": [], "pluginsLength": 0, "mimeTypesLength": 0}
+        bm.evaluate.return_value = {
+            "plugins": [],
+            "mimeTypes": [],
+            "pluginsLength": 0,
+            "mimeTypesLength": 0,
+        }
         result = c.collect(bm)
         self.assertEqual(result["pluginsLength"], 0)
 
@@ -200,7 +229,11 @@ class TestScreenCollector(unittest.TestCase):
     def test_collect_success(self):
         c = ScreenCollector()
         bm = MagicMock()
-        bm.evaluate.return_value = {"screenWidth": 1920, "screenHeight": 1080, "devicePixelRatio": 1.0}
+        bm.evaluate.return_value = {
+            "screenWidth": 1920,
+            "screenHeight": 1080,
+            "devicePixelRatio": 1.0,
+        }
         result = c.collect(bm)
         self.assertEqual(result["screenWidth"], 1920)
 
@@ -232,7 +265,12 @@ class TestWebGLCollector(unittest.TestCase):
     def test_collect_success(self):
         c = WebGLCollector()
         bm = MagicMock()
-        bm.evaluate.return_value = {"vendor": "Intel", "renderer": "Mesa", "params": {}, "extensions": []}
+        bm.evaluate.return_value = {
+            "vendor": "Intel",
+            "renderer": "Mesa",
+            "params": {},
+            "extensions": [],
+        }
         result = c.collect(bm)
         self.assertEqual(result["vendor"], "Intel")
 

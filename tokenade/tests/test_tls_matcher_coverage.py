@@ -2,8 +2,9 @@
 Comprehensive tests for tls_matcher.py — TLSMatcher, create_tls_matcher,
 session setup, request methods, fingerprint mapping.
 """
+
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from tokenade.core.runtime.tls_matcher import (
     TLSMatcher,
@@ -23,7 +24,9 @@ class TestTLSFingerprint(unittest.TestCase):
         self.assertEqual(fp.impersonate, "chrome120")
 
     def test_custom(self):
-        fp = TLSFingerprint(browser="firefox", version="128", impersonate="firefox128")
+        fp = TLSFingerprint(
+            browser="firefox", version="128", impersonate="firefox128"
+        )
         self.assertEqual(fp.browser, "firefox")
         self.assertEqual(fp.impersonate, "firefox128")
 
@@ -62,13 +65,17 @@ class TestBrowserDefaults(unittest.TestCase):
 
 class TestTLSMatcherInit(unittest.TestCase):
     def test_default_init(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             self.assertIsNotNone(m.fingerprint)
 
     def test_custom_init(self):
         fp = TLSFingerprint(impersonate="chrome131")
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher(fingerprint=fp)
             self.assertEqual(m.fingerprint.impersonate, "chrome131")
 
@@ -78,7 +85,11 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
         mock_session = MagicMock()
         mock_requests = MagicMock()
         mock_requests.Session.return_value = mock_session
-        with patch("tokenade.core.runtime.tls_matcher.curl_requests", mock_requests, create=True):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.curl_requests",
+            mock_requests,
+            create=True,
+        ):
             with patch("importlib.import_module", return_value=mock_requests):
                 m = TLSMatcher.__new__(TLSMatcher)
                 m.fingerprint = TLSFingerprint()
@@ -87,7 +98,12 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
                 self.assertIsNotNone(m._session)
 
     def test_curl_cffi_not_installed(self):
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
+
         def mock_import(name, *args, **kwargs):
             if name == "curl_cffi":
                 raise ImportError("No module named 'curl_cffi'")
@@ -108,6 +124,7 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
 
         try:
             from curl_cffi import requests as curl_requests
+
             # Try creating a firefox session - if it fails, it should fall back
             try:
                 session = curl_requests.Session(impersonate="firefox120")
@@ -122,7 +139,10 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
 
     def test_other_error_reraises(self):
         # curl-cffi is installed, so mock the Session constructor to raise non-firefox error
-        with patch("curl_cffi.requests.Session", side_effect=RuntimeError("other error")):
+        with patch(
+            "curl_cffi.requests.Session",
+            side_effect=RuntimeError("other error"),
+        ):
             m = TLSMatcher.__new__(TLSMatcher)
             m.fingerprint = TLSFingerprint(impersonate="chrome131")
             with self.assertRaises(RuntimeError):
@@ -131,19 +151,25 @@ class TestTLSMatcherSetupSession(unittest.TestCase):
 
 class TestTLSMatcherGetImpersonateTarget(unittest.TestCase):
     def test_known_version(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             target = m._get_impersonate_target("chrome", "120")
             self.assertEqual(target, "chrome120")
 
     def test_unknown_version_fallback(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             target = m._get_impersonate_target("chrome", "999")
             self.assertEqual(target, "chrome120")
 
     def test_unknown_browser_fallback(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             target = m._get_impersonate_target("unknown", "1")
             self.assertEqual(target, "chrome120")
@@ -151,7 +177,9 @@ class TestTLSMatcherGetImpersonateTarget(unittest.TestCase):
 
 class TestTLSMatcherRequest(unittest.TestCase):
     def test_no_session_raises(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = None
             with self.assertRaises(RuntimeError):
@@ -161,30 +189,40 @@ class TestTLSMatcherRequest(unittest.TestCase):
         mock_session = MagicMock()
         mock_response = MagicMock()
         mock_session.request.return_value = mock_response
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = mock_session
-            result = m.get("https://example.com")
+            m.get("https://example.com")
             mock_session.request.assert_called_once_with(
-                method="GET", url="https://example.com",
-                headers={}, cookies={}, data=None, json=None,
-                timeout=30
+                method="GET",
+                url="https://example.com",
+                headers={},
+                cookies={},
+                data=None,
+                json=None,
+                timeout=30,
             )
 
     def test_post_request(self):
         mock_session = MagicMock()
         mock_response = MagicMock()
         mock_session.request.return_value = mock_response
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = mock_session
-            result = m.post("https://example.com", data=b"body")
+            m.post("https://example.com", data=b"body")
             mock_session.request.assert_called_once()
 
     def test_put_request(self):
         mock_session = MagicMock()
         mock_session.request.return_value = MagicMock()
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = mock_session
             m.put("https://example.com")
@@ -193,7 +231,9 @@ class TestTLSMatcherRequest(unittest.TestCase):
     def test_delete_request(self):
         mock_session = MagicMock()
         mock_session.request.return_value = MagicMock()
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = mock_session
             m.delete("https://example.com")
@@ -203,20 +243,26 @@ class TestTLSMatcherRequest(unittest.TestCase):
 class TestTLSMatcherClose(unittest.TestCase):
     def test_close(self):
         mock_session = MagicMock()
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = mock_session
             m.close()
             mock_session.close.assert_called_once()
 
     def test_close_no_session(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = None
             m.close()
 
     def test_context_manager(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = TLSMatcher()
             m._session = MagicMock()
             with m as ctx:
@@ -226,17 +272,23 @@ class TestTLSMatcherClose(unittest.TestCase):
 
 class TestCreateTLSMatcher(unittest.TestCase):
     def test_with_impersonate(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = create_tls_matcher(impersonate="chrome131")
             self.assertEqual(m.fingerprint.impersonate, "chrome131")
 
     def test_with_browser_version(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = create_tls_matcher(browser="firefox", version="128")
             self.assertEqual(m.fingerprint.browser, "firefox")
 
     def test_unknown_browser_default(self):
-        with patch("tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"):
+        with patch(
+            "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
+        ):
             m = create_tls_matcher(browser="unknown")
             self.assertEqual(m.fingerprint.impersonate, "chrome120")
 

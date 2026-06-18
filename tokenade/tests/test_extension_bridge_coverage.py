@@ -2,6 +2,7 @@
 Comprehensive tests for extension_bridge.py — BridgeMessage, ExtensionBridge
 WebSocket communication, broadcast, session updates, status.
 """
+
 import asyncio
 import concurrent.futures
 import json
@@ -26,7 +27,9 @@ class TestBridgeMessage(unittest.TestCase):
         self.assertEqual(msg.source, "")
 
     def test_full_init(self):
-        msg = BridgeMessage(type="heartbeat", data={"ts": 123}, source="extension")
+        msg = BridgeMessage(
+            type="heartbeat", data={"ts": 123}, source="extension"
+        )
         self.assertEqual(msg.type, "heartbeat")
         self.assertEqual(msg.data["ts"], 123)
         self.assertEqual(msg.source, "extension")
@@ -159,6 +162,7 @@ class TestExtensionBridgeStart(unittest.TestCase):
 
         async def fake_serve(*args, **kwargs):
             bridge._running = False
+
         mock_ws.serve = AsyncMock(side_effect=fake_serve)
         with patch.dict("sys.modules", {"websockets": mock_ws}):
             _run_async(bridge.start())
@@ -176,13 +180,19 @@ class TestExtensionBridgeHandleClient(unittest.TestCase):
         websocket.remote_address = ("127.0.0.1", 54321)
         bridge._clients.add(websocket)
 
-        message = json.dumps({"type": "cookie_update", "data": {"cookies": []}})
+        message = json.dumps(
+            {"type": "cookie_update", "data": {"cookies": []}}
+        )
         try:
             data = json.loads(message)
             msg_type = data.get("type", "unknown")
             msg_data = data.get("data", {})
             if msg_type in bridge._message_handlers:
-                bridge._message_handlers[msg_type](BridgeMessage(type=msg_type, data=msg_data, source="extension"))
+                bridge._message_handlers[msg_type](
+                    BridgeMessage(
+                        type=msg_type, data=msg_data, source="extension"
+                    )
+                )
             if msg_type == "cookie_update" and bridge._session_callback:
                 bridge._session_callback(msg_data)
         finally:
@@ -192,7 +202,6 @@ class TestExtensionBridgeHandleClient(unittest.TestCase):
         session_cb.assert_called_once()
 
     def test_handle_client_invalid_json(self):
-        bridge = ExtensionBridge()
         try:
             json.loads("not json")
         except json.JSONDecodeError:

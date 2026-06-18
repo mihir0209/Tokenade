@@ -2,13 +2,16 @@
 Comprehensive tests for local_storage_extractor.py — LocalStorageExtractor
 Chrome/Firefox extraction, origin listing, JSON parsing.
 """
+
 import os
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
+from tokenade.core.importer.local_storage_extractor import (
+    LocalStorageExtractor,
+)
 
 
 class TestLocalStorageExtractorInit(unittest.TestCase):
@@ -30,14 +33,18 @@ class TestLocalStorageExtractorExtract(unittest.TestCase):
 
     def test_chrome_calls_extract_chrome(self):
         ext = LocalStorageExtractor("/tmp", "chrome")
-        with patch.object(ext, "extract_chrome", return_value={"k": "v"}) as mock:
+        with patch.object(
+            ext, "extract_chrome", return_value={"k": "v"}
+        ) as mock:
             result = ext.extract()
             self.assertEqual(result, {"k": "v"})
             mock.assert_called_once()
 
     def test_firefox_calls_extract_firefox(self):
         ext = LocalStorageExtractor("/tmp", "firefox")
-        with patch.object(ext, "extract_firefox", return_value={"k": "v"}) as mock:
+        with patch.object(
+            ext, "extract_firefox", return_value={"k": "v"}
+        ) as mock:
             result = ext.extract()
             self.assertEqual(result, {"k": "v"})
             mock.assert_called_once()
@@ -55,7 +62,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
         ext.browser = "firefox"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com", "ls")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com", "ls"
+            )
             os.makedirs(storage_dir)
             db_path = os.path.join(storage_dir, "data.sqlite")
             conn = sqlite3.connect(db_path)
@@ -77,7 +86,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
         ext.browser = "firefox"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com", "ls")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com", "ls"
+            )
             os.makedirs(storage_dir)
             db_path = os.path.join(storage_dir, "data.sqlite")
             conn = sqlite3.connect(db_path)
@@ -88,7 +99,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
 
             ext.profile_path = tmpdir
             with patch.object(ext, "_copy_db", return_value=db_path):
-                result = ext.extract_firefox(origin_filter="https://example.com")
+                result = ext.extract_firefox(
+                    origin_filter="https://example.com"
+                )
                 self.assertEqual(result["token"], "abc")
 
     def test_extract_origin_filter_no_match(self):
@@ -97,7 +110,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
         ext.browser = "firefox"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com", "ls")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com", "ls"
+            )
             os.makedirs(storage_dir)
             db_path = os.path.join(storage_dir, "data.sqlite")
             conn = sqlite3.connect(db_path)
@@ -117,7 +132,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
         ext.browser = "firefox"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com", "ls")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com", "ls"
+            )
             os.makedirs(storage_dir)
             db_path = os.path.join(storage_dir, "data.sqlite")
             conn = sqlite3.connect(db_path)
@@ -137,7 +154,9 @@ class TestLocalStorageExtractorExtractFirefox(unittest.TestCase):
         ext.browser = "firefox"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com"
+            )
             os.makedirs(storage_dir)
             ext.profile_path = tmpdir
             result = ext.extract_firefox()
@@ -173,7 +192,9 @@ class TestLocalStorageExtractorListOrigins(unittest.TestCase):
 
     def test_list_origins_firefox(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = os.path.join(tmpdir, "storage", "default", "https+++example.com", "ls")
+            storage_dir = os.path.join(
+                tmpdir, "storage", "default", "https+++example.com", "ls"
+            )
             os.makedirs(storage_dir)
             open(os.path.join(storage_dir, "data.sqlite"), "w").close()
             ext = LocalStorageExtractor(tmpdir, "firefox")
@@ -198,8 +219,11 @@ class TestLocalStorageExtractorListOrigins(unittest.TestCase):
 
 class TestLocalStorageExtractorParseJsonFile(unittest.TestCase):
     def test_parse_flat_dict(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             import json
+
             json.dump({"token": "abc", "user": "john"}, f)
             f.flush()
             try:
@@ -209,9 +233,20 @@ class TestLocalStorageExtractorParseJsonFile(unittest.TestCase):
                 os.unlink(f.name)
 
     def test_parse_structured_format(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             import json
-            json.dump({"data": [{"key": "token", "value": "abc"}, {"key": "user", "value": "john"}]}, f)
+
+            json.dump(
+                {
+                    "data": [
+                        {"key": "token", "value": "abc"},
+                        {"key": "user", "value": "john"},
+                    ]
+                },
+                f,
+            )
             f.flush()
             try:
                 result = LocalStorageExtractor.parse_json_file(f.name)
@@ -220,8 +255,11 @@ class TestLocalStorageExtractorParseJsonFile(unittest.TestCase):
                 os.unlink(f.name)
 
     def test_parse_empty_dict(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             import json
+
             json.dump({}, f)
             f.flush()
             try:
@@ -231,8 +269,11 @@ class TestLocalStorageExtractorParseJsonFile(unittest.TestCase):
                 os.unlink(f.name)
 
     def test_parse_non_dict(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             import json
+
             json.dump([], f)
             f.flush()
             try:

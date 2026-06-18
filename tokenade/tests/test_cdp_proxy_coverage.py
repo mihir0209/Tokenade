@@ -2,16 +2,14 @@
 Comprehensive tests for cdp_proxy.py — covering config, factory, handlers,
 page lifecycle, extension bridge, session refresh, lenient protocol, etc.
 """
+
 import asyncio
 import concurrent.futures
 import time
 import unittest
-from unittest.mock import (
-    MagicMock, AsyncMock, patch, PropertyMock, mock_open
-)
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
 
 
 def _run_async(coro):
@@ -24,12 +22,14 @@ def _run_async(coro):
 class TestStripDuplicateHeaders(unittest.TestCase):
     def test_no_duplicate_headers(self):
         from tokenade.core.proxy.cdp_proxy import _strip_duplicate_headers
+
         raw = b"GET / HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n"
         result = _strip_duplicate_headers(raw)
         self.assertEqual(result, raw)
 
     def test_duplicate_headers_stripped(self):
         from tokenade.core.proxy.cdp_proxy import _strip_duplicate_headers
+
         raw = b"GET / HTTP/1.1\r\nHost: a.com\r\nHost: b.com\r\nAccept: */*\r\n\r\nbody"
         result = _strip_duplicate_headers(raw)
         self.assertNotIn(b"b.com", result.split(b"\r\n\r\n")[0])
@@ -38,12 +38,14 @@ class TestStripDuplicateHeaders(unittest.TestCase):
 
     def test_no_header_end_returns_raw(self):
         from tokenade.core.proxy.cdp_proxy import _strip_duplicate_headers
+
         raw = b"incomplete data without header end"
         result = _strip_duplicate_headers(raw)
         self.assertEqual(result, raw)
 
     def test_exception_returns_raw(self):
         from tokenade.core.proxy.cdp_proxy import _strip_duplicate_headers
+
         # Should handle gracefully and return raw data
         raw = b"\x80\x81\x82"
         result = _strip_duplicate_headers(raw)
@@ -51,7 +53,10 @@ class TestStripDuplicateHeaders(unittest.TestCase):
 
     def test_non_duplicate_headers(self):
         from tokenade.core.proxy.cdp_proxy import _strip_duplicate_headers
-        raw = b"GET / HTTP/1.1\r\nHost: a.com\r\nContent-Type: text/html\r\n\r\n"
+
+        raw = (
+            b"GET / HTTP/1.1\r\nHost: a.com\r\nContent-Type: text/html\r\n\r\n"
+        )
         result = _strip_duplicate_headers(raw)
         self.assertEqual(result, raw)
 
@@ -59,6 +64,7 @@ class TestStripDuplicateHeaders(unittest.TestCase):
 class TestLenientProtocol(unittest.TestCase):
     def test_connection_made(self):
         from tokenade.core.proxy.cdp_proxy import _LenientProtocol
+
         inner = MagicMock()
         proto = _LenientProtocol(inner)
         transport = MagicMock()
@@ -67,6 +73,7 @@ class TestLenientProtocol(unittest.TestCase):
 
     def test_connection_lost(self):
         from tokenade.core.proxy.cdp_proxy import _LenientProtocol
+
         inner = MagicMock()
         proto = _LenientProtocol(inner)
         proto.connection_lost(RuntimeError("test"))
@@ -74,6 +81,7 @@ class TestLenientProtocol(unittest.TestCase):
 
     def test_data_received_strips_duplicates(self):
         from tokenade.core.proxy.cdp_proxy import _LenientProtocol
+
         inner = MagicMock()
         proto = _LenientProtocol(inner)
         data = b"HTTP/1.1 200 OK\r\nHost: a.com\r\nHost: b.com\r\n\r\n"
@@ -84,6 +92,7 @@ class TestLenientProtocol(unittest.TestCase):
 
     def test_eof_received(self):
         from tokenade.core.proxy.cdp_proxy import _LenientProtocol
+
         inner = MagicMock()
         inner.eof_received.return_value = False
         proto = _LenientProtocol(inner)
@@ -93,7 +102,11 @@ class TestLenientProtocol(unittest.TestCase):
 
 class TestLenientServerFactory(unittest.TestCase):
     def test_creates_lenient_protocol(self):
-        from tokenade.core.proxy.cdp_proxy import _LenientServerFactory, _LenientProtocol
+        from tokenade.core.proxy.cdp_proxy import (
+            _LenientServerFactory,
+            _LenientProtocol,
+        )
+
         inner_factory = MagicMock()
         factory = _LenientServerFactory(inner_factory)
         proto = factory()
@@ -103,6 +116,7 @@ class TestLenientServerFactory(unittest.TestCase):
 class TestCDPProxyConfig(unittest.TestCase):
     def test_defaults(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxyConfig
+
         config = CDPProxyConfig()
         self.assertEqual(config.port, 9222)
         self.assertEqual(config.host, "127.0.0.1")
@@ -113,7 +127,10 @@ class TestCDPProxyConfig(unittest.TestCase):
 
     def test_custom_values(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxyConfig
-        config = CDPProxyConfig(port=8080, host="0.0.0.0", headless=False, verbose=True, timeout=60)
+
+        config = CDPProxyConfig(
+            port=8080, host="0.0.0.0", headless=False, verbose=True, timeout=60
+        )
         self.assertEqual(config.port, 8080)
         self.assertEqual(config.host, "0.0.0.0")
         self.assertFalse(config.headless)
@@ -123,8 +140,16 @@ class TestCDPProxyConfig(unittest.TestCase):
 class TestCDPProxyInit(unittest.TestCase):
     def _make_proxy(self, **kwargs):
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+
         session = {
-            "cookies": [{"name": "sid", "value": "abc", "domain": ".github.com", "path": "/"}],
+            "cookies": [
+                {
+                    "name": "sid",
+                    "value": "abc",
+                    "domain": ".github.com",
+                    "path": "/",
+                }
+            ],
             "site_name": "github",
             "fingerprint": {"user_agent": "Mozilla/5.0 Test"},
             "tls_profile": {"browser": "chrome", "version": "120"},
@@ -157,18 +182,21 @@ class TestCDPProxyInit(unittest.TestCase):
 
     def test_default_config(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+
         session = {"cookies": []}
         proxy = CDPProxy(session)
         self.assertIsInstance(proxy.config, CDPProxyConfig)
 
     def test_from_session_data(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"cookies": [], "site_name": "test"}
         proxy = CDPProxy.from_session_data(session)
         self.assertEqual(proxy.session["site_name"], "test")
 
     def test_from_session_data_with_config(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+
         session = {"cookies": []}
         config = CDPProxyConfig(port=9999)
         proxy = CDPProxy.from_session_data(session, config)
@@ -178,8 +206,16 @@ class TestCDPProxyInit(unittest.TestCase):
 class TestCDPProxyFactory(unittest.TestCase):
     def test_from_session_file(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
-        session_data = {"cookies": [{"name": "t", "value": "v", "domain": ".x.com", "path": "/"}], "site_name": "test"}
-        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+
+        session_data = {
+            "cookies": [
+                {"name": "t", "value": "v", "domain": ".x.com", "path": "/"}
+            ],
+            "site_name": "test",
+        }
+        with patch(
+            "tokenade.core.importer.session_packager.SessionPackager"
+        ) as MockPackager:
             MockPackager.return_value.load.return_value = session_data
             proxy = CDPProxy.from_session_file("/fake/session.tokenade")
             self.assertEqual(proxy.session["site_name"], "test")
@@ -188,7 +224,14 @@ class TestCDPProxyFactory(unittest.TestCase):
 class TestCDPProxyCreateApp(unittest.TestCase):
     def _make_proxy(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
-        session = {"cookies": [], "site_name": "github", "fingerprint": {}, "tls_profile": {}, "source_device": {}}
+
+        session = {
+            "cookies": [],
+            "site_name": "github",
+            "fingerprint": {},
+            "tls_profile": {},
+            "source_device": {},
+        }
         return CDPProxy(session)
 
     def test_create_app_returns_application(self):
@@ -200,8 +243,16 @@ class TestCDPProxyCreateApp(unittest.TestCase):
 class TestCDPProxyHandlers(unittest.TestCase):
     def _make_proxy(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {
-            "cookies": [{"name": "sid", "value": "v", "domain": ".test.com", "path": "/"}],
+            "cookies": [
+                {
+                    "name": "sid",
+                    "value": "v",
+                    "domain": ".test.com",
+                    "path": "/",
+                }
+            ],
             "site_name": "github",
             "fingerprint": {"user_agent": "TestAgent/1.0"},
             "tls_profile": {"impersonate": "chrome120"},
@@ -226,7 +277,9 @@ class TestCDPProxyHandlers(unittest.TestCase):
     def test_handle_browse_post_blocked_url(self):
         proxy = self._make_proxy()
         request = AsyncMock()
-        request.post = AsyncMock(return_value={"url": "http://169.254.169.254/metadata"})
+        request.post = AsyncMock(
+            return_value={"url": "http://169.254.169.254/metadata"}
+        )
         result = _run_async(proxy._handle_browse_post(request))
         self.assertEqual(result.status, 403)
 
@@ -263,7 +316,14 @@ class TestCDPProxyHandlers(unittest.TestCase):
 class TestCDPProxyPageLifecycle(unittest.TestCase):
     def _make_proxy(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
-        session = {"cookies": [], "site_name": "test", "fingerprint": {}, "tls_profile": {}, "source_device": {}}
+
+        session = {
+            "cookies": [],
+            "site_name": "test",
+            "fingerprint": {},
+            "tls_profile": {},
+            "source_device": {},
+        }
         return CDPProxy(session)
 
     def test_cleanup_expired_pages(self):
@@ -313,8 +373,11 @@ class TestCDPProxyPageLifecycle(unittest.TestCase):
 class TestCDPProxySessionRefresh(unittest.TestCase):
     def _make_proxy(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {
-            "cookies": [{"name": "old", "value": "v", "domain": ".x.com", "path": "/"}],
+            "cookies": [
+                {"name": "old", "value": "v", "domain": ".x.com", "path": "/"}
+            ],
             "site_name": "test",
             "fingerprint": {},
             "tls_profile": {},
@@ -324,7 +387,11 @@ class TestCDPProxySessionRefresh(unittest.TestCase):
 
     def test_on_session_refresh(self):
         proxy = self._make_proxy()
-        new_session = {"cookies": [{"name": "new", "value": "v2", "domain": ".y.com", "path": "/"}]}
+        new_session = {
+            "cookies": [
+                {"name": "new", "value": "v2", "domain": ".y.com", "path": "/"}
+            ]
+        }
         _run_async(proxy._on_session_refresh(new_session))
         self.assertEqual(len(proxy.cookie_jar.to_list()), 1)
 
@@ -340,40 +407,59 @@ class TestCDPProxySessionRefresh(unittest.TestCase):
 class TestCDPProxyExtensionBridge(unittest.TestCase):
     def _make_proxy(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
-        session = {"cookies": [], "site_name": "test", "fingerprint": {}, "tls_profile": {}, "source_device": {}}
+
+        session = {
+            "cookies": [],
+            "site_name": "test",
+            "fingerprint": {},
+            "tls_profile": {},
+            "source_device": {},
+        }
         return CDPProxy(session)
 
     def test_start_extension_bridge(self):
         proxy = self._make_proxy()
-        with patch("tokenade.core.proxy.extension_bridge.ExtensionBridge") as MockBridge:
+        with patch(
+            "tokenade.core.proxy.extension_bridge.ExtensionBridge"
+        ) as MockBridge:
             mock_instance = MagicMock()
             MockBridge.return_value = mock_instance
-            with patch("asyncio.ensure_future") as mock_ensure:
+            with patch("asyncio.ensure_future"):
                 proxy.start_extension_bridge(bridge_port=9224)
                 MockBridge.assert_called_once_with(host="127.0.0.1", port=9224)
                 mock_instance.on_message.assert_called_once()
 
     def test_start_extension_bridge_import_error(self):
         proxy = self._make_proxy()
-        with patch.dict("sys.modules", {"tokenade.core.proxy.extension_bridge": None}):
+        with patch.dict(
+            "sys.modules", {"tokenade.core.proxy.extension_bridge": None}
+        ):
             proxy.start_extension_bridge()
 
     def test_start_extension_bridge_general_error(self):
         proxy = self._make_proxy()
-        with patch("tokenade.core.proxy.extension_bridge.ExtensionBridge", side_effect=RuntimeError("fail")):
+        with patch(
+            "tokenade.core.proxy.extension_bridge.ExtensionBridge",
+            side_effect=RuntimeError("fail"),
+        ):
             proxy.start_extension_bridge()
 
 
 class TestCDPProxySiteUrl(unittest.TestCase):
     def test_get_site_url(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
-        session = {"site_name": "github", "cookies": [{"domain": ".github.com"}]}
+
+        session = {
+            "site_name": "github",
+            "cookies": [{"domain": ".github.com"}],
+        }
         proxy = CDPProxy(session)
         url = proxy._get_site_url()
         self.assertIsInstance(url, str)
 
     def test_get_site_url_no_cookies(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"site_name": "github", "cookies": []}
         proxy = CDPProxy(session)
         url = proxy._get_site_url()
@@ -383,6 +469,7 @@ class TestCDPProxySiteUrl(unittest.TestCase):
 class TestCDPProxyStop(unittest.TestCase):
     def test_stop(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"cookies": [], "site_name": "test"}
         proxy = CDPProxy(session)
         proxy._refresher = AsyncMock()
@@ -398,6 +485,7 @@ class TestCDPProxyStop(unittest.TestCase):
 
     def test_stop_with_http_session(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"cookies": [], "site_name": "test"}
         proxy = CDPProxy(session)
         mock_session = AsyncMock()
@@ -409,6 +497,7 @@ class TestCDPProxyStop(unittest.TestCase):
 
     def test_stop_http_session_already_closed(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"cookies": [], "site_name": "test"}
         proxy = CDPProxy(session)
         mock_session = AsyncMock()
@@ -421,8 +510,11 @@ class TestCDPProxyStop(unittest.TestCase):
 class TestCreateCdpProxyFromFile(unittest.TestCase):
     def test_create_cdp_proxy_from_file(self):
         from tokenade.core.proxy.cdp_proxy import create_cdp_proxy_from_file
+
         session_data = {"cookies": [], "site_name": "test"}
-        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+        with patch(
+            "tokenade.core.importer.session_packager.SessionPackager"
+        ) as MockPackager:
             MockPackager.return_value.load.return_value = session_data
             proxy = create_cdp_proxy_from_file("/fake/tokenade")
             self.assertEqual(proxy.session["site_name"], "test")
@@ -431,6 +523,7 @@ class TestCreateCdpProxyFromFile(unittest.TestCase):
 class TestCDPProxyRunAsync(unittest.TestCase):
     def test_run_async_calls_start_and_stop(self):
         from tokenade.core.proxy.cdp_proxy import CDPProxy
+
         session = {"cookies": [], "site_name": "test"}
         proxy = CDPProxy(session)
         proxy.start = AsyncMock()

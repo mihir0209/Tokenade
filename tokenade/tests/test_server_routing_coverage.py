@@ -2,6 +2,7 @@
 Comprehensive tests for server_routing.py — forward_request with redirects,
 curl-cffi fallback to aiohttp, response handling, error paths.
 """
+
 import asyncio
 import concurrent.futures
 import unittest
@@ -21,7 +22,9 @@ def _run_async(coro):
 class TestForwardRequest(unittest.TestCase):
     def _make_proxy(self):
         proxy = MagicMock()
-        proxy.fingerprint.get_headers.return_value = {"user-agent": "TestAgent/1.0"}
+        proxy.fingerprint.get_headers.return_value = {
+            "user-agent": "TestAgent/1.0"
+        }
         proxy.cookie_jar.get_for_request.return_value = "sid=abc"
         proxy.stats = {"bytes_sent": 0, "bytes_received": 0}
         proxy.tls_matcher = MagicMock()
@@ -82,7 +85,9 @@ class TestForwardRequest(unittest.TestCase):
         mock_aio_response.status = 200
         mock_aio_response.headers = {"content-type": "text/html"}
         mock_aio_response.read = AsyncMock(return_value=b"fallback body")
-        mock_aio_response.__aenter__ = AsyncMock(return_value=mock_aio_response)
+        mock_aio_response.__aenter__ = AsyncMock(
+            return_value=mock_aio_response
+        )
         mock_aio_response.__aexit__ = AsyncMock(return_value=False)
         proxy._http_session.request.return_value = mock_aio_response
 
@@ -101,10 +106,14 @@ class TestForwardRequest(unittest.TestCase):
         mock_aio_response.status = 200
         mock_aio_response.headers = {}
         mock_aio_response.read = AsyncMock(return_value=b"new session")
-        mock_aio_response.__aenter__ = AsyncMock(return_value=mock_aio_response)
+        mock_aio_response.__aenter__ = AsyncMock(
+            return_value=mock_aio_response
+        )
         mock_aio_response.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("tokenade.core.proxy.server_routing.aiohttp") as mock_aiohttp:
+        with patch(
+            "tokenade.core.proxy.server_routing.aiohttp"
+        ) as mock_aiohttp:
             mock_session = MagicMock()
             mock_session.request.return_value = mock_aio_response
             mock_session.closed = False
@@ -125,7 +134,14 @@ class TestForwardRequest(unittest.TestCase):
         proxy.tls_matcher.request.return_value = mock_response
 
         result = _run_async(
-            forward_request(proxy, "GET", "https://example.com", {}, None, follow_redirects=False)
+            forward_request(
+                proxy,
+                "GET",
+                "https://example.com",
+                {},
+                None,
+                follow_redirects=False,
+            )
         )
         self.assertEqual(result.status, 301)
 
@@ -153,7 +169,9 @@ class TestForwardRequest(unittest.TestCase):
         mock_aio_response.status = 200
         mock_aio_response.headers = {}
         mock_aio_response.read = AsyncMock(return_value=b"ok")
-        mock_aio_response.__aenter__ = AsyncMock(return_value=mock_aio_response)
+        mock_aio_response.__aenter__ = AsyncMock(
+            return_value=mock_aio_response
+        )
         mock_aio_response.__aexit__ = AsyncMock(return_value=False)
         proxy._http_session.request.return_value = mock_aio_response
 
@@ -190,10 +208,14 @@ class TestForwardRequest(unittest.TestCase):
         mock_aio_response.status = 200
         mock_aio_response.headers = {}
         mock_aio_response.read = AsyncMock(return_value=b"new session")
-        mock_aio_response.__aenter__ = AsyncMock(return_value=mock_aio_response)
+        mock_aio_response.__aenter__ = AsyncMock(
+            return_value=mock_aio_response
+        )
         mock_aio_response.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("tokenade.core.proxy.server_routing.aiohttp") as mock_aiohttp:
+        with patch(
+            "tokenade.core.proxy.server_routing.aiohttp"
+        ) as mock_aiohttp:
             new_session = MagicMock()
             new_session.request.return_value = mock_aio_response
             new_session.closed = False
@@ -222,9 +244,21 @@ class TestForwardRequest(unittest.TestCase):
             call_count[0] += 1
             cm = AsyncMock()
             if call_count[0] == 1:
-                cm.__aenter__ = AsyncMock(return_value=AsyncMock(status=302, headers={"location": "/new-path"}, read=AsyncMock(return_value=b"")))
+                cm.__aenter__ = AsyncMock(
+                    return_value=AsyncMock(
+                        status=302,
+                        headers={"location": "/new-path"},
+                        read=AsyncMock(return_value=b""),
+                    )
+                )
             else:
-                cm.__aenter__ = AsyncMock(return_value=AsyncMock(status=200, headers={}, read=AsyncMock(return_value=b"ok")))
+                cm.__aenter__ = AsyncMock(
+                    return_value=AsyncMock(
+                        status=200,
+                        headers={},
+                        read=AsyncMock(return_value=b"ok"),
+                    )
+                )
             cm.__aexit__ = AsyncMock(return_value=False)
             return cm
 
@@ -243,10 +277,13 @@ class TestForwardRequest(unittest.TestCase):
 
         def mock_request_factory(**kwargs):
             cm = AsyncMock()
-            cm.__aenter__ = AsyncMock(return_value=AsyncMock(
-                status=302, headers={"location": "https://example.com/loop"},
-                read=AsyncMock(return_value=b"")
-            ))
+            cm.__aenter__ = AsyncMock(
+                return_value=AsyncMock(
+                    status=302,
+                    headers={"location": "https://example.com/loop"},
+                    read=AsyncMock(return_value=b""),
+                )
+            )
             cm.__aexit__ = AsyncMock(return_value=False)
             return cm
 
@@ -255,7 +292,9 @@ class TestForwardRequest(unittest.TestCase):
         proxy._http_session.request = mock_request_factory
 
         result = _run_async(
-            forward_request(proxy, "GET", "https://example.com", {}, None, max_redirects=2)
+            forward_request(
+                proxy, "GET", "https://example.com", {}, None, max_redirects=2
+            )
         )
         self.assertEqual(result.status, 302)
 
@@ -269,14 +308,21 @@ class TestForwardRequest(unittest.TestCase):
             call_count[0] += 1
             cm = AsyncMock()
             if call_count[0] == 1:
-                cm.__aenter__ = AsyncMock(return_value=AsyncMock(
-                    status=307, headers={"location": "https://example.com/new"},
-                    read=AsyncMock(return_value=b"")
-                ))
+                cm.__aenter__ = AsyncMock(
+                    return_value=AsyncMock(
+                        status=307,
+                        headers={"location": "https://example.com/new"},
+                        read=AsyncMock(return_value=b""),
+                    )
+                )
             else:
-                cm.__aenter__ = AsyncMock(return_value=AsyncMock(
-                    status=200, headers={}, read=AsyncMock(return_value=b"ok")
-                ))
+                cm.__aenter__ = AsyncMock(
+                    return_value=AsyncMock(
+                        status=200,
+                        headers={},
+                        read=AsyncMock(return_value=b"ok"),
+                    )
+                )
             cm.__aexit__ = AsyncMock(return_value=False)
             return cm
 

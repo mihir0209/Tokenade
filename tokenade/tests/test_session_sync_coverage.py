@@ -2,10 +2,8 @@
 Comprehensive tests for session_sync.py — SyncTarget, SyncStatus,
 SessionSyncDaemon, target management, status, config save/load.
 """
-import json
-import os
+
 import tempfile
-import time
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
@@ -26,8 +24,14 @@ class TestSyncTarget(unittest.TestCase):
         self.assertIsNone(t.browser_profile)
 
     def test_full(self):
-        t = SyncTarget(name="github", domains=["github.com"], browser="chrome",
-                        browser_profile="Profile 1", output_dir="/tmp/out", output_filename="gh.tokenade")
+        t = SyncTarget(
+            name="github",
+            domains=["github.com"],
+            browser="chrome",
+            browser_profile="Profile 1",
+            output_dir="/tmp/out",
+            output_filename="gh.tokenade",
+        )
         self.assertEqual(t.browser, "chrome")
         self.assertEqual(t.output_filename, "gh.tokenade")
 
@@ -98,34 +102,50 @@ class TestSessionSyncDaemonGetDbPath(unittest.TestCase):
     def test_firefox(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            target = SyncTarget(name="gmail", domains=["google.com"], browser="firefox")
+            target = SyncTarget(
+                name="gmail", domains=["google.com"], browser="firefox"
+            )
             mock_profile = MagicMock()
             mock_profile.path = "/fake/firefox/profile"
             mock_profile.browser = "firefox"
             mock_profile.name = "default"
-            with patch("tokenade.core.importer.browser_discovery.BrowserProfileDiscovery") as MockDiscovery:
-                MockDiscovery.return_value.discover_all.return_value = {"firefox": [mock_profile]}
+            with patch(
+                "tokenade.core.importer.browser_discovery.BrowserProfileDiscovery"
+            ) as MockDiscovery:
+                MockDiscovery.return_value.discover_all.return_value = {
+                    "firefox": [mock_profile]
+                }
                 result = daemon._get_db_path(target)
                 self.assertIn("cookies.sqlite", str(result))
 
     def test_chrome(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            target = SyncTarget(name="github", domains=["github.com"], browser="chrome")
+            target = SyncTarget(
+                name="github", domains=["github.com"], browser="chrome"
+            )
             mock_profile = MagicMock()
             mock_profile.path = "/fake/chrome/profile"
             mock_profile.browser = "chrome"
             mock_profile.name = "Default"
-            with patch("tokenade.core.importer.browser_discovery.BrowserProfileDiscovery") as MockDiscovery:
-                MockDiscovery.return_value.discover_all.return_value = {"chrome": [mock_profile]}
+            with patch(
+                "tokenade.core.importer.browser_discovery.BrowserProfileDiscovery"
+            ) as MockDiscovery:
+                MockDiscovery.return_value.discover_all.return_value = {
+                    "chrome": [mock_profile]
+                }
                 result = daemon._get_db_path(target)
                 self.assertIn("Cookies", str(result))
 
     def test_no_profiles(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            target = SyncTarget(name="test", domains=["test.com"], browser="opera")
-            with patch("tokenade.core.importer.browser_discovery.BrowserProfileDiscovery") as MockDiscovery:
+            target = SyncTarget(
+                name="test", domains=["test.com"], browser="opera"
+            )
+            with patch(
+                "tokenade.core.importer.browser_discovery.BrowserProfileDiscovery"
+            ) as MockDiscovery:
                 MockDiscovery.return_value.discover_all.return_value = {}
                 result = daemon._get_db_path(target)
                 self.assertIsNone(result)
@@ -136,7 +156,9 @@ class TestSessionSyncDaemonGetDbMtime(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
             target = SyncTarget(name="test", domains=["test.com"])
-            with patch.object(daemon, "_get_db_path", return_value=Path("/nonexistent")):
+            with patch.object(
+                daemon, "_get_db_path", return_value=Path("/nonexistent")
+            ):
                 result = daemon._get_db_mtime(target)
                 self.assertEqual(result, 0.0)
 
@@ -145,7 +167,9 @@ class TestSessionSyncDaemonGetDbMtime(unittest.TestCase):
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
             target = SyncTarget(name="test", domains=["test.com"])
             with tempfile.NamedTemporaryFile() as f:
-                with patch.object(daemon, "_get_db_path", return_value=Path(f.name)):
+                with patch.object(
+                    daemon, "_get_db_path", return_value=Path(f.name)
+                ):
                     result = daemon._get_db_mtime(target)
                     self.assertGreater(result, 0.0)
 
@@ -154,10 +178,14 @@ class TestSessionSyncDaemonCheckOnce(unittest.TestCase):
     def test_check_once_first_run(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            target = SyncTarget(name="gmail", domains=["google.com"], browser="firefox")
+            target = SyncTarget(
+                name="gmail", domains=["google.com"], browser="firefox"
+            )
             daemon.add_target(target)
-            with patch.object(daemon, "_get_db_mtime", return_value=100.0), \
-                 patch.object(daemon, "_extract_and_save", return_value=5):
+            with (
+                patch.object(daemon, "_get_db_mtime", return_value=100.0),
+                patch.object(daemon, "_extract_and_save", return_value=5),
+            ):
                 results = daemon.check_once()
                 self.assertTrue(results["gmail"])
 
@@ -176,8 +204,10 @@ class TestSessionSyncDaemonCheckOnce(unittest.TestCase):
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
             target = SyncTarget(name="gmail", domains=["google.com"])
             daemon.add_target(target)
-            with patch.object(daemon, "_get_db_mtime", return_value=200.0), \
-                 patch.object(daemon, "_extract_and_save", return_value=None):
+            with (
+                patch.object(daemon, "_get_db_mtime", return_value=200.0),
+                patch.object(daemon, "_extract_and_save", return_value=None),
+            ):
                 results = daemon.check_once()
                 self.assertFalse(results["gmail"])
 
@@ -188,8 +218,10 @@ class TestSessionSyncDaemonCheckOnce(unittest.TestCase):
             daemon.add_target(target)
             cb = MagicMock()
             daemon.on_sync(cb)
-            with patch.object(daemon, "_get_db_mtime", return_value=200.0), \
-                 patch.object(daemon, "_extract_and_save", return_value=10):
+            with (
+                patch.object(daemon, "_get_db_mtime", return_value=200.0),
+                patch.object(daemon, "_extract_and_save", return_value=10),
+            ):
                 daemon.check_once()
                 cb.assert_called_once_with("gmail", 10)
 
@@ -198,8 +230,10 @@ class TestSessionSyncDaemonCheckOnce(unittest.TestCase):
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
             target = SyncTarget(name="gmail", domains=["google.com"])
             daemon.add_target(target)
-            with patch.object(daemon, "_get_db_mtime", return_value=200.0), \
-                 patch.object(daemon, "_extract_and_save", return_value=0):
+            with (
+                patch.object(daemon, "_get_db_mtime", return_value=200.0),
+                patch.object(daemon, "_extract_and_save", return_value=0),
+            ):
                 results = daemon.check_once()
                 self.assertTrue(results["gmail"])
 
@@ -208,8 +242,14 @@ class TestSessionSyncDaemonGetStatus(unittest.TestCase):
     def test_get_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            daemon.add_target(SyncTarget(name="gmail", domains=["google.com"], browser="firefox",
-                                         output_dir="/tmp/out"))
+            daemon.add_target(
+                SyncTarget(
+                    name="gmail",
+                    domains=["google.com"],
+                    browser="firefox",
+                    output_dir="/tmp/out",
+                )
+            )
             statuses = daemon.get_status()
             self.assertEqual(len(statuses), 1)
             self.assertEqual(statuses[0]["name"], "gmail")
@@ -219,7 +259,11 @@ class TestSessionSyncDaemonSaveLoadConfig(unittest.TestCase):
     def test_save_and_load(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            daemon.add_target(SyncTarget(name="gmail", domains=["google.com"], browser="firefox"))
+            daemon.add_target(
+                SyncTarget(
+                    name="gmail", domains=["google.com"], browser="firefox"
+                )
+            )
             daemon.save_config()
 
             loaded = SessionSyncDaemon.load_config(tmpdir)
@@ -243,7 +287,9 @@ class TestSessionSyncDaemonStartStop(unittest.TestCase):
     def test_start_runs_check_once(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
-            with patch.object(daemon, "check_once", return_value={}) as mock_check:
+            with patch.object(
+                daemon, "check_once", return_value={}
+            ) as mock_check:
                 with patch("time.sleep", side_effect=KeyboardInterrupt):
                     try:
                         daemon.start(interval=1)
