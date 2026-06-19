@@ -2,11 +2,14 @@
 Session monitoring for Tokenade.
 
 Provides real-time session health monitoring during proxy operation.
-Tracks cookie expiry, health scores, and refresh history.
+Tracks cookie expiry, health scores, refresh history, and supports
+file-based monitoring with alert callbacks.
 """
+import json
 import time
 import threading
 import logging
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable
 
@@ -42,6 +45,8 @@ class SessionStatus:
     cookies: List[CookieStatus] = field(default_factory=list)
     issues: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
+    source_path: Optional[str] = None
+    predicted_expiry: Optional[float] = None
 
 
 @dataclass
@@ -52,12 +57,28 @@ class MonitorConfig:
     auto_refresh: bool = False
     auto_refresh_threshold: float = 0.2  # refresh when this fraction of cookies expiring
     source_browser: Optional[str] = None
+    sessions_dir: Optional[str] = None  # directory to scan for .tokenade files
+    alert_callback: Optional[str] = None  # "log", "webhook", or callable name
+    webhook_url: Optional[str] = None
+    max_history: int = 100  # max health history entries per session
+
+
+@dataclass
+class MonitorEvent:
+    """An event emitted by the monitor."""
+    timestamp: float
+    session_id: str
+    event_type: str  # "health_change", "expiry_warning", "refresh", "error"
+    message: str
+    health_score: Optional[float] = None
+    metadata: Dict = field(default_factory=dict)
 
 
 class SessionMonitor:
     """Monitor session health during proxy operation.
 
     Runs background health checks and tracks cookie expiry.
+    Supports file-based monitoring, alert callbacks, and event history.
     """
 
     def __init__(self, config: Optional[MonitorConfig] = None):
@@ -68,6 +89,9 @@ class SessionMonitor:
         self._thread: Optional[threading.Thread] = None
         self._callbacks: List[Callable[[str, SessionStatus], None]] = []
         self._refresh_callback: Optional[Callable[[str], bool]] = None
+        self._event_history: List[MonitorEvent] = []
+        self._health_history: Dict[str, List[float]] = {}  # session_id -> [scores]
+        self._alert_callback: Optional[Callable[[MonitorEvent], None]] = None
 
     def register_session(self, session_id: str, session: Dict, site_name: str = "unknown"):
         """Register a session for monitoring."""
@@ -81,12 +105,54 @@ class SessionMonitor:
         self._analyze_cookies(status, cookies)
         with self._lock:
             self._sessions[session_id] = status
+            self._health_history.setdefault(session_id, [])
         logger.debug(f"Registered session {session_id} ({site_name}) with {len(cookies)} cookies")
+
+    def register_session_file(self, session_path: str) -> Optional[str]:
+        """Register a .tokenade file for monitoring. Returns session_id or None."""
+        path = Path(session_path)
+        if not path.exists():
+            logger.warning(f"Session file not found: {session_path}")
+            return None
+
+        try:
+            with open(path) as f:
+                session = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Failed to load session file {session_path}: {e}")
+            return None
+
+        site_name = session.get("metadata", {}).get("site_name", path.stem)
+        session_id = path.stem
+
+        self.register_session(session_id, session, site_name)
+        with self._lock:
+            if session_id in self._sessions:
+                self._sessions[session_id].source_path = str(path)
+        return session_id
+
+    def scan_sessions_dir(self) -> List[str]:
+        """Scan sessions directory and register all .tokenade files. Returns list of session_ids."""
+        if not self.config.sessions_dir:
+            return []
+
+        sessions_dir = Path(self.config.sessions_dir).expanduser()
+        if not sessions_dir.exists():
+            return []
+
+        registered = []
+        for ext in ("*.tokenade", "*.session"):
+            for path in sessions_dir.glob(ext):
+                sid = self.register_session_file(str(path))
+                if sid:
+                    registered.append(sid)
+        return registered
 
     def unregister_session(self, session_id: str):
         """Stop monitoring a session."""
         with self._lock:
             self._sessions.pop(session_id, None)
+            self._health_history.pop(session_id, None)
 
     def get_status(self, session_id: str) -> Optional[SessionStatus]:
         """Get current status of a monitored session."""
@@ -106,6 +172,10 @@ class SessionMonitor:
         """Set callback for auto-refresh."""
         self._refresh_callback = callback
 
+    def set_alert_callback(self, callback: Callable[[MonitorEvent], None]):
+        """Set callback for monitor events (alerts)."""
+        self._alert_callback = callback
+
     def start(self):
         """Start background monitoring."""
         if self._running:
@@ -122,10 +192,68 @@ class SessionMonitor:
             self._thread.join(timeout=5)
         logger.info("Session monitor stopped")
 
+    def get_event_history(self, limit: int = 50) -> List[Dict]:
+        """Get recent monitor events."""
+        with self._lock:
+            events = self._event_history[-limit:]
+        return [
+            {
+                "timestamp": e.timestamp,
+                "session_id": e.session_id,
+                "event_type": e.event_type,
+                "message": e.message,
+                "health_score": e.health_score,
+                "metadata": e.metadata,
+            }
+            for e in events
+        ]
+
+    def get_health_history(self, session_id: str) -> List[Dict]:
+        """Get health score history for a session."""
+        with self._lock:
+            history = self._health_history.get(session_id, [])
+            session = self._sessions.get(session_id)
+        if not session:
+            return []
+        return [
+            {"timestamp": session.last_check, "health_score": s}
+            for s in history
+        ]
+
+    def predict_expiry(self, session_id: str) -> Optional[float]:
+        """Predict when a session will become unhealthy based on health trend."""
+        with self._lock:
+            history = self._health_history.get(session_id, [])
+            session = self._sessions.get(session_id)
+        if not session or len(history) < 2:
+            return None
+
+        # Simple linear extrapolation: if health is declining, predict when it hits 0
+        recent = history[-10:] if len(history) > 10 else history
+        if len(recent) < 2:
+            return None
+
+        # Calculate average rate of change
+        deltas = [recent[i] - recent[i - 1] for i in range(1, len(recent))]
+        avg_delta = sum(deltas) / len(deltas)
+
+        if avg_delta >= 0:
+            return None  # Not declining
+
+        current_health = recent[-1]
+        time_per_check = self.config.check_interval
+        checks_until_zero = current_health / abs(avg_delta)
+        predicted_seconds = checks_until_zero * time_per_check
+
+        return session.last_check + predicted_seconds
+
     def _monitor_loop(self):
         """Background monitoring loop."""
         while self._running:
             try:
+                # Re-scan directory if configured
+                if self.config.sessions_dir:
+                    self.scan_sessions_dir()
                 self._check_all_sessions()
             except Exception as e:
                 logger.error(f"Monitor check failed: {e}", exc_info=True)
@@ -141,21 +269,76 @@ class SessionMonitor:
             self._update_status(status)
             new_score = status.health_score
 
+            # Track health history
+            with self._lock:
+                history = self._health_history.setdefault(session_id, [])
+                history.append(new_score)
+                if len(history) > self.config.max_history:
+                    history.pop(0)
+
             if old_score != new_score:
+                event = MonitorEvent(
+                    timestamp=time.time(),
+                    session_id=session_id,
+                    event_type="health_change",
+                    message=f"Health changed from {old_score}% to {new_score}%",
+                    health_score=new_score,
+                    metadata={"old_score": old_score, "new_score": new_score},
+                )
+                self._emit_event(event)
+
                 for callback in self._callbacks:
                     try:
                         callback(session_id, status)
                     except Exception as e:
                         logger.error(f"Health callback failed: {e}", exc_info=True)
 
+            # Expiry warning
+            if status.expired_cookies > 0 or (status.warning_cookies > 0 and new_score < 50):
+                event = MonitorEvent(
+                    timestamp=time.time(),
+                    session_id=session_id,
+                    event_type="expiry_warning",
+                    message=f"Session has {status.expired_cookies} expired and {status.warning_cookies} warning cookies",
+                    health_score=new_score,
+                    metadata={
+                        "expired": status.expired_cookies,
+                        "warning": status.warning_cookies,
+                    },
+                )
+                self._emit_event(event)
+
             if self.config.auto_refresh and new_score < (self.config.auto_refresh_threshold * 100):
                 self._trigger_refresh(session_id, status)
+
+    def _emit_event(self, event: MonitorEvent):
+        """Emit a monitor event to history and alert callback."""
+        with self._lock:
+            self._event_history.append(event)
+            if len(self._event_history) > self.config.max_history:
+                self._event_history.pop(0)
+
+        if self._alert_callback:
+            try:
+                self._alert_callback(event)
+            except Exception as e:
+                logger.error(f"Alert callback failed: {e}", exc_info=True)
 
     def _update_status(self, status: SessionStatus):
         """Update session status by re-analyzing cookies."""
         status.last_check = time.time()
-        # Re-read cookies from the session's source if available
-        # For now, just update based on existing cookie data
+
+        # Re-read from file if source_path is set
+        if status.source_path:
+            try:
+                with open(status.source_path) as f:
+                    session = json.load(f)
+                cookies = session.get("cookies", [])
+                self._analyze_cookies(status, cookies)
+                return
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to re-read session file {status.source_path}: {e}")
+
         self._recalculate_health(status)
 
     def _analyze_cookies(self, status: SessionStatus, cookies: List[Dict]):
@@ -213,6 +396,7 @@ class SessionMonitor:
 
             status.cookies.append(cookie_status)
 
+        status.cookie_count = len(status.cookies)
         self._recalculate_health(status)
 
     def _recalculate_health(self, status: SessionStatus):
@@ -240,6 +424,15 @@ class SessionMonitor:
             return
 
         logger.info(f"Auto-refreshing session {session_id} (health: {status.health_score}%)")
+        event = MonitorEvent(
+            timestamp=time.time(),
+            session_id=session_id,
+            event_type="refresh",
+            message=f"Auto-refresh triggered (health: {status.health_score}%)",
+            health_score=status.health_score,
+        )
+        self._emit_event(event)
+
         try:
             success = self._refresh_callback(session_id)
             if success:
@@ -279,6 +472,7 @@ class SessionMonitor:
                     "health": s.health_score,
                     "cookies": s.cookie_count,
                     "refreshes": s.refresh_count,
+                    "source_path": s.source_path,
                 }
                 for s in sessions
             ],

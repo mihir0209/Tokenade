@@ -324,6 +324,7 @@
       <!-- Tabs -->
       <div class="tabs">
         <div class="tab active" data-tab="sessions">Sessions</div>
+        <div class="tab" data-tab="monitor">Monitor</div>
         <div class="tab" data-tab="sync">Sync</div>
         <div class="tab" data-tab="timeline">Timeline</div>
         <div class="tab" data-tab="diff">Diff</div>
@@ -353,6 +354,57 @@
             </thead>
             <tbody id="sessions-tbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Monitor Tab -->
+      <div id="tab-monitor" style="display: none;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button class="btn btn-primary" onclick="startMonitor()">Start Monitoring</button>
+            <button class="btn btn-danger" onclick="stopMonitor()">Stop</button>
+            <button class="btn" onclick="loadMonitorDetail()">Refresh</button>
+          </div>
+          <div class="toolbar-right">
+            <span class="badge badge-gray" id="monitor-status-badge">Stopped</span>
+          </div>
+        </div>
+        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 16px;">
+          <div class="stat-card">
+            <div class="label">Monitored</div>
+            <div class="value" id="mon-count">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Avg Health</div>
+            <div class="value green" id="mon-health">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Warnings</div>
+            <div class="value yellow" id="mon-warnings">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Expired</div>
+            <div class="value red" id="mon-expired">0</div>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Site</th>
+                <th>Health</th>
+                <th>Cookies</th>
+                <th>Last Check</th>
+                <th>Refreshes</th>
+              </tr>
+            </thead>
+            <tbody id="monitor-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top: 20px;">
+          <h3 style="font-size: 0.9em; color: var(--text2); margin-bottom: 12px;">Recent Events</h3>
+          <div id="monitor-events"></div>
         </div>
       </div>
 
@@ -508,9 +560,10 @@
       t.onclick = () => {
         document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
         t.classList.add('active');
-        ['sessions', 'sync', 'timeline', 'diff'].forEach(id => {
+        ['sessions', 'monitor', 'sync', 'timeline', 'diff'].forEach(id => {
           document.getElementById(`tab-${id}`).style.display = t.dataset.tab === id ? '' : 'none';
         });
+        if (t.dataset.tab === 'monitor') loadMonitorDetail();
         if (t.dataset.tab === 'sync') loadSyncTargets();
         if (t.dataset.tab === 'timeline') loadTimeline();
         if (t.dataset.tab === 'diff') populateDiffSelects();
@@ -630,6 +683,102 @@
       }
     }
 
+    async function loadMonitorDetail() {
+      try {
+        const s = await api('/api/monitor/status');
+        const badge = document.getElementById('monitor-status-badge');
+        if (!s.monitoring) {
+          badge.textContent = 'Stopped';
+          badge.className = 'badge badge-gray';
+          document.getElementById('mon-count').textContent = '0';
+          document.getElementById('mon-health').textContent = '-';
+          document.getElementById('mon-warnings').textContent = '0';
+          document.getElementById('mon-expired').textContent = '0';
+          document.getElementById('monitor-tbody').innerHTML = `<tr><td colspan="6"><div class="empty-state">
+            <div class="icon">📡</div>
+            <p>Monitoring not started. Click "Start Monitoring" to begin.</p>
+          </div></td></tr>`;
+          document.getElementById('monitor-events').innerHTML = '';
+          return;
+        }
+
+        badge.textContent = 'Active';
+        badge.className = 'badge badge-green';
+
+        const sessions = s.sessions || [];
+        document.getElementById('mon-count').textContent = sessions.length;
+        document.getElementById('mon-health').textContent = s.overall_health != null ? `${s.overall_health}%` : '-';
+        let warnings = 0, expired = 0;
+        sessions.forEach(x => {
+          if (x.health < 50) expired++;
+          else if (x.health < 70) warnings++;
+        });
+        document.getElementById('mon-warnings').textContent = warnings;
+        document.getElementById('mon-expired').textContent = expired;
+
+        const tbody = document.getElementById('monitor-tbody');
+        if (!sessions.length) {
+          tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+            <div class="icon">📡</div>
+            <p>No sessions registered for monitoring.</p>
+          </div></td></tr>`;
+        } else {
+          tbody.innerHTML = sessions.map(x => `<tr>
+            <td><strong>${x.id}</strong></td>
+            <td>${x.site || '-'}</td>
+            <td>
+              <span style="font-weight:600;color:${x.health>=70?'var(--accent)':x.health>=40?'var(--yellow)':'var(--red)'}">${Math.round(x.health)}%</span>
+            </td>
+            <td>${x.cookies || 0}</td>
+            <td>${x.last_check ? timeAgo(x.last_check) : '-'}</td>
+            <td>${x.refreshes || 0}</td>
+          </tr>`).join('');
+        }
+
+        // Load events
+        try {
+          const ev = await api('/api/monitor/events?limit=20');
+          const events = ev.events || [];
+          const container = document.getElementById('monitor-events');
+          if (!events.length) {
+            container.innerHTML = '<div style="color:var(--text3);font-size:0.85em;padding:12px;">No events recorded yet.</div>';
+          } else {
+            container.innerHTML = `<div class="timeline">
+              ${events.map(e => `
+                <div class="timeline-item ${e.event_type === 'error' ? 'error' : e.event_type === 'expiry_warning' ? 'warning' : ''}">
+                  <div class="timeline-time">${timeAgo(e.timestamp * 1000)}</div>
+                  <div class="timeline-msg"><strong>${e.session_id}</strong> — ${e.message}</div>
+                </div>
+              `).join('')}
+            </div>`;
+          }
+        } catch {}
+      } catch {
+        document.getElementById('monitor-status-badge').textContent = 'Error';
+        document.getElementById('monitor-status-badge').className = 'badge badge-red';
+      }
+    }
+
+    async function startMonitor() {
+      try {
+        await api('/api/monitor/start', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+        toast('Monitor started');
+        await loadMonitorDetail();
+      } catch (e) {
+        toast(`Failed to start monitor: ${e.message}`, 'error');
+      }
+    }
+
+    async function stopMonitor() {
+      try {
+        await api('/api/monitor/stop', { method: 'POST' });
+        toast('Monitor stopped');
+        await loadMonitorDetail();
+      } catch (e) {
+        toast(`Failed to stop monitor: ${e.message}`, 'error');
+      }
+    }
+
     async function loadSyncTargets() {
       try {
         const { targets = [] } = await api('/api/sync');
@@ -720,7 +869,7 @@
     function showDiff() {
       document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       document.querySelector('[data-tab="diff"]').classList.add('active');
-      ['sessions', 'sync', 'timeline', 'diff'].forEach(id => {
+      ['sessions', 'monitor', 'sync', 'timeline', 'diff'].forEach(id => {
         document.getElementById(`tab-${id}`).style.display = id === 'diff' ? '' : 'none';
       });
       populateDiffSelects();

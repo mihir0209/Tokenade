@@ -6,7 +6,7 @@ import sys
 from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
-from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare, cmd_sync
+from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare, cmd_sync, cmd_monitor, cmd_analytics
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
@@ -219,12 +219,14 @@ Commands:
   encrypt       Encrypt a .tokenade file
   decrypt       Decrypt a .tokenade file
   health        Check session health
+  monitor       Monitor session health in real-time
   batch-export  Export multiple sites at once
         """,
     )
 
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--json", dest="json_output", action="store_true", help="Output in JSON format")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -388,6 +390,10 @@ Commands:
     proxy_parser.add_argument("--source-profile", help="Source profile for auto-refresh (e.g., default, Profile 1)")
     proxy_parser.add_argument("--auto-navigate", action="store_true", help="Auto-navigate to site URL when proxy starts")
     proxy_parser.add_argument("--target-url", help="Override default navigation URL")
+    proxy_parser.add_argument("--rotate", action="store_true", help="Enable session rotation across multiple sessions")
+    proxy_parser.add_argument("--rotate-strategy", choices=["health-weighted", "round-robin", "random", "least-recently-used"],
+                              default="health-weighted", help="Rotation strategy (default: health-weighted)")
+    proxy_parser.add_argument("--rotate-interval", type=int, default=300, help="Rotation interval in seconds (default: 300)")
 
     # Sessions (subcommand group)
     sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")
@@ -482,6 +488,44 @@ Commands:
     sync_start_parser = sync_sub.add_parser("start", help="Start sync daemon")
     sync_start_parser.add_argument("--interval", "-i", type=int, default=60, help="Check interval in seconds")
 
+    # Monitor
+    monitor_parser = subparsers.add_parser("monitor", help="Monitor session health in real-time")
+    monitor_sub = monitor_parser.add_subparsers(dest="monitor_command", help="Monitor commands")
+
+    monitor_status_parser = monitor_sub.add_parser("status", help="Show monitoring status")
+    monitor_status_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to check")
+    monitor_status_parser.add_argument("--session", "-s", help="Single session file to check")
+
+    monitor_start_parser = monitor_sub.add_parser("start", help="Start background monitoring")
+    monitor_start_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to monitor")
+    monitor_start_parser.add_argument("--session", "-s", help="Single session file to monitor")
+    monitor_start_parser.add_argument("--interval", "-i", type=int, default=60, help="Check interval in seconds")
+    monitor_start_parser.add_argument("--auto-refresh", action="store_true", help="Auto-refresh expiring sessions")
+
+    monitor_stop_parser = monitor_sub.add_parser("stop", help="Stop background monitoring")
+
+    monitor_history_parser = monitor_sub.add_parser("history", help="Show monitor event history")
+    monitor_history_parser.add_argument("--sessions-dir", "-d", help="Sessions directory")
+    monitor_history_parser.add_argument("--limit", "-l", type=int, default=50, help="Max events to show")
+
+    monitor_predict_parser = monitor_sub.add_parser("predict", help="Predict session expiry")
+    monitor_predict_parser.add_argument("--sessions-dir", "-d", help="Sessions directory")
+    monitor_predict_parser.add_argument("--session", "-s", help="Single session file")
+
+    # Analytics
+    analytics_parser = subparsers.add_parser("analytics", help="Session usage analytics")
+    analytics_sub = analytics_parser.add_subparsers(dest="analytics_command", help="Analytics commands")
+
+    analytics_report_parser = analytics_sub.add_parser("report", help="Show usage report")
+    analytics_report_parser.add_argument("--days", "-d", type=int, default=30, help="Report period in days")
+    analytics_report_parser.add_argument("--json", dest="json_output", action="store_true", help="Output as JSON")
+
+    analytics_session_parser = analytics_sub.add_parser("session", help="Show analytics for a session")
+    analytics_session_parser.add_argument("session_id", help="Session ID to analyze")
+
+    analytics_cleanup_parser = analytics_sub.add_parser("cleanup", help="Remove old analytics data")
+    analytics_cleanup_parser.add_argument("--max-age", type=int, default=90, help="Max age in days")
+
     # Shell Completion
     completion_parser = subparsers.add_parser("completion", help="Generate shell completion scripts")
     completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell type")
@@ -517,6 +561,8 @@ Commands:
         "share": cmd_share,
         "unshare": cmd_unshare,
         "sync": cmd_sync,
+        "monitor": cmd_monitor,
+        "analytics": cmd_analytics,
         "validate-rules": cmd_validate_rules,
         "diff": cmd_diff,
         "plugin": cmd_plugin,

@@ -291,6 +291,62 @@ class TokenadeAPIServer:
             "cookies": timeline,
         })
 
+    async def _handle_monitor_events(self, request):
+        """GET /api/monitor/events - Get monitor event history."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        limit = int(request.query.get("limit", "50"))
+
+        if not self._monitor:
+            return self._json_response({"events": [], "total": 0})
+
+        events = self._monitor.get_event_history(limit=limit)
+        return self._json_response({
+            "events": events,
+            "total": len(events),
+        })
+
+    async def _handle_monitor_start(self, request):
+        """POST /api/monitor/start - Start monitoring sessions."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
+
+        sessions_dir = data.get("sessions_dir", str(self.sessions_dir))
+        interval = data.get("interval", 60)
+
+        config = MonitorConfig(
+            check_interval=interval,
+            sessions_dir=sessions_dir,
+        )
+        self._monitor = SessionMonitor(config)
+        registered = self._monitor.scan_sessions_dir()
+        self._monitor.start()
+
+        return self._json_response({
+            "success": True,
+            "sessions_monitored": len(registered),
+            "interval": interval,
+        })
+
+    async def _handle_monitor_stop(self, request):
+        """POST /api/monitor/stop - Stop monitoring."""
+        if not self._check_auth(request):
+            return self._error_response("Unauthorized", 401)
+
+        if self._monitor:
+            self._monitor.stop()
+            self._monitor = None
+
+        return self._json_response({"success": True})
+
     async def _handle_options(self, request):
         """Handle CORS preflight."""
         from aiohttp import web
@@ -321,6 +377,9 @@ class TokenadeAPIServer:
         self._app.router.add_get("/api/monitor/status", self._handle_monitor_status)
         self._app.router.add_get("/api/monitor/sessions/{id}", self._handle_monitor_session)
         self._app.router.add_get("/api/monitor/sessions/{id}/cookies", self._handle_monitor_cookies)
+        self._app.router.add_get("/api/monitor/events", self._handle_monitor_events)
+        self._app.router.add_post("/api/monitor/start", self._handle_monitor_start)
+        self._app.router.add_post("/api/monitor/stop", self._handle_monitor_stop)
 
         self._app.router.add_get("/api/sync", self._handle_sync_list)
         self._app.router.add_post("/api/sync/run", self._handle_sync_run)
@@ -380,4 +439,7 @@ class TokenadeAPIServer:
             {"method": "GET", "path": "/api/monitor/status", "description": "Monitoring status"},
             {"method": "GET", "path": "/api/monitor/sessions/{id}", "description": "Session monitoring details"},
             {"method": "GET", "path": "/api/monitor/sessions/{id}/cookies", "description": "Cookie expiry timeline"},
+            {"method": "GET", "path": "/api/monitor/events", "description": "Monitor event history"},
+            {"method": "POST", "path": "/api/monitor/start", "description": "Start monitoring"},
+            {"method": "POST", "path": "/api/monitor/stop", "description": "Stop monitoring"},
         ]

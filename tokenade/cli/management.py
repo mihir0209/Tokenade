@@ -1,5 +1,7 @@
 """Session management CLI commands."""
+import json
 import logging
+import signal
 import time
 from pathlib import Path
 
@@ -336,3 +338,296 @@ def cmd_sync(args):
         except KeyboardInterrupt:
             daemon.stop()
             print("\n⏹️  Daemon stopped")
+
+
+def cmd_monitor(args):
+    """Session monitoring commands."""
+    if args.monitor_command == "status":
+        _monitor_status(args)
+    elif args.monitor_command == "start":
+        _monitor_start(args)
+    elif args.monitor_command == "stop":
+        _monitor_stop(args)
+    elif args.monitor_command == "history":
+        _monitor_history(args)
+    elif args.monitor_command == "predict":
+        _monitor_predict(args)
+    else:
+        print("❌ Specify a monitor subcommand: status, start, stop, history, predict")
+
+
+def _monitor_status(args):
+    """Show current monitoring status."""
+    from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
+
+    config = MonitorConfig(
+        sessions_dir=args.sessions_dir,
+    )
+    monitor = SessionMonitor(config)
+
+    # Scan for sessions
+    if args.sessions_dir:
+        registered = monitor.scan_sessions_dir()
+        if registered:
+            print(f"\n📂 Found {len(registered)} sessions in {args.sessions_dir}")
+        else:
+            print(f"\n📂 No sessions found in {args.sessions_dir}")
+            return
+    elif args.session:
+        sid = monitor.register_session_file(args.session)
+        if not sid:
+            print(f"❌ Failed to load session: {args.session}")
+            return
+    else:
+        print("❌ Specify --sessions-dir or --session")
+        return
+
+    # Print status
+    print("\n" + "=" * 80)
+    print("TOKENADE - Session Monitor Status")
+    print("=" * 80)
+
+    for status in monitor.get_all_statuses():
+        health_bar = _health_bar(status.health_score)
+        print(f"\n  📋 {status.site_name} ({status.session_id})")
+        print(f"     Health: {health_bar} {status.health_score}%")
+        print(f"     Cookies: {status.cookie_count} total "
+              f"({status.healthy_cookies} ok, {status.warning_cookies} warn, {status.expired_cookies} expired)")
+        if status.issues:
+            print(f"     Issues: {len(status.issues)}")
+        if status.recommendations:
+            print(f"     Recommendations: {len(status.recommendations)}")
+        if status.source_path:
+            print(f"     Source: {status.source_path}")
+
+    summary = monitor.get_summary()
+    print(f"\n{'=' * 80}")
+    print(f"Total: {summary['total_sessions']} sessions, "
+          f"{summary['total_cookies']} cookies, "
+          f"Overall health: {summary['overall_health']}%")
+    print(f"{'=' * 80}\n")
+
+
+def _monitor_start(args):
+    """Start background monitoring daemon."""
+    from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
+
+    config = MonitorConfig(
+        check_interval=args.interval,
+        sessions_dir=args.sessions_dir,
+        auto_refresh=args.auto_refresh,
+    )
+
+    monitor = SessionMonitor(config)
+
+    # Register sessions
+    if args.sessions_dir:
+        registered = monitor.scan_sessions_dir()
+        print(f"📂 Monitoring {len(registered)} sessions from {args.sessions_dir}")
+    elif args.session:
+        sid = monitor.register_session_file(args.session)
+        if not sid:
+            print(f"❌ Failed to load session: {args.session}")
+            return
+        print(f"📂 Monitoring session: {args.session}")
+    else:
+        print("❌ Specify --sessions-dir or --session")
+        return
+
+    # Set up logging callback
+    def on_health_change(session_id, status):
+        print(f"  ⚠️  {session_id}: health changed to {status.health_score}%")
+
+    monitor.on_health_change(on_health_change)
+
+    # Start monitoring
+    print(f"🔄 Starting monitor (interval: {args.interval}s)")
+    print("   Press Ctrl+C to stop\n")
+
+    monitor.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        monitor.stop()
+        print("\n⏹️  Monitor stopped")
+
+
+def _monitor_stop(args):
+    """Stop a running monitor (by PID file)."""
+    pid_file = Path("~/.tokenade/monitor.pid").expanduser()
+    if not pid_file.exists():
+        print("❌ No monitor process found (no PID file)")
+        return
+
+    try:
+        pid = int(pid_file.read_text().strip())
+        import os
+        os.kill(pid, signal.SIGTERM)
+        print(f"✅ Sent stop signal to monitor (PID: {pid})")
+        pid_file.unlink(missing_ok=True)
+    except (ProcessLookupError, ValueError) as e:
+        print(f"❌ Failed to stop monitor: {e}")
+        pid_file.unlink(missing_ok=True)
+
+
+def _monitor_history(args):
+    """Show monitor event history."""
+    from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
+
+    config = MonitorConfig(sessions_dir=args.sessions_dir)
+    monitor = SessionMonitor(config)
+
+    if args.sessions_dir:
+        monitor.scan_sessions_dir()
+
+    events = monitor.get_event_history(limit=args.limit)
+
+    if not events:
+        print("📜 No monitor events recorded")
+        return
+
+    print("\n" + "=" * 80)
+    print("TOKENADE - Monitor Event History")
+    print("=" * 80)
+
+    for event in events:
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(event["timestamp"]))
+        print(f"\n  [{ts}] {event['event_type']}")
+        print(f"    Session: {event['session_id']}")
+        print(f"    {event['message']}")
+        if event.get("health_score") is not None:
+            print(f"    Health: {event['health_score']}%")
+
+    print(f"\n{'=' * 80}")
+    print(f"Total: {len(events)} events")
+    print(f"{'=' * 80}\n")
+
+
+def _monitor_predict(args):
+    """Predict session expiry based on health trend."""
+    from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
+
+    config = MonitorConfig(sessions_dir=args.sessions_dir)
+    monitor = SessionMonitor(config)
+
+    if args.sessions_dir:
+        monitor.scan_sessions_dir()
+    elif args.session:
+        monitor.register_session_file(args.session)
+
+    for status in monitor.get_all_statuses():
+        predicted = monitor.predict_expiry(status.session_id)
+        if predicted:
+            remaining = predicted - time.time()
+            if remaining > 0:
+                hours = remaining / 3600
+                print(f"  ⏰ {status.session_id}: predicted unhealthy in {hours:.1f} hours")
+            else:
+                print(f"  ⚠️  {status.session_id}: predicted already unhealthy")
+        else:
+            print(f"  ℹ️  {status.session_id}: insufficient data for prediction")
+
+
+def _health_bar(score: float, width: int = 20) -> str:
+    """Create a visual health bar."""
+    filled = int(score / 100 * width)
+    empty = width - filled
+    if score >= 80:
+        char = "█"
+    elif score >= 50:
+        char = "▓"
+    else:
+        char = "░"
+    return f"[{char * filled}{'.' * empty}]"
+
+
+def cmd_analytics(args):
+    """Session analytics commands."""
+    from tokenade.core.monitoring.analytics import SessionAnalytics
+
+    analytics = SessionAnalytics()
+
+    if args.analytics_command == "report":
+        _analytics_report(args, analytics)
+    elif args.analytics_command == "session":
+        _analytics_session(args, analytics)
+    elif args.analytics_command == "cleanup":
+        _analytics_cleanup(args, analytics)
+    else:
+        print("❌ Specify an analytics subcommand: report, session, cleanup")
+
+
+def _analytics_report(args, analytics):
+    """Show usage report."""
+    report = analytics.get_usage_report(days=args.days)
+
+    if args.json_output:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("\n" + "=" * 70)
+    print("TOKENADE - Session Analytics Report")
+    print("=" * 70)
+    print(f"\n📅 Period: Last {args.days} days")
+    print(f"📊 Total events: {report['total_events']}")
+    print(f"📋 Sessions tracked: {report['total_sessions']}")
+
+    if report["events_by_type"]:
+        print("\n📈 Events by type:")
+        for event_type, count in sorted(
+            report["events_by_type"].items(), key=lambda x: -x[1]
+        ):
+            print(f"   {event_type}: {count}")
+
+    if report["top_sessions"]:
+        print("\n🏆 Top sessions:")
+        for item in report["top_sessions"]:
+            print(f"   {item['session_id']}: {item['event_count']} events")
+
+    if report["daily_activity"]:
+        print("\n📅 Daily activity:")
+        for day, count in sorted(report["daily_activity"].items()):
+            bar = "█" * min(count, 30)
+            print(f"   {day}: {bar} ({count})")
+
+    if report["avg_session_lifetime_hours"] > 0:
+        print(f"\n⏱️  Avg session lifetime: {report['avg_session_lifetime_hours']} hours")
+
+    print(f"\n{'=' * 70}\n")
+
+
+def _analytics_session(args, analytics):
+    """Show analytics for a specific session."""
+    data = analytics.get_session_analytics(args.session_id)
+
+    if data["total_events"] == 0:
+        print(f"📊 No analytics data for session: {args.session_id}")
+        return
+
+    print("\n" + "=" * 60)
+    print(f"TOKENADE - Session Analytics: {args.session_id}")
+    print("=" * 60)
+    print(f"\n📊 Total events: {data['total_events']}")
+    print(f"⏱️  Lifespan: {data['lifespan_hours']} hours")
+
+    first = time.strftime("%Y-%m-%d %H:%M", time.localtime(data["first_seen"]))
+    last = time.strftime("%Y-%m-%d %H:%M", time.localtime(data["last_seen"]))
+    print(f"📅 First seen: {first}")
+    print(f"📅 Last seen: {last}")
+
+    if data["events_by_type"]:
+        print("\n📈 Events:")
+        for event_type, count in sorted(
+            data["events_by_type"].items(), key=lambda x: -x[1]
+        ):
+            print(f"   {event_type}: {count}")
+
+    print(f"\n{'=' * 60}\n")
+
+
+def _analytics_cleanup(args, analytics):
+    """Remove old analytics data."""
+    analytics.cleanup(max_age_days=args.max_age)
+    print(f"✅ Cleaned up analytics data older than {args.max_age} days")

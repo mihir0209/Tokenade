@@ -1,16 +1,16 @@
 version: "3.8"
 
 services:
+  # Default service - interactive shell
   tokenade:
     build: .
     image: tokenade:latest
     container_name: tokenade
     volumes:
-      - ./sessions:/app/sessions
-      - ./browser_data:/app/browser_data
-      - ./.fingerprints:/app/.fingerprints
-      - ./reports:/app/reports
-      - ./accounts.json:/app/accounts.json:ro
+      - tokenade-sessions:/app/sessions
+      - tokenade-browser:/app/browser_data
+      - tokenade-fingerprints:/app/.fingerprints
+      - tokenade-reports:/app/reports
     environment:
       - TOKENADE_DATA_DIR=/app
       - PYTHONUNBUFFERED=1
@@ -19,34 +19,52 @@ services:
       - SYS_ADMIN
     security_opt:
       - seccomp=unconfined
-    # Keep container running for interactive use
     stdin_open: true
     tty: true
     command: bash
 
-  # Optional: Run specific commands
-  tokenade-extract:
-    extends: tokenade
-    container_name: tokenade-extract
-    command: ["extract"]
+  # Proxy service
+  tokenade-proxy:
+    build: .
+    image: tokenade:latest
+    container_name: tokenade-proxy
+    ports:
+      - "9222:9222"
+    volumes:
+      - tokenade-sessions:/app/sessions
+      - tokenade-browser:/app/browser_data
+    environment:
+      - TOKENADE_DATA_DIR=/app
+      - PYTHONUNBUFFERED=1
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    command: ["proxy", "--all", "--port", "9222"]
 
-  tokenade-test:
-    extends: tokenade
-    container_name: tokenade-test
-    command: ["test", "-s", "/app/sessions/session.json"]
+  # API server service
+  tokenade-api:
+    build: .
+    image: tokenade:latest
+    container_name: tokenade-api
+    ports:
+      - "9224:9224"
+    volumes:
+      - tokenade-sessions:/app/sessions
+    environment:
+      - TOKENADE_DATA_DIR=/app
+      - PYTHONUNBUFFERED=1
+    command: ["python", "-c", "from tokenade.core.api.server import TokenadeAPIServer; import asyncio; s=TokenadeAPIServer(); asyncio.run(s.start())"]
 
-  # Development service with volume mount for code changes
+  # Development service with live code mounting
   tokenade-dev:
     build: .
     image: tokenade:dev
     container_name: tokenade-dev
     volumes:
-      - ./sessions:/app/sessions
-      - ./browser_data:/app/browser_data
-      - ./.fingerprints:/app/.fingerprints
-      - ./reports:/app/reports
-      - ./tokenade:/app/tokenade  # Mount code for live changes
-      - ./accounts.json:/app/accounts.json
+      - ./tokenade:/app/tokenade
+      - tokenade-sessions:/app/sessions
+      - tokenade-browser:/app/browser_data
     environment:
       - TOKENADE_DATA_DIR=/app
       - PYTHONUNBUFFERED=1
@@ -57,3 +75,9 @@ services:
     stdin_open: true
     tty: true
     command: bash
+
+volumes:
+  tokenade-sessions:
+  tokenade-browser:
+  tokenade-fingerprints:
+  tokenade-reports:

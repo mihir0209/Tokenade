@@ -1,6 +1,7 @@
 """Proxy CLI commands."""
 import asyncio
 import logging
+import time
 import webbrowser
 import threading
 from pathlib import Path
@@ -29,6 +30,54 @@ def cmd_proxy(args):
 
         if not sessions:
             print("❌ No session files found")
+            return
+
+        # Session rotation mode
+        if args.rotate:
+            from tokenade.core.importer.session_rotator import SessionRotator
+
+            print(f"\n{'=' * 60}")
+            print(f"TOKENADE - Session Rotation ({len(sessions)} sessions)")
+            print(f"{'=' * 60}")
+            print(f"  Strategy: {args.rotate_strategy}")
+            print(f"  Interval: {args.rotate_interval}s")
+
+            rotator = SessionRotator(
+                sessions_dir=args.sessions_dir or ".",
+                strategy=args.rotate_strategy,
+                cooldown_seconds=args.rotate_interval,
+            )
+            rotator.load_sessions()
+
+            status = rotator.get_status()
+            print(f"  Available: {status['available_sessions']} sessions")
+            print(f"  Average health: {status['metrics']['average_health']}%")
+            print(f"\n{'=' * 60}")
+
+            # Start rotation loop
+            def run_rotation():
+                while True:
+                    session_path = rotator.next()
+                    if not session_path:
+                        print("❌ No available sessions")
+                        break
+                    try:
+                        session = packager.load(session_path)
+                        print(f"\n🔄 Rotating to: {Path(session_path).name} "
+                              f"({session.get('site_name', 'unknown')})")
+                    except Exception as e:
+                        logger.warning(f"Failed to load {session_path}: {e}")
+                        rotator.record_failure(rotator._entries.get(
+                            Path(session_path).stem, None
+                        ) and Path(session_path).stem or "")
+                    time.sleep(args.rotate_interval)
+
+            print("\n🔄 Starting rotation loop...")
+            print("   Press Ctrl+C to stop\n")
+            try:
+                run_rotation()
+            except KeyboardInterrupt:
+                print("\n\n⚠️  Rotation stopped by user")
             return
 
         print(f"\n{'=' * 60}")

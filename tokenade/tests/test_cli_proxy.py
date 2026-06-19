@@ -37,6 +37,9 @@ def _make_args(**overrides):
         auto_navigate=False,
         target_url=None,
         no_open_browser=True,
+        rotate=False,
+        rotate_strategy="health-weighted",
+        rotate_interval=300,
         timeout=30,
     )
     defaults.update(overrides)
