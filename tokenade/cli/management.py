@@ -1587,3 +1587,412 @@ def cmd_refresh_browser(args):
                 browser.close()
             except Exception:
                 pass
+
+
+def cmd_accounts(args):
+    """Multi-account orchestration — list, status, refresh multiple sessions."""
+    from tokenade.core.importer.session_manager import SessionManager
+
+    sessions_dir = args.sessions_dir or "."
+    manager = SessionManager(sessions_dir)
+
+    subcommand = args.accounts_action
+
+    if subcommand == "list":
+        _accounts_list(manager, args)
+    elif subcommand == "status":
+        _accounts_status(manager, args)
+    elif subcommand == "refresh":
+        _accounts_refresh(manager, args)
+    else:
+        print(f"❌ Unknown action: {subcommand}")
+        print("   Use: list, status, or refresh")
+
+
+def _accounts_list(manager, args):
+    """List all session files with metadata."""
+    sessions = manager.list_sessions()
+
+    if not sessions:
+        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        return
+
+    # Filter by site if specified
+    if args.site:
+        sessions = [s for s in sessions if args.site.lower() in s.site_name.lower()]
+
+    # Filter by browser if specified
+    if args.browser:
+        sessions = [s for s in sessions if s.source_browser == args.browser]
+
+    print(f"\n{'=' * 80}")
+    print(f"TOKENADE - Accounts ({len(sessions)} sessions)")
+    print(f"{'=' * 80}")
+
+    if not sessions:
+        print("   No matching sessions found")
+        return
+
+    # Print table
+    print(f"\n{'Site':<15} {'Cookies':<10} {'Browser':<12} {'Size':<10} {'Path'}")
+    print(f"{'-' * 15} {'-' * 10} {'-' * 12} {'-' * 10} {'-' * 30}")
+
+    total_cookies = 0
+    for s in sessions:
+        size_kb = s.file_size / 1024
+        browser = s.source_browser or "unknown"
+        path_display = Path(s.path).name
+        if len(path_display) > 35:
+            path_display = "..." + path_display[-32:]
+        print(f"{s.site_name:<15} {s.cookie_count:<10} {browser:<12} {size_kb:>7.1f}KB  {path_display}")
+        total_cookies += s.cookie_count
+
+    print(f"\n   Total: {len(sessions)} sessions, {total_cookies} cookies")
+
+    # Show unique sites
+    sites = {s.site_name for s in sessions}
+    if len(sites) > 1:
+        print(f"   Sites: {', '.join(sorted(sites))}")
+
+    # Show unique browsers
+    browsers = {s.source_browser for s in sessions if s.source_browser}
+    if len(browsers) > 1:
+        print(f"   Browsers: {', '.join(sorted(browsers))}")
+
+
+def _accounts_status(manager, args):
+    """Show health/status of all sessions."""
+    sessions = manager.list_sessions()
+
+    if not sessions:
+        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        return
+
+    if args.site:
+        sessions = [s for s in sessions if args.site.lower() in s.site_name.lower()]
+
+    print(f"\n{'=' * 80}")
+    print(f"TOKENADE - Account Status ({len(sessions)} sessions)")
+    print(f"{'=' * 80}")
+
+    from tokenade.core.importer.session_packager import SessionPackager
+    packager = SessionPackager()
+
+    print(f"\n{'Site':<15} {'Cookies':<10} {'Auth':<12} {'Critical':<10} {'Last Refreshed':<20} {'Status'}")
+    print(f"{'-' * 15} {'-' * 10} {'-' * 12} {'-' * 10} {'-' * 20} {'-' * 10}")
+
+    healthy = 0
+    expiring = 0
+    expired = 0
+
+    for s in sessions:
+        try:
+            session = packager.load(s.path)
+            cookies = session.get("cookies", [])
+            auth_status = session.get("auth_status", "unknown")
+            critical = session.get("metadata", {}).get("critical_cookie_count", 0)
+            last_refreshed = session.get("metadata", {}).get("last_refreshed", "never")
+
+            if last_refreshed and last_refreshed != "never":
+                # Parse ISO timestamp
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(last_refreshed.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+                    if age_hours < 1:
+                        last_display = f"{int(age_hours * 60)}m ago"
+                        status = "🟢 FRESH"
+                        healthy += 1
+                    elif age_hours < 24:
+                        last_display = f"{int(age_hours)}h ago"
+                        status = "🟡 OK"
+                        healthy += 1
+                    elif age_hours < 72:
+                        last_display = f"{int(age_hours / 24)}d ago"
+                        status = "🟠 STALE"
+                        expiring += 1
+                    else:
+                        last_display = f"{int(age_hours / 24)}d ago"
+                        status = "🔴 OLD"
+                        expired += 1
+                except (ValueError, TypeError):
+                    last_display = last_refreshed
+                    status = "❓ UNKNOWN"
+            else:
+                last_display = "never"
+                status = "⚪ UNUSED"
+
+            print(f"{s.site_name:<15} {len(cookies):<10} {auth_status:<12} {critical:<10} {last_display:<20} {status}")
+
+        except Exception as e:
+            print(f"{s.site_name:<15} {'?':<10} {'?':<12} {'?':<10} {'?':<20} ❌ ERROR: {e}")
+
+    print(f"\n   🟢 Fresh: {healthy}  🟠 Stale: {expiring}  🔴 Old: {expired}")
+    print(f"   💡 Run 'tokenade accounts refresh' to refresh stale sessions")
+
+
+def _accounts_refresh(manager, args):
+    """Refresh sessions — uses refresh-browser for each."""
+    sessions = manager.list_sessions()
+
+    if not sessions:
+        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        return
+
+    if args.site:
+        sessions = [s for s in sessions if args.site.lower() in s.site_name.lower()]
+
+    if args.browser:
+        sessions = [s for s in sessions if s.source_browser == args.browser]
+
+    if not sessions:
+        print("   No matching sessions to refresh")
+        return
+
+    # If specific files given, filter to those
+    if args.files:
+        session_paths = {str(Path(f).resolve()) for f in args.files}
+        sessions = [s for s in sessions if str(Path(s.path).resolve()) in session_paths]
+
+    print(f"\n{'=' * 80}")
+    print(f"TOKENADE - Refresh {len(sessions)} Accounts")
+    print(f"{'=' * 80}")
+
+    for s in sessions:
+        print(f"   • {s.site_name} ({s.cookie_count} cookies) — {Path(s.path).name}")
+
+    if not args.yes:
+        response = input(f"\n🔄 Refresh all {len(sessions)} sessions? [y/N]: ").strip().lower()
+        if response != "y":
+            print("Cancelled")
+            return
+
+    # Refresh each session
+    browser = args.browser or "chrome"
+    headless = not args.visible
+    wait = args.wait
+    port = args.port
+
+    succeeded = 0
+    failed = 0
+    skipped = 0
+
+    for i, s in enumerate(sessions):
+        print(f"\n{'─' * 60}")
+        print(f"[{i + 1}/{len(sessions)}] Refreshing: {s.site_name} ({Path(s.path).name})")
+
+        # Check if browser is already running
+        import subprocess as _sp
+        _ps_cmd = ["pgrep", "-c", browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {browser}.exe"]
+        try:
+            _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+            _is_running = False
+            if platform.system() != "Windows" and _running.returncode == 0:
+                _is_running = int(_running.stdout.strip()) > 0
+            elif platform.system() == "Windows" and browser.lower() in _running.stdout.lower():
+                _is_running = True
+            if _is_running:
+                print(f"   ⚠️  {browser} is running. Close it first or use --port for next session.")
+                skipped += 1
+                continue
+        except Exception:
+            pass
+
+        try:
+            # Use the refresh-browser logic inline
+            from tokenade.core.browser.undetectable import SystemBrowserLauncher
+
+            session = packager = __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().load(s.path)
+            cookies = session.get("cookies", [])
+
+            if not cookies:
+                print(f"   ⚠️  No cookies, skipping")
+                skipped += 1
+                continue
+
+            # Auto-detect URL
+            target_url = _detect_url_from_cookies(cookies)
+            if not target_url:
+                print(f"   ⚠️  Could not detect URL, skipping")
+                skipped += 1
+                continue
+
+            # Use unique port per session to avoid conflicts
+            session_port = port + i
+
+            launcher = SystemBrowserLauncher()
+            browser_proc = launcher.launch(
+                browser=browser,
+                visible=not headless,
+                port=session_port,
+            )
+
+            # Inject → navigate → extract → save
+            fresh_cookies, fresh_ls, fresh_ss = _refresh_session_cookies(
+                browser_proc, session_port, cookies, target_url, wait
+            )
+
+            browser_proc.close()
+
+            if fresh_cookies:
+                session["cookies"] = fresh_cookies
+                if fresh_ls:
+                    session["local_storage"] = fresh_ls
+                if fresh_ss:
+                    session["session_storage"] = fresh_ss
+
+                if "metadata" not in session:
+                    session["metadata"] = {}
+                session["metadata"]["cookie_count"] = len(fresh_cookies)
+                session["metadata"]["last_refreshed"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+
+                __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().save(session, s.path)
+                print(f"   ✅ Refreshed: {len(fresh_cookies)} cookies")
+                succeeded += 1
+            else:
+                print(f"   ❌ No cookies extracted")
+                failed += 1
+
+        except Exception as e:
+            print(f"   ❌ Failed: {e}")
+            logger.error(f"Refresh failed for {s.path}: {e}", exc_info=True)
+            failed += 1
+
+    # Summary
+    print(f"\n{'=' * 80}")
+    print(f"REFRESH COMPLETE")
+    print(f"{'=' * 80}")
+    print(f"   ✅ Succeeded: {succeeded}")
+    print(f"   ❌ Failed: {failed}")
+    print(f"   ⏭️  Skipped: {skipped}")
+    print(f"   Total: {len(sessions)}")
+
+
+def _detect_url_from_cookies(cookies):
+    """Auto-detect target URL from cookie domains."""
+    domains = {c.get("domain", "").lstrip(".") for c in cookies}
+
+    if "google.com" in domains or "gmail.com" in domains:
+        return "https://mail.google.com"
+    elif "github.com" in domains:
+        return "https://github.com"
+    elif "twitter.com" in domains or "x.com" in domains:
+        return "https://x.com"
+    elif "linkedin.com" in domains:
+        return "https://www.linkedin.com"
+    elif "reddit.com" in domains:
+        return "https://www.reddit.com"
+    elif "facebook.com" in domains:
+        return "https://www.facebook.com"
+    elif "instagram.com" in domains:
+        return "https://www.instagram.com"
+    elif "slack.com" in domains:
+        return "https://slack.com"
+
+    # Fallback: use first non-empty domain
+    for d in sorted(domains):
+        if d and "." in d:
+            return f"https://{d}"
+    return None
+
+
+def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time):
+    """Refresh cookies by injecting into browser, navigating, and extracting."""
+    import asyncio
+    import json
+    import websockets
+    import urllib.request as _urllib_req
+
+    # Create new tab
+    _req = _urllib_req.Request(
+        f"http://127.0.0.1:{port}/json/new?about:blank",
+        method="PUT",
+    )
+    _resp = _urllib_req.urlopen(_req, timeout=10)
+    _tab_info = json.loads(_resp.read().decode())
+    _tab_ws_url = _tab_info.get("webSocketDebuggerUrl")
+
+    if not _tab_ws_url:
+        raise RuntimeError("Failed to create tab")
+
+    async def _do_refresh():
+        msg_id_counter = [0]
+
+        async def cdp_cmd(ws, method, params=None):
+            msg_id_counter[0] += 1
+            current_id = msg_id_counter[0]
+            msg = {"id": current_id, "method": method}
+            if params:
+                msg["params"] = params
+            await ws.send(json.dumps(msg))
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                try:
+                    raw = await asyncio.wait_for(
+                        ws.recv(),
+                        timeout=min(5, deadline - time.time()),
+                    )
+                except asyncio.TimeoutError:
+                    continue
+                data = json.loads(raw)
+                if "id" in data and data["id"] == current_id:
+                    if "error" in data:
+                        raise RuntimeError(data["error"].get("message", "CDP error"))
+                    return data.get("result", {})
+            raise RuntimeError(f"CDP timeout: {method}")
+
+        tab_ws = await websockets.connect(
+            _tab_ws_url,
+            max_size=10 * 1024 * 1024,
+            ping_interval=30,
+            ping_timeout=10,
+        )
+
+        # Inject stealth
+        from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
+        stealth_script = get_undetectable_stealth_script()
+        await cdp_cmd(tab_ws, "Page.enable")
+        await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+
+        # Inject cookies
+        cdp_cookies = []
+        for cookie in cookies:
+            cdp_cookie = {
+                "name": cookie.get("name", ""),
+                "value": cookie.get("value", ""),
+                "domain": cookie.get("domain", ""),
+                "path": cookie.get("path", "/"),
+            }
+            if cookie.get("secure"):
+                cdp_cookie["secure"] = True
+            if cookie.get("httpOnly"):
+                cdp_cookie["httpOnly"] = True
+            if cookie.get("sameSite"):
+                ss = cookie["sameSite"]
+                if ss in ("Strict", "Lax", "None"):
+                    cdp_cookie["sameSite"] = ss
+            expires = cookie.get("expires", 0)
+            if expires and int(expires) > 0:
+                exp = int(expires)
+                if exp > 1262304000000:
+                    exp = exp // 1000
+                cdp_cookie["expires"] = exp
+            if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                cdp_cookie["secure"] = True
+            cdp_cookies.append(cdp_cookie)
+
+        await cdp_cmd(tab_ws, "Network.enable")
+        await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+
+        # Navigate
+        await cdp_cmd(tab_ws, "Page.navigate", {"url": target_url})
+        await asyncio.sleep(wait_time)
+
+        # Extract fresh cookies
+        from tokenade.cli.session import _extract_via_cdp
+        session_state = _extract_via_cdp(port, domain_filter=None)
+
+        await tab_ws.close()
+        return session_state["cookies"], session_state.get("local_storage", {}), session_state.get("session_storage", {})
+
+    return asyncio.run(_do_refresh())

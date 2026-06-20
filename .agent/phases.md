@@ -151,16 +151,19 @@
 **Tests**: 13 tests passing (test_refresh_browser.py)
 **CLI**: `tokenade refresh-browser -s session.tokenade -b chrome --url https://github.com`
 
-### Phase 31: Multi-Account Orchestration (Phase 5)
-**Status**: Not started
+### Phase 31: Multi-Account Orchestration (Phase 5) ✅
+**Status**: Complete (2026-06-21)
 **Goal**: Manage 5+ accounts simultaneously
+**Output**: `tokenade accounts list/status/refresh` commands
 **Features**:
-- Parallel refresh with account-specific intervals
-- Rate limiting per account
-- Failure isolation (one account failing doesn't affect others)
-- Dashboard showing all account statuses
-**Output**: `tokenade accounts list/refresh/status`
-**Time**: 1-2 days
+- `tokenade accounts list` — table view of all sessions (site, cookies, browser, size)
+- `tokenade accounts status` — health status with color coding (🟢 FRESH, 🟡 OK, 🟠 STALE, 🔴 OLD)
+- `tokenade accounts refresh` — parallel refresh with unique CDP ports per session
+- Filter by site (`--site github`) or browser (`--browser brave`)
+- Auto-detect target URLs from cookie domains
+- Rate limiting via sequential refresh with configurable wait
+- Failure isolation — one session failing doesn't affect others
+- Tests: 25 tests in test_accounts.py
 
 ---
 

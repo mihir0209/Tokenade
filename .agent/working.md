@@ -57,6 +57,25 @@
 - **Tests:** 13 tests in test_refresh_browser.py
 - **Why this matters:** Solves the session expiration problem. Instead of manual re-login, tokenade refreshes sessions automatically by acting as a real user.
 
+### Phase 31: Multi-Account Orchestration (2026-06-21)
+- **Commands:** `tokenade accounts list/status/refresh`
+- **Features:**
+  - `list` — table view of all .tokenade files with site, cookies, browser, size
+  - `status` — health status with 🟢 FRESH / 🟡 OK / 🟠 STALE / 🔴 OLD color coding
+  - `refresh` — refresh all/specific sessions using refresh-browser logic
+  - Filter by site (`--site github`) or browser (`--browser brave`)
+  - Auto-detects target URLs from cookie domains
+  - Unique CDP ports per session (avoids port conflicts)
+  - Failure isolation — one session failing doesn't block others
+- **Tests:** 25 tests in test_accounts.py
+- **Usage:**
+  ```bash
+  tokenade accounts list -d ./sessions
+  tokenade accounts status -d ./sessions
+  tokenade accounts refresh -d ./sessions -b chrome --yes
+  tokenade accounts refresh -d ./sessions --files github.tokenade gmail.tokenade
+  ```
+
 ### CDP Proxy Battle-Tested (2026-06-17)
 - **External CDP connections:** Playwright `connect_over_cdp` now works via `/json/version` passthrough
 - **Cookie injection via raw CDP:** `Storage.setCookies` injects 123/123 cookies at browser level, visible to ALL CDP clients

@@ -11,7 +11,7 @@ from tokenade.cli.management import (
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
-    cmd_refresh_browser,
+    cmd_refresh_browser, cmd_accounts,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -72,7 +72,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser accounts"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -611,6 +611,33 @@ Commands:
     refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
     refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
 
+    # Multi-Account Orchestration
+    accounts_parser = subparsers.add_parser("accounts", help="Multi-account orchestration (list/status/refresh)")
+    accounts_subparsers = accounts_parser.add_subparsers(dest="accounts_action")
+
+    # accounts list
+    accounts_list = accounts_subparsers.add_parser("list", help="List all sessions")
+    accounts_list.add_argument("--sessions-dir", "-d", default=".", help="Directory to scan (default: current)")
+    accounts_list.add_argument("--site", "-s", help="Filter by site name")
+    accounts_list.add_argument("--browser", "-b", help="Filter by browser")
+
+    # accounts status
+    accounts_status = accounts_subparsers.add_parser("status", help="Show health/status of all sessions")
+    accounts_status.add_argument("--sessions-dir", "-d", default=".", help="Directory to scan (default: current)")
+    accounts_status.add_argument("--site", "-s", help="Filter by site name")
+
+    # accounts refresh
+    accounts_refresh = accounts_subparsers.add_parser("refresh", help="Refresh all/specific sessions")
+    accounts_refresh.add_argument("--sessions-dir", "-d", default=".", help="Directory to scan (default: current)")
+    accounts_refresh.add_argument("--site", "-s", help="Filter by site name")
+    accounts_refresh.add_argument("--browser", "-b", default="chrome", help="Browser to use for refresh")
+    accounts_refresh.add_argument("--files", nargs="*", help="Specific session files to refresh")
+    accounts_refresh.add_argument("--port", "-p", type=int, default=9222, help="Starting CDP port")
+    accounts_refresh.add_argument("--visible", action="store_true", help="Show browser window")
+    accounts_refresh.add_argument("--headless", action="store_true", default=True, help="Run headless (default)")
+    accounts_refresh.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait per session")
+    accounts_refresh.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -645,6 +672,7 @@ Commands:
         "cicd": cmd_cicd,
         "launch": cmd_launch,
         "refresh-browser": cmd_refresh_browser,
+        "accounts": cmd_accounts,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,
