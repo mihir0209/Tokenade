@@ -104,6 +104,22 @@ def cmd_proxy(args):
     print(f"\n📂 Session: {args.session}")
     print(f"🔌 Port: {args.port}")
     print(f"🔧 Mode: {args.mode}")
+    print(f"🌐 Host: {args.host}")
+
+    if args.host == "0.0.0.0":
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            external_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            external_ip = "<your-ip>"
+        print(f"\n   📡 MULTI-DEVICE ACCESS:")
+        print(f"   Other devices can access this proxy at:")
+        print(f"   → http://{external_ip}:{args.port}")
+        print(f"\n   ⚠️  All traffic routes through THIS machine's IP.")
+        print(f"   Sessions stay valid because cookies never leave this device.")
 
     if args.mode == "forward":
         print(f"   Configure browser: HTTP_PROXY=http://{args.host}:{args.port}")
@@ -164,12 +180,22 @@ def cmd_proxy(args):
             def open_browser_thread():
                 import time
                 time.sleep(2)
-                url = f"http://127.0.0.1:{args.port}"
+                if args.host == "0.0.0.0":
+                    import socket
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(("8.8.8.8", 80))
+                        bind_ip = s.getsockname()[0]
+                        s.close()
+                    except Exception:
+                        bind_ip = "127.0.0.1"
+                else:
+                    bind_ip = args.host
+                url = f"http://{bind_ip}:{args.port}"
                 if args.auto_navigate or args.target_url:
                     target = getattr(proxy, '_auto_refresh_config', {}).get('target_url')
                     if target:
-                        # Navigate directly to the site proxy URL
-                        url = f"http://127.0.0.1:{args.port}/browse?url={target}"
+                        url = f"http://{bind_ip}:{args.port}/browse?url={target}"
                 webbrowser.open(url)
 
             threading.Thread(target=open_browser_thread, daemon=True).start()

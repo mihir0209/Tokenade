@@ -707,7 +707,8 @@ def cmd_launch(args):
         if args.session:
             print(f"\n📂 Loading session: {args.session}")
             print(f"   ⚠️  This session can only be active on ONE device at a time.")
-            print(f"   Using it on multiple devices will invalidate ALL sessions.")
+            print(f"   Google DBSC binds cookies to hardware — cross-device use will fail.")
+            print(f"   For multi-device: use 'tokenade proxy --host 0.0.0.0' instead.")
 
             packager = SessionPackager()
             session = packager.load(args.session)
@@ -875,9 +876,9 @@ def cmd_launch(args):
                 # Warn about session sharing
                 print(f"\n   ⚠️  SESSION USAGE RULES:")
                 print(f"   • This session can only be active on ONE device at a time")
-                print(f"   • Using it on multiple devices will invalidate ALL sessions")
+                print(f"   • Google DBSC binds cookies to hardware — cross-device use will fail")
+                print(f"   • For multi-device: use 'tokenade proxy --host 0.0.0.0' instead")
                 print(f"   • To migrate: close browser here, re-export from the active device")
-                print(f"   • Google revokes sessions when it detects the same tokens from multiple IPs")
 
                 await tab_ws.close()
 
