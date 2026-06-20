@@ -31,6 +31,18 @@
 - YouTube: 22 cookies from Playwright, CDP proxy, logged_in=True (2026-06-15)
 - Session sharing encryption: AES-256-GCM, password-protected shares verified (2026-06-15)
 
+### DBSC — Device-Bound Session Credentials (2026-06-20)
+- **What:** Google's hardware-bound session cookies, binds to TPM on Windows, Secure Enclave on macOS
+- **Browser support:** Chrome on Windows ONLY (GA, Chrome 146). Edge trial ended, no GA. Firefox/Safari/Brave: not implemented.
+- **Website support:** Only Google and Okta have implemented server-side DBSC. Most websites haven't.
+- **Impact on tokenade:** Chrome-to-Chrome for Google services = session invalidated on target device. Non-Chrome browsers = no DBSC, sessions portable.
+- **Cross-device test results:**
+  - Brave (Linux) → Edge (Windows): ✅ Works (Edge has no DBSC)
+  - Brave (Linux) → Chrome (Mac): ❌ Fails (Chrome on Mac, even without DBSC GA, has issues)
+  - Same session on 3+ devices: ❌ Google revokes all sessions (IP/fingerprint tracking, separate from DBSC)
+- **Workaround:** Export from non-Chrome (Brave/Firefox), import into non-Chrome (Edge/Firefox/Brave). Never Chrome-to-Chrome for Google.
+- **Multi-device:** Use proxy mode (`tokenade proxy --host 0.0.0.0`) instead of session migration
+
 ### CDP Proxy Battle-Tested (2026-06-17)
 - **External CDP connections:** Playwright `connect_over_cdp` now works via `/json/version` passthrough
 - **Cookie injection via raw CDP:** `Storage.setCookies` injects 123/123 cookies at browser level, visible to ALL CDP clients

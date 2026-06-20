@@ -89,118 +89,88 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> dict:
         result = await cmd("Storage.getCookies")
         cdp_cookies = result.get("cookies", [])
 
-        # 2. Find a tab on the target domain for localStorage/sessionStorage
+        # 2. Find tabs on target domains for localStorage/sessionStorage
         local_storage = {}
         session_storage = {}
 
         targets_result = await cmd("Target.getTargets")
         targets = targets_result.get("targetInfos", [])
 
-        # Find a tab matching domain filter
-        target_page = None
         domains_needed = []
         if domain_filter:
             domains_needed = [d.strip().lstrip(".") for d in domain_filter.split(",") if d.strip()]
 
-        for t in targets:
-            if t.get("type") == "page" and t.get("url"):
-                url = t["url"]
-                for d in domains_needed:
-                    if d in url:
-                        target_page = t
-                        break
-                if target_page:
+        # Collect localStorage/sessionStorage per origin
+        import time as _time
+
+        for domain in domains_needed:
+            # Find existing tab for this domain, or create one
+            target_page = None
+            for t in targets:
+                if t.get("type") == "page" and t.get("url") and domain in t["url"]:
+                    target_page = t
                     break
 
-        # If no matching tab, open a new one on the first domain
-        if not target_page and domains_needed:
-            first_domain = domains_needed[0]
-            proto = "https" if first_domain not in ("localhost", "127.0.0.1") else "http"
-            create_result = await cmd("Target.createTarget", {
-                "url": f"{proto}://{first_domain}"
-            })
-            target_id = create_result.get("targetId")
-            if target_id:
-                # Attach to the new tab
-                attach_result = await cmd("Target.attachToTarget", {
-                    "targetId": target_id,
-                    "flatten": True,
+            if not target_page:
+                proto = "https" if domain not in ("localhost", "127.0.0.1") else "http"
+                create_result = await cmd("Target.createTarget", {
+                    "url": f"{proto}://{domain}"
                 })
-                session_id = attach_result.get("sessionId")
-                if session_id:
-                    # Wait for page load
-                    import time as _time
-                    _time.sleep(3)
+                target_id = create_result.get("targetId")
+                if not target_id:
+                    continue
+                _time.sleep(3)  # Wait for page load
+            else:
+                target_id = target_page.get("targetId")
 
-                    # Get localStorage
-                    for d in domains_needed:
-                        proto = "https" if d not in ("localhost", "127.0.0.1") else "http"
-                        nav_cmd = {
-                            "id": msg_id[0] + 1000,
-                            "method": "Page.navigate",
-                            "params": {"url": f"{proto}://{d}"},
-                            "sessionId": session_id,
-                        }
-                        msg_id[0] += 1
-                        await ws.send(json.dumps(nav_cmd))
-                        _time.sleep(2)
-
-                    # Collect localStorage
-                    ls_result = await _eval_with_session(ws, msg_id, session_id,
-                        "JSON.stringify(Object.entries(localStorage))")
-                    if ls_result:
-                        try:
-                            entries = json.loads(ls_result)
-                            for key, val in entries:
-                                local_storage[key] = val
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-
-                    # Collect sessionStorage
-                    ss_result = await _eval_with_session(ws, msg_id, session_id,
-                        "JSON.stringify(Object.entries(sessionStorage))")
-                    if ss_result:
-                        try:
-                            entries = json.loads(ss_result)
-                            for key, val in entries:
-                                session_storage[key] = val
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-
-                    # Close the tab we created
-                    await cmd("Target.closeTarget", {"targetId": target_id})
-
-        # 3. If we found an existing tab, try to get its storage via the main browser ws
-        elif target_page:
-            target_id = target_page.get("targetId")
+            # Attach to tab
             attach_result = await cmd("Target.attachToTarget", {
                 "targetId": target_id,
                 "flatten": True,
             })
             session_id = attach_result.get("sessionId")
-            if session_id:
-                for d in domains_needed:
-                    # Collect localStorage
-                    ls_result = await _eval_with_session(ws, msg_id, session_id,
-                        "JSON.stringify(Object.entries(localStorage))")
-                    if ls_result:
-                        try:
-                            entries = json.loads(ls_result)
-                            for key, val in entries:
-                                local_storage[key] = val
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+            if not session_id:
+                continue
 
-                    # Collect sessionStorage
-                    ss_result = await _eval_with_session(ws, msg_id, session_id,
-                        "JSON.stringify(Object.entries(sessionStorage))")
-                    if ss_result:
-                        try:
-                            entries = json.loads(ss_result)
-                            for key, val in entries:
-                                session_storage[key] = val
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+            # Navigate to the domain to ensure correct origin
+            proto = "https" if domain not in ("localhost", "127.0.0.1") else "http"
+            nav_id = msg_id[0] + 5000
+            msg_id[0] += 1
+            await ws.send(json.dumps({
+                "id": nav_id,
+                "method": "Page.navigate",
+                "params": {"url": f"{proto}://{domain}"},
+                "sessionId": session_id,
+            }))
+            _time.sleep(3)  # Wait for navigation
+
+            # Collect localStorage for this origin
+            ls_result = await _eval_with_session(ws, msg_id, session_id,
+                "JSON.stringify(Object.entries(localStorage))")
+            if ls_result:
+                try:
+                    entries = json.loads(ls_result)
+                    for key, val in entries:
+                        local_storage[key] = val
+                    print(f"   📦 {domain}: {len(entries)} localStorage entries")
+                except (json.JSONDecodeError, TypeError):
+                    print(f"   ⚠️  {domain}: localStorage parse failed")
+
+            # Collect sessionStorage for this origin
+            ss_result = await _eval_with_session(ws, msg_id, session_id,
+                "JSON.stringify(Object.entries(sessionStorage))")
+            if ss_result:
+                try:
+                    entries = json.loads(ss_result)
+                    for key, val in entries:
+                        session_storage[key] = val
+                    print(f"   📦 {domain}: {len(entries)} sessionStorage entries")
+                except (json.JSONDecodeError, TypeError):
+                    print(f"   ⚠️  {domain}: sessionStorage parse failed")
+
+            # Clean up tab we created (not if it was pre-existing)
+            if not target_page:
+                await cmd("Target.closeTarget", {"targetId": target_id})
 
         await ws.close()
         return {

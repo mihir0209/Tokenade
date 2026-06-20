@@ -707,7 +707,9 @@ def cmd_launch(args):
         if args.session:
             print(f"\n📂 Loading session: {args.session}")
             print(f"   ⚠️  This session can only be active on ONE device at a time.")
-            print(f"   Google DBSC binds cookies to hardware — cross-device use will fail.")
+            print(f"   Google DBSC binds cookies to hardware — Chrome-to-Chrome will fail.")
+            print(f"   ✅ Works: Brave/FF → Edge/FF/Brave (no DBSC)")
+            print(f"   ❌ Fails: Chrome → Chrome (DBSC on Windows)")
             print(f"   For multi-device: use 'tokenade proxy --host 0.0.0.0' instead.")
 
             packager = SessionPackager()
@@ -829,7 +831,7 @@ def cmd_launch(args):
                     await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
 
                     # Wait for page load
-                    await asyncio.sleep(4)
+                    await asyncio.sleep(5)
 
                     # Step 6: Inject localStorage + sessionStorage (after navigation, on correct origin)
                     session_data = session.get("session_storage", {})
@@ -855,7 +857,21 @@ def cmd_launch(args):
                     if local_data or session_data:
                         print(f"   Re-navigating with full session state...", flush=True)
                         await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
-                        await asyncio.sleep(4)
+                        await asyncio.sleep(5)
+
+                    # Step 8: If Google, also try accounts.google.com for auth state
+                    if args.url and "google.com" in args.url:
+                        print(f"   Injecting Google auth state on accounts.google.com...", flush=True)
+                        await cdp_cmd(tab_ws, "Page.navigate", {"url": "https://accounts.google.com"})
+                        await asyncio.sleep(3)
+                        if local_data:
+                            await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                                "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
+                                "returnByValue": True,
+                            })
+                        # Navigate back to target
+                        await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
+                        await asyncio.sleep(5)
 
                     # Get page info
                     title_result = await cdp_cmd(
