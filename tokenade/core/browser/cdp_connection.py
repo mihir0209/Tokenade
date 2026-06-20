@@ -129,8 +129,21 @@ class CDPConnection:
                             except Exception as e:
                                 logger.warning(f"Event handler error: {e}")
         except Exception as e:
-            if self._ws and not self._ws.closed:
+            if self._ws and not self._is_closed():
                 logger.error(f"CDP read loop error: {e}")
+
+    def _is_closed(self) -> bool:
+        """Check if WebSocket is closed (compatible with websockets 16+)."""
+        if self._ws is None:
+            return True
+        # websockets 16+ uses state attribute instead of closed
+        if hasattr(self._ws, 'state'):
+            from websockets.protocol import State
+            return self._ws.state in (State.CLOSED, State.CLOSING)
+        # Fallback for older versions
+        if hasattr(self._ws, 'closed'):
+            return self._ws.closed
+        return False
 
     async def send_command(
         self,
@@ -149,7 +162,7 @@ class CDPConnection:
         Returns:
             Response result dict
         """
-        if not self._ws or self._ws.closed:
+        if self._is_closed():
             raise RuntimeError("CDP not connected")
 
         self._msg_id += 1
@@ -351,7 +364,7 @@ class CDPConnection:
             except asyncio.CancelledError:
                 pass
 
-        if self._ws and not self._ws.closed:
+        if self._ws and not self._is_closed():
             await self._ws.close()
 
         # Cancel pending callbacks
