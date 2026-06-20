@@ -265,6 +265,26 @@ def cmd_export(args):
             print(f"\n🔌 Connected to existing browser on port {cdp_port}")
         except Exception:
             # Browser not running — launch it with real profile
+            import subprocess
+            import platform
+
+            # Check if browser is already running (profile locked)
+            _ps_cmd = ["pgrep", "-c", browser_name] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {browser_name}.exe"]
+            try:
+                _running = subprocess.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+                if platform.system() != "Windows" and _running.returncode == 0 and int(_running.stdout.strip()) > 0:
+                    print(f"   ⚠️  {browser_name} is already running. Profile is locked.")
+                    print(f"   Close all {browser_name} windows first, then retry.")
+                    print(f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}")
+                    return
+                elif platform.system() == "Windows" and browser_name.lower() in _running.stdout.lower():
+                    print(f"   ⚠️  {browser_name} is already running. Profile is locked.")
+                    print(f"   Close all {browser_name} windows first, then retry.")
+                    print(f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}")
+                    return
+            except Exception:
+                pass  # If we can't check, just try to launch
+
             print(f"\n🚀 Launching {browser_name} with CDP on port {cdp_port}...")
             from tokenade.core.browser.undetectable import SystemBrowserLauncher
             launcher = SystemBrowserLauncher()

@@ -658,6 +658,24 @@ def cmd_launch(args):
     print(f"👁️  Visible: {args.visible}")
 
     try:
+        # Check if browser is already running (profile will be locked)
+        import subprocess as _sp
+        _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
+        try:
+            _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+            _is_running = False
+            if platform.system() != "Windows" and _running.returncode == 0:
+                _is_running = int(_running.stdout.strip()) > 0
+            elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
+                _is_running = True
+            if _is_running:
+                print(f"   ⚠️  {args.browser} is already running. Profile is locked.")
+                print(f"   Close all {args.browser} windows first, then retry.")
+                print(f"   Or start {args.browser} with: {args.browser} --remote-debugging-port={args.port}")
+                return
+        except Exception:
+            pass  # If we can't check, just try to launch
+
         # Copy real profile only when NO session file (cookies come from profile)
         # When session file IS provided, use fresh profile (session cookies are authoritative)
         profile_dir = args.profile_dir
