@@ -684,18 +684,7 @@ def cmd_launch(args):
             actual_port = browser.port
 
             async def inject():
-                cdp = CDPConnection(port=actual_port)
-                connected = await cdp.connect(target_page=False)
-                if not connected:
-                    print("❌ Failed to connect to CDP")
-                    return
-
-                # Step 1: Inject stealth FIRST (before any page loads)
-                print("   Injecting stealth script (before page load)...")
-                await cdp.inject_stealth()
-                await cdp.close()
-
-                # Step 2: Create a new tab via PUT /json/new (Brave requires PUT)
+                # Step 1: Create a new tab via PUT /json/new (Brave requires PUT)
                 print("   Creating new tab...")
                 import urllib.request
                 req = urllib.request.Request(
@@ -717,7 +706,7 @@ def cmd_launch(args):
 
                 print(f"   Tab: {tab_id}")
 
-                # Step 3: Connect to the new tab's WebSocket
+                # Step 2: Connect to the new tab's WebSocket
                 import websockets
                 tab_ws = await websockets.connect(
                     tab_ws_url,
@@ -725,11 +714,13 @@ def cmd_launch(args):
                     ping_interval=30,
                     ping_timeout=10,
                 )
+                msg_id = 0
 
-                # Inject stealth into the tab
+                # Step 3: Inject stealth FIRST (before page load)
+                print("   Injecting stealth script...")
                 stealth_script = get_undetectable_stealth_script()
-                msg_id = 1
 
+                msg_id += 1
                 await tab_ws.send(json.dumps({
                     "id": msg_id, "method": "Page.enable",
                 }))
@@ -824,26 +815,78 @@ def cmd_launch(args):
             asyncio.run(inject())
 
         elif args.url:
-            # Just navigate to URL
+            # Just navigate to URL — same PUT /json/new approach
             actual_port = browser.port
 
             async def navigate_only():
-                cdp = CDPConnection(port=actual_port)
-                connected = await cdp.connect()
-                if not connected:
-                    print("❌ Failed to connect to CDP")
+                import urllib.request
+                import websockets
+
+                # Create new tab
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{actual_port}/json/new?about:blank",
+                    method='PUT'
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        new_tab = json.loads(resp.read().decode())
+                        tab_ws_url = new_tab.get("webSocketDebuggerUrl")
+                except Exception as e:
+                    print(f"❌ Failed to create tab: {e}")
                     return
 
-                await cdp.inject_stealth()
-                print(f"\n   Navigating to: {args.url}")
-                await cdp.navigate(args.url)
+                tab_ws = await websockets.connect(
+                    tab_ws_url, max_size=10*1024*1024,
+                    ping_interval=30, ping_timeout=10,
+                )
+                msg_id = 0
 
-                title = await cdp.get_page_title()
-                url = await cdp.get_page_url()
+                # Inject stealth
+                stealth_script = get_undetectable_stealth_script()
+                msg_id += 1
+                await tab_ws.send(json.dumps({"id": msg_id, "method": "Page.enable"}))
+                await tab_ws.recv()
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Page.addScriptToEvaluateOnNewDocument",
+                    "params": {"source": stealth_script},
+                }))
+                await tab_ws.recv()
+
+                # Navigate
+                print(f"\n   Navigating to: {args.url}")
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id, "method": "Page.navigate",
+                    "params": {"url": args.url},
+                }))
+                await tab_ws.recv()
+
+                time.sleep(4)
+
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": "document.title", "returnByValue": True},
+                }))
+                resp_data = json.loads(await tab_ws.recv())
+                title = resp_data.get("result", {}).get("result", {}).get("value", "")
+
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": "window.location.href", "returnByValue": True},
+                }))
+                resp_data = json.loads(await tab_ws.recv())
+                url = resp_data.get("result", {}).get("result", {}).get("value", "")
+
                 print(f"\n   📄 Page: {title}")
                 print(f"   🔗 URL: {url}")
 
-                await cdp.close()
+                await tab_ws.close()
 
             asyncio.run(navigate_only())
 

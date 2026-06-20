@@ -116,9 +116,9 @@ class CDPConnection:
                         logger.debug(f"Found page target: {target.get('title', 'untitled')}")
                         return ws_url
 
-            # No page target found, create a new tab
+            # No page target found, create a new tab (PUT for Brave compat)
             logger.debug("No page target found, creating new tab")
-            req = urllib.request.Request(f"{self.cdp_url}/json/new?about:blank")
+            req = urllib.request.Request(f"{self.cdp_url}/json/new?about:blank", method='PUT')
             with urllib.request.urlopen(req, timeout=5) as resp:
                 new_target = json.loads(resp.read().decode())
                 return new_target.get("webSocketDebuggerUrl")
