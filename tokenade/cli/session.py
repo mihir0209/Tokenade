@@ -254,11 +254,44 @@ def cmd_export(args):
         print("   Run 'tokenade export --list-profiles' to discover available profiles")
         return
 
-    # CDP-based extraction (connects to running browser — bypasses SQLite decryption)
+    # CDP-based extraction (auto-launches browser with CDP if needed)
     cdp_port = getattr(args, 'cdp_port', None)
     if cdp_port:
-        print(f"\n🔌 Connecting to browser via CDP on port {cdp_port}...")
+        # Auto-launch browser with CDP if not already running
+        launched_browser = None
+        import urllib.request as _urllib_req
+        try:
+            _urllib_req.urlopen(f"http://127.0.0.1:{cdp_port}/json/version", timeout=2)
+            print(f"\n🔌 Connected to existing browser on port {cdp_port}")
+        except Exception:
+            # Browser not running — launch it with real profile
+            print(f"\n🚀 Launching {browser_name} with CDP on port {cdp_port}...")
+            from tokenade.core.browser.undetectable import SystemBrowserLauncher
+            launcher = SystemBrowserLauncher()
+            try:
+                # Find real profile for this browser
+                real_profile = launcher._get_default_profile_dir(browser_name)
+                launched_browser = launcher.launch(
+                    browser=browser_name,
+                    visible=True,
+                    port=cdp_port,
+                    profile_dir=real_profile,
+                )
+                print(f"   ✅ Browser launched (PID: {launched_browser.pid})")
+                import time as _time
+                _time.sleep(3)  # Wait for CDP to be ready
+            except RuntimeError as e:
+                print(f"❌ Failed to launch browser: {e}")
+                return
+
         cookies = _extract_via_cdp(cdp_port, domain_filter=getattr(args, 'domains', None))
+
+        if launched_browser:
+            try:
+                launched_browser.close()
+            except Exception:
+                pass
+
         if not cookies:
             print("❌ No cookies extracted via CDP")
             return

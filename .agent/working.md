@@ -96,67 +96,83 @@
 - **Netflix:** Skipped (user not logged in Firefox)
 
 ### What's Next
-- Phase 7: Coverage push to 90%+ (see `.agent/plans/phase7-plan.md`)
-- Core crypto modules need more tests (cookie_crypto 68%, encryptor 68%)
-- Integration modules need tests (kubernetes 20%, docker 55%, webhooks 39%)
-- Feature modules need tests (advanced_validator 50%, fingerprint/manager 65%)
+- Fix cross-device session import (cookies alone insufficient — need localStorage/sessionStorage)
+- SQLite decryption broken for Brave v11 (AES-256-GCM) — CDP export is the workaround
+- Enhance stealth script with 30+ evasions
+- Phase 28: Chrome Binary Patcher
 
 ## Manual Step-by-Step Procedure
 
-### Step 1: Find your browser profile
+### CRITICAL: Two Export Methods
+
+**Method 1: CDP Export (RECOMMENDED — bypasses SQLite decryption)**
+
+This is the only reliable method for Brave/Chrome on Linux. SQLite decryption is broken for Brave's v11 encryption.
 
 ```bash
+# Step 1: Export via CDP (auto-launches browser with your real profile)
+tokenade export --cdp-port 9222 --domains "google.com" --browser-name brave -o gmail.tokenade
+
+# Step 2: Import into a browser
+tokenade launch -s gmail.tokenade -u "https://mail.google.com" -b brave
+```
+
+How `--cdp-port` works:
+- If browser is already running with `--remote-debugging-port=9222`, connects to it
+- If not running, auto-launches the browser with your real profile and CDP enabled
+- Extracts ALL cookies (decrypted) via CDP `Storage.getCookies`
+- Closes the browser after export
+
+**Method 2: SQLite Export (legacy — may produce encrypted values for Brave)**
+
+```bash
+tokenade export --browser-name firefox --domains "google.com" -o gmail.tokenade
+```
+
+Works for Firefox. For Brave/Chrome, may produce encrypted cookie values.
+
+### Step-by-Step: Export from Device A
+
+```bash
+# 1. Find your browser profile
 tokenade export --list-profiles
+
+# 2. Export cookies via CDP (RECOMMENDED)
+#    This auto-launches your browser, extracts cookies, and saves to file
+tokenade export --cdp-port 9300 --domains "google.com,accounts.google.com" --browser-name brave -o gmail.tokenade
+
+# 2b. OR export from Firefox (SQLite works for Firefox)
+tokenade export --browser-name firefox --domains "google.com,accounts.google.com" -o gmail.tokenade
+
+# 3. Copy the .tokenade file to Device B
+scp gmail.tokenade user@device-b:/path/to/
 ```
 
-This shows all detected browser profiles. Note the `Browser` and `Path` values.
-
-Example output:
-```
-Browser: firefox
-Profile: nj40lj6y.default
-Path: /home/ghostrider/snap/firefox/common/.mozilla/firefox/nj40lj6y.default
-```
-
-### Step 2: Export cookies to .tokenade file
+### Step-by-Step: Import on Device B
 
 ```bash
-tokenade export --browser-name firefox --domains "DOMAIN1,DOMAIN2" -o output.tokenade
+# 1. Install tokenade
+pip install tokenade
+
+# 2. Launch browser with session
+tokenade launch -s gmail.tokenade -u "https://mail.google.com" -b brave
+
+# 3. OR launch with Chromium
+tokenade launch -s gmail.tokenade -u "https://mail.google.com" -b chromium
 ```
 
-Replace:
-- `firefox` with your browser (chrome, firefox, edge, brave)
-- `DOMAIN1,DOMAIN2` with the target site's domains
-- `output.tokenade` with your desired filename
-
-**Common domain patterns:**
+### Domain Patterns
 
 | Site | Domains |
 |------|---------|
-| ChatGPT | `chatgpt.com,openai.com,cdn.openai.com` |
 | Gmail | `google.com,accounts.google.com,mail.google.com` |
+| ChatGPT | `chatgpt.com,openai.com,cdn.openai.com` |
 | GitHub | `github.com,api.github.com` |
-| Discord | `discord.com,discordapp.com` |
-| Reddit | `reddit.com,old.reddit.com,www.reddit.com` |
 | Twitter/X | `twitter.com,x.com,api.twitter.com` |
 | LinkedIn | `linkedin.com,www.linkedin.com` |
+| Reddit | `reddit.com,old.reddit.com,www.reddit.com` |
+| Discord | `discord.com,discordapp.com` |
 | Netflix | `netflix.com,api.netflix.com` |
-
-**Examples:**
-
-```bash
-# ChatGPT from Firefox
-tokenade export --browser-name firefox --domains "chatgpt.com,openai.com,cdn.openai.com" -o chatgpt.tokenade
-
-# Gmail from Firefox
-tokenade export --browser-name firefox --domains "google.com,accounts.google.com,mail.google.com" -o gmail.tokenade
-
-# Gmail from Chrome
-tokenade export --browser-name chrome --domains "google.com,accounts.google.com" -o gmail.tokenade
-
-# GitHub from a specific profile
-tokenade export --browser-name firefox --profile "2P8fh3oV.Profile 3" --domains "github.com" -o github.tokenade
-```
 
 ### Step 3: Start the proxy
 

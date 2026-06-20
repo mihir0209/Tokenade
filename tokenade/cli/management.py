@@ -658,9 +658,10 @@ def cmd_launch(args):
     print(f"👁️  Visible: {args.visible}")
 
     try:
-        # Always copy real profile to avoid locking user's browser
+        # Copy real profile only when NO session file (cookies come from profile)
+        # When session file IS provided, use fresh profile (session cookies are authoritative)
         profile_dir = args.profile_dir
-        if not profile_dir:
+        if not profile_dir and not args.session:
             real_dir = launcher._get_default_profile_dir(args.browser)
             if real_dir:
                 import tempfile
