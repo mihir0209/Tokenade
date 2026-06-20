@@ -633,6 +633,126 @@ def _analytics_cleanup(args, analytics):
     print(f"✅ Cleaned up analytics data older than {args.max_age} days")
 
 
+def cmd_launch(args):
+    """Launch undetectable system browser with CDP."""
+    import asyncio
+
+    from tokenade.core.browser.undetectable import SystemBrowserLauncher
+    from tokenade.core.browser.cdp_connection import CDPConnection
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    print("\n" + "=" * 80)
+    print("TOKENADE - Undetectable Browser")
+    print("=" * 80)
+
+    launcher = SystemBrowserLauncher()
+
+    # Find browser
+    browser_path = launcher.find_browser(args.browser)
+    if not browser_path:
+        print(f"❌ {args.browser} not found. Install it or specify --browser-path")
+        return
+
+    print(f"\n🌐 Browser: {args.browser} ({browser_path})")
+    print(f"🔌 CDP Port: {args.port}")
+    print(f"👁️  Visible: {args.visible}")
+
+    try:
+        browser = launcher.launch(
+            browser=args.browser,
+            visible=args.visible,
+            port=args.port,
+            profile_dir=args.profile_dir,
+            extra_args=args.extra_args.split(",") if args.extra_args else [],
+        )
+
+        print(f"\n✅ Browser launched (PID: {browser.pid})")
+        print(f"   CDP URL: {browser.cdp_url}")
+        print(f"   Profile: {browser.profile_dir}")
+
+        # Inject session if provided
+        if args.session:
+            print(f"\n📂 Loading session: {args.session}")
+
+            packager = SessionPackager()
+            session = packager.load(args.session)
+
+            cookies = session.get("cookies", [])
+            print(f"   Cookies: {len(cookies)}")
+
+            # Connect via CDP and inject
+            async def inject():
+                cdp = CDPConnection(port=args.port)
+                connected = await cdp.connect()
+                if not connected:
+                    print("❌ Failed to connect to CDP")
+                    return
+
+                print("   Injecting stealth script...")
+                await cdp.inject_stealth()
+
+                print("   Injecting cookies...")
+                await cdp.inject_cookies(cookies)
+
+                # Navigate to site if specified
+                if args.url:
+                    print(f"   Navigating to: {args.url}")
+                    await cdp.navigate(args.url)
+
+                # Get page info
+                title = await cdp.get_page_title()
+                url = await cdp.get_page_url()
+                print(f"\n   📄 Page: {title}")
+                print(f"   🔗 URL: {url}")
+
+                await cdp.close()
+
+            asyncio.run(inject())
+
+        elif args.url:
+            # Just navigate to URL
+            async def navigate_only():
+                cdp = CDPConnection(port=args.port)
+                connected = await cdp.connect()
+                if not connected:
+                    print("❌ Failed to connect to CDP")
+                    return
+
+                await cdp.inject_stealth()
+                print(f"\n   Navigating to: {args.url}")
+                await cdp.navigate(args.url)
+
+                title = await cdp.get_page_title()
+                url = await cdp.get_page_url()
+                print(f"\n   📄 Page: {title}")
+                print(f"   🔗 URL: {url}")
+
+                await cdp.close()
+
+            asyncio.run(navigate_only())
+
+        print(f"\n{'=' * 80}")
+        print("Browser is running. You can:")
+        print(f"  1. Open http://127.0.0.1:{args.port} in another browser")
+        print(f"  2. Use Chrome DevTools to connect to ws://127.0.0.1:{args.port}")
+        print(f"  3. Or let it run and control via CDP WebSocket")
+        print(f"\nPress Ctrl+C to close the browser")
+        print(f"{'=' * 80}\n")
+
+        # Keep browser running
+        try:
+            browser.process.wait()
+        except KeyboardInterrupt:
+            print("\n⏹️  Closing browser...")
+            browser.close()
+
+    except RuntimeError as e:
+        print(f"\n❌ {e}")
+    except Exception as e:
+        logger.error(f"Launch failed: {e}", exc_info=True)
+        print(f"\n❌ Launch failed: {e}")
+
+
 def cmd_validate_session(args):
     """Validate session files for CI/CD health gates."""
     from tokenade.core.refresh.session_validator import SessionValidator, create_ci_validation_rules

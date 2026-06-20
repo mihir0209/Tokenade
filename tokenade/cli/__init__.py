@@ -10,7 +10,7 @@ from tokenade.cli.management import (
     cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare,
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
-    cmd_validate_session, cmd_encrypted_refresh,
+    cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -587,6 +587,18 @@ Commands:
     encrypted_refresh_parser.add_argument("--source-browser", "-b", default="firefox", help="Source browser for cookie refresh")
     encrypted_refresh_parser.add_argument("--force", action="store_true", help="Force refresh even if not expired")
 
+    # Launch Undetectable Browser
+    launch_parser = subparsers.add_parser("launch", help="Launch undetectable system browser with CDP")
+    launch_parser.add_argument("--browser", "-b", default="chrome", help="Browser to launch (chrome, firefox, brave, edge)")
+    launch_parser.add_argument("--session", "-s", help="Session file to inject cookies from")
+    launch_parser.add_argument("--url", "-u", help="URL to navigate to after injection")
+    launch_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
+    launch_parser.add_argument("--profile-dir", help="Custom profile directory")
+    launch_parser.add_argument("--visible", action="store_true", default=True, help="Show browser window (default: True)")
+    launch_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
+    launch_parser.add_argument("--extra-args", help="Extra browser args (comma-separated)")
+    launch_parser.add_argument("--browser-path", help="Path to browser executable")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -619,6 +631,7 @@ Commands:
         "encrypted-refresh": cmd_encrypted_refresh,
         "validate-session": cmd_validate_session,
         "cicd": cmd_cicd,
+        "launch": cmd_launch,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,
