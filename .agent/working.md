@@ -11,11 +11,11 @@
 - PyPI publishes only happen when user explicitly requests it
 - This keeps the repo clean and avoids premature versioning
 
-## Current State (2026-06-17)
+## Current State (2026-06-21)
 
-### Version: 5.0.0 (released)
-- **PyPI:** https://pypi.org/project/tokenade/5.0.0/
-- **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v5.0.0
+### Version: 5.7.0 (released)
+- **PyPI:** https://pypi.org/project/tokenade/5.7.0/
+- **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v5.7.0
 - 1632 tests passing, 7 skipped, 0 failures
 - Coverage: 84%
 - Features built: CDP proxy (with CDP WebSocket injection), forward proxy, multi-site proxy, session refresh, sharing, encryption, health scoring, advanced validation, browser extension, web dashboard, session sync daemon, dashboard with WebSocket/diff/timeline/quick-actions

@@ -4,7 +4,7 @@
 
 | Metric | Value |
 |--------|-------|
-| Version | 5.0.0 |
+| Version | 5.7.0 |
 | Tests | 4249 passing |
 | Coverage | 98% |
 | Commits ahead | 6 |
