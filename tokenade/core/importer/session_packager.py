@@ -131,7 +131,8 @@ class SessionPackager:
                 tokens: Optional[List[Dict]] = None,
                 local_storage: Optional[Dict[str, str]] = None,
                 source_browser_manager=None,
-                tls_profile: Optional[Dict] = None) -> Dict:
+                tls_profile: Optional[Dict] = None,
+                oauth_config: Optional[Dict] = None) -> Dict:
         """
         Package cookies into .tokenade format.
 
@@ -144,6 +145,7 @@ class SessionPackager:
             local_storage: Optional localStorage key-value dict
             source_browser_manager: Optional browser manager for fingerprint collection
             tls_profile: Optional TLS profile for proxy mode
+            oauth_config: Optional OAuth 2.0 configuration dict
 
         Returns:
             .tokenade format dictionary
@@ -183,6 +185,7 @@ class SessionPackager:
             "local_storage": local_storage or {},
             "fingerprint": fingerprint,
             "tls_profile": tls_profile,
+            "oauth_config": oauth_config,
             "metadata": {
                 "extraction_method": "sqlite_direct",
                 "cookie_count": len(cookies),

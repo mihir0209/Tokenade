@@ -631,3 +631,221 @@ def _analytics_cleanup(args, analytics):
     """Remove old analytics data."""
     analytics.cleanup(max_age_days=args.max_age)
     print(f"✅ Cleaned up analytics data older than {args.max_age} days")
+
+
+def cmd_refresh_oauth(args):
+    """Refresh OAuth tokens using stored refresh token."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - OAuth Token Refresh")
+    print("=" * 80)
+
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+
+    print(f"\n📂 Session: {args.session}")
+
+    try:
+        from tokenade.core.refresh.oauth_refresh import SessionOAuthManager
+
+        manager = SessionOAuthManager(str(session_file))
+
+        status = manager.get_status()
+        print(f"🌐 Site: {status['site_name']}")
+        print(f"🔑 Has OAuth config: {status['has_oauth_config']}")
+        print(f"🔄 Has refresh token: {status['has_refresh_token']}")
+        print(f"🎟️  Has access token: {status['has_access_token']}")
+
+        if status["access_token_expired"]:
+            print("⚠️  Access token is expired")
+        elif status["expires_in"] is not None:
+            print(f"⏰ Expires in: {status['expires_in']}s")
+
+        if not manager.has_oauth_config():
+            print("\n❌ No OAuth config in session")
+            print("   Run: tokenade oauth-config --session <file> --client-id <id> --token-endpoint <url>")
+            return
+
+        if not manager.get_refresh_token():
+            print("\n❌ No refresh token in session")
+            print("   Re-export session with OAuth tokens")
+            return
+
+        print("\n🔄 Refreshing token...")
+        result = manager.refresh()
+
+        if result.success:
+            print("\n✅ Token refreshed successfully")
+            print(f"   New access token: {result.tokens.access_token[:20]}...")
+            if result.tokens.expires_in:
+                print(f"   Expires in: {result.tokens.expires_in}s")
+            print(f"   Duration: {result.duration_ms:.0f}ms")
+        else:
+            print("\n❌ Token refresh failed")
+            if result.error:
+                print(f"   Error: {result.error}")
+
+    except Exception as e:
+        logger.error(f"OAuth refresh failed: {e}", exc_info=True)
+        print("❌ Refresh failed — check OAuth configuration")
+
+
+def cmd_oauth_config(args):
+    """Configure OAuth settings for a session."""
+    from tokenade.core.refresh.oauth_refresh import SessionOAuthManager, OAuthConfig
+
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+
+    manager = SessionOAuthManager(str(session_file))
+
+    if args.show:
+        config = manager.get_oauth_config()
+        if config:
+            print("\n" + "=" * 60)
+            print("OAuth Configuration")
+            print("=" * 60)
+            print(f"  Token Endpoint: {config.token_endpoint}")
+            print(f"  Client ID: {config.client_id[:20]}..." if len(config.client_id) > 20 else f"  Client ID: {config.client_id}")
+            print(f"  Client Secret: {'*' * 10 if config.client_secret else '(not set)'}")
+            print(f"  Scopes: {', '.join(config.scopes)}")
+            print(f"  Grant Type: {config.grant_type}")
+            print(f"{'=' * 60}\n")
+        else:
+            print("No OAuth config set for this session")
+        return
+
+    if not args.client_id or not args.token_endpoint:
+        print("❌ --client-id and --token-endpoint are required")
+        return
+
+    config = OAuthConfig(
+        token_endpoint=args.token_endpoint,
+        client_id=args.client_id,
+        client_secret=args.client_secret or "",
+        scopes=args.scopes.split(",") if args.scopes else ["openid", "profile", "email"],
+    )
+
+    manager.set_oauth_config(config)
+    manager.save()
+
+    print(f"\n✅ OAuth config saved for: {args.session}")
+    print(f"   Token Endpoint: {config.token_endpoint}")
+    print(f"   Client ID: {config.client_id[:20]}...")
+    print(f"   Scopes: {', '.join(config.scopes)}")
+
+
+def cmd_batch_refresh(args):
+    """Refresh multiple sessions with rate limiting."""
+    print("\n" + "=" * 80)
+    print("TOKENADE - Batch Session Refresh")
+    print("=" * 80)
+
+    from tokenade.core.refresh.batch_refresh import BatchRefresher
+
+    batch = BatchRefresher(
+        sessions_dir=args.sessions_dir,
+        max_workers=args.max_workers,
+        delay_between=args.delay,
+        source_browser=args.source_browser,
+        source_profile=args.source_profile,
+    )
+
+    sessions = batch.discover_sessions()
+    print(f"\n📂 Found {len(sessions)} sessions in {args.sessions_dir}")
+
+    if not sessions:
+        print("   No .tokenade files found")
+        return
+
+    for s in sessions:
+        print(f"   • {s.name}")
+
+    if not args.yes:
+        response = input("\n🔄 Refresh all sessions? [y/N]: ").strip().lower()
+        if response != "y":
+            print("Cancelled")
+            return
+
+    print(f"\n🔄 Refreshing with {args.max_workers} workers...")
+    report = batch.refresh_all(force=args.force)
+
+    print("\n" + report.summary())
+
+
+def cmd_cicd(args):
+    """Generate CI/CD workflow files."""
+    from tokenade.core.cicd.workflow_generator import WorkflowConfig, WorkflowGenerator, generate_all_workflows
+
+    print("\n" + "=" * 80)
+    print("TOKENADE - CI/CD Workflow Generator")
+    print("=" * 80)
+
+    if args.generate_all:
+        print(f"\n📂 Sessions directory: {args.sessions_dir}")
+        print(f"⏰ Refresh interval: {args.interval_hours} hours")
+        print(f"🌐 Source browser: {args.source_browser}")
+        print(f"📁 Output directory: {args.output_dir}")
+
+        workflows = generate_all_workflows(
+            sessions_dir=args.sessions_dir,
+            refresh_interval_hours=args.interval_hours,
+            source_browser=args.source_browser,
+            output_dir=args.output_dir,
+        )
+
+        print(f"\n✅ Generated {len(workflows)} workflow files:")
+        for filename in workflows:
+            print(f"   • {args.output_dir}/{filename}")
+
+        print(f"\n📖 Next steps:")
+        print(f"   1. Copy .github/workflows/ to your repository")
+        print(f"   2. Add your .tokenade files to {args.sessions_dir}/")
+        print(f"   3. For OAuth refresh, add oauth_config to your sessions:")
+        print(f"      tokenade oauth-config -s <session> --client-id <id> --token-endpoint <url>")
+        print(f"   4. Push to GitHub — workflows will run automatically")
+        return
+
+    if args.workflow_type == "github":
+        config = WorkflowConfig(
+            sessions_dir=args.sessions_dir,
+            refresh_interval_hours=args.interval_hours,
+            source_browser=args.source_browser,
+        )
+        generator = WorkflowGenerator()
+        workflow = generator.generate_github_actions(config)
+
+        output_path = args.output or ".github/workflows/refresh-sessions.yml"
+        generator.save(workflow, output_path)
+        print(f"\n✅ Generated GitHub Actions workflow: {output_path}")
+
+    elif args.workflow_type == "gitlab":
+        config = WorkflowConfig(
+            sessions_dir=args.sessions_dir,
+            refresh_interval_hours=args.interval_hours,
+            source_browser=args.source_browser,
+        )
+        generator = WorkflowGenerator()
+        workflow = generator.generate_gitlab_ci(config)
+
+        output_path = args.output or ".gitlab-ci.yml"
+        generator.save(workflow, output_path)
+        print(f"\n✅ Generated GitLab CI pipeline: {output_path}")
+
+    elif args.workflow_type == "cron":
+        config = WorkflowConfig(
+            sessions_dir=args.sessions_dir,
+            refresh_interval_hours=args.interval_hours,
+            source_browser=args.source_browser,
+        )
+        generator = WorkflowGenerator()
+        script = generator.generate_cron_script(config)
+
+        output_path = args.output or f"{args.sessions_dir}/refresh.sh"
+        generator.save(script, output_path)
+        print(f"\n✅ Generated cron script: {output_path}")
+        print(f"\n📖 Add to crontab:")
+        print(f"   0 */{args.interval_hours} * * * {output_path}")

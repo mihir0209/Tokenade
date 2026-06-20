@@ -6,7 +6,11 @@ import sys
 from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
-from tokenade.cli.management import cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare, cmd_sync, cmd_monitor, cmd_analytics
+from tokenade.cli.management import (
+    cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare,
+    cmd_sync, cmd_monitor, cmd_analytics,
+    cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
+)
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
@@ -530,6 +534,39 @@ Commands:
     completion_parser = subparsers.add_parser("completion", help="Generate shell completion scripts")
     completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell type")
 
+    # OAuth Refresh
+    refresh_oauth_parser = subparsers.add_parser("refresh-oauth", help="Refresh OAuth tokens using stored refresh token")
+    refresh_oauth_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
+
+    # OAuth Config
+    oauth_config_parser = subparsers.add_parser("oauth-config", help="Configure OAuth settings for a session")
+    oauth_config_parser.add_argument("--session", "-s", required=True, help="Session file to configure")
+    oauth_config_parser.add_argument("--client-id", help="OAuth client ID")
+    oauth_config_parser.add_argument("--client-secret", help="OAuth client secret")
+    oauth_config_parser.add_argument("--token-endpoint", help="OAuth token endpoint URL")
+    oauth_config_parser.add_argument("--scopes", help="Comma-separated OAuth scopes")
+    oauth_config_parser.add_argument("--show", action="store_true", help="Show current OAuth config")
+
+    # Batch Refresh
+    batch_refresh_parser = subparsers.add_parser("batch-refresh", help="Refresh multiple sessions with rate limiting")
+    batch_refresh_parser.add_argument("--sessions-dir", "-d", default="sessions", help="Sessions directory")
+    batch_refresh_parser.add_argument("--max-workers", "-w", type=int, default=3, help="Max parallel workers")
+    batch_refresh_parser.add_argument("--delay", type=float, default=1.0, help="Delay between refreshes (seconds)")
+    batch_refresh_parser.add_argument("--source-browser", "-b", default="firefox", help="Source browser for cookie refresh")
+    batch_refresh_parser.add_argument("--source-profile", "-p", help="Source profile name")
+    batch_refresh_parser.add_argument("--force", action="store_true", help="Force refresh even if not expired")
+    batch_refresh_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
+
+    # CI/CD
+    cicd_parser = subparsers.add_parser("cicd", help="Generate CI/CD workflow files")
+    cicd_parser.add_argument("--generate-all", action="store_true", help="Generate all workflow files")
+    cicd_parser.add_argument("--workflow-type", choices=["github", "gitlab", "cron"], default="github", help="Workflow type")
+    cicd_parser.add_argument("--sessions-dir", default="sessions", help="Sessions directory")
+    cicd_parser.add_argument("--interval-hours", type=int, default=6, help="Refresh interval in hours")
+    cicd_parser.add_argument("--source-browser", default="firefox", help="Source browser for cookie refresh")
+    cicd_parser.add_argument("--output", "-o", help="Output file path")
+    cicd_parser.add_argument("--output-dir", default=".tokenade/ci", help="Output directory for --generate-all")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -556,6 +593,10 @@ Commands:
         "batch-load": cmd_batch_load,
         "health": cmd_health,
         "refresh": cmd_refresh,
+        "refresh-oauth": cmd_refresh_oauth,
+        "oauth-config": cmd_oauth_config,
+        "batch-refresh": cmd_batch_refresh,
+        "cicd": cmd_cicd,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,
