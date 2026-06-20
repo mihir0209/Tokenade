@@ -286,6 +286,7 @@ Commands:
     export_parser.add_argument("--profile", help="Profile name within browser")
     export_parser.add_argument("--site-config", help="Path to JSON site config file for filtering")
     export_parser.add_argument("--domains", help="Comma-separated domains to filter (e.g. 'google.com,accounts.google.com')")
+    export_parser.add_argument("--cdp-port", type=int, help="Extract via CDP from running browser (bypasses SQLite decryption)")
     export_parser.add_argument("--file-path", help="Export from cookies file")
     export_parser.add_argument("--format", choices=["netscape", "json", "curl"], default="netscape", help="File format")
     export_parser.add_argument("--collect-fingerprint", action="store_true", help="Collect source browser fingerprint")

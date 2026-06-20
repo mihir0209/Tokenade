@@ -658,15 +658,18 @@ def cmd_launch(args):
     print(f"👁️  Visible: {args.visible}")
 
     try:
-        # Auto-detect real profile if none specified
+        # Always copy real profile to avoid locking user's browser
         profile_dir = args.profile_dir
-        using_real_profile = False
         if not profile_dir:
             real_dir = launcher._get_default_profile_dir(args.browser)
             if real_dir:
-                profile_dir = real_dir
-                using_real_profile = True
-                print(f"   📁 Using real profile: {real_dir}")
+                import tempfile
+                profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{args.browser}_")
+                print(f"   📁 Copying profile from: {real_dir}")
+                if launcher._copy_profile(args.browser, profile_dir):
+                    print(f"   ✅ Profile copied to: {profile_dir}")
+                else:
+                    print(f"   ⚠️  Profile copy failed, using fresh profile")
 
         browser = launcher.launch(
             browser=args.browser,
@@ -680,16 +683,20 @@ def cmd_launch(args):
         print(f"   CDP URL: {browser.cdp_url}")
         print(f"   Profile: {browser.profile_dir}")
 
-        # Inject session if provided (skip if using auto-detected profile — cookies already there)
-        using_real_profile = (args.profile_dir is None)
-        if args.session and not using_real_profile:
+        # Inject session if provided — session file is ALWAYS authoritative
+        if args.session:
             print(f"\n📂 Loading session: {args.session}")
 
             packager = SessionPackager()
             session = packager.load(args.session)
 
             cookies = session.get("cookies", [])
-            print(f"   Cookies: {len(cookies)}")
+            source_browser = session.get("source_device", {}).get("browser", "unknown")
+            print(f"   Cookies: {len(cookies)} (from {source_browser})")
+
+            if source_browser != "unknown" and source_browser != args.browser:
+                print(f"   ⚠️  Cross-browser: {source_browser} → {args.browser}")
+                print(f"   💡 For best results, export from same browser you'll use")
 
             # Connect via CDP and inject (use actual port from browser)
             actual_port = browser.port
@@ -785,6 +792,9 @@ def cmd_launch(args):
                         if exp > 1262304000000:
                             exp = exp // 1000
                         cdp_cookie["expires"] = exp
+                    # CDP requires secure=true when sameSite=None
+                    if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                        cdp_cookie["secure"] = True
                     cdp_cookies.append(cdp_cookie)
 
                 await cdp_cmd(tab_ws, "Network.enable")

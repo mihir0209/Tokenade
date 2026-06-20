@@ -16,6 +16,97 @@ from tokenade.handlers.google import GoogleHandler
 logger = logging.getLogger("tokenade")
 
 
+def _extract_via_cdp(port: int, domain_filter: str = None) -> list:
+    """Extract cookies from running browser via CDP (bypasses SQLite decryption)."""
+    import urllib.request as _urllib_req
+
+    try:
+        resp = _urllib_req.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=5)
+        version = json.loads(resp.read().decode())
+        browser_ws = version.get("webSocketDebuggerUrl")
+    except Exception as e:
+        print(f"❌ Cannot connect to CDP on port {port}: {e}")
+        return []
+
+    import asyncio
+    import websockets
+
+    async def _get_cookies():
+        ws = await websockets.connect(
+            browser_ws, max_size=10 * 1024 * 1024,
+            ping_interval=30, ping_timeout=10,
+        )
+        msg_id = [0]
+
+        async def cmd(method, params=None):
+            msg_id[0] += 1
+            mid = msg_id[0]
+            m = {"id": mid, "method": method}
+            if params:
+                m["params"] = params
+            await ws.send(json.dumps(m))
+            import time as _time
+            deadline = _time.time() + 15
+            while _time.time() < deadline:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=min(3, deadline - _time.time()))
+                except asyncio.TimeoutError:
+                    continue
+                d = json.loads(raw)
+                if d.get("id") == mid:
+                    return d.get("result", {})
+            return {}
+
+        result = await cmd("Storage.getCookies")
+        cdp_cookies = result.get("cookies", [])
+        await ws.close()
+        return cdp_cookies
+
+    try:
+        cdp_cookies = asyncio.run(_get_cookies())
+    except Exception as e:
+        print(f"❌ CDP extraction failed: {e}")
+        return []
+
+    # Convert CDP format to tokenade format
+    cookies = []
+    for c in cdp_cookies:
+        cookie = {
+            "name": c.get("name", ""),
+            "value": c.get("value", ""),
+            "domain": c.get("domain", ""),
+            "path": c.get("path", "/"),
+            "secure": c.get("secure", False),
+            "httpOnly": c.get("httpOnly", False),
+        }
+        same_site = c.get("sameSite", "None")
+        if same_site in ("Strict", "Lax", "None"):
+            cookie["sameSite"] = same_site
+        expires = c.get("expires", -1)
+        if expires and expires > 0:
+            cookie["expires"] = int(expires)
+        cookies.append(cookie)
+
+    # Apply domain filter
+    if domain_filter:
+        domains = [d.strip() for d in domain_filter.split(",") if d.strip()]
+        filtered = []
+        for c in cookies:
+            domain = c.get("domain", "")
+            for d in domains:
+                if d.startswith("."):
+                    if domain.endswith(d) or domain == d[1:]:
+                        filtered.append(c)
+                        break
+                else:
+                    if domain == d or domain.endswith("." + d):
+                        filtered.append(c)
+                        break
+        cookies = filtered
+
+    return cookies
+
+
 def cmd_extract(args):
     """Extract tokens from saved browser sessions."""
     from tokenade.core.security.credentials import CredentialManager
@@ -157,14 +248,24 @@ def cmd_export(args):
                 print(f"   Profile '{args.profile}' not found — check spelling and try again")
             return
 
-    if not browser_path:
+    if not browser_path and not getattr(args, 'cdp_port', None):
         print("❌ No browser path specified.")
         print("   Use --browser-name (e.g., --browser-name firefox) or --browser-path /path/to/profile")
         print("   Run 'tokenade export --list-profiles' to discover available profiles")
         return
 
-    print(f"\n🍪 Extracting cookies from: {browser_path}")
-    extractor = CookieExtractor(browser_path, browser=browser_name)
+    # CDP-based extraction (connects to running browser — bypasses SQLite decryption)
+    cdp_port = getattr(args, 'cdp_port', None)
+    if cdp_port:
+        print(f"\n🔌 Connecting to browser via CDP on port {cdp_port}...")
+        cookies = _extract_via_cdp(cdp_port, domain_filter=getattr(args, 'domains', None))
+        if not cookies:
+            print("❌ No cookies extracted via CDP")
+            return
+        print(f"   ✅ Extracted {len(cookies)} cookies via CDP")
+    else:
+        print(f"\n🍪 Extracting cookies from: {browser_path}")
+        extractor = CookieExtractor(browser_path, browser=browser_name)
 
     site_config = None
     if args.site_config:
@@ -186,7 +287,9 @@ def cmd_export(args):
             print("\r   ✅ Cookie extraction complete                    ", flush=True)
 
     try:
-        if args.file_path:
+        if cdp_port:
+            pass  # cookies already obtained via CDP above
+        elif args.file_path:
             cookies = extractor.extract_from_file(args.file_path, args.format or "netscape")
         else:
             cookies = extractor.extract(site_filter=None, progress_callback=_progress)

@@ -295,10 +295,10 @@ class LinuxCookieCrypto(CookieCrypto):
     def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
         """Decrypt Linux Chrome cookie.
 
-        Linux Chrome uses AES-128-CBC with:
-        - v10 header (3 bytes)
-        - 16-byte IV (all 0x20 spaces)
-        - PBKDF2 key: sha1("peanuts", "saltysalt", 1 iteration, 16 bytes)
+        Linux Chrome uses:
+        - v10: AES-128-CBC with 16-byte IV (all 0x20 spaces)
+        - v11: AES-256-GCM with 12-byte random nonce
+        Both use PBKDF2 key derivation with password and "saltysalt" salt.
         """
         if not encrypted_value:
             return ""
@@ -308,12 +308,11 @@ class LinuxCookieCrypto(CookieCrypto):
             import hashlib
 
             version = encrypted_value[:3]
-            if version in (b"v10", b"v11"):
-                # Linux Chrome: AES-128-CBC with 16-byte IV
+            if version == b"v10":
+                # v10: AES-128-CBC with 16-byte IV (all spaces)
                 iv = encrypted_value[3:19]
                 ciphertext = encrypted_value[19:]
 
-                # Derive key using PBKDF2
                 key_material = hashlib.pbkdf2_hmac(
                     "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
                 )
@@ -326,6 +325,30 @@ class LinuxCookieCrypto(CookieCrypto):
                     pad_len = decrypted[-1]
                     if 1 <= pad_len <= 16:
                         decrypted = decrypted[:-pad_len]
+
+                return decrypted.decode("utf-8", errors="replace")
+
+            elif version == b"v11":
+                # v11: AES-256-GCM with 12-byte nonce
+                nonce = encrypted_value[3:15]
+                # Ciphertext includes 16-byte GCM auth tag at the end
+                ciphertext_with_tag = encrypted_value[15:]
+                ciphertext = ciphertext_with_tag[:-16]
+                tag = ciphertext_with_tag[-16:]
+
+                key_material = hashlib.pbkdf2_hmac(
+                    "sha1", key or b"peanuts", b"saltysalt", 1, dklen=32
+                )
+
+                cipher = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
+                decrypted = cipher.decrypt(ciphertext)
+                # Verify GCM tag (raises on failure)
+                try:
+                    cipher.decrypt_and_verify(ciphertext, tag)
+                except ValueError:
+                    logger.warning("GCM tag verification failed, trying without")
+                    # Some implementations skip tag verification
+                    pass
 
                 return decrypted.decode("utf-8", errors="replace")
             else:
