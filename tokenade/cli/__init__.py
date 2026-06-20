@@ -11,6 +11,7 @@ from tokenade.cli.management import (
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
+    cmd_refresh_browser,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -71,7 +72,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -600,6 +601,16 @@ Commands:
     launch_parser.add_argument("--extra-args", help="Extra browser args (comma-separated)")
     launch_parser.add_argument("--browser-path", help="Path to browser executable")
 
+    # Refresh Browser (cookie-based session refresh)
+    refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
+    refresh_browser_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
+    refresh_browser_parser.add_argument("--browser", "-b", default="chrome", help="Browser to use (chrome, firefox, brave, edge)")
+    refresh_browser_parser.add_argument("--url", "-u", help="Target URL (auto-detected from cookies if not specified)")
+    refresh_browser_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
+    refresh_browser_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
+    refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
+    refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -633,6 +644,7 @@ Commands:
         "validate-session": cmd_validate_session,
         "cicd": cmd_cicd,
         "launch": cmd_launch,
+        "refresh-browser": cmd_refresh_browser,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,

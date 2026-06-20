@@ -1313,3 +1313,277 @@ def cmd_cicd(args):
         print(f"\n✅ Generated cron script: {output_path}")
         print(f"\n📖 Add to crontab:")
         print(f"   0 */{args.interval_hours} * * * {output_path}")
+
+
+def cmd_refresh_browser(args):
+    """Refresh session by launching undetectable browser, injecting cookies, navigating, and extracting fresh cookies."""
+    from tokenade.core.importer.session_packager import SessionPackager
+    from tokenade.core.browser.undetectable import SystemBrowserLauncher
+
+    print("\n" + "=" * 80)
+    print("TOKENADE - Cookie-Based Session Refresh")
+    print("=" * 80)
+
+    # 1. Load existing session
+    session_file = Path(args.session)
+    if not session_file.exists():
+        print(f"❌ Session file not found: {args.session}")
+        return
+
+    packager = SessionPackager()
+    try:
+        session = packager.load(str(session_file))
+    except Exception as e:
+        print(f"❌ Failed to load session: {e}")
+        return
+
+    cookies = session.get("cookies", [])
+    site_name = session.get("site_name", "unknown")
+    source_browser = session.get("source_device", {}).get("browser", "unknown")
+
+    if not cookies:
+        print("❌ No cookies in session file")
+        return
+
+    # Determine target URL
+    target_url = args.url
+    if not target_url:
+        # Try to infer from cookies
+        domains = {c.get("domain", "").lstrip(".") for c in cookies}
+        if "google.com" in domains or "gmail.com" in domains:
+            target_url = "https://mail.google.com"
+        elif "github.com" in domains:
+            target_url = "https://github.com"
+        elif "twitter.com" in domains or "x.com" in domains:
+            target_url = "https://x.com"
+        elif "linkedin.com" in domains:
+            target_url = "https://www.linkedin.com"
+        else:
+            # Use the first non-empty domain
+            for d in sorted(domains):
+                if d and "." in d:
+                    target_url = f"https://{d}"
+                    break
+        if not target_url:
+            print("❌ Could not determine target URL. Use --url to specify.")
+            return
+
+    print(f"\n📂 Session: {args.session}")
+    print(f"   Site: {site_name}")
+    print(f"   Cookies: {len(cookies)}")
+    print(f"   Source: {source_browser}")
+    print(f"\n🌐 Target: {target_url}")
+    print(f"   Browser: {args.browser}")
+
+    # 2. Check if browser is already running
+    import subprocess as _sp
+    _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
+    try:
+        _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+        _is_running = False
+        if platform.system() != "Windows" and _running.returncode == 0:
+            _is_running = int(_running.stdout.strip()) > 0
+        elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
+            _is_running = True
+        if _is_running:
+            print(f"\n   ⚠️  {args.browser} is already running. Close it first or use a different port.")
+            return
+    except Exception:
+        pass
+
+    # 3. Launch undetectable browser (headless for refresh)
+    launcher = SystemBrowserLauncher()
+    port = args.port
+    browser = None
+
+    try:
+        print(f"\n🚀 Launching {args.browser} (headless={args.headless})...")
+        browser = launcher.launch(
+            browser=args.browser,
+            visible=not args.headless,
+            port=port,
+        )
+        print(f"   ✅ Browser ready (PID: {browser.pid}, CDP: {browser.cdp_url})")
+
+        # 4. Inject cookies via CDP
+        import asyncio
+        import websockets
+
+        # Create new tab
+        import urllib.request as _urllib_req
+        _req = _urllib_req.Request(
+            f"http://127.0.0.1:{port}/json/new?about:blank",
+            method="PUT",
+        )
+        _resp = _urllib_req.urlopen(_req, timeout=10)
+        _tab_info = json.loads(_resp.read().decode())
+        _tab_id = _tab_info.get("id")
+        _tab_ws_url = _tab_info.get("webSocketDebuggerUrl")
+
+        if not _tab_ws_url:
+            print("❌ Failed to create tab")
+            return
+
+        async def refresh():
+            msg_id_counter = [0]
+
+            async def cdp_cmd(ws, method, params=None):
+                msg_id_counter[0] += 1
+                current_id = msg_id_counter[0]
+                msg = {"id": current_id, "method": method}
+                if params:
+                    msg["params"] = params
+                await ws.send(json.dumps(msg))
+                deadline = time.time() + 30
+                while time.time() < deadline:
+                    try:
+                        raw = await asyncio.wait_for(
+                            ws.recv(),
+                            timeout=min(5, deadline - time.time()),
+                        )
+                    except asyncio.TimeoutError:
+                        continue
+                    data = json.loads(raw)
+                    if "id" in data and data["id"] == current_id:
+                        if "error" in data:
+                            raise RuntimeError(data["error"].get("message", "CDP error"))
+                        return data.get("result", {})
+                raise RuntimeError(f"CDP timeout: {method}")
+
+            tab_ws = await websockets.connect(
+                _tab_ws_url,
+                max_size=10 * 1024 * 1024,
+                ping_interval=30,
+                ping_timeout=10,
+            )
+
+            # Inject stealth
+            from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
+            stealth_script = get_undetectable_stealth_script()
+            await cdp_cmd(tab_ws, "Page.enable")
+            await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+
+            # Inject cookies
+            print(f"\n🍪 Injecting {len(cookies)} cookies...")
+            cdp_cookies = []
+            for cookie in cookies:
+                cdp_cookie = {
+                    "name": cookie.get("name", ""),
+                    "value": cookie.get("value", ""),
+                    "domain": cookie.get("domain", ""),
+                    "path": cookie.get("path", "/"),
+                }
+                if cookie.get("secure"):
+                    cdp_cookie["secure"] = True
+                if cookie.get("httpOnly"):
+                    cdp_cookie["httpOnly"] = True
+                if cookie.get("sameSite"):
+                    same_site = cookie["sameSite"]
+                    if same_site in ("Strict", "Lax", "None"):
+                        cdp_cookie["sameSite"] = same_site
+                expires = cookie.get("expires", 0)
+                if expires and int(expires) > 0:
+                    exp = int(expires)
+                    if exp > 1262304000000:
+                        exp = exp // 1000
+                    cdp_cookie["expires"] = exp
+                if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                    cdp_cookie["secure"] = True
+                cdp_cookies.append(cdp_cookie)
+
+            await cdp_cmd(tab_ws, "Network.enable")
+            await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+            print(f"   ✅ Cookies injected")
+
+            # Navigate to target
+            print(f"\n🌐 Navigating to: {target_url}")
+            await cdp_cmd(tab_ws, "Page.navigate", {"url": target_url})
+
+            # Wait for page load and "warm up" the session
+            wait_time = args.wait
+            print(f"   ⏳ Waiting {wait_time}s for session refresh...")
+            await asyncio.sleep(wait_time)
+
+            # Get page info
+            title_result = await cdp_cmd(
+                tab_ws, "Runtime.evaluate",
+                {"expression": "document.title", "returnByValue": True},
+            )
+            title = title_result.get("result", {}).get("value", "")
+            print(f"   📄 Page: {title}")
+
+            # Extract fresh cookies
+            print(f"\n🔄 Extracting refreshed cookies...")
+            from tokenade.cli.session import _extract_via_cdp
+            session_state = _extract_via_cdp(port, domain_filter=None)
+            fresh_cookies = session_state["cookies"]
+            fresh_ls = session_state.get("local_storage", {})
+            fresh_ss = session_state.get("session_storage", {})
+
+            await tab_ws.close()
+            return fresh_cookies, fresh_ls, fresh_ss
+
+        fresh_cookies, fresh_ls, fresh_ss = asyncio.run(refresh())
+
+        if not fresh_cookies:
+            print("\n❌ No cookies extracted after refresh. Session may be expired.")
+            return
+
+        print(f"\n   ✅ Extracted {len(fresh_cookies)} fresh cookies")
+        if fresh_ls:
+            print(f"   ✅ Extracted {len(fresh_ls)} localStorage entries")
+        if fresh_ss:
+            print(f"   ✅ Extracted {len(fresh_ss)} sessionStorage entries")
+
+        # 5. Compare old vs new
+        old_names = {c.get("name") for c in cookies}
+        new_names = {c.get("name") for c in fresh_cookies}
+        added = new_names - old_names
+        removed = old_names - new_names
+        kept = old_names & new_names
+
+        print(f"\n📊 Cookie changes:")
+        print(f"   Kept: {len(kept)}")
+        if added:
+            print(f"   Added: {len(added)} ({', '.join(sorted(added)[:5])}{'...' if len(added) > 5 else ''})")
+        if removed:
+            print(f"   Removed: {len(removed)} ({', '.join(sorted(removed)[:5])}{'...' if len(removed) > 5 else ''})")
+
+        # 6. Update session file
+        session["cookies"] = fresh_cookies
+        if fresh_ls:
+            session["local_storage"] = fresh_ls
+        if fresh_ss:
+            session["session_storage"] = fresh_ss
+
+        # Update metadata
+        if "metadata" not in session:
+            session["metadata"] = {}
+        session["metadata"]["cookie_count"] = len(fresh_cookies)
+        session["metadata"]["local_storage_count"] = len(fresh_ls) if fresh_ls else 0
+        session["metadata"]["session_storage_count"] = len(fresh_ss) if fresh_ss else 0
+
+        from datetime import datetime, timezone
+        session["metadata"]["last_refreshed"] = datetime.now(timezone.utc).isoformat()
+
+        # Save
+        output = args.output or str(session_file)
+        packager.save(session, output)
+        print(f"\n💾 Session saved: {output}")
+        print(f"   Cookies: {len(fresh_cookies)}")
+        if fresh_ls:
+            print(f"   localStorage: {len(fresh_ls)} entries")
+        if fresh_ss:
+            print(f"   sessionStorage: {len(fresh_ss)} entries")
+
+        print(f"\n✅ Session refreshed successfully!")
+
+    except Exception as e:
+        print(f"\n❌ Refresh failed: {e}")
+        logger.error(f"Refresh failed: {e}", exc_info=True)
+    finally:
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass

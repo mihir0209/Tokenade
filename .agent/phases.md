@@ -136,19 +136,20 @@
 **Output**: Updated `COMPREHENSIVE_STEALTH_SCRIPT` with 40+ evasions
 **Time**: 3-4 days
 
-### Phase 30: Cookie-Based Session Refresh (Phase 4)
-**Status**: Not started
+### Phase 30: Cookie-Based Session Refresh (Phase 4) ✅
+**Status**: Complete (2026-06-21)
 **Goal**: Refresh sessions using ONLY cookies (no OAuth credentials)
+**Output**: `tokenade refresh-browser` command
 **Flow**:
 1. Load cookies from .tokenade file
-2. Launch undetectable browser
+2. Launch undetectable browser (headless by default)
 3. Inject cookies via CDP
 4. Navigate to target site
-5. Platform sees "real user"
-6. Extract refreshed cookies/tokens
-7. Update .tokenade file
-**Output**: `tokenade refresh-browser -s session.tokenade`
-**Time**: 2-3 days
+5. Platform sees "real user" → issues new session cookies
+6. Extract refreshed cookies/tokens via CDP
+7. Update .tokenade file with fresh cookies + localStorage + sessionStorage
+**Tests**: 13 tests passing (test_refresh_browser.py)
+**CLI**: `tokenade refresh-browser -s session.tokenade -b chrome --url https://github.com`
 
 ### Phase 31: Multi-Account Orchestration (Phase 5)
 **Status**: Not started

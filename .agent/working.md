@@ -43,6 +43,20 @@
 - **Workaround:** Export from non-Chrome (Brave/Firefox), import into non-Chrome (Edge/Firefox/Brave). Never Chrome-to-Chrome for Google.
 - **Multi-device:** Use proxy mode (`tokenade proxy --host 0.0.0.0`) instead of session migration
 
+### Phase 30: Cookie-Based Session Refresh (2026-06-21)
+- **Command:** `tokenade refresh-browser -s session.tokenade -b chrome -u https://github.com`
+- **Flow:** Load cookies → Launch undetectable browser (headless) → Inject cookies via CDP → Navigate → Wait for session warm-up → Extract fresh cookies → Save updated session file
+- **Key features:**
+  - Auto-detects target URL from cookies (google.com → mail.google.com, github.com → github.com, etc.)
+  - Headless mode by default (no window shown)
+  - Configurable wait time (`--wait 10` seconds for session warm-up)
+  - Compares old vs new cookies (shows added/removed/kept)
+  - Updates localStorage + sessionStorage alongside cookies
+  - Saves to original file or new output file (`--output refreshed.tokenade`)
+  - No OAuth credentials needed — just cookies
+- **Tests:** 13 tests in test_refresh_browser.py
+- **Why this matters:** Solves the session expiration problem. Instead of manual re-login, tokenade refreshes sessions automatically by acting as a real user.
+
 ### CDP Proxy Battle-Tested (2026-06-17)
 - **External CDP connections:** Playwright `connect_over_cdp` now works via `/json/version` passthrough
 - **Cookie injection via raw CDP:** `Storage.setCookies` injects 123/123 cookies at browser level, visible to ALL CDP clients
