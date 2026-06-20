@@ -680,9 +680,11 @@ def cmd_launch(args):
             cookies = session.get("cookies", [])
             print(f"   Cookies: {len(cookies)}")
 
-            # Connect via CDP and inject
+            # Connect via CDP and inject (use actual port from browser)
+            actual_port = browser.port
+
             async def inject():
-                cdp = CDPConnection(port=args.port)
+                cdp = CDPConnection(port=actual_port)
                 connected = await cdp.connect()
                 if not connected:
                     print("❌ Failed to connect to CDP")
@@ -711,8 +713,10 @@ def cmd_launch(args):
 
         elif args.url:
             # Just navigate to URL
+            actual_port = browser.port
+
             async def navigate_only():
-                cdp = CDPConnection(port=args.port)
+                cdp = CDPConnection(port=actual_port)
                 connected = await cdp.connect()
                 if not connected:
                     print("❌ Failed to connect to CDP")
@@ -733,8 +737,8 @@ def cmd_launch(args):
 
         print(f"\n{'=' * 80}")
         print("Browser is running. You can:")
-        print(f"  1. Open http://127.0.0.1:{args.port} in another browser")
-        print(f"  2. Use Chrome DevTools to connect to ws://127.0.0.1:{args.port}")
+        print(f"  1. Open http://127.0.0.1:{browser.port} in another browser")
+        print(f"  2. Use Chrome DevTools to connect to ws://127.0.0.1:{browser.port}")
         print(f"  3. Or let it run and control via CDP WebSocket")
         print(f"\nPress Ctrl+C to close the browser")
         print(f"{'=' * 80}\n")

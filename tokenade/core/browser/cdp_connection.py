@@ -52,9 +52,13 @@ class CDPConnection:
     def cdp_url(self) -> str:
         return f"http://{self.host}:{self.port}"
 
-    async def connect(self) -> bool:
+    async def connect(self, target_page: bool = True) -> bool:
         """
         Connect to CDP WebSocket.
+
+        Args:
+            target_page: If True, connect to a page target (for Page.* commands).
+                        If False, connect to browser target (for Browser.* commands).
 
         Returns:
             True if connected successfully
@@ -62,8 +66,13 @@ class CDPConnection:
         try:
             import websockets
 
-            # Get WebSocket URL from /json/version
-            ws_url = await self._get_ws_url()
+            if target_page:
+                # Get page target from /json/list
+                ws_url = await self._get_page_ws_url()
+            else:
+                # Get browser target from /json/version
+                ws_url = await self._get_ws_url()
+
             if not ws_url:
                 logger.error("Could not get WebSocket URL from CDP")
                 return False
@@ -88,6 +97,36 @@ class CDPConnection:
         except Exception as e:
             logger.error(f"CDP connection failed: {e}")
             return False
+
+    async def _get_page_ws_url(self) -> Optional[str]:
+        """Get WebSocket URL for a page target from /json/list."""
+        import urllib.request
+
+        try:
+            # First try to get existing page targets
+            req = urllib.request.Request(f"{self.cdp_url}/json/list")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                targets = json.loads(resp.read().decode())
+
+            # Find a page target
+            for target in targets:
+                if target.get("type") == "page":
+                    ws_url = target.get("webSocketDebuggerUrl")
+                    if ws_url:
+                        logger.debug(f"Found page target: {target.get('title', 'untitled')}")
+                        return ws_url
+
+            # No page target found, create a new tab
+            logger.debug("No page target found, creating new tab")
+            req = urllib.request.Request(f"{self.cdp_url}/json/new?about:blank")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                new_target = json.loads(resp.read().decode())
+                return new_target.get("webSocketDebuggerUrl")
+
+        except Exception as e:
+            logger.debug(f"Failed to get page WS URL: {e}")
+            # Fallback to browser target
+            return await self._get_ws_url()
 
     async def _get_ws_url(self) -> Optional[str]:
         """Get WebSocket debugger URL from CDP /json/version."""
@@ -150,6 +189,7 @@ class CDPConnection:
         method: str,
         params: Optional[Dict] = None,
         timeout: float = 30.0,
+        session_id: Optional[str] = None,
     ) -> Dict:
         """
         Send a CDP command and wait for response.
@@ -158,6 +198,7 @@ class CDPConnection:
             method: CDP method name (e.g., "Page.navigate")
             params: Command parameters
             timeout: Response timeout in seconds
+            session_id: Optional session ID for target-level commands
 
         Returns:
             Response result dict
@@ -174,6 +215,8 @@ class CDPConnection:
         message = {"id": msg_id, "method": method}
         if params:
             message["params"] = params
+        if session_id:
+            message["sessionId"] = session_id
 
         await self._ws.send(json.dumps(message))
 
@@ -294,22 +337,74 @@ class CDPConnection:
         """Inject comprehensive stealth script to hide automation."""
         stealth_script = get_undetectable_stealth_script()
 
-        # Enable page events
-        await self.send_command("Page.enable")
-
-        # Add script to evaluate on new documents
-        await self.send_command(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {"source": stealth_script},
-        )
-
-        # Also evaluate in current page
+        # Check if we're connected to a page or browser target
+        # Page targets support Page.* commands, browser targets don't
         try:
-            await self.evaluate(stealth_script)
-        except Exception:
-            pass  # May fail if no page loaded yet
+            # Enable page events (only works on page targets)
+            await self.send_command("Page.enable")
 
-        logger.info("Stealth script injected via CDP")
+            # Add script to evaluate on new documents
+            await self.send_command(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": stealth_script},
+            )
+
+            # Also evaluate in current page
+            try:
+                await self.evaluate(stealth_script)
+            except Exception:
+                pass  # May fail if no page loaded yet
+
+            logger.info("Stealth script injected via CDP (page target)")
+
+        except RuntimeError as e:
+            if "wasn't found" in str(e):
+                # We're connected to browser target, not page target
+                # Use Target domain to inject into all pages
+                logger.info("Connected to browser target, using Target domain for stealth")
+                await self._inject_stealth_via_target(stealth_script)
+            else:
+                raise
+
+    async def _inject_stealth_via_target(self, script: str):
+        """Inject stealth script via Target domain (for browser-level connections)."""
+        try:
+            # Get all page targets
+            import urllib.request
+            req = urllib.request.Request(f"{self.cdp_url}/json/list")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                targets = json.loads(resp.read().decode())
+
+            # Attach to each page target and inject
+            for target in targets:
+                if target.get("type") == "page":
+                    target_id = target.get("id")
+                    if target_id:
+                        try:
+                            # Attach to target
+                            result = await self.send_command(
+                                "Target.attachToTarget",
+                                {"targetId": target_id, "flatten": True},
+                            )
+                            session_id = result.get("sessionId")
+                            if session_id:
+                                # Send Page.enable via session
+                                await self.send_command(
+                                    "Page.enable",
+                                    session_id=session_id,
+                                )
+                                # Inject script via session
+                                await self.send_command(
+                                    "Page.addScriptToEvaluateOnNewDocument",
+                                    {"source": script},
+                                    session_id=session_id,
+                                )
+                                logger.info(f"Stealth injected into target: {target.get('title', 'untitled')}")
+                        except Exception as e:
+                            logger.debug(f"Failed to inject into target {target_id}: {e}")
+
+        except Exception as e:
+            logger.warning(f"Failed to inject stealth via Target domain: {e}")
 
     async def get_page_html(self) -> str:
         """Get current page HTML."""
