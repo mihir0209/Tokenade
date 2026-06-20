@@ -625,17 +625,15 @@ def get_undetectable_stealth_script() -> str:
             };
         }
 
-        // 9. Remove HeadlessChrome from user agent
-        Object.defineProperty(navigator, 'userAgent', {
-            get: function() {
-                const ua = navigator.userAgent;
-                if (ua.includes('HeadlessChrome')) {
-                    return ua.replace('HeadlessChrome', 'Chrome');
-                }
-                return ua;
-            },
-            configurable: true
-        });
+        // 9. Remove HeadlessChrome from user agent (conditional — don't override real UA)
+        if (navigator.userAgent.includes('HeadlessChrome')) {
+            Object.defineProperty(navigator, 'userAgent', {
+                get: function() {
+                    return navigator.userAgent.replace('HeadlessChrome', 'Chrome');
+                },
+                configurable: true
+            });
+        }
 
         // 10. Spoof navigator.connection
         if (!navigator.connection) {
@@ -739,13 +737,6 @@ def get_undetectable_stealth_script() -> str:
                 });
             }
         }
-
-        // 20. document.hasFocus() - sometimes returns false for real users
-        const originalHasFocus = document.hasFocus.bind(document);
-        document.hasFocus = function() {
-            // 5% chance of reporting unfocused (realistic)
-            return Math.random() > 0.05 ? originalHasFocus() : false;
-        };
 
         console.log('[Tokenade] Stealth injected successfully');
     })();

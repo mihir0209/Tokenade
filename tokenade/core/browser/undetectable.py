@@ -214,6 +214,101 @@ class SystemBrowserLauncher:
     def __init__(self):
         self._active_browsers: List[BrowserProcess] = []
 
+    def _get_default_profile_dir(self, browser: str) -> Optional[str]:
+        """Find the user's default browser profile directory."""
+        os_type = platform.system()
+
+        if browser.lower() in ("chrome", "chromium"):
+            if os_type == "Linux":
+                for path in [
+                    os.path.expanduser("~/.config/google-chrome"),
+                    os.path.expanduser("~/.config/chromium"),
+                ]:
+                    if os.path.exists(path):
+                        return path
+            elif os_type == "Darwin":
+                path = os.path.expanduser("~/Library/Application Support/Google/Chrome")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Windows":
+                path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
+                if os.path.exists(path):
+                    return path
+
+        elif browser.lower() == "brave":
+            if os_type == "Linux":
+                path = os.path.expanduser("~/.config/BraveSoftware/Brave-Browser")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Darwin":
+                path = os.path.expanduser("~/Library/Application Support/BraveSoftware/Brave-Browser")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Windows":
+                path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "BraveSoftware", "Brave-Browser", "User Data")
+                if os.path.exists(path):
+                    return path
+
+        elif browser.lower() == "firefox":
+            if os_type == "Linux":
+                path = os.path.expanduser("~/.mozilla/firefox")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Darwin":
+                path = os.path.expanduser("~/Library/Application Support/Firefox/Profiles")
+                if os.path.exists(path):
+                    return path
+
+        elif browser.lower() in ("edge", "msedge"):
+            if os_type == "Linux":
+                path = os.path.expanduser("~/.config/microsoft-edge")
+                if os.path.exists(path):
+                    return path
+
+        return None
+
+    def _copy_profile(self, browser: str, dest_dir: str) -> bool:
+        """
+        Copy the user's real browser profile to dest_dir.
+
+        Full copy (not selective) ensures the browser fingerprint matches
+        the user's real browser. Skips only cache directories to save space.
+        """
+        import shutil
+
+        src_dir = self._get_default_profile_dir(browser)
+        if not src_dir:
+            logger.debug(f"No default profile found for {browser}")
+            return False
+
+        logger.info(f"Copying real {browser} profile from {src_dir}")
+
+        # Directories to skip (cache, can be regenerated)
+        SKIP_DIRS = {
+            "Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache",
+            "Service Worker", "ServiceWorker", "ScriptCache", "IndexedDB",
+            "Session Storage", "Local Storage", "blob_storage",
+            "File System", "GCM Store", "databases",
+            "component_crx_cache", "extensions_crx_cache",
+            "BudgetDatabase", "WebStorage",
+        }
+
+        def _ignore(directory, contents):
+            return [c for c in contents if c in SKIP_DIRS]
+
+        try:
+            shutil.copytree(src_dir, dest_dir, ignore=_ignore, dirs_exist_ok=True)
+            size_mb = sum(
+                os.path.getsize(os.path.join(dp, f))
+                for dp, _, fnames in os.walk(dest_dir)
+                for f in fnames
+            ) / (1024 * 1024)
+            logger.info(f"Profile copy complete ({size_mb:.0f} MB)")
+            return True
+        except Exception as e:
+            logger.warning(f"Profile copy failed: {e}")
+            return False
+
     def find_browser(self, browser: str = "chrome") -> Optional[str]:
         """
         Find system browser executable path.
@@ -378,23 +473,13 @@ class SystemBrowserLauncher:
 
         if browser.lower() in ("chrome", "chromium", "brave", "edge", "msedge"):
             # Chromium-based browsers
+            # Minimal flags — real users don't have --disable-* flags
             args.extend([
                 f"--remote-debugging-port={port}",
                 f"--window-size={window_size[0]},{window_size[1]}",
                 "--no-first-run",
                 "--no-default-browser-check",
-                "--disable-background-networking",
-                "--disable-sync",
-                "--disable-translate",
-                "--disable-extensions",
-                "--disable-infobars",
-                "--disable-component-update",
-                "--password-store=basic",
             ])
-
-            # Only add AutomationControlled flag for Chrome (not Brave)
-            if browser.lower() in ("chrome", "chromium"):
-                args.append("--disable-blink-features=AutomationControlled")
 
             if user_data_dir:
                 args.append(f"--user-data-dir={user_data_dir}")
@@ -403,9 +488,6 @@ class SystemBrowserLauncher:
 
             if not visible:
                 args.append("--headless=new")
-
-            # Remove --enable-automation if present
-            args = [a for a in args if a != "--enable-automation"]
 
         elif browser.lower() == "firefox":
             # Firefox

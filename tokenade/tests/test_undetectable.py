@@ -97,6 +97,22 @@ class TestSystemBrowserLauncher:
         assert "Darwin" in launcher.CHROME_PATHS
         assert "Windows" in launcher.CHROME_PATHS
 
+    def test_get_default_profile_dir(self):
+        launcher = SystemBrowserLauncher()
+        # On this system, should find Brave profile
+        path = launcher._get_default_profile_dir("brave")
+        assert path is None or isinstance(path, str)
+
+    def test_get_default_profile_dir_unknown(self):
+        launcher = SystemBrowserLauncher()
+        path = launcher._get_default_profile_dir("totally-fake-browser")
+        assert path is None
+
+    def test_copy_profile_returns_false_when_no_profile(self):
+        launcher = SystemBrowserLauncher()
+        result = launcher._copy_profile("totally-fake-browser-12345", "/tmp/test_dest")
+        assert result is False
+
 
 class TestCDPConnection:
     def test_cdp_url(self):

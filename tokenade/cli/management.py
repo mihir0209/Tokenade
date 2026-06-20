@@ -658,11 +658,21 @@ def cmd_launch(args):
     print(f"👁️  Visible: {args.visible}")
 
     try:
+        # Auto-detect real profile if none specified
+        profile_dir = args.profile_dir
+        using_real_profile = False
+        if not profile_dir:
+            real_dir = launcher._get_default_profile_dir(args.browser)
+            if real_dir:
+                profile_dir = real_dir
+                using_real_profile = True
+                print(f"   📁 Using real profile: {real_dir}")
+
         browser = launcher.launch(
             browser=args.browser,
             visible=args.visible,
             port=args.port,
-            profile_dir=args.profile_dir,
+            profile_dir=profile_dir,
             extra_args=args.extra_args.split(",") if args.extra_args else [],
         )
 
@@ -670,8 +680,9 @@ def cmd_launch(args):
         print(f"   CDP URL: {browser.cdp_url}")
         print(f"   Profile: {browser.profile_dir}")
 
-        # Inject session if provided
-        if args.session:
+        # Inject session if provided (skip if using auto-detected profile — cookies already there)
+        using_real_profile = (args.profile_dir is None)
+        if args.session and not using_real_profile:
             print(f"\n📂 Loading session: {args.session}")
 
             packager = SessionPackager()
