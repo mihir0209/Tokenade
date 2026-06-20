@@ -828,6 +828,32 @@ def cmd_launch(args):
                     # Wait for page load
                     await asyncio.sleep(4)
 
+                    # Step 6: Inject localStorage + sessionStorage (after navigation, on correct origin)
+                    session_data = session.get("session_storage", {})
+                    local_data = session.get("local_storage", {})
+
+                    if local_data:
+                        print(f"   Injecting {len(local_data)} localStorage entries...", flush=True)
+                        ls_json = json.dumps(local_data)
+                        await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
+                            "returnByValue": True,
+                        })
+
+                    if session_data:
+                        print(f"   Injecting {len(session_data)} sessionStorage entries...", flush=True)
+                        ss_json = json.dumps(session_data)
+                        await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{sessionStorage.setItem(e[0],e[1])}})}})({ss_json})",
+                            "returnByValue": True,
+                        })
+
+                    # Step 7: Re-navigate with full session state
+                    if local_data or session_data:
+                        print(f"   Re-navigating with full session state...", flush=True)
+                        await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
+                        await asyncio.sleep(4)
+
                     # Get page info
                     title_result = await cdp_cmd(
                         tab_ws, "Runtime.evaluate",

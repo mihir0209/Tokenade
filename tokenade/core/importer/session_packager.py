@@ -130,6 +130,7 @@ class SessionPackager:
                 fingerprint: Optional[Dict] = None,
                 tokens: Optional[List[Dict]] = None,
                 local_storage: Optional[Dict[str, str]] = None,
+                session_storage: Optional[Dict[str, str]] = None,
                 source_browser_manager=None,
                 tls_profile: Optional[Dict] = None,
                 oauth_config: Optional[Dict] = None) -> Dict:
@@ -143,6 +144,7 @@ class SessionPackager:
             fingerprint: Optional fingerprint dict
             tokens: Optional list of tokens
             local_storage: Optional localStorage key-value dict
+            session_storage: Optional sessionStorage key-value dict
             source_browser_manager: Optional browser manager for fingerprint collection
             tls_profile: Optional TLS profile for proxy mode
             oauth_config: Optional OAuth 2.0 configuration dict
@@ -183,6 +185,7 @@ class SessionPackager:
             "cookies": cookies,
             "tokens": tokens or [],
             "local_storage": local_storage or {},
+            "session_storage": session_storage or {},
             "fingerprint": fingerprint,
             "tls_profile": tls_profile,
             "oauth_config": oauth_config,
@@ -191,11 +194,13 @@ class SessionPackager:
                 "cookie_count": len(cookies),
                 "critical_cookie_count": critical_count,
                 "local_storage_count": len(local_storage) if local_storage else 0,
+                "session_storage_count": len(session_storage) if session_storage else 0,
             },
         }
 
         ls_info = f", {len(local_storage)} localStorage" if local_storage else ""
-        logger.info(f"Packaged session: {site_name} ({len(cookies)} cookies, {critical_count} critical{ls_info})")
+        ss_info = f", {len(session_storage)} sessionStorage" if session_storage else ""
+        logger.info(f"Packaged session: {site_name} ({len(cookies)} cookies, {critical_count} critical{ls_info}{ss_info})")
         return package
 
     def _detect_tls_profile(self, browser: str, fingerprint: Optional[Dict] = None) -> Dict:

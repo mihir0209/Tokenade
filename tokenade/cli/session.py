@@ -16,8 +16,36 @@ from tokenade.handlers.google import GoogleHandler
 logger = logging.getLogger("tokenade")
 
 
-def _extract_via_cdp(port: int, domain_filter: str = None) -> list:
-    """Extract cookies from running browser via CDP (bypasses SQLite decryption)."""
+async def _eval_with_session(ws, msg_id, session_id, expression):
+    """Evaluate JS in a tab via CDP session (async)."""
+    import asyncio
+    import time as _time
+
+    msg_id[0] += 1
+    mid = msg_id[0]
+    m = {
+        "id": mid,
+        "method": "Runtime.evaluate",
+        "params": {"expression": expression, "returnByValue": True},
+        "sessionId": session_id,
+    }
+    await ws.send(json.dumps(m))
+
+    deadline = _time.time() + 10
+    while _time.time() < deadline:
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=min(2, deadline - _time.time()))
+        except asyncio.TimeoutError:
+            continue
+        d = json.loads(raw)
+        if d.get("id") == mid:
+            result = d.get("result", {}).get("result", {})
+            return result.get("value")
+    return None
+
+
+def _extract_via_cdp(port: int, domain_filter: str = None) -> dict:
+    """Extract cookies + localStorage + sessionStorage from running browser via CDP."""
     import urllib.request as _urllib_req
 
     try:
@@ -26,14 +54,14 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> list:
         browser_ws = version.get("webSocketDebuggerUrl")
     except Exception as e:
         print(f"❌ Cannot connect to CDP on port {port}: {e}")
-        return []
+        return {"cookies": [], "local_storage": {}, "session_storage": {}}
 
     import asyncio
     import websockets
 
-    async def _get_cookies():
+    async def _get_session_state():
         ws = await websockets.connect(
-            browser_ws, max_size=10 * 1024 * 1024,
+            browser_ws, max_size=50 * 1024 * 1024,
             ping_interval=30, ping_timeout=10,
         )
         msg_id = [0]
@@ -57,20 +85,139 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> list:
                     return d.get("result", {})
             return {}
 
+        # 1. Get all cookies
         result = await cmd("Storage.getCookies")
         cdp_cookies = result.get("cookies", [])
+
+        # 2. Find a tab on the target domain for localStorage/sessionStorage
+        local_storage = {}
+        session_storage = {}
+
+        targets_result = await cmd("Target.getTargets")
+        targets = targets_result.get("targetInfos", [])
+
+        # Find a tab matching domain filter
+        target_page = None
+        domains_needed = []
+        if domain_filter:
+            domains_needed = [d.strip().lstrip(".") for d in domain_filter.split(",") if d.strip()]
+
+        for t in targets:
+            if t.get("type") == "page" and t.get("url"):
+                url = t["url"]
+                for d in domains_needed:
+                    if d in url:
+                        target_page = t
+                        break
+                if target_page:
+                    break
+
+        # If no matching tab, open a new one on the first domain
+        if not target_page and domains_needed:
+            first_domain = domains_needed[0]
+            proto = "https" if first_domain not in ("localhost", "127.0.0.1") else "http"
+            create_result = await cmd("Target.createTarget", {
+                "url": f"{proto}://{first_domain}"
+            })
+            target_id = create_result.get("targetId")
+            if target_id:
+                # Attach to the new tab
+                attach_result = await cmd("Target.attachToTarget", {
+                    "targetId": target_id,
+                    "flatten": True,
+                })
+                session_id = attach_result.get("sessionId")
+                if session_id:
+                    # Wait for page load
+                    import time as _time
+                    _time.sleep(3)
+
+                    # Get localStorage
+                    for d in domains_needed:
+                        proto = "https" if d not in ("localhost", "127.0.0.1") else "http"
+                        nav_cmd = {
+                            "id": msg_id[0] + 1000,
+                            "method": "Page.navigate",
+                            "params": {"url": f"{proto}://{d}"},
+                            "sessionId": session_id,
+                        }
+                        msg_id[0] += 1
+                        await ws.send(json.dumps(nav_cmd))
+                        _time.sleep(2)
+
+                    # Collect localStorage
+                    ls_result = await _eval_with_session(ws, msg_id, session_id,
+                        "JSON.stringify(Object.entries(localStorage))")
+                    if ls_result:
+                        try:
+                            entries = json.loads(ls_result)
+                            for key, val in entries:
+                                local_storage[key] = val
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    # Collect sessionStorage
+                    ss_result = await _eval_with_session(ws, msg_id, session_id,
+                        "JSON.stringify(Object.entries(sessionStorage))")
+                    if ss_result:
+                        try:
+                            entries = json.loads(ss_result)
+                            for key, val in entries:
+                                session_storage[key] = val
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    # Close the tab we created
+                    await cmd("Target.closeTarget", {"targetId": target_id})
+
+        # 3. If we found an existing tab, try to get its storage via the main browser ws
+        elif target_page:
+            target_id = target_page.get("targetId")
+            attach_result = await cmd("Target.attachToTarget", {
+                "targetId": target_id,
+                "flatten": True,
+            })
+            session_id = attach_result.get("sessionId")
+            if session_id:
+                for d in domains_needed:
+                    # Collect localStorage
+                    ls_result = await _eval_with_session(ws, msg_id, session_id,
+                        "JSON.stringify(Object.entries(localStorage))")
+                    if ls_result:
+                        try:
+                            entries = json.loads(ls_result)
+                            for key, val in entries:
+                                local_storage[key] = val
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    # Collect sessionStorage
+                    ss_result = await _eval_with_session(ws, msg_id, session_id,
+                        "JSON.stringify(Object.entries(sessionStorage))")
+                    if ss_result:
+                        try:
+                            entries = json.loads(ss_result)
+                            for key, val in entries:
+                                session_storage[key] = val
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
         await ws.close()
-        return cdp_cookies
+        return {
+            "cookies": cdp_cookies,
+            "local_storage": local_storage,
+            "session_storage": session_storage,
+        }
 
     try:
-        cdp_cookies = asyncio.run(_get_cookies())
+        session_state = asyncio.run(_get_session_state())
     except Exception as e:
         print(f"❌ CDP extraction failed: {e}")
-        return []
+        return {"cookies": [], "local_storage": {}, "session_storage": {}}
 
     # Convert CDP format to tokenade format
     cookies = []
-    for c in cdp_cookies:
+    for c in session_state["cookies"]:
         cookie = {
             "name": c.get("name", ""),
             "value": c.get("value", ""),
@@ -104,7 +251,11 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> list:
                         break
         cookies = filtered
 
-    return cookies
+    return {
+        "cookies": cookies,
+        "local_storage": session_state["local_storage"],
+        "session_storage": session_state["session_storage"],
+    }
 
 
 def cmd_extract(args):
@@ -304,7 +455,10 @@ def cmd_export(args):
                 print(f"❌ Failed to launch browser: {e}")
                 return
 
-        cookies = _extract_via_cdp(cdp_port, domain_filter=getattr(args, 'domains', None))
+        session_state = _extract_via_cdp(cdp_port, domain_filter=getattr(args, 'domains', None))
+        cookies = session_state["cookies"]
+        local_storage = session_state.get("local_storage", {})
+        session_storage = session_state.get("session_storage", {})
 
         if launched_browser:
             try:
@@ -316,6 +470,10 @@ def cmd_export(args):
             print("❌ No cookies extracted via CDP")
             return
         print(f"   ✅ Extracted {len(cookies)} cookies via CDP")
+        if local_storage:
+            print(f"   ✅ Extracted {len(local_storage)} localStorage entries")
+        if session_storage:
+            print(f"   ✅ Extracted {len(session_storage)} sessionStorage entries")
     else:
         print(f"\n🍪 Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)
@@ -391,6 +549,7 @@ def cmd_export(args):
             print(f"   🎯 Filtered to {len(cookies)} cookies for domains: {', '.join(domains)}")
 
     local_storage = {}
+    session_storage = {}
     if args.extract_local_storage:
         print(f"\n💾 Extracting localStorage from: {browser_path}")
         ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
@@ -429,7 +588,7 @@ def cmd_export(args):
         except Exception:
             pass
 
-    if not cookies and not local_storage:
+    if not cookies and not local_storage and not session_storage:
         print("❌ No cookies or localStorage to export")
         return
 
@@ -439,6 +598,7 @@ def cmd_export(args):
         browser=browser_name,
         profile=args.profile or "unknown",
         local_storage=local_storage if local_storage else None,
+        session_storage=session_storage if session_storage else None,
     )
 
     site_name = package.get("site_name", "session")
@@ -452,6 +612,8 @@ def cmd_export(args):
     print(f"   Critical: {package['metadata']['critical_cookie_count']}")
     if package['metadata'].get('local_storage_count', 0) > 0:
         print(f"   localStorage: {package['metadata']['local_storage_count']} entries")
+    if package['metadata'].get('session_storage_count', 0) > 0:
+        print(f"   sessionStorage: {package['metadata']['session_storage_count']} entries")
 
     print("\n" + packager.get_summary(package))
 
