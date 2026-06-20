@@ -265,13 +265,16 @@ class SessionPackager:
 
     def load(self, file_path: str) -> Dict:
         """
-        Load .tokenade file.
+        Load .tokenade file with backward compatibility.
+
+        Handles legacy formats missing newer fields (oauth_config, tokens,
+        local_storage, source_device, version, created_at).
 
         Args:
             file_path: Path to .tokenade file
 
         Returns:
-            Package dictionary
+            Package dictionary (normalized to current format)
         """
         path = Path(file_path)
         abs_path = str(path.absolute())
@@ -289,11 +292,76 @@ class SessionPackager:
         with open(path, "r", encoding="utf-8") as f:
             package = json.load(f)
 
+        # Backward compatibility: normalize legacy format
+        package = self._normalize_legacy(package)
+
         # Store in cache
         if self._cache is not None:
             self._cache.set(abs_path, package)
 
         logger.info(f"Session loaded: {path} ({len(package.get('cookies', []))} cookies)")
+        return package
+
+    def _normalize_legacy(self, package: Dict) -> Dict:
+        """
+        Normalize legacy .tokenade format to current version.
+
+        Handles:
+        - Missing version field
+        - Missing created_at field
+        - Missing source_device (flat browser/platform keys)
+        - auth_state instead of auth_status
+        - Missing tokens, local_storage, oauth_config fields
+        - Missing fingerprint, tls_profile fields
+        """
+        # Add version if missing
+        if "version" not in package:
+            package["version"] = self.TOKENADE_VERSION
+
+        # Add created_at if missing
+        if "created_at" not in package:
+            package["created_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        # Handle flat browser/platform keys → source_device
+        if "source_device" not in package:
+            browser = package.pop("browser", "unknown")
+            platform_name = package.pop("platform", "unknown")
+            profile = package.pop("profile", "unknown")
+            package["source_device"] = {
+                "browser": browser,
+                "profile": profile,
+                "platform": platform_name,
+                "hostname": "anonymous",
+            }
+
+        # Handle auth_state → auth_status
+        if "auth_state" in package and "auth_status" not in package:
+            package["auth_status"] = package.pop("auth_state")
+
+        # Ensure auth_status exists
+        if "auth_status" not in package:
+            package["auth_status"] = "unknown"
+
+        # Ensure tokens list exists
+        if "tokens" not in package:
+            package["tokens"] = []
+
+        # Ensure local_storage dict exists
+        if "local_storage" not in package:
+            package["local_storage"] = {}
+
+        # Ensure oauth_config exists (None for old sessions)
+        if "oauth_config" not in package:
+            package["oauth_config"] = None
+
+        # Ensure metadata exists
+        if "metadata" not in package:
+            package["metadata"] = {}
+
+        # Add cookie count to metadata if missing
+        if "cookie_count" not in package.get("metadata", {}):
+            package["metadata"]["cookie_count"] = len(package.get("cookies", []))
+
         return package
 
     def validate_format(self, package: Dict) -> bool:

@@ -10,6 +10,7 @@ from tokenade.cli.management import (
     cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare,
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
+    cmd_validate_session, cmd_encrypted_refresh,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -567,6 +568,25 @@ Commands:
     cicd_parser.add_argument("--output", "-o", help="Output file path")
     cicd_parser.add_argument("--output-dir", default=".tokenade/ci", help="Output directory for --generate-all")
 
+    # Validate Session
+    validate_session_parser = subparsers.add_parser("validate-session", help="Validate session files for CI/CD")
+    validate_session_parser.add_argument("--session", "-s", help="Single session file to validate")
+    validate_session_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to validate")
+    validate_session_parser.add_argument("--min-health", type=float, default=0.5, help="Minimum health score (0.0-1.0)")
+    validate_session_parser.add_argument("--max-expired", type=int, default=0, help="Max allowed expired cookies")
+    validate_session_parser.add_argument("--require-oauth", action="store_true", help="Require OAuth config")
+    validate_session_parser.add_argument("--max-age-hours", type=float, help="Max session age in hours")
+    validate_session_parser.add_argument("--json", dest="json_output", action="store_true", help="Output as JSON")
+
+    # Encrypted Refresh
+    encrypted_refresh_parser = subparsers.add_parser("encrypted-refresh", help="Refresh encrypted session files")
+    encrypted_refresh_parser.add_argument("--session", "-s", help="Single session file to refresh")
+    encrypted_refresh_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to refresh")
+    encrypted_refresh_parser.add_argument("--password", "-p", help="Decryption password")
+    encrypted_refresh_parser.add_argument("--key-file", "-k", help="Key file path")
+    encrypted_refresh_parser.add_argument("--source-browser", "-b", default="firefox", help="Source browser for cookie refresh")
+    encrypted_refresh_parser.add_argument("--force", action="store_true", help="Force refresh even if not expired")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -596,6 +616,8 @@ Commands:
         "refresh-oauth": cmd_refresh_oauth,
         "oauth-config": cmd_oauth_config,
         "batch-refresh": cmd_batch_refresh,
+        "encrypted-refresh": cmd_encrypted_refresh,
+        "validate-session": cmd_validate_session,
         "cicd": cmd_cicd,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,

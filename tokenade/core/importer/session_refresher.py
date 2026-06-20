@@ -32,6 +32,8 @@ class RefreshConfig:
     fallback_browsers: List[str] = field(default_factory=list)
     # WebSocket notification callback
     notify_ws: Optional[Callable[[Dict], Awaitable[None]]] = None
+    # OAuth auto-refresh: use refresh_token when cookies expire
+    oauth_auto_refresh: bool = False
 
 
 @dataclass
@@ -43,6 +45,8 @@ class CookieExpiryInfo:
     critical_count: int  # within critical_days
     next_expiry_epoch: Optional[float]
     next_expiry_human: Optional[str]
+    oauth_token_expired: bool = False
+    oauth_expires_in: Optional[int] = None  # seconds
 
 
 class SessionRefresher:
@@ -106,6 +110,21 @@ class SessionRefresher:
             if exp > now and (next_expiry is None or exp < next_expiry):
                 next_expiry = exp
 
+        # Check OAuth token expiry
+        oauth_token_expired = False
+        oauth_expires_in = None
+        tokens = self.session.get("tokens", [])
+        for t in tokens:
+            if t.get("type") == "access_token":
+                expires_at = t.get("expires_at")
+                if expires_at:
+                    if time.time() >= expires_at:
+                        oauth_token_expired = True
+                        oauth_expires_in = 0
+                    else:
+                        oauth_expires_in = int(expires_at - time.time())
+                break
+
         # Format human-readable next expiry
         next_expiry_human = None
         if next_expiry:
@@ -124,6 +143,8 @@ class SessionRefresher:
             critical_count=critical,
             next_expiry_epoch=next_expiry,
             next_expiry_human=next_expiry_human,
+            oauth_token_expired=oauth_token_expired,
+            oauth_expires_in=oauth_expires_in,
         )
 
     async def start(self):
@@ -197,6 +218,13 @@ class SessionRefresher:
                     and (status.expired_count > 0 or status.critical_count > 0)
                 ):
                     await self._attempt_refresh()
+
+                # OAuth auto-refresh if enabled and token expired
+                if (
+                    self.config.oauth_auto_refresh
+                    and status.oauth_token_expired
+                ):
+                    await self._attempt_oauth_refresh()
 
             except asyncio.CancelledError:
                 break
@@ -311,6 +339,89 @@ class SessionRefresher:
             "timestamp": time.time(),
         })
 
+    async def _attempt_oauth_refresh(self):
+        """Attempt to refresh OAuth tokens using stored refresh token."""
+        from tokenade.core.refresh.oauth_refresh import OAuthTokenRefresher, OAuthConfig
+
+        oauth_config = self.session.get("oauth_config")
+        if not oauth_config:
+            logger.debug("No OAuth config in session, skipping OAuth refresh")
+            return
+
+        # Find refresh token
+        refresh_token = None
+        for t in self.session.get("tokens", []):
+            if t.get("type") == "refresh_token":
+                refresh_token = t.get("value")
+                break
+
+        if not refresh_token:
+            logger.debug("No refresh token in session, skipping OAuth refresh")
+            return
+
+        try:
+            logger.info("Attempting OAuth token refresh...")
+            config = OAuthConfig.from_dict(oauth_config)
+            refresher = OAuthTokenRefresher(config)
+            result = refresher.refresh_token(refresh_token)
+
+            if result.success and result.tokens:
+                # Update session tokens
+                tokens = self.session.get("tokens", [])
+                new_tokens = []
+                for t in tokens:
+                    if t.get("type") == "access_token":
+                        new_tokens.append({
+                            "type": "access_token",
+                            "value": result.tokens.access_token,
+                            "expires_at": result.tokens.expires_at,
+                        })
+                    elif t.get("type") == "refresh_token":
+                        new_tokens.append({
+                            "type": "refresh_token",
+                            "value": result.tokens.refresh_token or refresh_token,
+                        })
+                    else:
+                        new_tokens.append(t)
+
+                self.session["tokens"] = new_tokens
+
+                # Update metadata
+                from datetime import datetime, timezone
+                meta = self.session.get("metadata", {})
+                meta["last_refreshed_at"] = datetime.now(timezone.utc).isoformat()
+                meta["refresh_count"] = meta.get("refresh_count", 0) + 1
+                self.session["metadata"] = meta
+
+                logger.info(f"OAuth token refreshed successfully (expires in {result.tokens.expires_in}s)")
+
+                # Send WebSocket notification
+                await self._notify_ws_clients({
+                    "type": "oauth_token_refreshed",
+                    "expires_in": result.tokens.expires_in,
+                    "timestamp": time.time(),
+                })
+
+                # Callback for proxy to hot-reload
+                if self.on_refresh:
+                    await self.on_refresh(self.session)
+
+            else:
+                logger.warning(f"OAuth token refresh failed: {result.error}")
+                await self._notify_ws_clients({
+                    "type": "oauth_refresh_failed",
+                    "error": result.error,
+                    "timestamp": time.time(),
+                })
+
+        except Exception as e:
+            logger.error(f"OAuth auto-refresh failed: {e}")
+            await self._notify_ws_clients({
+                "type": "oauth_refresh_failed",
+                "error": str(e),
+                "timestamp": time.time(),
+            })
+
     def update_session(self, session: Dict):
         """Update the session data (e.g., after manual re-export)."""
         self.session = session
@@ -346,7 +457,10 @@ class SessionRefresher:
             "expiring_soon_count": status.expiring_soon_count,
             "critical_count": status.critical_count,
             "next_expiry_human": status.next_expiry_human,
+            "oauth_token_expired": status.oauth_token_expired,
+            "oauth_expires_in": status.oauth_expires_in,
             "auto_refresh_enabled": self.config.auto_refresh,
+            "oauth_auto_refresh_enabled": self.config.oauth_auto_refresh,
             "source_browser": self.config.source_browser,
             "fallback_browsers": self.config.fallback_browsers,
             "last_check": self._last_check,

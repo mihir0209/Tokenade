@@ -1,5 +1,5 @@
 """
-Tokenade refresh - Session health monitoring, OAuth token refresh, and batch operations.
+Tokenade refresh - Session health monitoring, OAuth token refresh, batch operations, and validation.
 """
 
 from tokenade.core.refresh.health_checker import (
@@ -27,6 +27,19 @@ from tokenade.core.refresh.batch_refresh import (
     SessionRefreshResult,
 )
 
+from tokenade.core.refresh.encrypted_refresh import (
+    EncryptedRefreshPipeline,
+    EncryptedRefreshResult,
+    batch_encrypted_refresh,
+)
+
+from tokenade.core.refresh.session_validator import (
+    SessionValidator,
+    ValidationResult,
+    ValidationRule,
+    create_ci_validation_rules,
+)
+
 __all__ = [
     "SessionHealthChecker",
     "SessionRefresher",
@@ -44,4 +57,11 @@ __all__ = [
     "BatchRefresher",
     "BatchRefreshReport",
     "SessionRefreshResult",
+    "EncryptedRefreshPipeline",
+    "EncryptedRefreshResult",
+    "batch_encrypted_refresh",
+    "SessionValidator",
+    "ValidationResult",
+    "ValidationRule",
+    "create_ci_validation_rules",
 ]

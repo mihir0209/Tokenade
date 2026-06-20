@@ -633,6 +633,105 @@ def _analytics_cleanup(args, analytics):
     print(f"✅ Cleaned up analytics data older than {args.max_age} days")
 
 
+def cmd_validate_session(args):
+    """Validate session files for CI/CD health gates."""
+    from tokenade.core.refresh.session_validator import SessionValidator, create_ci_validation_rules
+    import json as json_mod
+
+    validator = SessionValidator()
+
+    rules = create_ci_validation_rules(
+        min_health=args.min_health,
+        max_expired=args.max_expired,
+        require_oauth=args.require_oauth,
+        max_age_hours=args.max_age_hours,
+    )
+
+    if args.session:
+        result = validator.validate(args.session, rules)
+
+        if args.json_output:
+            print(json_mod.dumps(result.to_dict(), indent=2))
+        else:
+            print(validator.ci_report([result]))
+
+        sys.exit(result.exit_code)
+
+    elif args.sessions_dir:
+        results = validator.validate_directory(args.sessions_dir, rules)
+
+        if args.json_output:
+            output = {
+                "total": len(results),
+                "passed": sum(1 for r in results if r.valid),
+                "failed": sum(1 for r in results if not r.valid),
+                "results": [r.to_dict() for r in results],
+            }
+            print(json_mod.dumps(output, indent=2))
+        else:
+            print(validator.ci_report(results))
+
+        failed = sum(1 for r in results if not r.valid)
+        sys.exit(1 if failed > 0 else 0)
+
+    else:
+        print("❌ Specify --session or --sessions-dir")
+        sys.exit(1)
+
+
+def cmd_encrypted_refresh(args):
+    """Refresh encrypted session files."""
+    from tokenade.core.refresh.encrypted_refresh import EncryptedRefreshPipeline, batch_encrypted_refresh
+
+    print("\n" + "=" * 80)
+    print("TOKENADE - Encrypted Session Refresh")
+    print("=" * 80)
+
+    if args.sessions_dir:
+        print(f"\n📂 Batch refreshing: {args.sessions_dir}")
+        results = batch_encrypted_refresh(
+            sessions_dir=args.sessions_dir,
+            password=args.password,
+            key_file=args.key_file,
+            source_browser=args.source_browser,
+            force=args.force,
+        )
+
+        for name, result in results.items():
+            status = "✅" if result.success else "❌"
+            method = f"[{result.method}]" if result.success else ""
+            encrypted = "(encrypted)" if result.was_encrypted else ""
+            print(f"  {status} {name} {method} {encrypted}")
+
+        succeeded = sum(1 for r in results.values() if r.success)
+        print(f"\n{'=' * 80}")
+        print(f"Total: {len(results)}, Succeeded: {succeeded}")
+        print(f"{'=' * 80}\n")
+
+    elif args.session:
+        pipeline = EncryptedRefreshPipeline()
+        result = pipeline.refresh(
+            session_file=args.session,
+            password=args.password,
+            key_file=args.key_file,
+            source_browser=args.source_browser,
+            force=args.force,
+        )
+
+        if result.success:
+            print(f"\n✅ Refresh successful")
+            print(f"   Method: {result.method}")
+            print(f"   Encrypted: {result.was_encrypted}")
+            print(f"   Duration: {result.duration_ms:.0f}ms")
+        else:
+            print(f"\n❌ Refresh failed")
+            if result.error:
+                print(f"   Error: {result.error}")
+
+    else:
+        print("❌ Specify --session or --sessions-dir")
+
+
 def cmd_refresh_oauth(args):
     """Refresh OAuth tokens using stored refresh token."""
     print("\n" + "=" * 80)
