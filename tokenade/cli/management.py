@@ -1,6 +1,7 @@
 """Session management CLI commands."""
 import json
 import logging
+import platform
 import signal
 import time
 from pathlib import Path
