@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokenade"
-version = "5.0.0"
+version = "5.1.1"
 description = "Production-grade token shifting and session portability tool"
 readme = "README.md"
 license = {text = "MIT"}
@@ -30,6 +30,7 @@ dependencies = [
     "pycryptodome>=3.19.0",
     "keyring>=24.0.0",
     "aiohttp>=3.9.0",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
