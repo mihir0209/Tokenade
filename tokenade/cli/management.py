@@ -683,8 +683,23 @@ def cmd_launch(args):
             # Connect via CDP and inject (use actual port from browser)
             actual_port = browser.port
 
+            # Create new tab synchronously before entering async
+            import urllib.request as _urllib_req
+            try:
+                _req = _urllib_req.Request(
+                    f"http://127.0.0.1:{actual_port}/json/new?about:blank",
+                    method='PUT'
+                )
+                with _urllib_req.urlopen(_req, timeout=5) as _resp:
+                    _new_tab = json.loads(_resp.read().decode())
+                _tab_ws_url = _new_tab.get("webSocketDebuggerUrl")
+                _tab_id = _new_tab.get("id")
+            except Exception as e:
+                print(f"❌ Failed to create new tab: {e}")
+                _tab_ws_url = None
+                _tab_id = None
+
             async def inject():
-                import urllib.request
                 import websockets
 
                 msg_id_counter = [0]
@@ -706,46 +721,27 @@ def cmd_launch(args):
                         except asyncio.TimeoutError:
                             continue
                         data = json.loads(raw)
-                        if data.get("id") == current_id:
+                        if "id" in data and data["id"] == current_id:
                             if "error" in data:
                                 raise RuntimeError(data["error"].get("message", "CDP error"))
                             return data.get("result", {})
                     raise RuntimeError(f"CDP timeout: {method}")
 
-                # Step 1: Create a new tab via PUT /json/new (Brave requires PUT)
-                print("   Creating new tab...", flush=True)
-
-                def _create_tab():
-                    req = urllib.request.Request(
-                        f"http://127.0.0.1:{actual_port}/json/new?about:blank",
-                        method='PUT'
-                    )
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        return json.loads(resp.read().decode())
-
-                try:
-                    new_tab = await asyncio.to_thread(_create_tab)
-                    tab_ws_url = new_tab.get("webSocketDebuggerUrl")
-                    tab_id = new_tab.get("id")
-                except Exception as e:
-                    print(f"❌ Failed to create new tab: {e}", flush=True)
+                if not _tab_ws_url:
+                    print("❌ Failed to create tab")
                     return
 
-                if not tab_ws_url:
-                    print("❌ No WebSocket URL in tab response", flush=True)
-                    return
-
-                print(f"   Tab: {tab_id}", flush=True)
+                print(f"   Tab: {_tab_id}")
 
                 # Step 2: Connect to the new tab's WebSocket
-                print("   Connecting to tab WS...", flush=True)
+                print("   Connecting to tab WS...")
                 tab_ws = await websockets.connect(
-                    tab_ws_url,
+                    _tab_ws_url,
                     max_size=10 * 1024 * 1024,
                     ping_interval=30,
                     ping_timeout=10,
                 )
-                print("   Connected.", flush=True)
+                print("   Connected.")
 
                 # Step 3: Inject stealth FIRST (before page load)
                 print("   Injecting stealth script...", flush=True)
@@ -789,7 +785,7 @@ def cmd_launch(args):
                     await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
 
                     # Wait for page load
-                    time.sleep(4)
+                    await asyncio.sleep(4)
 
                     # Get page info
                     title_result = await cdp_cmd(
@@ -835,7 +831,7 @@ def cmd_launch(args):
                         except asyncio.TimeoutError:
                             continue
                         data = json.loads(raw)
-                        if data.get("id") == current_id:
+                        if "id" in data and data["id"] == current_id:
                             return data.get("result", {})
                     return {}
 
@@ -868,7 +864,7 @@ def cmd_launch(args):
                 # Navigate
                 print(f"\n   Navigating to: {args.url}")
                 await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
-                time.sleep(4)
+                await asyncio.sleep(4)
 
                 title_result = await cdp_cmd(tab_ws, "Runtime.evaluate", {"expression": "document.title", "returnByValue": True})
                 title = title_result.get("result", {}).get("value", "")
@@ -881,7 +877,11 @@ def cmd_launch(args):
 
                 await tab_ws.close()
 
-            asyncio.run(navigate_only())
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(navigate_only())
+            finally:
+                loop.close()
 
         print(f"\n{'=' * 80}")
         print("Browser is running. You can:")
