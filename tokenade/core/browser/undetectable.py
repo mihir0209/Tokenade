@@ -390,8 +390,11 @@ class SystemBrowserLauncher:
                 "--disable-infobars",
                 "--disable-component-update",
                 "--password-store=basic",
-                "--disable-blink-features=AutomationControlled",
             ])
+
+            # Only add AutomationControlled flag for Chrome (not Brave)
+            if browser.lower() in ("chrome", "chromium"):
+                args.append("--disable-blink-features=AutomationControlled")
 
             if user_data_dir:
                 args.append(f"--user-data-dir={user_data_dir}")

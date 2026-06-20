@@ -638,7 +638,7 @@ def cmd_launch(args):
     import asyncio
 
     from tokenade.core.browser.undetectable import SystemBrowserLauncher
-    from tokenade.core.browser.cdp_connection import CDPConnection
+    from tokenade.core.browser.cdp_connection import CDPConnection, get_undetectable_stealth_script
     from tokenade.core.importer.session_packager import SessionPackager
 
     print("\n" + "=" * 80)
@@ -685,28 +685,134 @@ def cmd_launch(args):
 
             async def inject():
                 cdp = CDPConnection(port=actual_port)
-                connected = await cdp.connect()
+                connected = await cdp.connect(target_page=False)
                 if not connected:
                     print("❌ Failed to connect to CDP")
                     return
 
-                print("   Injecting stealth script...")
+                # Step 1: Inject stealth FIRST (before any page loads)
+                print("   Injecting stealth script (before page load)...")
                 await cdp.inject_stealth()
 
-                print("   Injecting cookies...")
-                await cdp.inject_cookies(cookies)
+                # Step 2: Create a new tab
+                print("   Creating new tab...")
+                import urllib.request
+                req = urllib.request.Request(f"{cdp.cdp_url}/json/new?about:blank")
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    new_tab = json.loads(resp.read().decode())
+                    tab_ws_url = new_tab.get("webSocketDebuggerUrl")
+                    tab_id = new_tab.get("id")
 
-                # Navigate to site if specified
+                if not tab_ws_url:
+                    print("❌ Failed to create new tab")
+                    await cdp.close()
+                    return
+
+                # Connect to the new tab
+                import websockets
+                tab_ws = await websockets.connect(
+                    tab_ws_url,
+                    max_size=10 * 1024 * 1024,
+                    ping_interval=30,
+                    ping_timeout=10,
+                )
+
+                # Inject stealth into the new tab
+                stealth_script = get_undetectable_stealth_script()
+                msg_id = 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Page.enable",
+                }))
+                await tab_ws.recv()  # Wait for response
+
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Page.addScriptToEvaluateOnNewDocument",
+                    "params": {"source": stealth_script},
+                }))
+                await tab_ws.recv()  # Wait for response
+
+                # Step 3: Inject cookies into the new tab
+                print(f"   Injecting {len(cookies)} cookies...")
+                cdp_cookies = []
+                for cookie in cookies:
+                    cdp_cookie = {
+                        "name": cookie.get("name", ""),
+                        "value": cookie.get("value", ""),
+                        "domain": cookie.get("domain", ""),
+                        "path": cookie.get("path", "/"),
+                    }
+                    if cookie.get("secure"):
+                        cdp_cookie["secure"] = True
+                    if cookie.get("httpOnly"):
+                        cdp_cookie["httpOnly"] = True
+                    if cookie.get("sameSite"):
+                        same_site = cookie["sameSite"]
+                        if same_site in ("Strict", "Lax", "None"):
+                            cdp_cookie["sameSite"] = same_site
+                    expires = cookie.get("expires", 0)
+                    if expires and int(expires) > 0:
+                        exp = int(expires)
+                        if exp > 1262304000000:
+                            exp = exp // 1000
+                        cdp_cookie["expires"] = exp
+                    cdp_cookies.append(cdp_cookie)
+
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Network.enable",
+                }))
+                await tab_ws.recv()
+
+                msg_id += 1
+                await tab_ws.send(json.dumps({
+                    "id": msg_id,
+                    "method": "Network.setCookies",
+                    "params": {"cookies": cdp_cookies},
+                }))
+                await tab_ws.recv()
+
+                # Step 4: Navigate to site
                 if args.url:
                     print(f"   Navigating to: {args.url}")
-                    await cdp.navigate(args.url)
+                    msg_id += 1
+                    await tab_ws.send(json.dumps({
+                        "id": msg_id,
+                        "method": "Page.navigate",
+                        "params": {"url": args.url},
+                    }))
+                    await tab_ws.recv()
 
-                # Get page info
-                title = await cdp.get_page_title()
-                url = await cdp.get_page_url()
-                print(f"\n   📄 Page: {title}")
-                print(f"   🔗 URL: {url}")
+                    # Wait for page load
+                    import time
+                    time.sleep(3)
 
+                    # Get page info
+                    msg_id += 1
+                    await tab_ws.send(json.dumps({
+                        "id": msg_id,
+                        "method": "Runtime.evaluate",
+                        "params": {"expression": "document.title", "returnByValue": True},
+                    }))
+                    resp = json.loads(await tab_ws.recv())
+                    title = resp.get("result", {}).get("result", {}).get("value", "")
+
+                    msg_id += 1
+                    await tab_ws.send(json.dumps({
+                        "id": msg_id,
+                        "method": "Runtime.evaluate",
+                        "params": {"expression": "window.location.href", "returnByValue": True},
+                    }))
+                    resp = json.loads(await tab_ws.recv())
+                    url = resp.get("result", {}).get("result", {}).get("value", "")
+
+                    print(f"\n   📄 Page: {title}")
+                    print(f"   🔗 URL: {url}")
+
+                await tab_ws.close()
                 await cdp.close()
 
             asyncio.run(inject())
