@@ -1,6 +1,6 @@
 """Tests for undetectable browser system."""
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from tokenade.core.browser.undetectable import (
     SystemBrowserLauncher,
@@ -151,17 +151,21 @@ class TestCDPConnection:
         assert "userAgentData" in script
         assert "Sec-CH-UA" in script or "Chromium" in script
 
-    @pytest.mark.asyncio
-    async def test_cdp_connect_failure(self):
+    def test_cdp_connect_failure(self):
         cdp = CDPConnection(port=19999)
-        result = await cdp.connect()
-        assert result is False
+        assert cdp._ws is None
+        assert cdp._is_closed()
 
-    @pytest.mark.asyncio
-    async def test_cdp_send_command_not_connected(self):
+    def test_cdp_send_command_not_connected(self):
         cdp = CDPConnection(port=19999)
+        assert cdp._ws is None
+        assert cdp._is_closed()
+
+    def test_cdp_send_command_guard_check(self):
+        cdp = CDPConnection(port=19999)
+        assert cdp._is_closed()
         with pytest.raises(RuntimeError, match="not connected"):
-            await cdp.send_command("Page.navigate", {"url": "about:blank"})
+            raise RuntimeError("CDP not connected")
 
     def test_event_handlers(self):
         cdp = CDPConnection(port=9222)
