@@ -2167,3 +2167,231 @@ def cmd_patch_chrome(args):
             print(f"📦 Backup available: {binary_path}.backup")
         if result["has_patched_variant"]:
             print(f"🔧 Patched variant: {binary_path}.patched")
+
+
+# ── Daemon Commands ─────────────────────────────────────────────
+
+def cmd_daemon(args):
+    """Daemon command dispatcher."""
+    action = args.daemon_action
+
+    if action == "start":
+        _daemon_start(args)
+    elif action == "stop":
+        _daemon_stop(args)
+    elif action == "status":
+        _daemon_status(args)
+    elif action == "run-once":
+        _daemon_run_once(args)
+    elif action == "add":
+        _daemon_add(args)
+    elif action == "remove":
+        _daemon_remove(args)
+    elif action == "logs":
+        _daemon_logs(args)
+    elif action == "list":
+        _daemon_list(args)
+    else:
+        print("Usage: tokenade daemon <start|stop|status|run-once|add|remove|list|logs>")
+
+
+def _daemon_start(args):
+    """Start the daemon in background."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon, DaemonConfig
+
+    print("\n" + "=" * 60)
+    print("TOKENADE - Session Auto-Refresh Daemon")
+    print("=" * 60)
+
+    config = DaemonConfig.load()
+    if not config.sessions:
+        print("⚠️  No sessions configured. Add sessions first:")
+        print("   tokenade daemon add <session.tokenade>")
+        return
+
+    daemon = SessionDaemon(config)
+
+    # Override config from args
+    if hasattr(args, "interval") and args.interval:
+        config.check_interval_minutes = args.interval
+    if hasattr(args, "webhook") and args.webhook:
+        config.webhook_url = args.webhook
+
+    daemon.config.save()
+    success = daemon.start(daemonize=True)
+
+    if success:
+        print(f"✅ Daemon started")
+        print(f"   Watching {len(config.sessions)} session(s)")
+        print(f"   Check interval: {config.check_interval_minutes} minutes")
+        if config.webhook_url:
+            print(f"   Webhook: {config.webhook_url}")
+        print(f"   Logs: ~/.tokenade/logs/daemon.log")
+        print(f"   PID file: ~/.tokenade/daemon.pid")
+    else:
+        print("❌ Failed to start daemon")
+
+
+def _daemon_stop(args):
+    """Stop the daemon."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon
+
+    print("\nStopping daemon...")
+    daemon = SessionDaemon()
+    if daemon.stop():
+        print("✅ Daemon stopped")
+    else:
+        print("❌ Failed to stop daemon")
+
+
+def _daemon_status(args):
+    """Show daemon status."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon
+
+    daemon = SessionDaemon()
+    status = daemon.status()
+
+    print("\n" + "=" * 60)
+    print("TOKENADE - Daemon Status")
+    print("=" * 60)
+
+    if status["running"]:
+        print(f"   🟢 Running (PID {status['pid']})")
+    else:
+        print(f"   🔴 Stopped")
+
+    print(f"   State: {status['state']}")
+    print(f"   Sessions watched: {status['sessions_watched']}")
+    print(f"   Sessions enabled: {status['sessions_enabled']}")
+    print(f"   Check interval: {status['check_interval_minutes']} min")
+    print(f"   Webhook: {'configured' if status['webhook_configured'] else 'not configured'}")
+    print(f"   History entries: {status['history_count']}")
+    print(f"   Config: {status['config_file']}")
+
+    # Show recent history
+    history = daemon.get_history(limit=5)
+    if history:
+        print(f"\n   Recent Activity:")
+        for h in reversed(history):
+            icon = "✅" if h["success"] else "❌"
+            print(f"   {icon} {h['site_name']} — {h['cookies_before']}→{h['cookies_after']} cookies ({h['duration_seconds']:.1f}s)")
+
+
+def _daemon_run_once(args):
+    """Run a single refresh cycle (foreground)."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon, DaemonConfig
+
+    print("\n" + "=" * 60)
+    print("TOKENADE - Single Refresh Cycle")
+    print("=" * 60)
+
+    config = DaemonConfig.load()
+    if not config.sessions:
+        print("⚠️  No sessions configured")
+        return
+
+    enabled = [s for s in config.sessions if s.enabled]
+    print(f"   Sessions to refresh: {len(enabled)}")
+
+    daemon = SessionDaemon(config)
+    results = daemon.run_once()
+
+    # Print results
+    print(f"\n{'─' * 60}")
+    succeeded = sum(1 for r in results if r.success)
+    failed = sum(1 for r in results if not r.success)
+
+    for r in results:
+        icon = "✅" if r.success else "❌"
+        detail = f"{r.cookies_before}→{r.cookies_after} cookies" if r.success else r.error
+        print(f"   {icon} {r.site_name} — {detail} ({r.duration_seconds:.1f}s)")
+
+    print(f"\n{'─' * 60}")
+    print(f"   Total: {len(results)} | ✅ {succeeded} | ❌ {failed}")
+    print()
+
+
+def _daemon_add(args):
+    """Add a session to the daemon watch list."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon, DaemonConfig
+
+    session_path = args.session
+    browser = getattr(args, "browser", "chrome") or "chrome"
+    refresh_before = getattr(args, "refresh_before", 2.0) or 2.0
+    target_url = getattr(args, "url", "") or ""
+    site_name = getattr(args, "site_name", "") or ""
+
+    daemon = SessionDaemon()
+    if daemon.add_session(session_path, browser, refresh_before, target_url, site_name):
+        print(f"✅ Added: {Path(session_path).name}")
+        print(f"   Browser: {browser}")
+        print(f"   Refresh before: {refresh_before}h before expiry")
+        if target_url:
+            print(f"   Target URL: {target_url}")
+    else:
+        print(f"❌ Failed to add session")
+
+
+def _daemon_remove(args):
+    """Remove a session from the daemon watch list."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon
+
+    daemon = SessionDaemon()
+    if daemon.remove_session(args.session):
+        print(f"✅ Removed: {args.session}")
+    else:
+        print(f"❌ Session not found in watch list")
+
+
+def _daemon_list(args):
+    """List all watched sessions."""
+    from tokenade.core.daemon.session_daemon import SessionDaemon
+
+    daemon = SessionDaemon()
+    sessions = daemon.list_sessions()
+
+    if not sessions:
+        print("📂 No sessions configured. Add with: tokenade daemon add <file>")
+        return
+
+    print(f"\n{'=' * 70}")
+    print(f"TOKENADE - Daemon Watch List ({len(sessions)} sessions)")
+    print(f"{'=' * 70}")
+
+    for s in sessions:
+        status = "🟢" if s["enabled"] else "🔴"
+        exists = "📄" if s["file_exists"] else "⚠️ "
+        print(f"   {status} {exists} {s['site_name']} ({Path(s['path']).name})")
+        print(f"      Browser: {s['browser']} | Refresh before: {s['refresh_before_hours']}h")
+        if s["last_refreshed"]:
+            print(f"      Last refreshed: {s['last_refreshed']}")
+        if s["last_error"]:
+            print(f"      Last error: {s['last_error']}")
+        print()
+
+
+def _daemon_logs(args):
+    """View daemon logs."""
+    from tokenade.core.daemon.session_daemon import DAEMON_LOG_FILE
+
+    log_file = DAEMON_LOG_FILE
+    if not log_file.exists():
+        print("📂 No daemon logs found. Start the daemon first.")
+        return
+
+    lines = getattr(args, "lines", 50) or 50
+    follow = getattr(args, "follow", False)
+
+    if follow:
+        print(f"Following {log_file} (Ctrl+C to stop)...")
+        try:
+            import subprocess
+            subprocess.run(["tail", "-f", str(log_file)])
+        except KeyboardInterrupt:
+            print("\nStopped following logs")
+    else:
+        # Read last N lines
+        content = log_file.read_text()
+        log_lines = content.strip().split("\n")
+        for line in log_lines[-lines:]:
+            print(line)

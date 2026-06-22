@@ -12,6 +12,7 @@ from tokenade.cli.management import (
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
+    cmd_daemon,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -716,6 +717,45 @@ Commands:
     patch_verify.add_argument("--browser", "-b", default="chrome", help="Browser to verify")
     patch_verify.add_argument("--binary", help="Path to browser binary")
 
+    # ── Daemon ──────────────────────────────────────────────────
+    daemon_parser = subparsers.add_parser("daemon", help="Auto-refresh daemon (background session refresh)")
+    daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_action")
+
+    # daemon start
+    daemon_start = daemon_subparsers.add_parser("start", help="Start daemon in background")
+    daemon_start.add_argument("--interval", type=float, help="Check interval in minutes (default: 30)")
+    daemon_start.add_argument("--webhook", help="Webhook URL for notifications")
+
+    # daemon stop
+    daemon_subparsers.add_parser("stop", help="Stop the daemon")
+
+    # daemon status
+    daemon_subparsers.add_parser("status", help="Show daemon status")
+
+    # daemon run-once
+    daemon_subparsers.add_parser("run-once", help="Run single refresh cycle (foreground)")
+
+    # daemon add
+    daemon_add = daemon_subparsers.add_parser("add", help="Add session to watch list")
+    daemon_add.add_argument("session", help="Session file to watch")
+    daemon_add.add_argument("--browser", "-b", default="chrome", help="Browser for refresh")
+    daemon_add.add_argument("--refresh-before", type=float, default=2.0,
+                           help="Refresh this many hours before expiry (default: 2.0)")
+    daemon_add.add_argument("--url", "-u", help="Target URL (auto-detected if not set)")
+    daemon_add.add_argument("--site-name", help="Site name (auto-detected from filename)")
+
+    # daemon remove
+    daemon_remove = daemon_subparsers.add_parser("remove", help="Remove session from watch list")
+    daemon_remove.add_argument("session", help="Session file to remove")
+
+    # daemon list
+    daemon_subparsers.add_parser("list", help="List all watched sessions")
+
+    # daemon logs
+    daemon_logs = daemon_subparsers.add_parser("logs", help="View daemon logs")
+    daemon_logs.add_argument("--lines", "-n", type=int, default=50, help="Number of lines to show")
+    daemon_logs.add_argument("--follow", "-f", action="store_true", help="Follow log output (like tail -f)")
+
     return parser
 
 
@@ -758,6 +798,7 @@ def main():
         "refresh-browser": cmd_refresh_browser,
         "accounts": cmd_accounts,
         "patch-chrome": cmd_patch_chrome,
+        "daemon": cmd_daemon,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,
