@@ -362,3 +362,150 @@ class TestRefreshBrowserIntegration:
 
         assert session["metadata"]["cookie_count"] == 5
         assert "last_refreshed" in session["metadata"]
+
+
+class TestPluginIntegration:
+    """Tests for plugin integration in refresh-browser command."""
+
+    def test_plugin_flag_recognized(self):
+        """Test that --plugin flag is in CLI args."""
+        from tokenade.cli import _build_parser
+        parser = _build_parser()
+        args = parser.parse_args(["refresh-browser", "-s", "test.tokenade", "--plugin", "oauth2"])
+        assert args.plugin == "oauth2"
+
+    def test_plugin_arg_flag_recognized(self):
+        """Test that --plugin-arg flag is in CLI args."""
+        from tokenade.cli import _build_parser
+        parser = _build_parser()
+        args = parser.parse_args(["refresh-browser", "-s", "test.tokenade", "--plugin", "oauth2",
+                                  "--plugin-arg", "client_id", "xxx", "--plugin-arg", "client_secret", "yyy"])
+        assert args.plugin == "oauth2"
+        assert args.plugin_arg == [["client_id", "xxx"], ["client_secret", "yyy"]]
+
+    def test_accounts_refresh_plugin_flag(self):
+        """Test that accounts refresh accepts --plugin."""
+        from tokenade.cli import _build_parser
+        parser = _build_parser()
+        args = parser.parse_args(["accounts", "refresh", "--plugin", "oauth2", "-y"])
+        assert args.plugin == "oauth2"
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    def test_plugin_refresh_success(self, MockLoader, sample_session, tmp_path):
+        """Test successful plugin refresh saves and exits early."""
+        session, _ = sample_session
+        session_path = tmp_path / "test.tokenade"
+        session_path.write_text(json.dumps(session))
+
+        from tokenade.core.importer.session_packager import SessionPackager
+        packager = SessionPackager()
+        saved_session = dict(session)
+
+        mock_loader = MagicMock()
+        MockLoader.return_value = mock_loader
+        mock_loader.load_all.return_value = None
+
+        mock_refresher = MagicMock()
+        mock_refresher.version = "1.0.0"
+        mock_refresher.can_refresh.return_value = True
+        mock_refresher.refresh.return_value = saved_session
+        mock_loader.get_refresher.return_value = mock_refresher
+
+        args = Namespace(session=str(session_path), plugin="oauth2", plugin_arg=[], output=None)
+
+        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+            MockPackager.return_value.load.return_value = session
+            cmd_refresh_browser(args)
+
+        mock_refresher.can_refresh.assert_called_once_with(session)
+        mock_refresher.refresh.assert_called_once()
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    def test_plugin_falls_back_to_browser(self, MockLoader, sample_session, tmp_path):
+        """Test fallback to browser when plugin can't handle session."""
+        session, _ = sample_session
+        session_path = tmp_path / "test.tokenade"
+        session_path.write_text(json.dumps(session))
+
+        mock_loader = MagicMock()
+        MockLoader.return_value = mock_loader
+        mock_loader.load_all.return_value = None
+
+        mock_refresher = MagicMock()
+        mock_refresher.version = "1.0.0"
+        mock_refresher.can_refresh.return_value = False
+        mock_loader.get_refresher.return_value = mock_refresher
+
+        args = Namespace(session=str(session_path), plugin="oauth2", plugin_arg=[],
+                         output=None, headless=True, wait=2, browser="chrome", port=9222, url=None)
+
+        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+            MockPackager.return_value.load.return_value = session
+            with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as MockLauncher:
+                mock_launcher = MagicMock()
+                MockLauncher.return_value = mock_launcher
+                mock_launcher.launch.return_value = mock_launcher
+                mock_launcher.get_cookies.return_value = session["cookies"][:1]
+                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                    mock_refresh.return_value = ([session["cookies"][0]], {}, {})
+                    cmd_refresh_browser(args)
+
+        mock_refresher.can_refresh.assert_called_once()
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    def test_plugin_exception_falls_back(self, MockLoader, sample_session, tmp_path):
+        """Test fallback when plugin raises exception."""
+        session, _ = sample_session
+        session_path = tmp_path / "test.tokenade"
+        session_path.write_text(json.dumps(session))
+
+        mock_loader = MagicMock()
+        MockLoader.return_value = mock_loader
+        mock_loader.load_all.return_value = None
+
+        mock_refresher = MagicMock()
+        mock_refresher.version = "1.0.0"
+        mock_refresher.can_refresh.side_effect = Exception("Plugin broken")
+        mock_loader.get_refresher.return_value = mock_refresher
+
+        args = Namespace(session=str(session_path), plugin="oauth2", plugin_arg=[],
+                         output=None, headless=True, wait=2, browser="chrome", port=9222, url=None)
+
+        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+            MockPackager.return_value.load.return_value = session
+            with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as MockLauncher:
+                mock_launcher = MagicMock()
+                MockLauncher.return_value = mock_launcher
+                mock_launcher.launch.return_value = mock_launcher
+                mock_launcher.get_cookies.return_value = session["cookies"][:1]
+                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                    mock_refresh.return_value = ([session["cookies"][0]], {}, {})
+                    cmd_refresh_browser(args)
+
+        mock_refresher.can_refresh.assert_called_once()
+
+    def test_no_plugin_falls_through_to_browser(self, sample_session, tmp_path):
+        """Test that without --plugin, browser refresh is used directly."""
+        session, _ = sample_session
+        session_path = tmp_path / "test.tokenade"
+        session_path.write_text(json.dumps(session))
+
+        args = Namespace(session=str(session_path), plugin=None, plugin_arg=[],
+                         output=None, headless=True, wait=2, browser="chrome", port=9222, url=None)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+
+        with patch("tokenade.core.importer.session_packager.SessionPackager") as MockPackager:
+            MockPackager.return_value.load.return_value = session
+            with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as MockLauncher:
+                mock_launcher = MagicMock()
+                MockLauncher.return_value = mock_launcher
+                mock_launcher.launch.return_value = mock_launcher
+                mock_launcher.get_cookies.return_value = session["cookies"][:1]
+                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                    mock_refresh.return_value = ([session["cookies"][0]], {}, {})
+                    with patch("subprocess.run", return_value=mock_proc):
+                        cmd_refresh_browser(args)
+
+        mock_launcher.launch.assert_called_once()

@@ -1315,6 +1315,19 @@ def cmd_cicd(args):
         print(f"   0 */{args.interval_hours} * * * {output_path}")
 
 
+def _run_post_refresh_plugins(loader, session):
+    """Run post-refresh plugins (webhooks, notifications, etc.)."""
+    refreshers = loader.list_refreshers()
+    for name, refresher in refreshers.items():
+        try:
+            if hasattr(refresher, "_send_webhook") or (hasattr(refresher, "can_refresh") and refresher.can_refresh(session)):
+                # Only run plugins that are pass-through notifiers (not the main refresher)
+                if hasattr(refresher, "_send_webhook"):
+                    refresher.refresh(session, {})
+        except Exception as e:
+            logger.warning(f"Post-refresh plugin {name} failed: {e}")
+
+
 def cmd_refresh_browser(args):
     """Refresh session by launching undetectable browser, injecting cookies, navigating, and extracting fresh cookies."""
     from tokenade.core.importer.session_packager import SessionPackager
@@ -1344,6 +1357,58 @@ def cmd_refresh_browser(args):
     if not cookies:
         print("❌ No cookies in session file")
         return
+
+    # 2. Try plugin refresh first (if --plugin specified)
+    plugin_name = getattr(args, "plugin", None)
+    plugin_args_list = getattr(args, "plugin_arg", [])
+    output = getattr(args, "output", None)
+
+    if plugin_name:
+        plugin_creds = {}
+        for key, value in plugin_args_list:
+            plugin_creds[key] = value
+
+        try:
+            from tokenade.core.integration.plugin_loader import PluginLoader
+            loader = PluginLoader()
+            loader.load_all()
+
+            refresher = loader.get_refresher(plugin_name)
+            if not refresher:
+                print(f"⚠️  Plugin not found: {plugin_name}. Proceeding with browser refresh.")
+            elif not refresher.can_refresh(session):
+                print(f"⚠️  Plugin '{plugin_name}' cannot refresh this session. Proceeding with browser refresh.")
+            else:
+                print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
+
+                # Collect credentials from plugin args if not provided
+                if hasattr(refresher, "get_credentials_args"):
+                    for cred_arg in refresher.get_credentials_args():
+                        arg_name = cred_arg["name"].lstrip("-").replace("-", "_")
+                        if arg_name not in plugin_creds and cred_arg.get("required"):
+                            print(f"❌ Missing required plugin credential: {cred_arg['name']}")
+                            print(f"   Use: --plugin-arg {arg_name} <value>")
+                            return
+
+                try:
+                    session = refresher.refresh(session, plugin_creds)
+
+                    # Save updated session
+                    save_path = output or str(session_file)
+                    packager.save(session, save_path)
+                    print(f"✅ Session refreshed via plugin: {save_path}")
+
+                    # Run post-refresh plugins (webhooks, etc.)
+                    _run_post_refresh_plugins(loader, session)
+
+                    return
+                except Exception as e:
+                    print(f"⚠️  Plugin refresh failed: {e}")
+                    print("   Falling back to browser-based refresh...")
+        except ImportError:
+            print(f"⚠️  Plugin system not available. Proceeding with browser refresh.")
+        except Exception as e:
+            print(f"⚠️  Plugin error: {e}. Proceeding with browser refresh.")
 
     # Determine target URL
     target_url = args.url
@@ -1732,7 +1797,7 @@ def _accounts_status(manager, args):
 
 
 def _accounts_refresh(manager, args):
-    """Refresh sessions — uses refresh-browser for each."""
+    """Refresh sessions — uses refresh-browser for each, with optional plugin support."""
     sessions = manager.list_sessions()
 
     if not sessions:
@@ -1773,6 +1838,28 @@ def _accounts_refresh(manager, args):
     wait = args.wait
     port = args.port
 
+    # Load plugin if specified
+    plugin_name = getattr(args, "plugin", None)
+    plugin_args_list = getattr(args, "plugin_arg", [])
+    plugin_creds = {}
+    for key, value in plugin_args_list:
+        plugin_creds[key] = value
+
+    plugin_loader = None
+    refresher = None
+    if plugin_name:
+        try:
+            from tokenade.core.integration.plugin_loader import PluginLoader
+            plugin_loader = PluginLoader()
+            plugin_loader.load_all()
+            refresher = plugin_loader.get_refresher(plugin_name)
+            if refresher:
+                print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
+            else:
+                print(f"\n⚠️  Plugin not found: {plugin_name}. Using browser refresh only.")
+        except Exception as e:
+            print(f"\n⚠️  Plugin error: {e}. Using browser refresh only.")
+
     succeeded = 0
     failed = 0
     skipped = 0
@@ -1799,7 +1886,24 @@ def _accounts_refresh(manager, args):
             pass
 
         try:
-            # Use the refresh-browser logic inline
+            # Try plugin refresh first
+            if refresher:
+                try:
+                    session = packager.load(s.path)
+                    if refresher.can_refresh(session):
+                        print(f"   🔌 Trying plugin {plugin_name}...")
+                        session = refresher.refresh(session, plugin_creds)
+                        __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().save(session, s.path)
+                        print(f"   ✅ Plugin refresh: {s.site_name}")
+                        succeeded += 1
+                        _run_post_refresh_plugins(plugin_loader, session)
+                        continue
+                    else:
+                        print(f"   ⚠️  Plugin can't handle this session, falling back to browser")
+                except Exception as e:
+                    print(f"   ⚠️  Plugin refresh failed: {e}, falling back to browser")
+
+            # Browser-based refresh (existing logic)
             from tokenade.core.browser.undetectable import SystemBrowserLauncher
 
             session = packager = __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().load(s.path)
@@ -1849,6 +1953,8 @@ def _accounts_refresh(manager, args):
                 __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().save(session, s.path)
                 print(f"   ✅ Refreshed: {len(fresh_cookies)} cookies")
                 succeeded += 1
+                if plugin_loader:
+                    _run_post_refresh_plugins(plugin_loader, session)
             else:
                 print(f"   ❌ No cookies extracted")
                 failed += 1

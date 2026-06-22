@@ -240,8 +240,8 @@ def setup_logging(verbose: bool = False):
     logging.getLogger("tokenade").setLevel(level)
 
 
-def main():
-    """Main CLI entry point."""
+def _build_parser():
+    """Build and return the CLI argument parser (extracted for testability)."""
     from tokenade import __version__
     parser = argparse.ArgumentParser(
         description="Tokenade - Browser session portability tool",
@@ -657,6 +657,9 @@ Commands:
     refresh_browser_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
     refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
     refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
+    refresh_browser_parser.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
+    refresh_browser_parser.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
+                                       help="Plugin credential (repeatable): --plugin-arg client_id XXX")
 
     # Multi-Account Orchestration
     accounts_parser = subparsers.add_parser("accounts", help="Multi-account orchestration (list/status/refresh)")
@@ -684,6 +687,9 @@ Commands:
     accounts_refresh.add_argument("--headless", action="store_true", default=True, help="Run headless (default)")
     accounts_refresh.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait per session")
     accounts_refresh.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
+    accounts_refresh.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
+    accounts_refresh.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
+                                 help="Plugin credential (repeatable): --plugin-arg client_id XXX")
 
     # Patch Chrome Binary (remove cdc_ artifacts)
     patch_parser = subparsers.add_parser("patch-chrome", help="Patch Chrome/Chromium binary to remove cdc_ artifacts")
@@ -710,6 +716,12 @@ Commands:
     patch_verify.add_argument("--browser", "-b", default="chrome", help="Browser to verify")
     patch_verify.add_argument("--binary", help="Path to browser binary")
 
+    return parser
+
+
+def main():
+    """Main CLI entry point."""
+    parser = _build_parser()
     args = parser.parse_args()
 
     if not args.command:

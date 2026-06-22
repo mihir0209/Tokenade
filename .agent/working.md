@@ -16,8 +16,8 @@
 ### Version: 5.7.0 (released)
 - **PyPI:** https://pypi.org/project/tokenade/5.7.0/
 - **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v5.7.0
-- 1632 tests passing, 7 skipped, 0 failures
-- Coverage: 84%
+- 4385 tests passing, 8 skipped, 0 failures
+- Coverage: 98%
 - Features built: CDP proxy (with CDP WebSocket injection), forward proxy, multi-site proxy, session refresh, sharing, encryption, health scoring, advanced validation, browser extension, web dashboard, session sync daemon, dashboard with WebSocket/diff/timeline/quick-actions
 
 ### Battle-Tested (confirmed working)
@@ -75,6 +75,68 @@
   tokenade accounts refresh -d ./sessions -b chrome --yes
   tokenade accounts refresh -d ./sessions --files github.tokenade gmail.tokenade
   ```
+
+### Phase 28: Chrome Binary Patcher (2026-06-21)
+- **Status:** Complete
+- **What was done:** Binary-level cdc_ artifact removal
+- **Module:** `tokenade/core/browser/patcher.py` — ChromePatcher class
+- **Pattern:** `\{window\.cdc[_ ].{0,120}?\}` finds injection blocks in Chrome binary
+- **Replacement:** Same-length benign code (`{console.log("tokenade")}`)
+- **Safety:** Creates patched copy, never modifies original; backup support
+- **CLI:**
+  ```bash
+  tokenade patch-chrome scan              # Scan for cdc_ artifacts
+  tokenade patch-chrome patch             # Create patched copy
+  tokenade patch-chrome restore           # Restore from backup
+  tokenade patch-chrome verify            # Check patch status
+  ```
+- **Tests:** 42 tests in test_binary_patcher.py
+- **Why this matters:** Even with JS-level cleanup, binary-level artifacts can be detected before the script runs. Binary patching prevents cdc_ properties from being injected in the first place.
+
+### Phase 32: Plugin System (2026-06-21)
+- **Status:** Complete
+- **What was done:** Extensible plugin architecture
+- **Module:** `tokenade/plugin/` — Base classes + OAuth2 plugin
+- **Base classes:**
+  - `PluginBase` — abstract base with lifecycle hooks
+  - `SessionRefreshPlugin` — for OAuth2, API token refresh
+  - `SiteHandlerPlugin` — for custom site extraction/injection
+  - `ExportFormatPlugin` — for custom export formats
+  - `SessionValidatorPlugin` — for custom validation rules
+- **Built-in plugin:** OAuth2 (Google, GitHub, custom providers)
+- **CLI:**
+  ```bash
+  tokenade plugin list                    # List installed plugins
+  tokenade plugin list --available        # Show registry plugins
+  tokenade plugin install <name>          # Install from registry
+  tokenade plugin uninstall <name>        # Remove plugin
+  tokenade plugin info <name>             # Show plugin details
+  tokenade plugin enable <name>           # Enable disabled plugin
+  tokenade plugin disable <name>          # Disable without uninstall
+  tokenade plugin update [name]           # Update from registry
+  tokenade plugin reload <name>           # Reload plugin
+  ```
+- **Examples:** `examples/plugins/` with 3 example plugins + programmatic usage
+- **Tests:** 32 tests in test_plugin_system.py
+- **Why this matters:** OAuth2, browser extension bridge, mobile import can all be added as plugins without bloating core tokenade
+
+### Phase 29: Enhanced Stealth Evasions (2026-06-21)
+- **Status:** Complete — stealth script v2
+- **What was done:** Expanded from 19 evasions to 40+ (26K chars)
+- **Categories covered:**
+  1. Navigator properties (webdriver, languages, platform, product, vendor, maxTouchPoints, cookieEnabled, doNotTrack, hardwareConcurrency, deviceMemory)
+  2. WebGL getSupportedExtensions spoofing
+  3. Canvas fingerprint noise injection (getImageData)
+  4. Audio fingerprint consistency
+  5. Speech synthesis voices
+  6. WebAuthn (navigator.credentials) spoofing
+  7. Battery (navigator.getBattery) spoofing
+  8. BroadcastChannel consistency
+  9. IndexedDB + ServiceWorker fallbacks
+  10. iframe contentWindow spoofing
+  11. CDC + automation property cleanup (comprehensive list)
+  12. Function.prototype.toString consistency
+- **Also fixed:** 2 flaky CDP connection tests (event loop pollution from other async tests)
 
 ### CDP Proxy Battle-Tested (2026-06-17)
 - **External CDP connections:** Playwright `connect_over_cdp` now works via `/json/version` passthrough

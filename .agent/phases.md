@@ -5,10 +5,10 @@
 | Metric | Value |
 |--------|-------|
 | Version | 5.7.0 |
-| Tests | 4249 passing |
+| Tests | 4385 passing |
 | Coverage | 98% |
-| Commits ahead | 6 |
-| Last updated | 2026-06-20 |
+| Commits ahead | 9 |
+| Last updated | 2026-06-21 |
 
 ---
 
@@ -113,28 +113,39 @@
 
 ## In Progress
 
-### Phase 28: Chrome Binary Patcher (Phase 2)
-**Status**: Not started
+### Phase 28: Chrome Binary Patcher (Phase 2) ✅
+**Status**: Complete (2026-06-21)
 **Goal**: Patch Chrome binary to remove `cdc_` prefix detection
 **Why**: Even with JS-level cleanup, binary-level artifacts can be detected
+**What was done**:
+- Created `tokenade/core/browser/patcher.py` — ChromePatcher class
+- Regex pattern `\{window\.cdc[_ ].{0,120}?\}` finds cdc_ injection blocks in binary
+- Replacement: same-length benign code (`{console.log("tokenade")}`)
+- Creates patched copy (never modifies original), with backup
+- CLI: `tokenade patch-chrome scan|patch|restore|verify`
+- 42 tests in test_binary_patcher.py
 **Output**: `tokenade patch-chrome` command that creates a patched Chrome copy
-**Time**: 2-3 days
+**Time**: 1 day
 
-### Phase 29: Enhanced Stealth Evasions (Phase 3)
-**Status**: Not started
+### Phase 29: Enhanced Stealth Evasions (Phase 3) ✅
+**Status**: Complete (2026-06-21)
 **Goal**: Add missing evasions to make detection impossible
-**What's needed**:
-- iframe contentWindow spoofing
-- Performance.now() timing consistency
-- Date/Intl.DateTimeFormat timezone enforcement
-- navigator.mediaDevices enumeration
-- WebGL getSupportedExtensions spoofing
-- Canvas getImageData spoofing (all sizes)
-- Realistic audio fingerprint (not i%256)
-- Speech synthesis voices
-- navigator.credentials spoofing
-**Output**: Updated `COMPREHENSIVE_STEALTH_SCRIPT` with 40+ evasions
-**Time**: 3-4 days
+**What was done**:
+- Expanded stealth script from 19 to 40+ evasions (26K chars)
+- navigator.properties: webdriver, languages, platform, product, vendor, maxTouchPoints, cookieEnabled, doNotTrack, hardwareConcurrency, deviceMemory
+- WebGL: getSupportedExtensions spoofing
+- Canvas: fingerprint noise injection via getImageData
+- Audio: fingerprint consistency
+- Speech: synthesis voices
+- WebAuthn: navigator.credentials spoofing
+- Battery: navigator.getBattery spoofing
+- BroadcastChannel: consistency
+- IndexedDB + ServiceWorker: fallbacks
+- iframe: contentWindow spoofing
+- CDC + automation: comprehensive property cleanup
+- Function.prototype.toString: consistency for more functions
+**Output**: Updated stealth script in `cdp_connection.py` with 40+ evasions
+**Time**: 1 day
 
 ### Phase 30: Cookie-Based Session Refresh (Phase 4) ✅
 **Status**: Complete (2026-06-21)
@@ -165,15 +176,22 @@
 - Failure isolation — one session failing doesn't affect others
 - Tests: 25 tests in test_accounts.py
 
+### Phase 32: Plugin System ✅
+**Status**: Complete (2026-06-21)
+**Goal**: Extensible plugin architecture for OAuth2, site handlers, export formats, validators
+**What was done**:
+- Plugin base classes: `PluginBase`, `SessionRefreshPlugin`, `SiteHandlerPlugin`, `ExportFormatPlugin`, `SessionValidatorPlugin`
+- OAuth2 plugin: Google, GitHub, custom providers (built-in)
+- Plugin CLI: `tokenade plugin list|install|uninstall|info|enable|disable|update|reload`
+- Plugin loader: discovers from `~/.tokenade/plugins/`, supports all 4 plugin types
+- Examples directory: `examples/plugins/` with 3 example plugins + programmatic usage
+- 32 tests in test_plugin_system.py
+**Output**: `tokenade plugin` command + `tokenade.plugin` base classes
+**Time**: 1 day
+
 ---
 
 ## Planned (Future)
-
-### Phase 32: Browser Extension Bridge
-- Chrome extension that handles cookie injection via `chrome.cookies` API
-- No CDP needed — uses browser's native APIs
-- IMPOSSIBLE to detect (it's a real browser with an extension)
-- Most robust approach but requires extension development
 
 ### Phase 33: Session Marketplace
 - Community-shared session configs
@@ -269,7 +287,7 @@ tokenade/core/cicd/
 
 ## How to Use Each Phase's Output
 
-### Phase 27 (Current) → Phase 28
+### Phase 27 → Phase 28
 **Output**: `tokenade launch -s gmail.tokenade -u https://mail.google.com`
 **Verify**: Browser opens, you're logged into Gmail
 **Next**: Phase 28 patches the Chrome binary to remove deeper artifacts
@@ -279,12 +297,17 @@ tokenade/core/cicd/
 **Verify**: Patched Chrome passes detection tests (bot.sannysoft.com)
 **Next**: Phase 29 adds more evasions for comprehensive coverage
 
-### Phase 29 → Phase 30
+### Phase 29 ✅ → Phase 30 ✅
 **Output**: `tokenade refresh-browser -s gmail.tokenade`
 **Verify**: Session cookies are refreshed without OAuth credentials
 **Next**: Phase 31 handles multiple accounts simultaneously
 
-### Phase 30 → Phase 31
+### Phase 30 → Phase 31 ✅
 **Output**: `tokenade accounts refresh --all`
 **Verify**: All 5+ accounts are refreshed in parallel
-**Next**: Phase 32 (optional) adds browser extension for even more robustness
+**Next**: Phase 28 ✅ — all undetectable browser phases complete
+
+### Phase 31 → Phase 32 ✅
+**Output**: `tokenade plugin list|install|enable|disable|update|reload`
+**Verify**: OAuth2 plugin works with `tokenade refresh-browser --plugin oauth2`
+**Next**: Phase 33 — Session Marketplace
