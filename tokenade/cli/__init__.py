@@ -12,7 +12,7 @@ from tokenade.cli.management import (
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
-    cmd_daemon,
+    cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -756,6 +756,32 @@ Commands:
     daemon_logs.add_argument("--lines", "-n", type=int, default=50, help="Number of lines to show")
     daemon_logs.add_argument("--follow", "-f", action="store_true", help="Follow log output (like tail -f)")
 
+    # ── Versions ────────────────────────────────────────────────
+    versions_parser = subparsers.add_parser("versions", help="Session versioning (list/create/delete)")
+    versions_subparsers = versions_parser.add_subparsers(dest="version_action")
+
+    versions_list = versions_subparsers.add_parser("list", help="List versions for a session")
+    versions_list.add_argument("session", help="Session file")
+
+    versions_create = versions_subparsers.add_parser("create", help="Create a new version")
+    versions_create.add_argument("session", help="Session file")
+    versions_create.add_argument("--description", "-d", help="Version description")
+
+    versions_delete = versions_subparsers.add_parser("delete", help="Delete a version")
+    versions_delete.add_argument("session", help="Session file")
+    versions_delete.add_argument("version", type=int, help="Version number to delete")
+
+    # ── Rollback ────────────────────────────────────────────────
+    rollback_parser = subparsers.add_parser("rollback", help="Rollback session to a specific version")
+    rollback_parser.add_argument("session", help="Session file")
+    rollback_parser.add_argument("version", type=int, help="Version number to restore")
+
+    # ── Session Diff (version comparison) ───────────────────────
+    session_diff_parser = subparsers.add_parser("session-diff", help="Compare two session versions")
+    session_diff_parser.add_argument("session", help="Session file")
+    session_diff_parser.add_argument("version_a", type=int, help="First version number")
+    session_diff_parser.add_argument("version_b", type=int, help="Second version number")
+
     return parser
 
 
@@ -799,6 +825,9 @@ def main():
         "accounts": cmd_accounts,
         "patch-chrome": cmd_patch_chrome,
         "daemon": cmd_daemon,
+        "versions": cmd_versions,
+        "rollback": cmd_rollback,
+        "session-diff": cmd_session_diff,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,

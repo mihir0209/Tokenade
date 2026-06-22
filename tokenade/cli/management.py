@@ -2395,3 +2395,151 @@ def _daemon_logs(args):
         log_lines = content.strip().split("\n")
         for line in log_lines[-lines:]:
             print(line)
+
+
+# ── Versioning Commands ─────────────────────────────────────────
+
+def cmd_versions(args):
+    """List or create session versions."""
+    action = getattr(args, "version_action", "list") or "list"
+
+    if action == "list":
+        _versions_list(args)
+    elif action == "create":
+        _versions_create(args)
+    elif action == "delete":
+        _versions_delete(args)
+    else:
+        print("Usage: tokenade versions <list|create|delete> <session>")
+
+
+def _versions_list(args):
+    """List versions for a session."""
+    from tokenade.core.storage.session_versions import SessionVersionManager
+
+    session_path = args.session
+    mgr = SessionVersionManager()
+    versions = mgr.list_versions(session_path)
+
+    if not versions:
+        print(f"📂 No versions for {Path(session_path).name}")
+        print(f"   Create one: tokenade versions create {session_path}")
+        return
+
+    print(f"\n{'=' * 70}")
+    print(f"TOKENADE - Versions for {Path(session_path).name} ({len(versions)})")
+    print(f"{'=' * 70}")
+
+    for v in versions:
+        print(f"   v{v.version}: {v.cookie_count} cookies | {v.size_bytes} bytes | {v.created_at[:19]}")
+        if v.description:
+            print(f"         {v.description}")
+    print()
+
+
+def _versions_create(args):
+    """Create a new version of a session."""
+    from tokenade.core.storage.session_versions import SessionVersionManager
+
+    session_path = args.session
+    description = getattr(args, "description", "") or ""
+
+    if not Path(session_path).exists():
+        print(f"❌ Session file not found: {session_path}")
+        return
+
+    mgr = SessionVersionManager()
+    version = mgr.create_version(session_path, description)
+    print(f"✅ Created version {version.version} of {Path(session_path).name}")
+    print(f"   Cookies: {version.cookie_count} | Size: {version.size_bytes} bytes")
+
+
+def _versions_delete(args):
+    """Delete a specific version."""
+    from tokenade.core.storage.session_versions import SessionVersionManager
+
+    session_path = args.session
+    version = args.version
+
+    mgr = SessionVersionManager()
+    if mgr.delete_version(session_path, version):
+        print(f"✅ Deleted version {version}")
+    else:
+        print(f"❌ Version {version} not found")
+
+
+def cmd_rollback(args):
+    """Rollback a session to a specific version."""
+    from tokenade.core.storage.session_versions import SessionVersionManager
+
+    session_path = args.session
+    version = args.version
+
+    if not Path(session_path).exists():
+        print(f"❌ Session file not found: {session_path}")
+        return
+
+    mgr = SessionVersionManager()
+
+    # Show what we're rolling back to
+    versions = mgr.list_versions(session_path)
+    target = None
+    for v in versions:
+        if v.version == version:
+            target = v
+            break
+
+    if not target:
+        print(f"❌ Version {version} not found")
+        return
+
+    print(f"🔄 Rolling back {Path(session_path).name} to version {version}")
+    print(f"   {target.cookie_count} cookies | {target.created_at[:19]}")
+
+    if mgr.rollback(session_path, version):
+        print(f"✅ Rollback complete")
+    else:
+        print(f"❌ Rollback failed")
+
+
+def cmd_session_diff(args):
+    """Compare two versions of a session."""
+    from tokenade.core.storage.session_versions import SessionVersionManager
+
+    session_path = args.session
+    version_a = args.version_a
+    version_b = args.version_b
+
+    mgr = SessionVersionManager()
+    diff = mgr.diff(session_path, version_a, version_b)
+
+    print(f"\n{'=' * 70}")
+    print(f"TOKENADE - Diff: v{diff.version_a} → v{diff.version_b}")
+    print(f"{'=' * 70}")
+
+    if not diff.has_changes and not diff.storage_changes:
+        print("   No differences found")
+        return
+
+    if diff.cookies_added:
+        print(f"\n   Added ({len(diff.cookies_added)}):")
+        for c in diff.cookies_added:
+            print(f"     + {c['name']} ({c['domain']})")
+
+    if diff.cookies_removed:
+        print(f"\n   Removed ({len(diff.cookies_removed)}):")
+        for c in diff.cookies_removed:
+            print(f"     - {c['name']} ({c['domain']})")
+
+    if diff.cookies_modified:
+        print(f"\n   Modified ({len(diff.cookies_modified)}):")
+        for c in diff.cookies_modified:
+            print(f"     ~ {c['name']} ({c['domain']})")
+
+    print(f"\n   Unchanged: {diff.cookies_unchanged}")
+
+    if diff.storage_changes:
+        print(f"\n   Storage changes:")
+        for key, change in diff.storage_changes.items():
+            print(f"     {key}: changed")
+    print()
