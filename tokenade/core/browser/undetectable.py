@@ -213,6 +213,7 @@ class SystemBrowserLauncher:
 
     def __init__(self):
         self._active_browsers: List[BrowserProcess] = []
+        self._xvfb: Optional[Any] = None
 
     def _get_default_profile_dir(self, browser: str) -> Optional[str]:
         """Find the user's default browser profile directory."""
@@ -393,6 +394,20 @@ class SystemBrowserLauncher:
                 f"  Or specify path: --browser-path /path/to/browser"
             )
 
+        # Auto-start Xvfb if headless and no display available
+        if not visible and platform.system() == "Linux":
+            from tokenade.core.browser.xvfb import XvfbManager
+            xvfb = XvfbManager()
+            if not xvfb.is_display_available():
+                if xvfb.is_xvfb_available():
+                    if xvfb.start():
+                        self._xvfb = xvfb
+                        logger.info(f"Auto-started Xvfb for headless {browser}")
+                    else:
+                        logger.warning("Xvfb start failed, browser may not render correctly")
+                else:
+                    logger.debug("Xvfb not installed, using browser headless mode")
+
         # Create profile directory
         if profile_dir is None:
             profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{browser}_")
@@ -518,10 +533,13 @@ class SystemBrowserLauncher:
                 return True
 
     def close_all(self):
-        """Close all active browser processes."""
+        """Close all active browser processes and cleanup Xvfb."""
         for browser in self._active_browsers:
             browser.close()
         self._active_browsers.clear()
+        if self._xvfb:
+            self._xvfb.stop()
+            self._xvfb = None
 
     def __del__(self):
         self.close_all()

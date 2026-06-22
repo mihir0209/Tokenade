@@ -53,6 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libasound2 \
     libatspi2.0-0 \
+    # Xvfb for headless browser operations
+    xvfb \
     # Secret storage for Linux
     libsecret-1-0 \
     # General utilities
