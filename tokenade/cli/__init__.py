@@ -188,8 +188,43 @@ def cmd_plugin(args):
         if plugin.get("dependencies"):
             print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
 
+    elif args.plugin_command == "enable":
+        if loader.enable(args.name):
+            print(f"✅ Plugin enabled: {args.name}")
+        else:
+            print(f"❌ Plugin not found: {args.name}")
+
+    elif args.plugin_command == "disable":
+        if loader.disable(args.name):
+            print(f"✅ Plugin disabled: {args.name}")
+        else:
+            print(f"❌ Plugin not found: {args.name}")
+
+    elif args.plugin_command == "update":
+        print(f"\n🔄 Updating plugins...")
+        if args.name:
+            if registry.update(args.name):
+                print(f"   ✅ Updated: {args.name}")
+            else:
+                print(f"   ❌ Failed to update: {args.name}")
+        else:
+            results = registry.update()
+            if results:
+                for name, success in results.items():
+                    status = "✅" if success else "❌"
+                    print(f"   {status} {name}")
+            else:
+                print("   No updates available")
+
+    elif args.plugin_command == "reload":
+        loaded = loader.reload(args.name)
+        if loaded:
+            print(f"✅ Plugin reloaded: {args.name} v{loaded.version}")
+        else:
+            print(f"❌ Failed to reload: {args.name}")
+
     else:
-        print("Usage: tokenade plugin {list|install|uninstall|info}")
+        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload}")
 
 
 logging.basicConfig(
@@ -474,6 +509,18 @@ Commands:
 
     plugin_info_parser = plugin_sub.add_parser("info", help="Show plugin details")
     plugin_info_parser.add_argument("name", help="Plugin name")
+
+    plugin_enable_parser = plugin_sub.add_parser("enable", help="Enable a disabled plugin")
+    plugin_enable_parser.add_argument("name", help="Plugin name to enable")
+
+    plugin_disable_parser = plugin_sub.add_parser("disable", help="Disable a plugin without uninstalling")
+    plugin_disable_parser.add_argument("name", help="Plugin name to disable")
+
+    plugin_update_parser = plugin_sub.add_parser("update", help="Update plugins from registry")
+    plugin_update_parser.add_argument("name", nargs="?", default=None, help="Plugin name to update (all if omitted)")
+
+    plugin_reload_parser = plugin_sub.add_parser("reload", help="Reload a plugin")
+    plugin_reload_parser.add_argument("name", help="Plugin name to reload")
 
     # Sync
     sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")

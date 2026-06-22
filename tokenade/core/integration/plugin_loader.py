@@ -39,6 +39,7 @@ class PluginLoader:
         self._handlers: Dict[str, Any] = {}
         self._exporters: Dict[str, Any] = {}
         self._validators: Dict[str, Any] = {}
+        self._refreshers: Dict[str, Any] = {}
         self._disabled: set = set()
         self._load_disabled_list()
 
@@ -130,6 +131,7 @@ class PluginLoader:
                 "handler": "SiteHandler",
                 "export_format": "ExportFormat",
                 "validator": "SessionValidator",
+                "session_refresh": "SessionRefreshPlugin",
             }
             target_name = type_class_map.get(plugin_type, "")
             for attr_name in dir(module):
@@ -171,6 +173,8 @@ class PluginLoader:
         elif plugin_type == "validator":
             rule_name = meta.get("rule_name", name)
             self._validators[rule_name] = instance
+        elif plugin_type == "session_refresh":
+            self._refreshers[name] = instance
 
         logger.info(f"Loaded plugin: {name} v{loaded.version} ({plugin_type})")
         return loaded
@@ -189,6 +193,8 @@ class PluginLoader:
             self._exporters = {k: v for k, v in self._exporters.items() if v is not plugin.instance}
         elif plugin.plugin_type == "validator":
             self._validators = {k: v for k, v in self._validators.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "session_refresh":
+            self._refreshers = {k: v for k, v in self._refreshers.items() if v is not plugin.instance}
 
         logger.info(f"Unloaded plugin: {name}")
         return True
@@ -205,6 +211,20 @@ class PluginLoader:
         """Get a validator plugin by name."""
         return self._validators.get(rule_name)
 
+    def get_refresher(self, name: str) -> Optional[Any]:
+        """Get a session refresh plugin by name."""
+        return self._refreshers.get(name)
+
+    def get_refresher_for_session(self, session: dict) -> Optional[Any]:
+        """Find the first refresh plugin that can handle this session."""
+        for name, refresher in self._refreshers.items():
+            try:
+                if refresher.can_refresh(session):
+                    return refresher
+            except Exception as e:
+                logger.warning(f"Plugin {name}.can_refresh() failed: {e}")
+        return None
+
     def list_handlers(self) -> Dict[str, Any]:
         """List all loaded handler plugins."""
         return dict(self._handlers)
@@ -216,6 +236,10 @@ class PluginLoader:
     def list_validators(self) -> Dict[str, Any]:
         """List all loaded validator plugins."""
         return dict(self._validators)
+
+    def list_refreshers(self) -> Dict[str, Any]:
+        """List all loaded session refresh plugins."""
+        return dict(self._refreshers)
 
     def list_all(self) -> List[LoadedPlugin]:
         """List all loaded plugins."""
