@@ -11,7 +11,7 @@ from tokenade.cli.management import (
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
-    cmd_refresh_browser, cmd_accounts,
+    cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -72,7 +72,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser accounts"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser accounts patch-chrome"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -638,6 +638,31 @@ Commands:
     accounts_refresh.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait per session")
     accounts_refresh.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
 
+    # Patch Chrome Binary (remove cdc_ artifacts)
+    patch_parser = subparsers.add_parser("patch-chrome", help="Patch Chrome/Chromium binary to remove cdc_ artifacts")
+    patch_subparsers = patch_parser.add_subparsers(dest="patch_action")
+
+    # patch-chrome scan
+    patch_scan = patch_subparsers.add_parser("scan", help="Scan binary for cdc_ artifacts")
+    patch_scan.add_argument("--browser", "-b", default="chrome", help="Browser to scan (chrome, chromium, brave, edge)")
+    patch_scan.add_argument("--binary", help="Path to browser binary (auto-detected if omitted)")
+
+    # patch-chrome patch
+    patch_do = patch_subparsers.add_parser("patch", help="Patch binary to remove cdc_ artifacts")
+    patch_do.add_argument("--browser", "-b", default="chrome", help="Browser to patch")
+    patch_do.add_argument("--binary", help="Path to browser binary")
+    patch_do.add_argument("--output", "-o", help="Output path for patched binary (default: <binary>.patched)")
+
+    # patch-chrome restore
+    patch_restore = patch_subparsers.add_parser("restore", help="Restore binary from backup")
+    patch_restore.add_argument("--browser", "-b", default="chrome", help="Browser to restore")
+    patch_restore.add_argument("--binary", help="Path to browser binary")
+
+    # patch-chrome verify
+    patch_verify = patch_subparsers.add_parser("verify", help="Verify binary patch status")
+    patch_verify.add_argument("--browser", "-b", default="chrome", help="Browser to verify")
+    patch_verify.add_argument("--binary", help="Path to browser binary")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -673,6 +698,7 @@ Commands:
         "launch": cmd_launch,
         "refresh-browser": cmd_refresh_browser,
         "accounts": cmd_accounts,
+        "patch-chrome": cmd_patch_chrome,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,
