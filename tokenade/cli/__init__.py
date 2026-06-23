@@ -225,8 +225,207 @@ def cmd_plugin(args):
         else:
             print(f"❌ Failed to reload: {args.name}")
 
+    elif args.plugin_command == "search":
+        _plugin_search(registry, args)
+
+    elif args.plugin_command == "categories":
+        _plugin_categories(registry)
+
+    elif args.plugin_command == "popular":
+        _plugin_popular(registry, args)
+
+    elif args.plugin_command == "recent":
+        _plugin_recent(registry, args)
+
+    elif args.plugin_command == "rate":
+        _plugin_rate(registry, args)
+
+    elif args.plugin_command == "verify":
+        _plugin_verify(args)
+
+    elif args.plugin_command == "outdated":
+        _plugin_outdated(registry)
+
+    elif args.plugin_command == "browse":
+        _plugin_browse(registry, args)
+
     else:
-        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload}")
+        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse}")
+
+
+def _plugin_search(registry, args):
+    """Search plugins in marketplace."""
+    tags = None
+    if args.tags:
+        tags = [t.strip() for t in args.tags.split(",")]
+
+    results = registry.search(
+        query=args.query or "",
+        plugin_type=args.plugin_type or "",
+        category=args.category or "",
+        tags=tags,
+        sort_by=args.sort,
+    )
+
+    if not results:
+        print("No plugins found matching your search.")
+        return
+
+    print(f"\n{'=' * 70}")
+    print(f"TOKENADE - Plugin Search ({len(results)} results)")
+    print(f"{'=' * 70}")
+
+    for p in results:
+        stars = f"★ {p.get('rating', 0):.1f}" if p.get('rating') else ""
+        verified = " ✓" if p.get('verified') else ""
+        downloads = f"↓ {p.get('downloads', 0)}" if p.get('downloads') else ""
+        print(f"\n  {p['name']}{verified} v{p.get('version', '?')}")
+        print(f"    {p.get('description', '')}")
+        meta = " | ".join(filter(None, [stars, downloads, f"by {p.get('author', '')}"]))
+        if meta:
+            print(f"    {meta}")
+        if p.get('tags'):
+            print(f"    Tags: {', '.join(p['tags'])}")
+
+    print(f"\n{'=' * 70}\n")
+
+
+def _plugin_categories(registry):
+    """List plugin categories."""
+    categories = registry.get_categories()
+
+    print(f"\n{'=' * 60}")
+    print("TOKENADE - Plugin Categories")
+    print(f"{'=' * 60}")
+
+    for cat in categories:
+        print(f"\n  {cat.get('icon', '')} {cat['name']}")
+        print(f"    {cat.get('description', '')}")
+        print(f"    {cat.get('plugin_count', 0)} plugin(s)")
+
+    print(f"\n{'=' * 60}\n")
+
+
+def _plugin_popular(registry, args):
+    """Show popular plugins."""
+    plugins = registry.get_popular(limit=args.limit)
+
+    if not plugins:
+        print("No plugins found in registry.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - Popular Plugins (top {len(plugins)})")
+    print(f"{'=' * 60}")
+
+    for i, p in enumerate(plugins, 1):
+        print(f"\n  {i}. {p['name']} v{p.get('version', '?')}")
+        print(f"     {p.get('description', '')}")
+        print(f"     ↓ {p.get('downloads', 0)} downloads | ★ {p.get('rating', 0):.1f}")
+
+    print(f"\n{'=' * 60}\n")
+
+
+def _plugin_recent(registry, args):
+    """Show recent plugins."""
+    plugins = registry.get_recent(limit=args.limit)
+
+    if not plugins:
+        print("No plugins found in registry.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - Recent Plugins ({len(plugins)} newest)")
+    print(f"{'=' * 60}")
+
+    for i, p in enumerate(plugins, 1):
+        print(f"\n  {i}. {p['name']} v{p.get('version', '?')}")
+        print(f"     {p.get('description', '')}")
+        print(f"     by {p.get('author', 'unknown')}")
+
+    print(f"\n{'=' * 60}\n")
+
+
+def _plugin_rate(registry, args):
+    """Rate a plugin."""
+    if registry.rate_plugin(args.name, args.rating, args.review or ""):
+        print(f"✅ Rated {args.name}: {args.rating}/5")
+        if args.review:
+            print(f"   Review: {args.review}")
+    else:
+        print(f"❌ Failed to rate {args.name} (rating must be 1.0-5.0)")
+
+
+def _plugin_verify(args):
+    """Verify plugin checksums."""
+    from tokenade.core.integration.plugin_verifier import PluginVerifier
+
+    verifier = PluginVerifier()
+
+    if args.name:
+        results = [verifier.verify(args.name)]
+    else:
+        results = verifier.verify_all()
+
+    if not results:
+        print("No installed plugins to verify.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print("TOKENADE - Plugin Verification")
+    print(f"{'=' * 60}")
+
+    all_ok = True
+    for r in results:
+        icon = "✅" if r.verified else "❌"
+        print(f"\n  {icon} {r.plugin_name}: {r.summary}")
+        for err in r.errors:
+            print(f"     ⚠️  {err}")
+        if not r.verified:
+            all_ok = False
+
+    print(f"\n{'=' * 60}")
+    if all_ok:
+        print("All plugins verified successfully.")
+    else:
+        print("Some plugins failed verification!")
+    print(f"{'=' * 60}\n")
+
+
+def _plugin_outdated(registry):
+    """Show outdated plugins."""
+    outdated = registry.get_outdated()
+
+    if not outdated:
+        print("All installed plugins are up to date.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - Outdated Plugins ({len(outdated)})")
+    print(f"{'=' * 60}")
+
+    for p in outdated:
+        print(f"\n  {p['name']}")
+        print(f"    Installed: {p['installed_version']} → Available: {p['available_version']}")
+        if p.get('description'):
+            print(f"    {p['description']}")
+
+    print(f"\n  Run 'tokenade plugin update' to update all.")
+    print(f"{'=' * 60}\n")
+
+
+def _plugin_browse(registry, args):
+    """Generate static HTML marketplace page."""
+    from tokenade.core.integration.plugin_browser import generate_marketplace_html
+
+    plugins = registry.search()
+    categories = registry.get_categories()
+
+    output_path = args.output or str(Path.home() / ".tokenade" / "marketplace.html")
+
+    path = generate_marketplace_html(plugins, categories, output_path)
+    print(f"✅ Marketplace page generated: {path}")
+    print(f"   Open in browser: file://{path}")
 
 
 logging.basicConfig(
@@ -534,6 +733,42 @@ Commands:
 
     plugin_reload_parser = plugin_sub.add_parser("reload", help="Reload a plugin")
     plugin_reload_parser.add_argument("name", help="Plugin name to reload")
+
+    # plugin search
+    plugin_search_parser = plugin_sub.add_parser("search", help="Search plugins in marketplace")
+    plugin_search_parser.add_argument("query", nargs="?", default="", help="Search query")
+    plugin_search_parser.add_argument("--type", dest="plugin_type", help="Filter by plugin type")
+    plugin_search_parser.add_argument("--category", help="Filter by category")
+    plugin_search_parser.add_argument("--tags", help="Comma-separated tags to filter")
+    plugin_search_parser.add_argument("--sort", choices=["rating", "downloads", "name", "recent"], default="rating", help="Sort order")
+
+    # plugin categories
+    plugin_sub.add_parser("categories", help="List plugin categories")
+
+    # plugin popular
+    plugin_popular_parser = plugin_sub.add_parser("popular", help="Show most popular plugins")
+    plugin_popular_parser.add_argument("--limit", "-n", type=int, default=10, help="Number of plugins to show")
+
+    # plugin recent
+    plugin_recent_parser = plugin_sub.add_parser("recent", help="Show newest plugins")
+    plugin_recent_parser.add_argument("--limit", "-n", type=int, default=10, help="Number of plugins to show")
+
+    # plugin rate
+    plugin_rate_parser = plugin_sub.add_parser("rate", help="Rate a plugin (1-5 stars)")
+    plugin_rate_parser.add_argument("name", help="Plugin name")
+    plugin_rate_parser.add_argument("rating", type=float, help="Rating (1.0-5.0)")
+    plugin_rate_parser.add_argument("--review", help="Written review")
+
+    # plugin verify
+    plugin_verify_parser = plugin_sub.add_parser("verify", help="Verify plugin integrity via checksums")
+    plugin_verify_parser.add_argument("name", nargs="?", help="Plugin name (all if omitted)")
+
+    # plugin outdated
+    plugin_sub.add_parser("outdated", help="Show plugins with available updates")
+
+    # plugin browse
+    plugin_browse_parser = plugin_sub.add_parser("browse", help="Generate static HTML marketplace page")
+    plugin_browse_parser.add_argument("--output", "-o", help="Output HTML file path")
 
     # Sync
     sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")
