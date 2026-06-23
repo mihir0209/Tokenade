@@ -64,7 +64,7 @@ class PluginRegistry:
         registry_url: str = DEFAULT_REGISTRY_URL,
         plugins_dir: Path = DEFAULT_PLUGINS_DIR,
     ):
-        self.registry_url = registry_url
+        self.registry_url = self._normalize_registry_url(registry_url)
         self.plugins_dir = plugins_dir
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
         self._cache_file = self.plugins_dir / ".registry_cache.json"
@@ -72,6 +72,34 @@ class PluginRegistry:
         self._downloads_file = self.plugins_dir / ".downloads.json"
         self._local_ratings = self._load_local_ratings()
         self._local_downloads = self._load_local_downloads()
+
+    @staticmethod
+    def _normalize_registry_url(url: str) -> str:
+        """Normalize registry URL to raw GitHub content URL.
+
+        Supports:
+        - Raw URL: https://raw.githubusercontent.com/user/repo/main
+        - GitHub URL: https://github.com/user/repo (converts to raw)
+        - GitHub URL with branch: https://github.com/user/repo/tree/main
+        - Plain URL: https://example.com/plugins (used as-is)
+        """
+        import re
+
+        # Convert github.com URLs to raw.githubusercontent.com
+        github_match = re.match(
+            r"https?://github\.com/([^/]+)/([^/]+)(?:/(?:tree|blob)/([^/]+))?(?:/(.*))?",
+            url,
+        )
+        if github_match:
+            user = github_match.group(1)
+            repo = github_match.group(2)
+            branch = github_match.group(3) or "main"
+            path = github_match.group(4) or ""
+            if path:
+                return f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}"
+            return f"https://raw.githubusercontent.com/{user}/{repo}/{branch}"
+
+        return url.rstrip("/")
 
     def search(
         self,
@@ -375,15 +403,21 @@ class PluginRegistry:
             return []
 
     def _download_plugin(self, plugin: Dict) -> bool:
-        """Download plugin files from GitHub."""
+        """Download plugin files from GitHub.
+
+        Downloads plugin.json and plugin.py (and any additional files listed).
+        Supports both raw GitHub URLs and directory URLs.
+        """
         name = plugin.get("name", "")
-        files = plugin.get("files", [])
         base_url = f"{self.registry_url}/plugins/{name}"
 
         plugin_dir = self.plugins_dir / name
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        all_files = ["plugin.json"] + [f for f in files if f != "plugin.json"]
+        # Core files to always download
+        core_files = ["plugin.json", "plugin.py"]
+        extra_files = [f for f in plugin.get("files", []) if f not in core_files]
+        all_files = core_files + extra_files
 
         for filename in all_files:
             file_url = f"{base_url}/{filename}"
@@ -396,10 +430,92 @@ class PluginRegistry:
                 with open(target_path, "wb") as f:
                     f.write(content)
             except (urllib.error.URLError, OSError) as e:
-                logger.error(f"Failed to download {file_url}: {e}")
-                return False
+                # Skip non-critical files (like README.md)
+                if filename in ("plugin.json", "plugin.py"):
+                    logger.error(f"Failed to download {file_url}: {e}")
+                    return False
+                logger.debug(f"Skipped optional file {filename}: {e}")
 
         return True
+
+    def discover_from_url(self, url: str) -> List[Dict]:
+        """Discover plugins from any URL pointing to a plugin directory or registry.
+
+        Supports:
+        - Full registry URL (has plugins.json at root)
+        - GitHub directory URL (e.g., https://github.com/user/repo/tree/main/plugins)
+        - Raw GitHub directory URL (e.g., https://raw.githubusercontent.com/user/repo/main/plugins)
+
+        Returns list of plugin metadata dicts.
+        """
+        normalized = self._normalize_registry_url(url)
+
+        # Try fetching plugins.json first
+        try:
+            plugins_url = f"{normalized}/plugins.json"
+            req = urllib.request.Request(plugins_url, headers={"User-Agent": "Tokenade/2.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            plugins = data if isinstance(data, list) else data.get("plugins", [])
+            if plugins:
+                logger.info(f"Discovered {len(plugins)} plugins from {url}")
+                return plugins
+        except (urllib.error.URLError, OSError, json.JSONDecodeError):
+            pass
+
+        # Try marketplace.json
+        try:
+            market_url = f"{normalized}/marketplace.json"
+            req = urllib.request.Request(market_url, headers={"User-Agent": "Tokenade/2.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            if data and "plugins" in data:
+                logger.info(f"Discovered {len(data['plugins'])} plugins from marketplace")
+                return data["plugins"]
+        except (urllib.error.URLError, OSError, json.JSONDecodeError):
+            pass
+
+        # Try scanning for plugin.json files in subdirectories
+        # This handles raw directory listings
+        try:
+            # Fetch directory listing (GitHub API)
+            import re
+            api_match = re.match(
+                r"https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)",
+                normalized,
+            )
+            if api_match:
+                user, repo, branch, path = api_match.groups()
+                api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{path}?ref={branch}"
+                req = urllib.request.Request(api_url, headers={"User-Agent": "Tokenade/2.0"})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    items = json.loads(resp.read().decode("utf-8"))
+
+                plugins = []
+                for item in items:
+                    if item.get("type") == "dir":
+                        # Try to fetch plugin.json from this directory
+                        try:
+                            pj_url = item.get("download_url", "").replace(
+                                item["name"], f"{item['name']}/plugin.json"
+                            )
+                            if not pj_url:
+                                pj_url = f"{normalized}/{item['name']}/plugin.json"
+                            req2 = urllib.request.Request(pj_url, headers={"User-Agent": "Tokenade/2.0"})
+                            with urllib.request.urlopen(req2, timeout=10) as resp2:
+                                meta = json.loads(resp2.read().decode("utf-8"))
+                            meta["_path"] = item["name"]
+                            plugins.append(meta)
+                        except Exception:
+                            continue
+
+                if plugins:
+                    logger.info(f"Discovered {len(plugins)} plugins from directory scan")
+                    return plugins
+        except Exception as e:
+            logger.debug(f"Directory scan failed: {e}")
+
+        return []
 
     def _load_local_ratings(self) -> Dict:
         """Load local ratings from disk."""
