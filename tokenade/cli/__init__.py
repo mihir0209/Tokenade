@@ -416,6 +416,7 @@ def _plugin_outdated(registry):
 
 def _plugin_browse(registry, args):
     """Generate static HTML marketplace page."""
+    from pathlib import Path
     from tokenade.core.integration.plugin_browser import generate_marketplace_html
 
     plugins = registry.search()
