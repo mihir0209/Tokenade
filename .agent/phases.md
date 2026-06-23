@@ -268,11 +268,18 @@
 **Output:** `tokenade health-report` command
 **Time:** 1 day
 
-### Phase 38: Plugin Marketplace (interactive planning with user)
-**Status:** Pending — user will design the plan interactively
-
-### Phase 38: Plugin Marketplace (interactive planning with user)
-**Status:** Pending — user will design the plan interactively
+### Phase 38: Plugin Marketplace ✅
+**Status:** Complete (2026-06-23)
+**Goal:** Enhanced plugin registry with categories, tags, ratings, verification, search, and HTML marketplace
+**What was done:**
+- Enhanced `tokenade/core/integration/plugin_registry.py` — categories, tags, ratings (local-only), download tracking, verified badges, search with filtering/sorting
+- Created `tokenade/core/integration/plugin_verifier.py` — SHA256 checksum verification, compute/store/verify lifecycle
+- Created `tokenade/core/integration/plugin_search.py` — Local TF-IDF search index with relevance ranking
+- Created `tokenade/core/integration/plugin_browser.py` — Static HTML marketplace page generator (dark theme, search, category filters)
+- Added CLI commands: `plugin search`, `plugin categories`, `plugin popular`, `plugin recent`, `plugin rate`, `plugin verify`, `plugin outdated`, `plugin browse`
+- 66 new tests in test_plugin_marketplace.py
+**Output:** `tokenade plugin search|categories|popular|recent|rate|verify|outdated|browse`
+**Time:** 1 day
 
 ### Phase 39: Mobile Import (Android/iOS) ✅
 **Status:** Complete (2026-06-22)
@@ -388,3 +395,8 @@ tokenade/core/cicd/
 **Output**: `tokenade plugin list|install|enable|disable|update|reload`
 **Verify**: OAuth2 plugin works with `tokenade refresh-browser --plugin oauth2`
 **Next**: Phase 33 — Session Marketplace
+
+### Phase 37 → Phase 38 ✅
+**Output**: `tokenade plugin search|categories|popular|recent|rate|verify|outdated|browse`
+**Verify**: `tokenade plugin search oauth2` returns results; `tokenade plugin browse` generates HTML
+**Next**: Phase 39 — Mobile Import (Android/iOS)

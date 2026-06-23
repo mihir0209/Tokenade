@@ -13,7 +13,7 @@ from tokenade.cli.management import (
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
-    cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile,
+    cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -688,11 +688,23 @@ Commands:
     share_parser.add_argument("--expiry", type=int, default=24, help="Link expiry in hours (default: 24)")
     share_parser.add_argument("--max-uses", type=int, default=0, help="Max uses (0 = unlimited)")
     share_parser.add_argument("--password", "-p", help="Password protect the link")
+    share_parser.add_argument("--email-to", help="Comma-separated email recipients")
+    share_parser.add_argument("--smtp-host", help="SMTP server host")
+    share_parser.add_argument("--smtp-port", type=int, default=587, help="SMTP server port")
+    share_parser.add_argument("--smtp-user", help="SMTP username")
+    share_parser.add_argument("--smtp-password", help="SMTP password")
+    share_parser.add_argument("--webhook-url", help="Webhook URL to notify")
 
     # Unshare
     unshare_parser = subparsers.add_parser("unshare", help="Revoke a shared session")
     unshare_parser.add_argument("session_id", help="Session ID to revoke")
     unshare_parser.add_argument("--list", action="store_true", help="List all active shares")
+
+    # Import shared session
+    import_parser = subparsers.add_parser("import", help="Import a shared session from URL")
+    import_parser.add_argument("url", help="tokenade://share/ URL")
+    import_parser.add_argument("--password", "-p", help="Decryption password")
+    import_parser.add_argument("--output", "-o", help="Output file path")
 
     # Validate Rules
     validate_rules_parser = subparsers.add_parser("validate-rules", help="Validate session with custom rules")
@@ -1115,6 +1127,7 @@ def main():
         "sessions": cmd_sessions,
         "share": cmd_share,
         "unshare": cmd_unshare,
+        "import": cmd_import,
         "sync": cmd_sync,
         "monitor": cmd_monitor,
         "analytics": cmd_analytics,

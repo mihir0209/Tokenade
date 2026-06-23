@@ -242,6 +242,12 @@ def cmd_share(args):
         max_uses=args.max_uses,
         password_protected=bool(args.password),
         password=args.password,
+        email_recipients=args.email_to.split(",") if getattr(args, "email_to", None) else None,
+        smtp_host=getattr(args, "smtp_host", None),
+        smtp_port=getattr(args, "smtp_port", 587),
+        smtp_user=getattr(args, "smtp_user", None),
+        smtp_password=getattr(args, "smtp_password", None),
+        webhook_url=getattr(args, "webhook_url", None),
     )
 
     print("\n" + "=" * 60)
@@ -253,6 +259,15 @@ def cmd_share(args):
         print(f"🔢 Max uses: {args.max_uses}")
     if args.password:
         print("🔑 Password protected: Yes")
+    else:
+        print("⚠️  WARNING: No password — anyone with the URL can access this session!")
+        print("   Use --password to protect the share link.")
+
+    # Warn about large payloads
+    import json as _json
+    size_kb = len(_json.dumps(session).encode()) / 1024
+    if size_kb > 100:
+        print(f"⚠️  WARNING: Session is {size_kb:.0f} KB — URL may be too long for QR/messaging")
 
     if args.format == "qr":
         output_path = args.output or f"{session_file.stem}_qr.png"
@@ -263,11 +278,34 @@ def cmd_share(args):
         share_url, session_id = sharer.create_share_link(session, config)
         generate_share_html(session, output_path)
         print(f"\n📄 Share page saved to: {output_path}")
+        print(f"⚠️  WARNING: HTML file contains session data in plaintext!")
         print(f"🆔 Session ID: {session_id}")
     else:
         share_url, session_id = sharer.create_share_link(session, config)
         print(f"\n🔗 Share URL: {share_url}")
         print(f"🆔 Session ID: {session_id}")
+
+    # Email delivery
+    if getattr(args, "email_to", None):
+        recipients = [r.strip() for r in args.email_to.split(",")]
+        print(f"\n📧 Sending to: {', '.join(recipients)}")
+        try:
+            sharer.send_email(session, config, recipients)
+            print("   ✅ Email sent")
+        except Exception as e:
+            print(f"   ❌ Email failed: {e}")
+
+    # Webhook delivery
+    if getattr(args, "webhook_url", None):
+        print(f"\n📡 Sending to webhook: {args.webhook_url}")
+        try:
+            sent = sharer.send_webhook(session, config)
+            if sent:
+                print("   ✅ Webhook sent")
+            else:
+                print("   ❌ Webhook failed")
+        except Exception as e:
+            print(f"   ❌ Webhook error: {e}")
 
     print(f"\n{'=' * 60}\n")
 
@@ -302,6 +340,57 @@ def cmd_unshare(args):
         print(f"✅ Revoked shared session: {args.session_id}")
     else:
         print(f"❌ Failed to revoke session: {args.session_id}")
+
+
+def cmd_import(args):
+    """Import a shared session from a URL."""
+    from tokenade.core.importer.session_sharer import SessionSharer
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    url = args.url
+    password = args.password
+    output = args.output
+
+    print("\n" + "=" * 60)
+    print("TOKENADE - Import Shared Session")
+    print("=" * 60)
+
+    if not url.startswith("tokenade://share/"):
+        print(f"❌ Invalid share URL (must start with tokenade://share/)")
+        return
+
+    print(f"\n🔗 URL: {url[:60]}...")
+    if password:
+        print("🔑 Password: provided")
+
+    sharer = SessionSharer()
+
+    try:
+        session = sharer.load_from_url(url, password=password)
+    except ValueError as e:
+        print(f"\n❌ Import failed: {e}")
+        return
+    except Exception as e:
+        print(f"\n❌ Import failed: {e}")
+        return
+
+    cookies = session.get("cookies", [])
+    site_name = session.get("site_name", "unknown")
+    print(f"\n✅ Session loaded successfully")
+    print(f"   Site: {site_name}")
+    print(f"   Cookies: {len(cookies)}")
+
+    # Save to file
+    if output:
+        save_path = output
+    else:
+        save_path = f"{site_name}_imported.tokenade"
+
+    packager = SessionPackager()
+    packager.save(session, save_path)
+    print(f"   Saved: {save_path}")
+
+    print(f"\n{'=' * 60}\n")
 
 
 def cmd_sync(args):
