@@ -189,26 +189,84 @@
 **Output**: `tokenade plugin` command + `tokenade.plugin` base classes
 **Time**: 1 day
 
+### Phase 33: Auto-Refresh Daemon ✅
+**Status**: Complete (2026-06-22)
+**Goal**: Background daemon for automatic session refresh
+**What was done**:
+- Created `tokenade/core/daemon/session_daemon.py` — SessionDaemon, DaemonConfig, SessionEntry, RefreshResult
+- Config: `~/.tokenade/daemon.json` — sessions list, intervals, webhooks
+- PID file: `~/.tokenade/daemon.pid`
+- Signal handling: SIGTERM/SIGINT=stop, SIGHUP=reload config
+- Unix double-fork daemonization
+- Webhook notifications (Slack/Discord/custom) with filter flags
+- History tracking (last 1000 refreshes) in `~/.tokenade/daemon_history.json`
+- CLI: `tokenade daemon start|stop|status|run-once|add|remove|list|logs`
+- 49 tests in test_daemon.py
+**Output**: `tokenade daemon` command for background session refresh
+**Time**: 1 day
+
+### Phase 34: Xvfb Headless Support ✅
+**Status**: Complete (2026-06-22)
+**Goal**: Virtual framebuffer for headless Linux environments
+**What was done**:
+- Created `tokenade/core/browser/xvfb.py` — XvfbManager class
+- Auto-detects DISPLAY availability, starts Xvfb if needed
+- Integrated into SystemBrowserLauncher.launch() — auto-starts Xvfb for headless Linux
+- close_all() now stops Xvfb
+- Context manager support (`with XvfbManager() as xvfb:`)
+- Auto-find free display number (`:99`–`:199`)
+- Dockerfile updated with `xvfb` package
+- 23 tests in test_xvfb.py
+**Output**: Xvfb auto-management for headless session injection
+**Time**: 1 day
+
+### Phase 35: Session Versioning & Rollback ✅
+**Status**: Complete (2026-06-22)
+**Goal**: Track session history and enable rollback
+**What was done**:
+- Created `tokenade/core/storage/session_versions.py` — SessionVersionManager, VersionInfo, SessionDiff
+- Versions stored in `~/.tokenade/versions/<session-name>/` (v1.tokenade, v2.tokenade, etc.)
+- Max 10 versions per session (auto-prune oldest)
+- Rollback auto-saves current state before restoring
+- Diff shows cookies added/removed/modified + storage changes
+- CLI: `tokenade versions list|create|delete`, `tokenade rollback <session> <version>`, `tokenade session-diff <session> <v1> <v2>`
+- 26 tests in test_session_versions.py
+**Output**: `tokenade versions` and `tokenade rollback` commands
+**Time**: 1 day
+
+### Phase 36: Structured Logging ✅
+**Status**: Complete (2026-06-22)
+**Goal**: JSON-formatted log output with structured fields, rotation, and CLI
+**What was done**:
+- Created `tokenade/core/logging/structured.py` — StructuredFormatter (JSON), HumanFormatter (colored terminal), LogManager
+- StructuredFormatter outputs: timestamp, level, logger, message, module, function, line, extras, exception
+- HumanFormatter: colored terminal output with short logger names
+- LogManager: centralized log management with RotatingFileHandler (10MB, 7 backups)
+- LogManager.setup() initializes file + console handlers, LogManager.reset() for testing
+- LogManager.read_recent(), search(), cleanup_old_logs(), get_log_files()
+- `tokenade logs` CLI command: --lines, --follow, --search, --json, --log-file, --list-files, --cleanup
+- Integrated LogManager.setup() into setup_logging() for automatic structured logging
+- 25 new tests in test_structured_logging.py (all passing)
+**Output**: `tokenade logs` command + `~/.tokenade/logs/tokenade.log` with JSON-formatted entries
+**Time**: 1 day
+
 ---
 
 ## Planned (Future)
 
-### Phase 33: Session Marketplace
-- Community-shared session configs
-- Backend for hosting, moderation, ratings
-- Integration with plugin registry
-- Time: 1+ week
+### Phase 37: Health Reporting API
+- Batch health reporter with JSON output
+- Exit codes for CI/CD health gating
+- Time: 1 day
 
-### Phase 34: Mobile Import
+### Phase 38: Plugin Marketplace
+- GitHub-based plugin registry with search/ratings
+- Time: 2-3 days
+
+### Phase 39: Mobile Import
 - Export from Android/iOS browsers
 - Different SQLite structure than desktop
 - Time: Very hard, different approach needed
-
-### Phase 35: CI/CD Pipeline Integration
-- GitHub Actions workflow that auto-refreshes sessions
-- Webhook notifications on failure
-- Session versioning with git
-- Time: 2-3 days
 
 ---
 
