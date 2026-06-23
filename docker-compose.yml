@@ -21,6 +21,7 @@ services:
       - seccomp=unconfined
     stdin_open: true
     tty: true
+    restart: "no"
     command: bash
 
   # Proxy service
@@ -40,6 +41,21 @@ services:
       - SYS_ADMIN
     security_opt:
       - seccomp=unconfined
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import tokenade; print(tokenade.__version__)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
     command: ["proxy", "--all", "--port", "9222"]
 
   # API server service
@@ -54,6 +70,21 @@ services:
     environment:
       - TOKENADE_DATA_DIR=/app
       - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import tokenade; print(tokenade.__version__)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
     command: ["python", "-c", "from tokenade.core.api.server import TokenadeAPIServer; import asyncio; s=TokenadeAPIServer(); asyncio.run(s.start())"]
 
   # Development service with live code mounting
@@ -74,6 +105,7 @@ services:
       - seccomp=unconfined
     stdin_open: true
     tty: true
+    restart: "no"
     command: bash
 
 volumes:

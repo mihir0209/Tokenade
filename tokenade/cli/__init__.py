@@ -14,6 +14,7 @@ from tokenade.cli.management import (
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
+    cmd_container, cmd_k8s,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1087,6 +1088,76 @@ Commands:
     clone_parser.add_argument("--profile", "-p", help="Profile name to clone (default: system default)")
     clone_parser.add_argument("--list-profiles", action="store_true", help="List available browser profiles")
 
+    # Container management
+    container_parser = subparsers.add_parser("container", help="Docker container management")
+    container_sub = container_parser.add_subparsers(dest="container_action")
+
+    container_start = container_sub.add_parser("start", help="Start proxy/API containers")
+    container_start.add_argument("--sessions-dir", "-d", default=".", help="Directory with session files")
+    container_start.add_argument("--proxy-port", type=int, default=9222, help="Starting proxy port")
+    container_start.add_argument("--api-port", type=int, default=9224, help="API server port")
+    container_start.add_argument("--no-api", action="store_true", help="Don't start API server")
+    container_start.add_argument("--restart", default="unless-stopped", help="Restart policy (default: unless-stopped)")
+
+    container_stop = container_sub.add_parser("stop", help="Stop containers")
+    container_stop.add_argument("--name", help="Container name to stop (default: all tokenade)")
+
+    container_sub.add_parser("restart", help="Restart containers")
+    container_sub.add_parser("status", help="Show container status")
+
+    container_logs = container_sub.add_parser("logs", help="Tail container logs")
+    container_logs.add_argument("name", help="Container name")
+    container_logs.add_argument("--tail", "-n", type=int, default=100, help="Number of lines to tail")
+    container_logs.add_argument("--follow", "-f", action="store_true", help="Follow log output")
+
+    container_refresh = container_sub.add_parser("refresh", help="Refresh sessions inside containers")
+    container_refresh.add_argument("name", help="Container name")
+    container_refresh.add_argument("--sessions-dir", default="/app/sessions", help="Sessions dir in container")
+
+    container_scale = container_sub.add_parser("scale", help="Scale proxy containers")
+    container_scale.add_argument("replicas", type=int, help="Number of replicas")
+    container_scale.add_argument("--sessions-dir", "-d", default=".", help="Directory with session files")
+
+    container_sub.add_parser("cleanup", help="Stop and remove all tokenade containers")
+
+    container_health = container_sub.add_parser("health", help="Check container health")
+    container_health.add_argument("--watch", action="store_true", help="Continuous health monitoring")
+    container_health.add_argument("--interval", type=int, default=60, help="Check interval in seconds")
+    container_health.add_argument("--max-restarts", type=int, default=3, help="Max restarts before giving up")
+
+    container_gen = container_sub.add_parser("generate", help="Generate docker-compose override")
+    container_gen.add_argument("--sessions-dir", "-d", default=".", help="Directory with session files")
+    container_gen.add_argument("--output", "-o", help="Output file (default: stdout)")
+    container_gen.add_argument("--base-port", type=int, default=9222, help="Starting port")
+
+    # Kubernetes management
+    k8s_parser = subparsers.add_parser("k8s", help="Kubernetes deployment management")
+    k8s_sub = k8s_parser.add_subparsers(dest="k8s_action")
+
+    k8s_deploy = k8s_sub.add_parser("deploy", help="Generate and apply K8s manifests")
+    k8s_deploy.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
+    k8s_deploy.add_argument("--replicas", "-r", type=int, default=1, help="Number of replicas")
+    k8s_deploy.add_argument("--image", default="tokenade:latest", help="Container image")
+    k8s_deploy.add_argument("--port", type=int, default=9222, help="Proxy port")
+    k8s_deploy.add_argument("--dry-run", action="store_true", help="Only generate YAML, don't apply")
+    k8s_deploy.add_argument("--output", "-o", help="Output file for generated YAML")
+
+    k8s_status = k8s_sub.add_parser("status", help="Show deployment status")
+    k8s_status.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
+
+    k8s_scale = k8s_sub.add_parser("scale", help="Scale deployment")
+    k8s_scale.add_argument("replicas", type=int, help="Number of replicas")
+    k8s_scale.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
+
+    k8s_logs = k8s_sub.add_parser("logs", help="Tail pod logs")
+    k8s_logs.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
+    k8s_logs.add_argument("--tail", type=int, default=100, help="Number of lines to tail")
+
+    k8s_delete = k8s_sub.add_parser("delete", help="Delete deployment and service")
+    k8s_delete.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
+
+    k8s_sub.add_parser("pods", help="List pods")
+
     return parser
 
 
@@ -1150,6 +1221,8 @@ def main():
         "diff": cmd_diff,
         "plugin": cmd_plugin,
         "completion": cmd_completion,
+        "container": cmd_container,
+        "k8s": cmd_k8s,
     }
 
     try:
