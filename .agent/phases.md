@@ -5,9 +5,9 @@
 | Metric | Value |
 |--------|-------|
 | Version | 5.8.0 |
-| Tests | 4515 passing |
+| Tests | 4563 passing |
 | Coverage | 98% |
-| Commits ahead | 10 |
+| Commits ahead | 12 |
 | Last updated | 2026-06-22 |
 
 ---
@@ -254,19 +254,38 @@
 
 ## Planned (Future)
 
-### Phase 37: Health Reporting API
-- Batch health reporter with JSON output
-- Exit codes for CI/CD health gating
-- Time: 1 day
+### Phase 37: Health Reporting API ✅
+**Status:** Complete (2026-06-22)
+**Goal:** Batch health reporting for CI/CD pipelines
+**What was done:**
+- Created `tokenade/core/refresh/health_reporter.py` — HealthReporter, HealthReport, SessionReport
+- Combines SessionHealthChecker (binary 0-1) + SessionHealthScorer (OWASP 0-100) into unified report
+- JSON output for machine parsing, human-readable text for operators
+- Exit codes: 0=all healthy, 1=all unhealthy, 2=mixed (for CI/CD gates)
+- Webhook notifications (Slack/Discord compatible payload format)
+- CLI: `tokenade health-report --sessions-dir/--session/--json/--min-health/--max-expired/--webhook`
+- 28 new tests in test_health_reporter.py
+**Output:** `tokenade health-report` command
+**Time:** 1 day
 
-### Phase 38: Plugin Marketplace
-- GitHub-based plugin registry with search/ratings
-- Time: 2-3 days
+### Phase 38: Plugin Marketplace (interactive planning with user)
+**Status:** Pending — user will design the plan interactively
 
-### Phase 39: Mobile Import
-- Export from Android/iOS browsers
-- Different SQLite structure than desktop
-- Time: Very hard, different approach needed
+### Phase 38: Plugin Marketplace (interactive planning with user)
+**Status:** Pending — user will design the plan interactively
+
+### Phase 39: Mobile Import (Android/iOS) ✅
+**Status:** Complete (2026-06-22)
+**Goal:** Import sessions from mobile devices
+**What was done:**
+- Created `tokenade/core/importer/mobile_import.py` — MobileImportManager, MobileDevice, MobileExtractResult
+- Android: auto-detect via ADB, discover browsers (Chrome/Firefox/Samsung/Brave/Edge)
+- iOS: auto-detect via pymobiledevice3, extract Safari Cookies.binarycookies
+- Domain filtering, auto-browser selection, session packaging with mobile metadata
+- CLI: `tokenade mobile-import --auto/--list-devices/--device/--browser/--domains/--output`
+- 20 new tests in test_mobile_import.py
+**Output:** `tokenade mobile-import` command
+**Time:** 1 day
 
 ---
 
