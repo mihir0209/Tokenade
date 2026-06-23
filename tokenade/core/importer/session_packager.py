@@ -244,19 +244,40 @@ class SessionPackager:
             "http_version": "2"
         }
 
-    def save(self, package: Dict, output_path: str) -> str:
+    def save(self, package: Dict, output_path: str, encrypt: Optional[bool] = None) -> str:
         """
         Save package to .tokenade file.
 
         Args:
             package: .tokenade format dictionary
             output_path: Output file path
+            encrypt: Force encryption on/off. None = use config default.
 
         Returns:
             Absolute path to saved file
         """
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Determine if we should encrypt
+        do_encrypt = encrypt
+        if do_encrypt is None:
+            try:
+                from tokenade.core.crypto.at_rest import should_encrypt
+                do_encrypt = should_encrypt()
+            except Exception:
+                do_encrypt = False
+
+        if do_encrypt:
+            try:
+                from tokenade.core.crypto.at_rest import save_encrypted
+                result = save_encrypted(package, str(path))
+                if self._cache is not None:
+                    self._cache.set(str(path.absolute()), package)
+                logger.info(f"Session saved (encrypted): {path}")
+                return result
+            except ValueError as e:
+                logger.warning(f"Encryption failed, saving plaintext: {e}")
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(package, f, indent=2, ensure_ascii=False)
@@ -268,15 +289,17 @@ class SessionPackager:
         logger.info(f"Session saved: {path}")
         return str(path.absolute())
 
-    def load(self, file_path: str) -> Dict:
+    def load(self, file_path: str, password: Optional[str] = None) -> Dict:
         """
-        Load .tokenade file with backward compatibility.
+        Load .tokenade file with backward compatibility and auto-decryption.
 
-        Handles legacy formats missing newer fields (oauth_config, tokens,
-        local_storage, source_device, version, created_at).
+        Handles:
+        - Encrypted files (auto-detected by magic header)
+        - Legacy formats missing newer fields
 
         Args:
             file_path: Path to .tokenade file
+            password: Decryption password (optional, resolved from config if needed)
 
         Returns:
             Package dictionary (normalized to current format)
@@ -293,6 +316,22 @@ class SessionPackager:
 
         if not path.exists():
             raise FileNotFoundError(f"Session file not found: {file_path}")
+
+        # Auto-detect encrypted files
+        try:
+            from tokenade.core.crypto.at_rest import is_encrypted_file, load_encrypted
+            if is_encrypted_file(str(path)):
+                package = load_encrypted(str(path), password=password)
+                package = self._normalize_legacy(package)
+                if self._cache is not None:
+                    self._cache.set(abs_path, package)
+                logger.info(f"Session loaded (encrypted): {path} ({len(package.get('cookies', []))} cookies)")
+                return package
+        except ImportError:
+            pass  # encryption module not available, try plaintext
+        except ValueError as e:
+            logger.error(f"Decryption failed for {path}: {e}")
+            raise
 
         with open(path, "r", encoding="utf-8") as f:
             package = json.load(f)

@@ -33,6 +33,9 @@ DEFAULTS = {
     "output_dir": None,
     "proxy_host": "127.0.0.1",
     "proxy_port": 9223,
+    "encrypt_by_default": False,
+    "encryption_key_file": None,
+    "encryption_password": None,
 }
 
 

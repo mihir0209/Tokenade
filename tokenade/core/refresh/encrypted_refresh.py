@@ -193,20 +193,8 @@ class EncryptedRefreshPipeline:
     ) -> Optional[Dict]:
         """Decrypt an encrypted session file."""
         try:
-            from tokenade.core.security.aes_gcm import AESGCMEncryption
-
-            encryption = AESGCMEncryption()
-
-            if key_file:
-                key = encryption.derive_key_from_file(key_file)
-            elif password:
-                key = encryption.derive_key(password)
-            else:
-                return None
-
-            encrypted_data = path.read_bytes()
-            decrypted_data = encryption.decrypt(encrypted_data, key)
-            return json.loads(decrypted_data.decode("utf-8"))
+            from tokenade.core.crypto.at_rest import load_encrypted
+            return load_encrypted(str(path), password=password, key_file=key_file)
 
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
@@ -220,20 +208,8 @@ class EncryptedRefreshPipeline:
         key_file: Optional[str],
     ):
         """Encrypt and save a session."""
-        from tokenade.core.security.aes_gcm import AESGCMEncryption
-
-        encryption = AESGCMEncryption()
-
-        if key_file:
-            key = encryption.derive_key_from_file(key_file)
-        elif password:
-            key = encryption.derive_key(password)
-        else:
-            raise ValueError("No encryption key provided")
-
-        session_json = json.dumps(session, indent=2).encode("utf-8")
-        encrypted_data = encryption.encrypt(session_json, key)
-        path.write_bytes(encrypted_data)
+        from tokenade.core.crypto.at_rest import save_encrypted
+        save_encrypted(session, str(path), password=password, key_file=key_file)
 
     def _needs_refresh(self, session: Dict) -> bool:
         """Check if session needs refresh."""
