@@ -2820,3 +2820,89 @@ def _mobile_auto_extract(manager, args):
             print(f"   Saved: {result.session_file}")
     else:
         print(f"❌ Failed: {result.error}")
+
+
+def cmd_clone_profile(args):
+    """Clone a browser profile to a new location."""
+    from tokenade.core.browser.profile_cloner import ProfileCloner
+
+    cloner = ProfileCloner()
+
+    # List profiles mode
+    if getattr(args, "list_profiles", False):
+        _clone_list_profiles(cloner, args)
+        return
+
+    # Clone mode
+    source = getattr(args, "source", None)
+    dest = getattr(args, "dest", None)
+    browser = getattr(args, "browser", "chrome") or "chrome"
+    session = getattr(args, "session", None)
+    profile_name = getattr(args, "profile", None)
+
+    if not dest:
+        print("❌ --dest is required")
+        return
+
+    print(f"\n{'=' * 60}")
+    print("TOKENADE - Browser Profile Cloner")
+    print(f"{'=' * 60}")
+
+    if source:
+        # Clone from specific source
+        print(f"   Source: {source}")
+        print(f"   Dest: {dest}")
+        print(f"   Browser: {browser}")
+        if session:
+            print(f"   Session: {session}")
+
+        result = cloner.clone_profile(source, dest, browser, session)
+    else:
+        # Clone from system default
+        print(f"   Browser: {browser}")
+        print(f"   Dest: {dest}")
+        if session:
+            print(f"   Session: {session}")
+
+        result = cloner.clone_default_profile(dest, browser, profile_name, session)
+
+    if result.success:
+        print(f"\n✅ Profile cloned successfully")
+        print(f"   Files: {result.files_copied}")
+        print(f"   Size: {result.size_bytes / (1024 * 1024):.1f} MB")
+        if result.session_injected:
+            print(f"   Cookies injected: {result.cookies_injected}")
+        print(f"   Location: {result.dest_path}")
+        print(f"\n   Launch with:")
+        print(f"   tokenade launch --browser {browser} --profile-dir {result.dest_path}")
+    else:
+        print(f"\n❌ Clone failed:")
+        for err in result.errors:
+            print(f"   {err}")
+
+    print(f"{'=' * 60}\n")
+
+
+def _clone_list_profiles(cloner, args):
+    """List available browser profiles."""
+    browser = getattr(args, "browser", "chrome") or "chrome"
+    profiles = cloner.list_profiles(browser)
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - {browser.title()} Profiles")
+    print(f"{'=' * 60}")
+
+    if not profiles:
+        print(f"\n   No {browser} profiles found")
+        return
+
+    for p in profiles:
+        default = " (default)" if p["is_default"] else ""
+        print(f"\n   {p['name']}{default}")
+        print(f"   Path: {p['path']}")
+        if p["last_used"]:
+            print(f"   Last used: {p['last_used']}")
+
+    print(f"\n{'=' * 60}")
+    print(f"Total: {len(profiles)} profile(s)")
+    print(f"{'=' * 60}\n")

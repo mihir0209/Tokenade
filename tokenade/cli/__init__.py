@@ -13,7 +13,7 @@ from tokenade.cli.management import (
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
-    cmd_logs, cmd_health_report, cmd_mobile_import,
+    cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1051,6 +1051,15 @@ Commands:
     logs_parser.add_argument("--list-files", action="store_true", help="List all log files")
     logs_parser.add_argument("--cleanup", type=int, metavar="DAYS", help="Remove log files older than N days")
 
+    # ── Clone Profile ──────────────────────────────────────────
+    clone_parser = subparsers.add_parser("clone-profile", help="Clone browser profile with optional session injection")
+    clone_parser.add_argument("source", nargs="?", help="Source profile directory (omit to use system default)")
+    clone_parser.add_argument("--dest", "-d", required=True, help="Destination directory for the clone")
+    clone_parser.add_argument("--browser", "-b", default="chrome", help="Browser name (chrome, firefox, brave, edge)")
+    clone_parser.add_argument("--session", "-s", help="Session file to inject into the clone")
+    clone_parser.add_argument("--profile", "-p", help="Profile name to clone (default: system default)")
+    clone_parser.add_argument("--list-profiles", action="store_true", help="List available browser profiles")
+
     return parser
 
 
@@ -1096,6 +1105,7 @@ def main():
         "accounts": cmd_accounts,
         "patch-chrome": cmd_patch_chrome,
         "mobile-import": cmd_mobile_import,
+        "clone-profile": cmd_clone_profile,
         "daemon": cmd_daemon,
         "versions": cmd_versions,
         "rollback": cmd_rollback,
