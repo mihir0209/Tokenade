@@ -48,6 +48,7 @@ class BrowserLaunchConfig:
     window_size: tuple = (1920, 1080)
     extra_args: List[str] = field(default_factory=list)
     timeout: float = 10.0  # Seconds to wait for CDP to be ready
+    upstream_proxy: Optional[str] = None  # e.g. "socks5://user:pass@host:port"
 
 
 class BrowserProcess:
@@ -364,6 +365,7 @@ class SystemBrowserLauncher:
         window_size: tuple = (1920, 1080),
         extra_args: Optional[List[str]] = None,
         timeout: float = 15.0,
+        upstream_proxy: Optional[str] = None,
     ) -> BrowserProcess:
         """
         Launch system browser with CDP debugging enabled.
@@ -377,6 +379,7 @@ class SystemBrowserLauncher:
             window_size: Browser window size (width, height)
             extra_args: Additional command-line arguments
             timeout: Seconds to wait for CDP to be ready
+            upstream_proxy: Upstream proxy URL (e.g. "socks5://user:pass@host:port")
 
         Returns:
             BrowserProcess with CDP connection info
@@ -434,6 +437,7 @@ class SystemBrowserLauncher:
             user_data_dir=user_data_dir,
             window_size=window_size,
             extra_args=extra_args or [],
+            upstream_proxy=upstream_proxy,
         )
 
         logger.info(f"Launching {browser}: {' '.join(args[:5])}...")
@@ -482,6 +486,7 @@ class SystemBrowserLauncher:
         user_data_dir: Optional[str],
         window_size: tuple,
         extra_args: List[str],
+        upstream_proxy: Optional[str] = None,
     ) -> List[str]:
         """Build browser command-line arguments."""
         args = [browser_path]
@@ -504,6 +509,10 @@ class SystemBrowserLauncher:
             if not visible:
                 args.append("--headless=new")
 
+            if upstream_proxy:
+                args.append(f"--proxy-server={upstream_proxy}")
+                args.append("--proxy-bypass-list=localhost,127.0.0.1,<-loopback>")
+
         elif browser.lower() == "firefox":
             # Firefox
             args.extend([
@@ -515,9 +524,16 @@ class SystemBrowserLauncher:
             if not visible:
                 args.append("--headless")
 
+            if upstream_proxy:
+                # Firefox uses --proxy-server for SOCKS5/HTTP
+                args.append(f"--proxy-server={upstream_proxy}")
+
         else:
             # Generic: just add CDP port
             args.append(f"--remote-debugging-port={port}")
+
+            if upstream_proxy:
+                args.append(f"--proxy-server={upstream_proxy}")
 
         args.extend(extra_args)
         return args

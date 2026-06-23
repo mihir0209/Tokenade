@@ -10,8 +10,12 @@ Supported options:
 - visible: Show browser window by default (true/false)
 - auto_validate: Auto-validate sessions after export (true/false)
 - output_dir: Default output directory for exported sessions
-- proxy_host: Default proxy host
-- proxy_port: Default proxy port
+- proxy_host: Default proxy host (local CDP proxy)
+- proxy_port: Default proxy port (local CDP proxy)
+- upstream_proxy: Upstream proxy URL (e.g. "socks5://user:pass@host:port")
+- upstream_proxy_file: Path to proxy list file for rotation
+- upstream_proxy_rotate: Enable proxy rotation (true/false)
+- upstream_proxy_strategy: Rotation strategy ("round-robin", "random", "health-weighted", "sticky")
 """
 
 import json
@@ -36,6 +40,10 @@ DEFAULTS = {
     "encrypt_by_default": False,
     "encryption_key_file": None,
     "encryption_password": None,
+    "upstream_proxy": None,
+    "upstream_proxy_file": None,
+    "upstream_proxy_rotate": False,
+    "upstream_proxy_strategy": "health-weighted",
 }
 
 

@@ -908,6 +908,11 @@ Commands:
     launch_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
     launch_parser.add_argument("--extra-args", help="Extra browser args (comma-separated)")
     launch_parser.add_argument("--browser-path", help="Path to browser executable")
+    launch_parser.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
+    launch_parser.add_argument("--proxy-file", help="Proxy list file for rotation (one proxy per line)")
+    launch_parser.add_argument("--proxy-rotate", action="store_true", help="Enable proxy rotation")
+    launch_parser.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
+                              default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
@@ -921,6 +926,11 @@ Commands:
     refresh_browser_parser.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
     refresh_browser_parser.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
                                        help="Plugin credential (repeatable): --plugin-arg client_id XXX")
+    refresh_browser_parser.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
+    refresh_browser_parser.add_argument("--proxy-file", help="Proxy list file for rotation (one proxy per line)")
+    refresh_browser_parser.add_argument("--proxy-rotate", action="store_true", help="Enable proxy rotation")
+    refresh_browser_parser.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
+                                       default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
     # Multi-Account Orchestration
     accounts_parser = subparsers.add_parser("accounts", help="Multi-account orchestration (list/status/refresh)")
@@ -950,7 +960,12 @@ Commands:
     accounts_refresh.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
     accounts_refresh.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
     accounts_refresh.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
-                                 help="Plugin credential (repeatable): --plugin-arg client_id XXX")
+                                  help="Plugin credential (repeatable): --plugin-arg client_id XXX")
+    accounts_refresh.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
+    accounts_refresh.add_argument("--proxy-file", help="Proxy list file for rotation (one proxy per line)")
+    accounts_refresh.add_argument("--proxy-rotate", action="store_true", help="Enable proxy rotation")
+    accounts_refresh.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
+                                  default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
     # Patch Chrome Binary (remove cdc_ artifacts)
     patch_parser = subparsers.add_parser("patch-chrome", help="Patch Chrome/Chromium binary to remove cdc_ artifacts")

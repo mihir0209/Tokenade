@@ -5,6 +5,7 @@ import platform
 import signal
 import time
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("tokenade")
 
@@ -221,6 +222,50 @@ def cmd_refresh(args):
     except Exception as e:
         logger.error(f"Session refresh failed: {e}", exc_info=True)
         print("❌ Refresh failed — check source browser is running and session is valid")
+
+
+def _resolve_upstream_proxy(args) -> Optional[str]:
+    """Resolve upstream proxy from CLI args or config.
+
+    Priority: --proxy > --proxy-file (with rotation) > config upstream_proxy
+
+    Returns:
+        Proxy URL string for browser --proxy-server flag, or None
+    """
+    from tokenade.core.proxy.rotation import ProxyPool, ProxyRotator, RotationStrategy
+    from tokenade.core.config import load_config
+
+    config = load_config()
+
+    # Single proxy from --proxy flag
+    proxy_url = getattr(args, "proxy", None)
+    if proxy_url:
+        return proxy_url
+
+    # Proxy file with rotation
+    proxy_file = getattr(args, "proxy_file", None)
+    if proxy_file:
+        try:
+            pool = ProxyPool.from_file(proxy_file)
+            if pool.size > 0:
+                strategy_str = getattr(args, "proxy_strategy", "health-weighted")
+                strategy = RotationStrategy(strategy_str)
+                rotator = ProxyRotator(pool=pool, strategy=strategy)
+                proxy = rotator.next()
+                if proxy:
+                    # Store rotator in args for later use (e.g., recording success/failure)
+                    if not hasattr(args, "_proxy_rotator"):
+                        args._proxy_rotator = rotator
+                    if not hasattr(args, "_proxy_pool"):
+                        args._proxy_pool = pool
+                    return proxy.url
+        except FileNotFoundError:
+            logger.warning(f"Proxy file not found: {proxy_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load proxy file: {e}")
+
+    # Config fallback
+    return config.get("upstream_proxy")
 
 
 def cmd_share(args):
@@ -782,6 +827,11 @@ def cmd_launch(args):
     print(f"🔌 CDP Port: {args.port}")
     print(f"👁️  Visible: {args.visible}")
 
+    # Resolve upstream proxy
+    upstream_proxy = _resolve_upstream_proxy(args)
+    if upstream_proxy:
+        print(f"🔀 Upstream proxy: {upstream_proxy}")
+
     try:
         # Check if browser is already running (profile will be locked)
         import subprocess as _sp
@@ -821,6 +871,7 @@ def cmd_launch(args):
             port=args.port,
             profile_dir=profile_dir,
             extra_args=args.extra_args.split(",") if args.extra_args else [],
+            upstream_proxy=upstream_proxy,
         )
 
         print(f"\n✅ Browser launched (PID: {browser.pid})")
@@ -1585,12 +1636,18 @@ def cmd_refresh_browser(args):
     port = args.port
     browser = None
 
+    # Resolve upstream proxy
+    upstream_proxy = _resolve_upstream_proxy(args)
+    if upstream_proxy:
+        print(f"   🔀 Upstream proxy: {upstream_proxy}")
+
     try:
         print(f"\n🚀 Launching {args.browser} (headless={args.headless})...")
         browser = launcher.launch(
             browser=args.browser,
             visible=not args.headless,
             port=port,
+            upstream_proxy=upstream_proxy,
         )
         print(f"   ✅ Browser ready (PID: {browser.pid}, CDP: {browser.cdp_url})")
 
@@ -2053,6 +2110,7 @@ def _accounts_refresh(manager, args):
                 browser=browser,
                 visible=not headless,
                 port=session_port,
+                upstream_proxy=_resolve_upstream_proxy(args),
             )
 
             # Inject → navigate → extract → save
