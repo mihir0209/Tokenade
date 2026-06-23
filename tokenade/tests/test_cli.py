@@ -19,20 +19,16 @@ class TestSetupLogging(unittest.TestCase):
     """Test logging setup."""
 
     def test_verbose_logging(self):
-        """Test verbose logging sets DEBUG level."""
-        with patch('tokenade.cli.logging.getLogger') as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
+        """Test verbose logging configures LogManager with DEBUG."""
+        with patch('tokenade.core.logging.structured.LogManager.setup') as mock_setup:
             setup_logging(verbose=True)
-            mock_logger.setLevel.assert_called_once_with(10)  # DEBUG
+            mock_setup.assert_called_once_with(level="DEBUG", json_output=False)
 
     def test_normal_logging(self):
-        """Test normal logging sets INFO level."""
-        with patch('tokenade.cli.logging.getLogger') as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
+        """Test normal logging configures LogManager with INFO."""
+        with patch('tokenade.core.logging.structured.LogManager.setup') as mock_setup:
             setup_logging(verbose=False)
-            mock_logger.setLevel.assert_called_once_with(20)  # INFO
+            mock_setup.assert_called_once_with(level="INFO", json_output=False)
 
 
 class TestCmdFingerprint(unittest.TestCase):

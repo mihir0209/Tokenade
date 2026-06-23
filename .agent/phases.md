@@ -4,11 +4,11 @@
 
 | Metric | Value |
 |--------|-------|
-| Version | 5.7.0 |
-| Tests | 4385 passing |
+| Version | 5.8.0 |
+| Tests | 4515 passing |
 | Coverage | 98% |
-| Commits ahead | 9 |
-| Last updated | 2026-06-21 |
+| Commits ahead | 10 |
+| Last updated | 2026-06-22 |
 
 ---
 

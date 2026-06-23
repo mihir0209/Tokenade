@@ -13,6 +13,7 @@ from tokenade.cli.management import (
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
+    cmd_logs,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -236,9 +237,11 @@ logger = logging.getLogger("tokenade")
 
 
 def setup_logging(verbose: bool = False):
-    """Configure logging level."""
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.getLogger("tokenade").setLevel(level)
+    """Configure logging level and structured output."""
+    from tokenade.core.logging.structured import LogManager
+    level = "DEBUG" if verbose else "INFO"
+    json_output = getattr(setup_logging, '_json_output', False)
+    LogManager.setup(level=level, json_output=json_output)
 
 
 def _build_parser():
@@ -782,6 +785,16 @@ Commands:
     session_diff_parser.add_argument("version_a", type=int, help="First version number")
     session_diff_parser.add_argument("version_b", type=int, help="Second version number")
 
+    # ── Logs ────────────────────────────────────────────────────
+    logs_parser = subparsers.add_parser("logs", help="View structured logs")
+    logs_parser.add_argument("--lines", "-n", type=int, default=50, help="Number of recent lines to show (default: 50)")
+    logs_parser.add_argument("--follow", "-f", action="store_true", help="Follow log output (like tail -f)")
+    logs_parser.add_argument("--search", "-s", help="Search for text in logs")
+    logs_parser.add_argument("--json", dest="json_output", action="store_true", help="Output in JSON format")
+    logs_parser.add_argument("--log-file", help="Path to specific log file (default: ~/.tokenade/logs/tokenade.log)")
+    logs_parser.add_argument("--list-files", action="store_true", help="List all log files")
+    logs_parser.add_argument("--cleanup", type=int, metavar="DAYS", help="Remove log files older than N days")
+
     return parser
 
 
@@ -794,6 +807,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    setup_logging._json_output = getattr(args, 'json_output', False)
     setup_logging(args.verbose)
 
     commands = {
@@ -828,6 +842,7 @@ def main():
         "versions": cmd_versions,
         "rollback": cmd_rollback,
         "session-diff": cmd_session_diff,
+        "logs": cmd_logs,
         "proxy": cmd_proxy,
         "sessions": cmd_sessions,
         "share": cmd_share,

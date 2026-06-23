@@ -2543,3 +2543,80 @@ def cmd_session_diff(args):
         for key, change in diff.storage_changes.items():
             print(f"     {key}: changed")
     print()
+
+
+# ── Logs Command ────────────────────────────────────────────────
+
+def cmd_logs(args):
+    """View structured logs."""
+    from tokenade.core.logging.structured import LogManager
+
+    if getattr(args, "cleanup", None):
+        days = args.cleanup
+        removed = LogManager.cleanup_old_logs(retention_days=days)
+        print(f"Removed {removed} log file(s) older than {days} days")
+        return
+
+    if getattr(args, "list_files", False):
+        files = LogManager.get_log_files()
+        if not files:
+            print("No log files found")
+            return
+        print(f"\n{'=' * 70}")
+        print("TOKENADE - Log Files")
+        print(f"{'=' * 70}")
+        for f in files:
+            size_kb = f["size_bytes"] / 1024
+            print(f"   {f['name']:<30} {size_kb:>8.1f} KB  {f['modified'][:19]}")
+        print(f"{'=' * 70}\n")
+        return
+
+    log_file = getattr(args, "log_file", None)
+    lines_count = getattr(args, "lines", 50) or 50
+    search_query = getattr(args, "search", None)
+    json_output = getattr(args, "json_output", False)
+    follow = getattr(args, "follow", False)
+
+    if follow:
+        log_path = Path(log_file) if log_file else LogManager.get_log_dir() / "tokenade.log"
+        if not log_path.exists():
+            print("No log file found. Run a tokenade command first to generate logs.")
+            return
+        print(f"Following {log_path} (Ctrl+C to stop)...")
+        try:
+            import subprocess
+            subprocess.run(["tail", "-f", str(log_path)])
+        except KeyboardInterrupt:
+            print("\nStopped following logs")
+        return
+
+    if search_query:
+        results = LogManager.search(search_query, log_file=log_file)
+        if not results:
+            print(f"No matches found for: {search_query}")
+            return
+        if json_output:
+            print(json.dumps([_parse_log_line(line) for line in results], indent=2))
+        else:
+            for line in results[-lines_count:]:
+                print(line)
+        return
+
+    recent = LogManager.read_recent(lines=lines_count, log_file=log_file)
+    if not recent:
+        print("No log entries found. Run a tokenade command first to generate logs.")
+        return
+
+    if json_output:
+        print(json.dumps([_parse_log_line(line) for line in recent], indent=2))
+    else:
+        for line in recent:
+            print(line)
+
+
+def _parse_log_line(line):
+    """Try to parse a JSON log line; return raw string on failure."""
+    try:
+        return json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return {"raw": line}
