@@ -13,7 +13,7 @@ from tokenade.cli.management import (
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
-    cmd_logs,
+    cmd_logs, cmd_health_report, cmd_mobile_import,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -406,6 +406,15 @@ Commands:
     health_parser.add_argument("--session", "-s", help="Single session file to check")
     health_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to check")
 
+    # Health Report
+    health_report_parser = subparsers.add_parser("health-report", help="Batch health report for CI/CD")
+    health_report_parser.add_argument("--session", "-s", help="Single session file to check")
+    health_report_parser.add_argument("--sessions-dir", "-d", help="Directory of sessions to check")
+    health_report_parser.add_argument("--json", dest="json_output", action="store_true", help="Output as JSON")
+    health_report_parser.add_argument("--min-health", type=float, default=0.5, help="Minimum health score (default: 0.5)")
+    health_report_parser.add_argument("--max-expired", type=int, default=0, help="Max allowed expired cookies (default: 0)")
+    health_report_parser.add_argument("--webhook", help="Send report to webhook URL")
+
     # Refresh
     refresh_parser = subparsers.add_parser("refresh", help="Refresh session from source browser")
     refresh_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
@@ -720,6 +729,17 @@ Commands:
     patch_verify.add_argument("--browser", "-b", default="chrome", help="Browser to verify")
     patch_verify.add_argument("--binary", help="Path to browser binary")
 
+    # ── Mobile Import ────────────────────────────────────────────
+    mobile_import_parser = subparsers.add_parser("mobile-import", help="Import sessions from mobile devices (Android/iOS)")
+    mobile_import_parser.add_argument("--auto", action="store_true", help="Auto-detect device and browser")
+    mobile_import_parser.add_argument("--list-devices", action="store_true", help="List connected mobile devices")
+    mobile_import_parser.add_argument("--device", "-d", help="Device serial number")
+    mobile_import_parser.add_argument("--browser", "-b", default="auto", help="Browser to extract from (chrome/firefox/samsung/brave/edge/safari, default: auto)")
+    mobile_import_parser.add_argument("--domains", help="Comma-separated domains to filter")
+    mobile_import_parser.add_argument("--output", "-o", help="Output .tokenade file path")
+    mobile_import_parser.add_argument("--site-name", help="Site name override")
+    mobile_import_parser.add_argument("--ios", action="store_true", help="Target iOS device (macOS only)")
+
     # ── Daemon ──────────────────────────────────────────────────
     daemon_parser = subparsers.add_parser("daemon", help="Auto-refresh daemon (background session refresh)")
     daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_action")
@@ -827,6 +847,7 @@ def main():
         "batch-export": cmd_batch_export,
         "batch-load": cmd_batch_load,
         "health": cmd_health,
+        "health-report": cmd_health_report,
         "refresh": cmd_refresh,
         "refresh-oauth": cmd_refresh_oauth,
         "oauth-config": cmd_oauth_config,
@@ -838,6 +859,7 @@ def main():
         "refresh-browser": cmd_refresh_browser,
         "accounts": cmd_accounts,
         "patch-chrome": cmd_patch_chrome,
+        "mobile-import": cmd_mobile_import,
         "daemon": cmd_daemon,
         "versions": cmd_versions,
         "rollback": cmd_rollback,

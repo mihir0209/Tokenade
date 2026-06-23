@@ -142,6 +142,41 @@ def cmd_health(args):
     print(f"SUMMARY: {healthy_count} healthy, {unhealthy_count} unhealthy")
 
 
+def cmd_health_report(args):
+    """Batch health report for CI/CD pipelines."""
+    from tokenade.core.refresh.health_reporter import HealthReporter
+
+    session_file = getattr(args, "session", None)
+    sessions_dir = getattr(args, "sessions_dir", None)
+    json_output = getattr(args, "json_output", False)
+    min_health = getattr(args, "min_health", 0.5)
+    max_expired = getattr(args, "max_expired", 0)
+    webhook_url = getattr(args, "webhook", None)
+
+    reporter = HealthReporter(min_health=min_health, max_expired=max_expired)
+
+    session_files = [session_file] if session_file else None
+
+    report = reporter.generate_report(
+        sessions_dir=sessions_dir,
+        session_files=session_files,
+    )
+
+    if json_output:
+        print(report.to_json())
+    else:
+        print(report.summary())
+
+    if webhook_url:
+        sent = reporter.send_webhook(report, webhook_url)
+        if sent:
+            print(f"\n📡 Report sent to webhook")
+        else:
+            print(f"\n❌ Failed to send webhook")
+
+    sys.exit(report.exit_code)
+
+
 def cmd_refresh(args):
     """Refresh session from source browser."""
     print("\n" + "=" * 80)
@@ -2620,3 +2655,168 @@ def _parse_log_line(line):
         return json.loads(line)
     except (json.JSONDecodeError, ValueError):
         return {"raw": line}
+
+
+# ── Mobile Import ────────────────────────────────────────────────
+
+def cmd_mobile_import(args):
+    """Import sessions from mobile devices (Android/iOS)."""
+    from tokenade.core.importer.mobile_import import MobileImportManager
+
+    manager = MobileImportManager()
+
+    if not manager.is_available():
+        print("❌ No mobile extraction method available")
+        if platform.system() != "Darwin":
+            print("   Install ADB: https://developer.android.com/tools/adb")
+            print("   Or use macOS for iOS extraction")
+        else:
+            print("   Install ADB for Android: https://developer.android.com/tools/adb")
+            print("   Install pymobiledevice3 for iOS: pip install pymobiledevice3")
+        return
+
+    # List devices mode
+    if getattr(args, "list_devices", False):
+        _mobile_list_devices(manager)
+        return
+
+    # Auto mode
+    if getattr(args, "auto", False):
+        _mobile_auto_extract(manager, args)
+        return
+
+    # Specific device
+    device_serial = getattr(args, "device", None)
+    if not device_serial:
+        # No device specified — list and prompt
+        devices = manager.list_devices()
+        if not devices:
+            print("❌ No mobile devices connected")
+            print("   Connect a device via USB and enable USB debugging (Android)")
+            return
+        if len(devices) == 1:
+            device = devices[0]
+        else:
+            print("Multiple devices found:")
+            for i, d in enumerate(devices):
+                print(f"  [{i+1}] {d.model} ({d.serial}) — {d.platform}")
+            print(f"  Specify --device <serial> to choose")
+            return
+    else:
+        # Find the device
+        devices = manager.list_devices()
+        device = None
+        for d in devices:
+            if d.serial == device_serial:
+                device = d
+                break
+        if not device:
+            print(f"❌ Device not found: {device_serial}")
+            print("   Connected devices:")
+            for d in devices:
+                print(f"     {d.serial} — {d.model}")
+            return
+
+    browser = getattr(args, "browser", "auto")
+    domains = getattr(args, "domains", None)
+    if domains:
+        domains = [d.strip() for d in domains.split(",")]
+
+    output = getattr(args, "output", None)
+    site_name = getattr(args, "site_name", None)
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - Mobile Import")
+    print(f"{'=' * 60}")
+    print(f"   Device: {device.model} ({device.serial})")
+    print(f"   Platform: {device.platform} {device.os_version}")
+    print(f"   Browsers: {', '.join(device.available_browsers) or 'none detected'}")
+    if domains:
+        print(f"   Domains: {', '.join(domains)}")
+
+    if browser == "auto" and device.available_browsers:
+        browser = device.available_browsers[0]
+        print(f"   Auto-selected browser: {browser}")
+
+    print(f"\n🔄 Extracting cookies...")
+
+    result = manager.extract(
+        device=device,
+        browser=browser,
+        domains=domains,
+        output_file=output,
+        site_name=site_name,
+    )
+
+    if result.success:
+        print(f"\n✅ Extraction successful")
+        print(f"   Browser: {result.browser}")
+        print(f"   Cookies: {result.cookie_count}")
+        print(f"   Site: {result.site_name}")
+        print(f"   Auth: {result.auth_status}")
+        print(f"   Domains: {', '.join(result.domains[:10])}")
+        if result.session_file:
+            print(f"   Saved: {result.session_file}")
+    else:
+        print(f"\n❌ Extraction failed: {result.error}")
+        if "ADB" in str(result.error):
+            print("   Ensure USB debugging is enabled and device is authorized")
+
+
+def _mobile_list_devices(manager):
+    """List all connected mobile devices."""
+    devices = manager.list_devices()
+
+    print(f"\n{'=' * 60}")
+    print(f"TOKENADE - Mobile Devices")
+    print(f"{'=' * 60}")
+
+    if not devices:
+        print("\n   No devices connected")
+        print("   Android: Enable USB debugging and connect via USB")
+        print("   iOS: Connect via USB (macOS only, requires pymobiledevice3)")
+        return
+
+    for d in devices:
+        print(f"\n   📱 {d.model} ({d.platform.upper()})")
+        print(f"      Serial: {d.serial}")
+        print(f"      OS: {d.os_version}")
+        if d.available_browsers:
+            print(f"      Browsers: {', '.join(d.available_browsers)}")
+        else:
+            print(f"      Browsers: none detected")
+
+    print(f"\n{'=' * 60}")
+    print(f"Total: {len(devices)} device(s)")
+    print(f"{'=' * 60}\n")
+
+
+def _mobile_auto_extract(manager, args):
+    """Auto-detect and extract from the first available device."""
+    devices = manager.list_devices()
+
+    if not devices:
+        print("❌ No mobile devices connected")
+        return
+
+    device = devices[0]
+    print(f"   Auto-detected: {device.model} ({device.serial})")
+
+    domains = getattr(args, "domains", None)
+    if domains:
+        domains = [d.strip() for d in domains.split(",")]
+
+    result = manager.extract(
+        device=device,
+        browser="auto",
+        domains=domains,
+        output_file=getattr(args, "output", None),
+        site_name=getattr(args, "site_name", None),
+    )
+
+    if result.success:
+        print(f"✅ Extracted {result.cookie_count} cookies from {result.browser}")
+        if result.session_file:
+            print(f"   Saved: {result.session_file}")
+    else:
+        print(f"❌ Failed: {result.error}")
