@@ -5,10 +5,10 @@
 | Metric | Value |
 |--------|-------|
 | Version | 5.8.0 |
-| Tests | 4764 passing |
+| Tests | 4777 passing |
 | Coverage | 98% |
 | Commits ahead | 16 |
-| Last updated | 2026-06-23 |
+| Last updated | 2026-06-25 |
 
 ---
 
@@ -419,4 +419,52 @@ tokenade/core/cicd/
 ### Phase 43 ✅ → Phase 44 ✅
 **Output**: `tokenade container start/status/health/refresh/scale/cleanup/generate` / `tokenade k8s deploy/status/scale/logs/delete/pods`
 **Verify**: Container management CLI works; docker-compose enhanced with health checks and restart policies
-**Next**: Phase 45 — TBD
+**Next**: Phase 45 — Plugin CLI Enhancements
+
+### Phase 44 ✅ → Phase 45 ✅
+**Output**: `tokenade plugin install/info/list/verify/update` with auto-checksums, dependency auto-install
+**Verify**: Install auto-registers checksums; verify auto-registers on first run; info shows registry version; list shows install status
+**Next**: Phase 46 — Enhanced Browser Stealth
+
+---
+
+## Planned Phases (46-50)
+
+### Phase 46 — Enhanced Browser Stealth (2-3 weeks)
+**Goal**: Pass modern bot detection systems (Cloudflare, Akamai, PerimeterX, DataDome)
+**Output**: `tokenade stealth` CLI, `playwright-stealth` integration, 7 critical JS patches
+**Verify**: bot.sannysoft.com > 90%, pixelscan.net > 80%, Google cookie search no CAPTCHA
+**Next**: Phase 47 — Cloudflare & Akamai Bypass
+**Plan**: `.agent/plans/01-enhanced-stealth.md`
+
+### Phase 47 — Cloudflare & Akamai Bypass (3-4 weeks)
+**Goal**: Bypass Cloudflare and Akamai anti-bot protections (protect ~40% of top websites)
+**Output**: `tokenade cloudflare` CLI, cf_clearance extraction, residential proxy support
+**Verify**: nowsecure.nl passes Turnstile, nike.com passes protection, cf_clearance extracted
+**Dependencies**: Phase 46 (Enhanced Stealth)
+**Next**: Phase 48 — Plugin Marketplace Enhancement
+**Plan**: `.agent/plans/02-cloudflare-akamai-bypass.md`
+
+### Phase 48 — Plugin Marketplace Enhancement (4-6 weeks)
+**Goal**: Expand plugin ecosystem with new types and official plugins
+**Output**: 10+ new plugins, stealth/proxy/captcha plugin types, improved marketplace
+**Verify**: 20+ plugins available, `tokenade plugin test` works, marketplace HTML updated
+**Dependencies**: Phase 46, 47
+**Next**: Phase 49 — Competitor Feature Parity
+**Plan**: `.agent/plans/03-plugin-marketplace-enhancement.md`
+
+### Phase 49 — Competitor Feature Parity (6-8 weeks)
+**Goal**: Match key features from AdsPower, Multilogin, GoLogin
+**Output**: Profile management, fingerprint generation, multi-window sync, API server
+**Verify**: `tokenade profile` CLI works, `tokenade serve` starts API, competitor import works
+**Dependencies**: Phase 46, 47
+**Next**: Phase 50 — Stealth Testing & Validation
+**Plan**: `.agent/plans/04-competitor-feature-parity.md`
+
+### Phase 50 — Stealth Testing & Validation (2-3 weeks)
+**Goal**: Automated stealth testing infrastructure
+**Output**: `tokenade stealth test/report`, CI/CD integration, detection score dashboard
+**Verify**: CI passes with score > 80%, detection report generated
+**Dependencies**: Phase 46, 47
+**Next**: Phase 51 — TBD
+**Plan**: `.agent/plans/05-stealth-testing-validation.md`
