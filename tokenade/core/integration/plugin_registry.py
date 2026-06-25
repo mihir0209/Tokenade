@@ -251,8 +251,15 @@ class PluginRegistry:
         self._local_downloads[name] = self._local_downloads.get(name, 0) + 1
         self._save_local_downloads()
 
-    def install(self, plugin_name: str) -> bool:
-        """Install a plugin from the registry."""
+    def install(self, plugin_name: str, _install_chain: Optional[List[str]] = None) -> bool:
+        """Install a plugin from the registry. Auto-installs missing dependencies."""
+        if _install_chain is None:
+            _install_chain = []
+
+        if plugin_name in _install_chain:
+            logger.error(f"Circular dependency detected: {' -> '.join(_install_chain)} -> {plugin_name}")
+            return False
+
         plugins = self._fetch_registry()
         plugin_meta = None
         for p in plugins:
@@ -269,11 +276,15 @@ class PluginRegistry:
             logger.info(f"Plugin already installed: {plugin_name}")
             return True
 
+        _install_chain.append(plugin_name)
+
         for dep in plugin_meta.get("dependencies", []):
             dep_dir = self.plugins_dir / dep
             if not dep_dir.exists():
-                logger.error(f"Missing dependency: {dep}. Install it first.")
-                return False
+                logger.info(f"Installing dependency: {dep}")
+                if not self.install(dep, _install_chain):
+                    logger.error(f"Failed to install dependency: {dep}")
+                    return False
 
         success = self._download_plugin(plugin_meta)
         if success:

@@ -449,6 +449,100 @@ class TestCmdPlugin(unittest.TestCase):
             cmd_plugin(args)
         self.assertIn("Usage", out.getvalue())
 
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_enable_success(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_loader.enable.return_value = True
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("enable", name="my_plugin")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        mock_loader.enable.assert_called_once_with("my_plugin")
+        self.assertIn("enabled", out.getvalue())
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_enable_not_found(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_loader.enable.return_value = False
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("enable", name="nonexistent")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        self.assertIn("not found", out.getvalue())
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_disable_success(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_loader.disable.return_value = True
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("disable", name="my_plugin")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        mock_loader.disable.assert_called_once_with("my_plugin")
+        self.assertIn("disabled", out.getvalue())
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_disable_not_found(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_loader.disable.return_value = False
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("disable", name="nonexistent")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        self.assertIn("not found", out.getvalue())
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_reload_success(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_plugin = MagicMock()
+        mock_plugin.version = "1.0"
+        mock_loader.reload.return_value = mock_plugin
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("reload", name="my_plugin")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        self.assertIn("reloaded", out.getvalue())
+
+    @patch("tokenade.core.integration.plugin_loader.PluginLoader")
+    @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
+    def test_reload_failure(self, MockReg, MockLoader):
+        mock_loader = MagicMock()
+        mock_loader.reload.return_value = None
+        MockLoader.return_value = mock_loader
+
+        from tokenade.cli import cmd_plugin
+        args = self._make_args("reload", name="nonexistent")
+
+        out = StringIO()
+        with patch("sys.stdout", out):
+            cmd_plugin(args)
+        self.assertIn("Failed", out.getvalue())
+
 
 # ---------------------------------------------------------------------------
 # main() error handling (lines 528-540)

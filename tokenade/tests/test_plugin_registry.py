@@ -89,6 +89,40 @@ class TestPluginRegistryInstall:
             result = registry.install("dep-required")
             assert result is False
 
+    def test_install_auto_installs_dependency(self, tmp_path):
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        plugins = [
+            {"name": "base-lib", "version": "1.0", "entry_point": "plugin.py", "dependencies": []},
+            {"name": "app-plugin", "version": "1.0", "entry_point": "plugin.py", "dependencies": ["base-lib"]},
+        ]
+        call_count = [0]
+        def mock_download(meta):
+            d = tmp_path / meta["name"]
+            d.mkdir(exist_ok=True)
+            (d / "plugin.json").write_text(json.dumps(meta))
+            (d / "plugin.py").write_text("# plugin")
+            call_count[0] += 1
+            return True
+
+        with patch.object(registry, "_fetch_registry", return_value=plugins), \
+             patch.object(registry, "_download_plugin", side_effect=mock_download):
+            result = registry.install("app-plugin")
+            assert result is True
+            assert call_count[0] == 2
+            assert (tmp_path / "base-lib" / "plugin.json").exists()
+            assert (tmp_path / "app-plugin" / "plugin.json").exists()
+
+    def test_install_circular_dependency_detected(self, tmp_path):
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        plugins = [
+            {"name": "plugin-a", "dependencies": ["plugin-b"]},
+            {"name": "plugin-b", "dependencies": ["plugin-a"]},
+        ]
+        with patch.object(registry, "_fetch_registry", return_value=plugins), \
+             patch.object(registry, "_download_plugin", return_value=True):
+            result = registry.install("plugin-a")
+            assert result is False
+
     @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
     def test_install_success(self, mock_urlopen, tmp_path):
         mock_response = MagicMock()

@@ -168,6 +168,10 @@ def cmd_plugin(args):
             from tokenade.core.integration.plugin_verifier import PluginVerifier
             verifier = PluginVerifier()
             verifier.register_plugin(args.name)
+            installed = loader.discover()
+            deps_installed = [p["name"] for p in installed if p["name"] != args.name]
+            if deps_installed:
+                print(f"   📦 Dependencies installed: {', '.join(deps_installed)}")
             print("   ✅ Plugin installed successfully")
         else:
             print("   ❌ Failed to install plugin")
@@ -234,20 +238,25 @@ def cmd_plugin(args):
             print(f"❌ Plugin not found: {args.name}")
 
     elif args.plugin_command == "update":
-        print(f"\n🔄 Updating plugins...")
         if args.name:
+            print(f"\n🔄 Updating {args.name}...")
             if registry.update(args.name):
                 print(f"   ✅ Updated: {args.name}")
             else:
                 print(f"   ❌ Failed to update: {args.name}")
         else:
-            results = registry.update()
-            if results:
-                for name, success in results.items():
-                    status = "✅" if success else "❌"
-                    print(f"   {status} {name}")
+            outdated = registry.get_outdated()
+            if not outdated:
+                print("\n✅ All plugins are up to date.")
             else:
-                print("   No updates available")
+                print(f"\n🔄 Updating {len(outdated)} plugin(s)...")
+                results = registry.update()
+                updated = sum(1 for v in results.values() if v)
+                failed = len(results) - updated
+                print(f"   ✅ {updated} updated, ❌ {failed} failed")
+                for name, success in results.items():
+                    if not success:
+                        print(f"      Failed: {name}")
 
     elif args.plugin_command == "reload":
         loaded = loader.reload(args.name)
