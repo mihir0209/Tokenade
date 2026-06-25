@@ -508,6 +508,8 @@ def cmd_stealth(args):
         print(f"   3. Check: https://pixelscan.net/")
 
     elif args.stealth_action == "report":
+        import json
+        from pathlib import Path
         print(f"\n📊 Stealth Report")
         manager = StealthManager()
         config = manager.get_config_dict()
@@ -519,8 +521,6 @@ def cmd_stealth(args):
         print(f"   WebGL renderer: {config['webgl_renderer']}")
         print(f"   Screen: {config['screen_width']}x{config['screen_height']}")
         output_path = args.output or str(Path.home() / ".tokenade" / "stealth_report.json")
-        import json
-        from pathlib import Path
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(config, f, indent=2)

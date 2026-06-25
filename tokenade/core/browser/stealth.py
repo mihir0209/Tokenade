@@ -486,14 +486,14 @@ def get_canvas_consistency_script(session_id: str) -> str:
                 return ((t ^ t >>> 14) >>> 0) / 4294967296;
             }};
         }}
-        const rng = mulberry32(SEED);
-        // Patch canvas toDataURL
+        // Patch canvas toDataURL — reset PRNG each call for consistency
         const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
         HTMLCanvasElement.prototype.toDataURL = function() {{
             const ctx = this.getContext('2d');
             if (ctx) {{
                 const imageData = ctx.getImageData(0, 0, this.width, this.height);
                 const data = imageData.data;
+                const rng = mulberry32(SEED);
                 for (let i = 0; i < data.length; i += 4) {{
                     // Add subtle noise based on seed
                     const noise = Math.floor((rng() - 0.5) * 2);
@@ -505,13 +505,14 @@ def get_canvas_consistency_script(session_id: str) -> str:
             }}
             return origToDataURL.apply(this, arguments);
         }};
-        // Patch canvas toBlob
+        // Patch canvas toBlob — reset PRNG each call for consistency
         const origToBlob = HTMLCanvasElement.prototype.toBlob;
         HTMLCanvasElement.prototype.toBlob = function() {{
             const ctx = this.getContext('2d');
             if (ctx) {{
                 const imageData = ctx.getImageData(0, 0, this.width, this.height);
                 const data = imageData.data;
+                const rng = mulberry32(SEED);
                 for (let i = 0; i < data.length; i += 4) {{
                     const noise = Math.floor((rng() - 0.5) * 2);
                     data[i] = Math.max(0, Math.min(255, data[i] + noise));
@@ -625,15 +626,27 @@ class StealthManager:
         return "\n".join(self.get_all_scripts(session_id))
 
     def apply_to_context(self, context: Any, session_id: Optional[str] = None) -> None:
-        """Apply stealth scripts to a Playwright browser context."""
+        """Apply stealth scripts to a Playwright browser context (sync)."""
         for script in self.get_all_scripts(session_id):
             context.add_init_script(script)
         logger.info("Applied stealth patches to browser context")
 
+    async def apply_to_context_async(self, context: Any, session_id: Optional[str] = None) -> None:
+        """Apply stealth scripts to a Playwright browser context (async)."""
+        for script in self.get_all_scripts(session_id):
+            await context.add_init_script(script)
+        logger.info("Applied stealth patches to browser context")
+
     def apply_to_page(self, page: Any, session_id: Optional[str] = None) -> None:
-        """Apply stealth scripts to a Playwright page."""
+        """Apply stealth scripts to a Playwright page (sync)."""
         for script in self.get_all_scripts(session_id):
             page.evaluate(script)
+        logger.info("Applied stealth patches to page")
+
+    async def apply_to_page_async(self, page: Any, session_id: Optional[str] = None) -> None:
+        """Apply stealth scripts to a Playwright page (async)."""
+        for script in self.get_all_scripts(session_id):
+            await page.evaluate(script)
         logger.info("Applied stealth patches to page")
 
     def get_config_dict(self) -> Dict[str, Any]:
