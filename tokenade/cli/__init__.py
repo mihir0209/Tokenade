@@ -145,23 +145,29 @@ def cmd_plugin(args):
 
     if args.plugin_command == "list":
         if args.available:
+            installed_names = {p["name"] for p in loader.discover()}
             print("\n🌐 Available plugins from registry:")
             plugins = registry.search()
             if not plugins:
                 print("   No plugins found in registry")
             for p in plugins:
-                print(f"   • {p['name']} v{p.get('version', '?')} — {p.get('description', '')}")
+                status = " ✓ installed" if p["name"] in installed_names else ""
+                print(f"   • {p['name']} v{p.get('version', '?')} — {p.get('description', '')}{status}")
         else:
             print("\n📦 Installed plugins:")
             installed = loader.discover()
             if not installed:
                 print("   No plugins installed. Use 'tokenade plugin install <name>' to install.")
             for p in installed:
-                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}) — {p.get('description', '')}")
+                enabled = " ✓" if p.get("enabled", True) else " (disabled)"
+                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}){enabled} — {p.get('description', '')}")
 
     elif args.plugin_command == "install":
         print(f"\n📥 Installing plugin: {args.name}")
         if registry.install(args.name):
+            from tokenade.core.integration.plugin_verifier import PluginVerifier
+            verifier = PluginVerifier()
+            verifier.register_plugin(args.name)
             print("   ✅ Plugin installed successfully")
         else:
             print("   ❌ Failed to install plugin")
@@ -181,15 +187,39 @@ def cmd_plugin(args):
                 plugin = p
                 break
         if not plugin:
-            print(f"❌ Plugin not found: {args.name}")
+            registry_details = registry.get_plugin_details(args.name)
+            if registry_details:
+                print(f"\n📋 Plugin: {args.name} (not installed)")
+                print(f"   Version: {registry_details.get('version', '?')}")
+                print(f"   Type: {registry_details.get('type', '?')}")
+                print(f"   Author: {registry_details.get('author', '?')}")
+                print(f"   Description: {registry_details.get('description', '')}")
+                if registry_details.get("dependencies"):
+                    print(f"   Dependencies: {', '.join(registry_details['dependencies'])}")
+                print(f"   Install: tokenade plugin install {args.name}")
+            else:
+                print(f"❌ Plugin not found: {args.name}")
             return
+        installed_ver = plugin.get("version", "?")
+        enabled = plugin.get("enabled", True)
         print(f"\n📋 Plugin: {plugin['name']}")
-        print(f"   Version: {plugin.get('version', '?')}")
+        print(f"   Version: {installed_ver}")
         print(f"   Type: {plugin.get('type', '?')}")
         print(f"   Author: {plugin.get('author', '?')}")
         print(f"   Description: {plugin.get('description', '')}")
+        print(f"   Status: {'enabled' if enabled else 'disabled'}")
         if plugin.get("dependencies"):
             print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
+        registry_details = registry.get_plugin_details(args.name)
+        if registry_details and registry_details.get("version") != installed_ver:
+            print(f"   Registry version: {registry_details['version']} (update available)")
+        from tokenade.core.integration.plugin_verifier import PluginVerifier
+        verifier = PluginVerifier()
+        if verifier._local_checksums.get(args.name):
+            result = verifier.verify(args.name)
+            print(f"   Integrity: {'✓ verified' if result.verified else '✗ tampered'}")
+        else:
+            print(f"   Integrity: unregistered (run 'tokenade plugin verify' to register)")
 
     elif args.plugin_command == "enable":
         if loader.enable(args.name):
@@ -358,19 +388,28 @@ def _plugin_rate(registry, args):
 
 
 def _plugin_verify(args):
-    """Verify plugin checksums."""
+    """Verify plugin checksums. Auto-registers on first run."""
     from tokenade.core.integration.plugin_verifier import PluginVerifier
 
     verifier = PluginVerifier()
+    plugin_names = [args.name] if args.name else [
+        d.name for d in sorted(verifier.plugins_dir.iterdir())
+        if d.is_dir() and not d.name.startswith(".") and (d / "plugin.json").exists()
+    ]
 
-    if args.name:
-        results = [verifier.verify(args.name)]
-    else:
-        results = verifier.verify_all()
-
-    if not results:
+    if not plugin_names:
         print("No installed plugins to verify.")
         return
+
+    results = []
+    registered = []
+    for name in plugin_names:
+        if not verifier._local_checksums.get(name):
+            verifier.register_plugin(name)
+            registered.append(name)
+            results.append(verifier.verify(name))
+        else:
+            results.append(verifier.verify(name))
 
     print(f"\n{'=' * 60}")
     print("TOKENADE - Plugin Verification")
@@ -378,18 +417,26 @@ def _plugin_verify(args):
 
     all_ok = True
     for r in results:
-        icon = "✅" if r.verified else "❌"
-        print(f"\n  {icon} {r.plugin_name}: {r.summary}")
+        if r.plugin_name in registered:
+            icon = "📝"
+            status = f"registered ({r.files_checked} files checksummed)"
+        elif r.verified:
+            icon = "✅"
+            status = r.summary
+        else:
+            icon = "❌"
+            status = r.summary
+            all_ok = False
+        print(f"\n  {icon} {r.plugin_name}: {status}")
         for err in r.errors:
             print(f"     ⚠️  {err}")
-        if not r.verified:
-            all_ok = False
 
     print(f"\n{'=' * 60}")
     if all_ok:
         print("All plugins verified successfully.")
     else:
         print("Some plugins failed verification!")
+    print(f"{'=' * 60}\n")
     print(f"{'=' * 60}\n")
 
 

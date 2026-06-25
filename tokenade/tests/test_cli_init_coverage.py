@@ -402,6 +402,9 @@ class TestCmdPlugin(unittest.TestCase):
         mock_loader = MagicMock()
         mock_loader.discover.return_value = []
         MockLoader.return_value = mock_loader
+        mock_reg = MagicMock()
+        mock_reg.get_plugin_details.return_value = None
+        MockReg.return_value = mock_reg
 
         from tokenade.cli import cmd_plugin
         args = self._make_args("info", name="nonexistent")

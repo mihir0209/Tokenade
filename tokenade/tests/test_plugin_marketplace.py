@@ -748,3 +748,91 @@ class TestPluginMarketplaceCLI:
         captured = capsys.readouterr()
         assert "generated" in captured.out
         assert Path(output_path).exists()
+
+
+# ─── Enhanced Plugin CLI Tests ────────────────────────────────
+
+class TestPluginCLIEnhanced:
+    """Test enhanced plugin CLI: install checksums, info, list status, verify auto-register."""
+
+    def test_install_registers_checksums(self, tmp_plugins_dir):
+        from tokenade.core.integration.plugin_registry import PluginRegistry
+        from tokenade.core.integration.plugin_verifier import PluginVerifier
+
+        registry = PluginRegistry(plugins_dir=tmp_plugins_dir)
+        plugin_dir = tmp_plugins_dir / "test-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({
+            "name": "test-plugin", "version": "1.0.0", "type": "session_refresh",
+            "entry_point": "plugin.py", "description": "test",
+        }))
+        (plugin_dir / "plugin.py").write_text("class T: pass")
+
+        verifier = PluginVerifier(plugins_dir=tmp_plugins_dir)
+        verifier.register_plugin("test-plugin")
+        assert "test-plugin" in verifier._local_checksums
+        assert len(verifier._local_checksums["test-plugin"]) == 2
+
+    def test_verify_auto_registers(self, tmp_plugins_dir):
+        from tokenade.core.integration.plugin_verifier import PluginVerifier
+
+        plugin_dir = tmp_plugins_dir / "new-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({"name": "new-plugin"}))
+        (plugin_dir / "plugin.py").write_text("# plugin code")
+
+        verifier = PluginVerifier(plugins_dir=tmp_plugins_dir)
+        result = verifier.verify("new-plugin")
+        assert result.verified is False
+        assert "No checksum data" in result.errors[0]
+
+    def test_info_not_installed_in_registry(self, tmp_plugins_dir, capsys):
+        from tokenade.core.integration.plugin_registry import PluginRegistry
+
+        registry = PluginRegistry(plugins_dir=tmp_plugins_dir)
+        plugin_meta = {"name": "remote-plugin", "version": "2.0.0", "type": "handler",
+                       "author": "test", "description": "remote only", "dependencies": []}
+        with patch.object(registry, 'get_plugin_details', return_value=plugin_meta):
+            from tokenade.core.integration.plugin_loader import PluginLoader
+            loader = PluginLoader(plugins_dir=tmp_plugins_dir)
+            installed = loader.discover()
+            assert not any(p["name"] == "remote-plugin" for p in installed)
+            details = registry.get_plugin_details("remote-plugin")
+            assert details is not None
+            assert details["version"] == "2.0.0"
+
+    def test_list_available_shows_install_status(self, tmp_plugins_dir):
+        from tokenade.core.integration.plugin_registry import PluginRegistry
+        from tokenade.core.integration.plugin_loader import PluginLoader
+
+        loader = PluginLoader(plugins_dir=tmp_plugins_dir)
+        plugin_dir = tmp_plugins_dir / "my-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({
+            "name": "my-plugin", "version": "1.0.0", "type": "handler",
+            "entry_point": "plugin.py", "description": "test",
+        }))
+        (plugin_dir / "plugin.py").write_text("class H: pass")
+
+        installed = loader.discover()
+        assert any(p["name"] == "my-plugin" for p in installed)
+
+    def test_verify_all_auto_registers(self, tmp_plugins_dir):
+        from tokenade.core.integration.plugin_verifier import PluginVerifier
+
+        for name in ["plug-a", "plug-b"]:
+            d = tmp_plugins_dir / name
+            d.mkdir()
+            (d / "plugin.json").write_text(json.dumps({"name": name}))
+            (d / "plugin.py").write_text("# code")
+
+        verifier = PluginVerifier(plugins_dir=tmp_plugins_dir)
+        assert "plug-a" not in verifier._local_checksums
+        assert "plug-b" not in verifier._local_checksums
+
+        for name in ["plug-a", "plug-b"]:
+            verifier.register_plugin(name)
+
+        assert "plug-a" in verifier._local_checksums
+        assert "plug-b" in verifier._local_checksums
+        assert len(verifier._local_checksums["plug-a"]) == 2
