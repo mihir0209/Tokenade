@@ -486,6 +486,121 @@ def _plugin_browse(registry, args):
     print(f"   Open in browser: file://{path}")
 
 
+def cmd_stealth(args):
+    """Browser stealth management."""
+    from tokenade.core.browser.stealth import StealthManager, StealthConfig
+    from tokenade.core.browser.dependencies import DependencyChecker
+
+    if args.stealth_action == "test":
+        print(f"\n🔍 Testing stealth against detection sites...")
+        manager = StealthManager()
+        script = manager.get_comprehensive_script()
+        print(f"   Stealth script: {len(script)} bytes, 14 patches")
+        print(f"   Patches: webdriver, chrome, plugins, permissions, webgl,")
+        print(f"     iframe, worker, screen, connection, cleanup, tostring,")
+        print(f"     headless-fixes, canvas-consistency, session-aging")
+        if args.url:
+            print(f"   Test URL: {args.url}")
+        print(f"   Browser: {args.browser}")
+        print(f"\n   To test manually:")
+        print(f"   1. Launch browser: tokenade launch --headless -b {args.browser}")
+        print(f"   2. Navigate to: https://bot.sannysoft.com/")
+        print(f"   3. Check: https://pixelscan.net/")
+
+    elif args.stealth_action == "report":
+        print(f"\n📊 Stealth Report")
+        manager = StealthManager()
+        config = manager.get_config_dict()
+        enabled = [k for k, v in config.items() if v is True and k.startswith("enable_")]
+        print(f"   Enabled patches: {len(enabled)}")
+        for patch in enabled:
+            print(f"     ✓ {patch.replace('enable_', '')}")
+        print(f"\n   WebGL vendor: {config['webgl_vendor']}")
+        print(f"   WebGL renderer: {config['webgl_renderer']}")
+        print(f"   Screen: {config['screen_width']}x{config['screen_height']}")
+        output_path = args.output or str(Path.home() / ".tokenade" / "stealth_report.json")
+        import json
+        from pathlib import Path
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            json.dump(config, f, indent=2)
+        print(f"   Report saved: {output_path}")
+
+    elif args.stealth_action == "deps":
+        checker = DependencyChecker()
+        report = checker.get_report("chromium")
+        print(f"\n📦 System Dependencies ({report['system']})")
+        print(f"   Package manager: {report['package_manager'] or 'not found'}")
+        print(f"   Installed: {report['installed']}/{report['total']}")
+        if report['missing_packages']:
+            print(f"   Missing ({len(report['missing_packages'])}):")
+            for pkg in report['missing_packages']:
+                print(f"     ❌ {pkg}")
+        else:
+            print(f"   ✅ All dependencies installed")
+
+    elif args.stealth_action == "deps-install":
+        print(f"\n📦 Installing missing dependencies...")
+        checker = DependencyChecker()
+        results = checker.install_playwright_deps()
+        installed = sum(1 for r in results if r.success)
+        failed = sum(1 for r in results if not r.success)
+        print(f"   Installed: {installed}, Failed: {failed}")
+        for r in results:
+            if r.success:
+                print(f"   ✅ {r.name}")
+            else:
+                print(f"   ❌ {r.name}: {r.message}")
+
+    else:
+        print("Usage: tokenade stealth {test|report|deps|deps-install}")
+
+
+def cmd_deps(args):
+    """System dependency management."""
+    from tokenade.core.browser.dependencies import DependencyChecker
+
+    checker = DependencyChecker()
+
+    if args.deps_action == "check":
+        browser = getattr(args, "browser", "chromium")
+        report = checker.get_report(browser)
+        print(f"\n📦 System Dependencies ({report['system']})")
+        print(f"   Package manager: {report['package_manager'] or 'not found'}")
+        print(f"   Browser: {browser}")
+        print(f"   Installed: {report['installed']}/{report['total']}")
+        if report['missing_packages']:
+            print(f"   Missing packages:")
+            for pkg in report['missing_packages']:
+                print(f"     ❌ {pkg}")
+            print(f"\n   Install: tokenade deps install")
+        else:
+            print(f"   ✅ All dependencies installed")
+
+    elif args.deps_action == "install":
+        browser = getattr(args, "browser", "chromium")
+        playwright_only = getattr(args, "playwright", False)
+
+        if playwright_only:
+            print(f"\n📦 Installing Playwright dependencies...")
+            results = checker.install_playwright_deps()
+        else:
+            print(f"\n📦 Installing {browser} dependencies...")
+            results = checker.install_missing(browser)
+
+        installed = sum(1 for r in results if r.success)
+        failed = sum(1 for r in results if not r.success)
+        print(f"   Installed: {installed}, Failed: {failed}")
+        for r in results:
+            if r.success:
+                print(f"   ✅ {r.name}")
+            else:
+                print(f"   ❌ {r.name}: {r.message}")
+
+    else:
+        print("Usage: tokenade deps {check|install}")
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -1214,6 +1329,28 @@ Commands:
 
     k8s_sub.add_parser("pods", help="List pods")
 
+    stealth_parser = subparsers.add_parser("stealth", help="Browser stealth management")
+    stealth_sub = stealth_parser.add_subparsers(dest="stealth_action")
+
+    stealth_test = stealth_sub.add_parser("test", help="Test stealth against detection sites")
+    stealth_test.add_argument("--url", "-u", help="Custom test URL")
+    stealth_test.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
+
+    stealth_report = stealth_sub.add_parser("report", help="Generate stealth report")
+    stealth_report.add_argument("--output", "-o", help="Output file for report")
+    stealth_report.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
+
+    stealth_sub.add_parser("deps", help="Check stealth system dependencies")
+    stealth_sub.add_parser("deps-install", help="Install missing stealth dependencies")
+
+    deps_parser = subparsers.add_parser("deps", help="System dependency management")
+    deps_sub = deps_parser.add_subparsers(dest="deps_action")
+
+    deps_sub.add_parser("check", help="Check system dependencies")
+    deps_install = deps_sub.add_parser("install", help="Install missing dependencies")
+    deps_install.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
+    deps_install.add_argument("--playwright", action="store_true", help="Install Playwright dependencies")
+
     return parser
 
 
@@ -1279,6 +1416,8 @@ def main():
         "completion": cmd_completion,
         "container": cmd_container,
         "k8s": cmd_k8s,
+        "stealth": cmd_stealth,
+        "deps": cmd_deps,
     }
 
     try:
