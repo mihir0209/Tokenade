@@ -1,5 +1,6 @@
 """Tokenade CLI - Main entry point and argument parser."""
 import argparse
+import asyncio
 import logging
 import sys
 import time
@@ -657,20 +658,32 @@ def cmd_stealth(args):
     from tokenade.core.browser.dependencies import DependencyChecker
 
     if args.stealth_action == "test":
-        print(f"\n🔍 Testing stealth against detection sites...")
-        manager = StealthManager()
-        script = manager.get_comprehensive_script()
-        print(f"   Stealth script: {len(script)} bytes, 14 patches")
-        print(f"   Patches: webdriver, chrome, plugins, permissions, webgl,")
-        print(f"     iframe, worker, screen, connection, cleanup, tostring,")
-        print(f"     headless-fixes, canvas-consistency, session-aging")
-        if args.url:
-            print(f"   Test URL: {args.url}")
-        print(f"   Browser: {args.browser}")
-        print(f"\n   To test manually:")
-        print(f"   1. Launch browser: tokenade launch --headless -b {args.browser}")
-        print(f"   2. Navigate to: https://bot.sannysoft.com/")
-        print(f"   3. Check: https://pixelscan.net/")
+        from tokenade.core.browser.stealth_test import StealthTestSuite
+        from tokenade.core.browser.dashboard import generate_html_report, generate_json_report
+
+        browser = args.browser
+        print(f"\n🔍 Running stealth tests ({browser})...")
+        suite = StealthTestSuite(browser=browser, headless=True)
+        report = asyncio.run(suite.run_all(url=args.url))
+
+        print(f"\n{'=' * 60}")
+        print(f"  STEALTH SCORE: {report.overall_score:.0f}/100 ({report._grade()})")
+        print(f"{'=' * 60}")
+        print(f"  {report.passed} passed, {report.failed} failed, {report.warned} warned")
+        print()
+
+        for r in report.results:
+            icon = {"pass": "✅", "fail": "❌", "warn": "⚠️", "skip": "○"}[r.verdict.value]
+            print(f"  {icon} {r.name} ({r.score:.0f})")
+
+        # Save reports
+        html_path = args.output or str(Path.home() / ".tokenade" / "stealth_report.html")
+        generate_html_report(report, html_path)
+        json_path = html_path.replace(".html", ".json")
+        generate_json_report(report, json_path)
+        print(f"\n  📄 HTML report: {html_path}")
+        print(f"  📄 JSON report: {json_path}")
+        print(f"{'=' * 60}\n")
 
     elif args.stealth_action == "report":
         import json
