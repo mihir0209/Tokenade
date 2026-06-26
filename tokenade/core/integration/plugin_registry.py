@@ -13,6 +13,15 @@ import time
 import urllib.request
 import urllib.error
 from typing import Dict, List, Optional
+from packaging.version import Version
+
+
+def _version_lt(a: str, b: str) -> bool:
+    """Return True if version a < version b."""
+    try:
+        return Version(a) < Version(b)
+    except Exception:
+        return a < b
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -154,8 +163,38 @@ class PluginRegistry:
             results.sort(key=lambda p: p.get("name", ""))
         elif sort_by == "recent":
             results.reverse()
+        elif sort_by == "trending":
+            import time
+            week_ago = time.time() - 7 * 86400
+            for p in results:
+                recent = p.get("recent_downloads", {})
+                trending_score = 0
+                for entry in recent:
+                    if entry.get("date", 0) > week_ago:
+                        trending_score += entry.get("count", 0)
+                p["_trending"] = trending_score
+            results.sort(key=lambda p: -p.get("_trending", 0))
 
         return results
+
+    def check_compatibility(self, name: str, tokenade_version: str = "5.8.0") -> Dict:
+        """Check if a plugin is compatible with the given Tokenade version."""
+        plugins = self._fetch_registry()
+        plugin = None
+        for p in plugins:
+            if p.get("name") == name:
+                plugin = p
+                break
+        if not plugin:
+            return {"compatible": False, "reason": "Plugin not found in registry"}
+
+        min_ver = plugin.get("min_version", "")
+        max_ver = plugin.get("max_version", "")
+        if min_ver and _version_lt(tokenade_version, min_ver):
+            return {"compatible": False, "reason": f"Requires Tokenade >= {min_ver}"}
+        if max_ver and _version_lt(max_ver, tokenade_version):
+            return {"compatible": False, "reason": f"Requires Tokenade <= {max_ver}"}
+        return {"compatible": True, "reason": ""}
 
     def get_categories(self) -> List[Dict]:
         """List all categories with plugin counts."""

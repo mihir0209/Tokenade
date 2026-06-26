@@ -587,5 +587,65 @@ class TestMainErrorHandling(unittest.TestCase):
             self.assertIn("Unexpected error", output)
 
 
+# ---------------------------------------------------------------------------
+# cmd_plugin → plugin test (Phase 48)
+# ---------------------------------------------------------------------------
+class TestCmdPluginTest(unittest.TestCase):
+    """Test the plugin test CLI command."""
+
+    def test_plugin_test_no_plugins(self):
+        """plugin test with no plugins prints message."""
+        from tokenade.cli import _plugin_test
+        from tokenade.core.integration.plugin_testing import PluginTestRunner
+        args = MagicMock()
+        args.name = None
+        with patch.object(PluginTestRunner, 'test_all', return_value=[]):
+            out = StringIO()
+            with patch("sys.stdout", out):
+                _plugin_test(args)
+            self.assertIn("No plugins found", out.getvalue())
+
+    def test_plugin_test_single_pass(self):
+        """plugin test with a single passing plugin."""
+        from tokenade.cli import _plugin_test
+        from tokenade.core.integration.plugin_testing import PluginTestSuite, PluginTestResult
+        args = MagicMock()
+        args.name = "my-plugin"
+        suite = PluginTestSuite(
+            plugin_name="my-plugin",
+            results=[
+                PluginTestResult("manifest_exists", True),
+                PluginTestResult("entry_point_exists", True),
+            ],
+        )
+        with patch("tokenade.core.integration.plugin_testing.PluginTestRunner.test_plugin", return_value=suite):
+            out = StringIO()
+            with patch("sys.stdout", out):
+                _plugin_test(args)
+            self.assertIn("2 passed", out.getvalue())
+            self.assertIn("✓", out.getvalue())
+
+    def test_plugin_test_single_fail(self):
+        """plugin test with a failing plugin."""
+        from tokenade.cli import _plugin_test
+        from tokenade.core.integration.plugin_testing import PluginTestSuite, PluginTestResult
+        args = MagicMock()
+        args.name = "bad-plugin"
+        suite = PluginTestSuite(
+            plugin_name="bad-plugin",
+            results=[
+                PluginTestResult("manifest_exists", True),
+                PluginTestResult("entry_point_exists", False, "file missing"),
+            ],
+        )
+        with patch("tokenade.core.integration.plugin_testing.PluginTestRunner.test_plugin", return_value=suite):
+            out = StringIO()
+            with patch("sys.stdout", out):
+                _plugin_test(args)
+            self.assertIn("1 failed", out.getvalue())
+            self.assertIn("✗", out.getvalue())
+            self.assertIn("file missing", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,6 +40,9 @@ class PluginLoader:
         self._exporters: Dict[str, Any] = {}
         self._validators: Dict[str, Any] = {}
         self._refreshers: Dict[str, Any] = {}
+        self._stealths: Dict[str, Any] = {}
+        self._proxies: Dict[str, Any] = {}
+        self._captchas: Dict[str, Any] = {}
         self._disabled: set = set()
         self._load_disabled_list()
 
@@ -126,19 +129,26 @@ class PluginLoader:
         if entry_class_name:
             entry_class = getattr(module, entry_class_name, None)
         else:
-            # Auto-discover: look for class that matches plugin type
+            # Auto-discover: look for class that subclasses the target type
             type_class_map = {
-                "handler": "SiteHandler",
-                "export_format": "ExportFormat",
-                "validator": "SessionValidator",
+                "handler": "SiteHandlerPlugin",
+                "export_format": "ExportFormatPlugin",
+                "validator": "SessionValidatorPlugin",
                 "session_refresh": "SessionRefreshPlugin",
+                "stealth": "StealthPlugin",
+                "proxy": "ProxyPlugin",
+                "captcha": "CaptchaPlugin",
             }
             target_name = type_class_map.get(plugin_type, "")
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if isinstance(attr, type) and attr_name == target_name:
-                    entry_class = attr
-                    break
+            if target_name:
+                from tokenade.plugin import base as _base
+                target_cls = getattr(_base, target_name, None)
+                if target_cls:
+                    for attr_name in dir(module):
+                        attr = getattr(module, attr_name)
+                        if isinstance(attr, type) and issubclass(attr, target_cls) and attr is not target_cls:
+                            entry_class = attr
+                            break
 
         if not entry_class:
             logger.error(f"Plugin {name}: no entry class found")
@@ -175,6 +185,12 @@ class PluginLoader:
             self._validators[rule_name] = instance
         elif plugin_type == "session_refresh":
             self._refreshers[name] = instance
+        elif plugin_type == "stealth":
+            self._stealths[name] = instance
+        elif plugin_type == "proxy":
+            self._proxies[name] = instance
+        elif plugin_type == "captcha":
+            self._captchas[name] = instance
 
         logger.info(f"Loaded plugin: {name} v{loaded.version} ({plugin_type})")
         return loaded
@@ -195,6 +211,12 @@ class PluginLoader:
             self._validators = {k: v for k, v in self._validators.items() if v is not plugin.instance}
         elif plugin.plugin_type == "session_refresh":
             self._refreshers = {k: v for k, v in self._refreshers.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "stealth":
+            self._stealths = {k: v for k, v in self._stealths.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "proxy":
+            self._proxies = {k: v for k, v in self._proxies.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "captcha":
+            self._captchas = {k: v for k, v in self._captchas.items() if v is not plugin.instance}
 
         logger.info(f"Unloaded plugin: {name}")
         return True
@@ -214,6 +236,18 @@ class PluginLoader:
     def get_refresher(self, name: str) -> Optional[Any]:
         """Get a session refresh plugin by name."""
         return self._refreshers.get(name)
+
+    def get_stealth(self, name: str) -> Optional[Any]:
+        """Get a stealth plugin by name."""
+        return self._stealths.get(name)
+
+    def get_proxy_plugin(self, name: str) -> Optional[Any]:
+        """Get a proxy plugin by name."""
+        return self._proxies.get(name)
+
+    def get_captcha(self, name: str) -> Optional[Any]:
+        """Get a captcha plugin by name."""
+        return self._captchas.get(name)
 
     def get_refresher_for_session(self, session: dict) -> Optional[Any]:
         """Find the first refresh plugin that can handle this session."""
@@ -240,6 +274,18 @@ class PluginLoader:
     def list_refreshers(self) -> Dict[str, Any]:
         """List all loaded session refresh plugins."""
         return dict(self._refreshers)
+
+    def list_stealths(self) -> Dict[str, Any]:
+        """List all loaded stealth plugins."""
+        return dict(self._stealths)
+
+    def list_proxy_plugins(self) -> Dict[str, Any]:
+        """List all loaded proxy plugins."""
+        return dict(self._proxies)
+
+    def list_captchas(self) -> Dict[str, Any]:
+        """List all loaded captcha plugins."""
+        return dict(self._captchas)
 
     def list_all(self) -> List[LoadedPlugin]:
         """List all loaded plugins."""

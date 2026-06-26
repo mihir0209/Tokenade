@@ -289,8 +289,11 @@ def cmd_plugin(args):
     elif args.plugin_command == "browse":
         _plugin_browse(registry, args)
 
+    elif args.plugin_command == "test":
+        _plugin_test(args)
+
     else:
-        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse}")
+        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse|test}")
 
 
 def _plugin_search(registry, args):
@@ -484,6 +487,43 @@ def _plugin_browse(registry, args):
     path = generate_marketplace_html(plugins, categories, output_path)
     print(f"✅ Marketplace page generated: {path}")
     print(f"   Open in browser: file://{path}")
+
+
+def _plugin_test(args):
+    """Run tests on installed plugins."""
+    from tokenade.core.integration.plugin_testing import PluginTestRunner
+
+    runner = PluginTestRunner()
+
+    if args.name:
+        suites = [runner.test_plugin(args.name)]
+    else:
+        suites = runner.test_all()
+
+    if not suites:
+        print("No plugins found to test.")
+        return
+
+    print(f"\n{'=' * 60}")
+    print("TOKENADE - Plugin Tests")
+    print(f"{'=' * 60}")
+
+    total_passed = 0
+    total_failed = 0
+
+    for suite in suites:
+        status = "✅" if suite.passed else "❌"
+        print(f"\n{status} {suite.summary()}")
+        for result in suite.results:
+            icon = "  ✓" if result.passed else "  ✗"
+            msg = f" — {result.message}" if result.message and not result.passed else ""
+            print(f"{icon} {result.test_name}{msg}")
+        total_passed += suite.passed_count
+        total_failed += suite.failed_count
+
+    print(f"\n{'=' * 60}")
+    print(f"Results: {total_passed} passed, {total_failed} failed")
+    print(f"{'=' * 60}\n")
 
 
 def cmd_stealth(args):
@@ -925,7 +965,7 @@ Commands:
     plugin_search_parser.add_argument("--type", dest="plugin_type", help="Filter by plugin type")
     plugin_search_parser.add_argument("--category", help="Filter by category")
     plugin_search_parser.add_argument("--tags", help="Comma-separated tags to filter")
-    plugin_search_parser.add_argument("--sort", choices=["rating", "downloads", "name", "recent"], default="rating", help="Sort order")
+    plugin_search_parser.add_argument("--sort", choices=["rating", "downloads", "name", "recent", "trending"], default="rating", help="Sort order")
 
     # plugin categories
     plugin_sub.add_parser("categories", help="List plugin categories")
@@ -954,6 +994,10 @@ Commands:
     # plugin browse
     plugin_browse_parser = plugin_sub.add_parser("browse", help="Generate static HTML marketplace page")
     plugin_browse_parser.add_argument("--output", "-o", help="Output HTML file path")
+
+    # plugin test
+    plugin_test_parser = plugin_sub.add_parser("test", help="Run tests on installed plugins")
+    plugin_test_parser.add_argument("name", nargs="?", help="Plugin name (all if omitted)")
 
     # Sync
     sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")

@@ -195,3 +195,140 @@ class SessionValidatorPlugin(PluginBase):
         Returns:
             Dict with keys: valid (bool), score (float 0-100), issues (list of str)
         """
+
+
+class StealthPlugin(PluginBase):
+    """Plugin that provides browser stealth patches.
+
+    Implement get_patches() to return JavaScript injection scripts
+    that bypass bot detection systems.
+
+    Example:
+        class BasicStealthPlugin(StealthPlugin):
+            name = "stealth-basic"
+            version = "1.0.0"
+            description = "Basic stealth patches"
+
+            def get_patches(self):
+                return ["navigator.webdriver = undefined"]
+    """
+
+    @abstractmethod
+    def get_patches(self) -> List[str]:
+        """Return list of JavaScript patches to inject.
+
+        Returns:
+            List of JavaScript strings to inject into pages
+        """
+
+    def get_tls_config(self) -> Optional[Dict[str, Any]]:
+        """Return TLS fingerprint configuration (optional).
+
+        Returns:
+            Dict with keys: impersonate, ciphers, extensions, or None
+        """
+        return None
+
+    def get_browser_args(self) -> List[str]:
+        """Return additional browser launch arguments (optional).
+
+        Returns:
+            List of Chrome/Firefox command-line arguments
+        """
+        return []
+
+
+class ProxyPlugin(PluginBase):
+    """Plugin that provides proxy providers.
+
+    Implement get_proxy() to return a proxy for session operations.
+
+    Example:
+        class MyProxyPlugin(ProxyPlugin):
+            name = "my-proxy"
+            version = "1.0.0"
+            description = "Custom proxy provider"
+
+            def get_proxy(self, session):
+                return {"host": "proxy.example.com", "port": 8080}
+    """
+
+    @abstractmethod
+    def get_proxy(self, session: Optional[Dict] = None) -> Dict[str, Any]:
+        """Get a proxy for the given session.
+
+        Args:
+            session: Optional session data for geo-matching
+
+        Returns:
+            Dict with keys: host, port, protocol, username (opt), password (opt)
+        """
+
+    def check_health(self, proxy: Dict[str, Any]) -> bool:
+        """Check if a proxy is healthy.
+
+        Args:
+            proxy: Proxy config dict
+
+        Returns:
+            True if proxy is healthy
+        """
+        return True
+
+    def rotate(self) -> Dict[str, Any]:
+        """Get the next proxy in rotation.
+
+        Returns:
+            Next proxy config dict
+        """
+        return self.get_proxy()
+
+
+class CaptchaPlugin(PluginBase):
+    """Plugin that solves CAPTCHAs.
+
+    Implement solve() to solve a specific CAPTCHA type.
+
+    Example:
+        class TwoCaptchaPlugin(CaptchaPlugin):
+            name = "captcha-2captcha"
+            version = "1.0.0"
+            description = "2Captcha integration"
+
+            def get_supported_types(self):
+                return ["recaptcha_v2", "hcaptcha", "turnstile"]
+
+            def solve(self, captcha_type, site_key, page_url):
+                # Call 2Captcha API
+                return {"success": True, "token": "..."}
+    """
+
+    @abstractmethod
+    def get_supported_types(self) -> List[str]:
+        """Return list of supported CAPTCHA types.
+
+        Returns:
+            List of CAPTCHA type strings (e.g., "recaptcha_v2", "hcaptcha", "turnstile")
+        """
+
+    @abstractmethod
+    def solve(self, captcha_type: str, site_key: Optional[str] = None,
+              page_url: Optional[str] = None) -> Dict[str, Any]:
+        """Solve a CAPTCHA.
+
+        Args:
+            captcha_type: Type of CAPTCHA (e.g., "recaptcha_v2")
+            site_key: Site key from the CAPTCHA widget
+            page_url: URL of the page with the CAPTCHA
+
+        Returns:
+            Dict with keys: success (bool), token (str), error (str, optional)
+        """
+
+    def get_balance(self) -> Optional[float]:
+        """Get remaining balance for paid CAPTCHA services (optional).
+
+        Returns:
+            Balance amount or None if not applicable
+        """
+        return None

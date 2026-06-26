@@ -61,21 +61,34 @@ class TestPluginLoaderDisabled:
     def test_load_plugin_auto_discover_handler(self, tmp_path):
         plugin_dir = tmp_path / "auto_handler"
         plugin_dir.mkdir()
-        (plugin_dir / "handler.py").write_text("class SiteHandler:\n    pass\n")
-
+        (plugin_dir / "handler.py").write_text(
+            "from tokenade.plugin.base import SiteHandlerPlugin\n"
+            "class MyHandler(SiteHandlerPlugin):\n"
+            "    name = 'h'\n    version = '1.0.0'\n    description = 'd'\n"
+            "    domains = []\n"
+            "    def can_handle(self, u): return True\n"
+            "    def extract_session(self, u, b, **k): return {}\n"
+            "    def inject_session(self, s, u, b, **k): pass\n"
+            "    def handle_session(self, s): pass\n"
+        )
         loader = PluginLoader(plugins_dir=tmp_path)
         result = loader.load_plugin({
             "name": "auto_handler", "type": "handler",
             "entry_point": "handler.py", "_path": str(plugin_dir),
         })
         assert result is not None
-        assert result.entry_class.__name__ == "SiteHandler"
+        assert result.entry_class.__name__ == "MyHandler"
 
     def test_load_plugin_auto_discover_export_format(self, tmp_path):
         plugin_dir = tmp_path / "auto_export"
         plugin_dir.mkdir()
-        (plugin_dir / "exporter.py").write_text("class ExportFormat:\n    pass\n")
-
+        (plugin_dir / "exporter.py").write_text(
+            "from tokenade.plugin.base import ExportFormatPlugin\n"
+            "class MyExport(ExportFormatPlugin):\n"
+            "    name = 'e'\n    version = '1.0.0'\n    description = 'd'\n"
+            "    def get_format_name(self): return 'test'\n"
+            "    def export(self, s, o): return o\n"
+        )
         loader = PluginLoader(plugins_dir=tmp_path)
         result = loader.load_plugin({
             "name": "auto_export", "type": "export_format",
@@ -86,8 +99,13 @@ class TestPluginLoaderDisabled:
     def test_load_plugin_auto_discover_validator(self, tmp_path):
         plugin_dir = tmp_path / "auto_valid"
         plugin_dir.mkdir()
-        (plugin_dir / "validator.py").write_text("class SessionValidator:\n    pass\n")
-
+        (plugin_dir / "validator.py").write_text(
+            "from tokenade.plugin.base import SessionValidatorPlugin\n"
+            "class MyValidator(SessionValidatorPlugin):\n"
+            "    name = 'v'\n    version = '1.0.0'\n    description = 'd'\n"
+            "    def validate(self, s): return True\n"
+            "    def get_validation_rules(self): return {}\n"
+        )
         loader = PluginLoader(plugins_dir=tmp_path)
         result = loader.load_plugin({
             "name": "auto_valid", "type": "validator",
