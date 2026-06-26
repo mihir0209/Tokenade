@@ -2,6 +2,7 @@
 import argparse
 import logging
 import sys
+import time
 
 from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
@@ -526,6 +527,130 @@ def _plugin_test(args):
     print(f"{'=' * 60}\n")
 
 
+def cmd_profile(args):
+    """Manage browser profiles."""
+    from tokenade.core.browser.profiles import ProfileManager
+
+    manager = ProfileManager()
+
+    if args.profile_command == "create":
+        proxy = None
+        if args.proxy:
+            proxy = {"url": args.proxy}
+        tags = [t.strip() for t in args.tags.split(",")] if args.tags else []
+        try:
+            profile = manager.create_profile(
+                name=args.name,
+                browser=args.browser,
+                os_name=args.os_name,
+                proxy=proxy,
+                tags=tags,
+                notes=args.notes or "",
+            )
+            print(f"\n✅ Created profile: {profile.name}")
+            print(f"   Browser: {profile.browser} | OS: {profile.os}")
+            print(f"   ID: {profile.id}")
+            if profile.fingerprint.get("navigator"):
+                nav = profile.fingerprint["navigator"]
+                print(f"   Hardware: {nav.get('hardwareConcurrency', '?')} cores, {nav.get('deviceMemory', '?')} GB RAM")
+            if profile.fingerprint.get("webgl"):
+                gl = profile.fingerprint["webgl"]
+                print(f"   GPU: {gl.get('renderer', '?')}")
+            print()
+        except ValueError as e:
+            print(f"\n❌ {e}\n")
+
+    elif args.profile_command == "list":
+        profiles = manager.list_profiles(browser=args.browser, tag=args.tag)
+        if not profiles:
+            print("\nNo profiles found.\n")
+            return
+        print(f"\n{'=' * 60}")
+        print(f"TOKENADE - Browser Profiles ({len(profiles)} total)")
+        print(f"{'=' * 60}")
+        for p in profiles:
+            last_used = time.strftime("%Y-%m-%d %H:%M", time.localtime(p.last_used)) if p.last_used else "never"
+            tags = f" [{', '.join(p.tags)}]" if p.tags else ""
+            print(f"\n  {p.name}{tags}")
+            print(f"    {p.browser} / {p.os} | ID: {p.id}")
+            print(f"    Last used: {last_used}")
+            if p.proxy:
+                print(f"    Proxy: {p.proxy.get('url', 'configured')}")
+        print(f"\n{'=' * 60}\n")
+
+    elif args.profile_command == "get":
+        profile = manager.get_profile(args.name)
+        if not profile:
+            print(f"\n❌ Profile not found: {args.name}\n")
+            return
+        print(f"\n{'=' * 60}")
+        print(f"TOKENADE - Profile: {profile.name}")
+        print(f"{'=' * 60}")
+        print(f"  ID: {profile.id}")
+        print(f"  Browser: {profile.browser}")
+        print(f"  OS: {profile.os}")
+        print(f"  Created: {time.strftime('%Y-%m-%d %H:%M', time.localtime(profile.created_at))}")
+        print(f"  Updated: {time.strftime('%Y-%m-%d %H:%M', time.localtime(profile.updated_at))}")
+        last_used = time.strftime('%Y-%m-%d %H:%M', time.localtime(profile.last_used)) if profile.last_used else "never"
+        print(f"  Last used: {last_used}")
+        if profile.tags:
+            print(f"  Tags: {', '.join(profile.tags)}")
+        if profile.notes:
+            print(f"  Notes: {profile.notes}")
+        if profile.proxy:
+            print(f"  Proxy: {profile.proxy.get('url', 'configured')}")
+        if profile.fingerprint:
+            nav = profile.fingerprint.get("navigator", {})
+            gl = profile.fingerprint.get("webgl", {})
+            scr = profile.fingerprint.get("screen", {})
+            print(f"\n  Fingerprint:")
+            print(f"    Platform: {nav.get('platform', '?')}")
+            print(f"    Language: {nav.get('language', '?')}")
+            print(f"    Cores: {nav.get('hardwareConcurrency', '?')} | RAM: {nav.get('deviceMemory', '?')} GB")
+            print(f"    Screen: {scr.get('width', '?')}x{scr.get('height', '?')}")
+            print(f"    GPU: {gl.get('renderer', '?')}")
+        print(f"\n{'=' * 60}\n")
+
+    elif args.profile_command == "delete":
+        if manager.delete_profile(args.name):
+            print(f"\n✅ Deleted profile: {args.name}\n")
+        else:
+            print(f"\n❌ Profile not found: {args.name}\n")
+
+    elif args.profile_command == "export":
+        try:
+            path = manager.export_profile(args.name, args.output or f"{args.name}.zip")
+            print(f"\n✅ Exported profile: {path}\n")
+        except FileNotFoundError as e:
+            print(f"\n❌ {e}\n")
+
+    elif args.profile_command == "import":
+        try:
+            profile = manager.import_profile(args.archive, name=args.name)
+            print(f"\n✅ Imported profile: {profile.name}\n")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"\n❌ {e}\n")
+
+    elif args.profile_command == "recent":
+        profiles = manager.get_recent_profiles(limit=args.limit)
+        if not profiles:
+            print("\nNo recently used profiles.\n")
+            return
+        print(f"\nRecently used profiles:")
+        for i, p in enumerate(profiles, 1):
+            last_used = time.strftime("%Y-%m-%d %H:%M", time.localtime(p.last_used)) if p.last_used else "never"
+            print(f"  {i}. {p.name} ({p.browser}/{p.os}) — last used: {last_used}")
+        print()
+
+    elif args.profile_command == "stats":
+        stats = manager.get_stats()
+        print(f"\nProfile Statistics:")
+        print(f"  Total: {stats['total']}")
+        for browser, count in stats.get("by_browser", {}).items():
+            print(f"  {browser}: {count}")
+        print()
+
+
 def cmd_stealth(args):
     """Browser stealth management."""
     from tokenade.core.browser.stealth import StealthManager, StealthConfig
@@ -639,6 +764,36 @@ def cmd_deps(args):
 
     else:
         print("Usage: tokenade deps {check|install}")
+
+
+def cmd_serve(args):
+    """Start the API server."""
+    import asyncio
+    from tokenade.core.api.server import TokenadeAPIServer, APIServerConfig
+
+    config = APIServerConfig(
+        host=args.host,
+        port=args.port,
+        api_key=args.api_key,
+        sessions_dir=args.sessions_dir or "~/.tokenade/sessions",
+        cors_origins=args.cors.split(",") if args.cors else None,
+    )
+
+    print(f"\n🚀 Starting Tokenade API server...")
+    print(f"   Host: {config.host}")
+    print(f"   Port: {config.port}")
+    print(f"   Auth: {'API key required' if config.api_key else 'no authentication'}")
+    print(f"   Sessions: {config.sessions_dir}")
+    print()
+
+    server = TokenadeAPIServer(config)
+
+    try:
+        asyncio.run(server.start())
+    except KeyboardInterrupt:
+        print("\n\n🛑 Server stopped")
+    except Exception as e:
+        print(f"\n❌ Server error: {e}")
 
 
 logging.basicConfig(
@@ -1373,6 +1528,40 @@ Commands:
 
     k8s_sub.add_parser("pods", help="List pods")
 
+    profile_parser = subparsers.add_parser("profile", help="Manage browser profiles")
+    profile_sub = profile_parser.add_subparsers(dest="profile_command", help="Profile commands")
+
+    profile_create = profile_sub.add_parser("create", help="Create a new profile")
+    profile_create.add_argument("name", help="Profile name")
+    profile_create.add_argument("--browser", "-b", default="chromium", help="Browser type (default: chromium)")
+    profile_create.add_argument("--os", dest="os_name", default="windows", choices=["windows", "macos", "linux"], help="Target OS")
+    profile_create.add_argument("--proxy", help="Proxy URL (e.g., socks5://user:pass@host:port)")
+    profile_create.add_argument("--tags", help="Comma-separated tags")
+    profile_create.add_argument("--notes", help="Profile notes")
+
+    profile_list = profile_sub.add_parser("list", help="List all profiles")
+    profile_list.add_argument("--browser", "-b", help="Filter by browser type")
+    profile_list.add_argument("--tag", "-t", help="Filter by tag")
+
+    profile_get = profile_sub.add_parser("get", help="Show profile details")
+    profile_get.add_argument("name", help="Profile name")
+
+    profile_delete = profile_sub.add_parser("delete", help="Delete a profile")
+    profile_delete.add_argument("name", help="Profile name")
+
+    profile_export = profile_sub.add_parser("export", help="Export profile to zip")
+    profile_export.add_argument("name", help="Profile name")
+    profile_export.add_argument("--output", "-o", help="Output file path")
+
+    profile_import = profile_sub.add_parser("import", help="Import profile from zip")
+    profile_import.add_argument("archive", help="Archive file path")
+    profile_import.add_argument("--name", "-n", help="Override profile name")
+
+    profile_recent = profile_sub.add_parser("recent", help="Show recently used profiles")
+    profile_recent.add_argument("--limit", "-n", type=int, default=5, help="Number of profiles")
+
+    profile_sub.add_parser("stats", help="Show profile statistics")
+
     stealth_parser = subparsers.add_parser("stealth", help="Browser stealth management")
     stealth_sub = stealth_parser.add_subparsers(dest="stealth_action")
 
@@ -1394,6 +1583,13 @@ Commands:
     deps_install = deps_sub.add_parser("install", help="Install missing dependencies")
     deps_install.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
     deps_install.add_argument("--playwright", action="store_true", help="Install Playwright dependencies")
+
+    serve_parser = subparsers.add_parser("serve", help="Start API server")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    serve_parser.add_argument("--port", "-p", type=int, default=9224, help="Port to listen on (default: 9224)")
+    serve_parser.add_argument("--api-key", help="API key for authentication")
+    serve_parser.add_argument("--sessions-dir", "-d", help="Sessions directory")
+    serve_parser.add_argument("--cors", help="Allowed CORS origins (comma-separated)")
 
     return parser
 
@@ -1462,6 +1658,8 @@ def main():
         "k8s": cmd_k8s,
         "stealth": cmd_stealth,
         "deps": cmd_deps,
+        "profile": cmd_profile,
+        "serve": cmd_serve,
     }
 
     try:
