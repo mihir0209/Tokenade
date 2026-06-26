@@ -36,6 +36,23 @@ from tokenade.core.browser.dependencies import (
     install_system_deps,
 )
 
+from tokenade.core.browser.cloudflare import (
+    CloudflareBypass,
+    AkamaiBypass,
+    detect_challenge,
+    extract_clearance,
+    has_clearance,
+)
+
+from tokenade.core.browser.captcha import (
+    CaptchaType,
+    CaptchaChallenge,
+    CaptchaSolution,
+    CaptchaSolver,
+    CaptchaDetector,
+    CaptchaManager,
+)
+
 __all__ = [
     "SystemBrowserLauncher",
     "BrowserProcess",
@@ -53,4 +70,15 @@ __all__ = [
     "DependencyChecker",
     "check_system_deps",
     "install_system_deps",
+    "CloudflareBypass",
+    "AkamaiBypass",
+    "detect_challenge",
+    "extract_clearance",
+    "has_clearance",
+    "CaptchaType",
+    "CaptchaChallenge",
+    "CaptchaSolution",
+    "CaptchaSolver",
+    "CaptchaDetector",
+    "CaptchaManager",
 ]
