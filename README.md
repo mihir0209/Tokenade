@@ -1,4 +1,4 @@
-# Tokenade v4.1 — Browser Session Portability Tool
+# Tokenade v6.0 — Browser Session Portability Tool
 
 Extract browser sessions from one device, package them into portable `.tokenade` files, and browse as the donor on another device using a **CDP reverse proxy** with TLS fingerprint matching.
 
@@ -30,6 +30,37 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | **HTTP Forward Proxy** | `HTTP_PROXY` mode with TLS matching |
 | **Multi-Site Bundler** | Serve multiple sessions with tabbed GUI |
 
+### Browser Stealth
+
+| Feature | Description |
+|---------|-------------|
+| **14 Patch Categories** | Webdriver, plugins, permissions, WebGL, canvas, audio, screen, automation |
+| **Cloudflare Bypass** | Turnstile solver, cf_clearance extraction, multi-domain support |
+| **Akamai Bypass** | Bot detection bypass, akamai cookies extraction |
+| **CAPTCHA Detection** | Turnstile, hCaptcha, reCAPTCHA detection and status tracking |
+| **Residential Proxy** | Session-affinity proxy with sticky sessions and rotation |
+| **Stealth Testing** | 18-point automated detection test suite with scoring |
+| **Detection Dashboard** | HTML/JSON reports with category breakdown |
+
+### Competitor Parity
+
+| Feature | Description |
+|---------|-------------|
+| **Profile Manager** | Create, list, delete, export/import browser profiles |
+| **Fingerprint Generator** | OS/hardware-aware deterministic fingerprint generation |
+| **Multi-Profile Sync** | Execute actions across multiple browser profiles simultaneously |
+| **Competitor Import** | Import sessions from AdsPower, Multilogin, GoLogin |
+
+### Plugin System
+
+| Feature | Description |
+|---------|-------------|
+| **16+ Plugin Types** | Site handlers, export formats, validators, stealth, proxy, captcha |
+| **Plugin Marketplace** | Search, categories, ratings, trending, compatibility checks |
+| **Plugin Testing** | Automated test suite for plugin validation |
+| **HTML Marketplace** | Static marketplace page with search and filters |
+| **Official Plugins** | 10+ plugins (OAuth2, Discord, Reddit, WhatsApp, Telegram, etc.) |
+
 ### Enterprise
 
 | Feature | Description |
@@ -38,19 +69,11 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | **Role-Based Access Control** | Admin/editor/viewer roles with persistent storage |
 | **LDAP/SSO Integration** | LDAP bind authentication with group membership checks |
 
-### Performance
-
-| Feature | Description |
-|---------|-------------|
-| **Connection Pooling** | Shared HTTP connections across multi-site proxy |
-| **LRU Session Caching** | In-memory cache with configurable TTL |
-| **Parallel Extraction** | Concurrent cookie extraction from multiple profiles |
-
 ### Browser Support
 
 | Browser | Status | Notes |
 |---------|--------|-------|
-| Chrome | Full | SQLite extraction, profile discovery |
+| Chrome | Full | SQLite extraction, profile discovery, binary patching |
 | Firefox | Full | SQLite extraction, profile discovery |
 | Edge | Full | Chromium-based, same as Chrome |
 | Brave | Full | Chromium-based, same as Chrome |
@@ -62,9 +85,269 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 
 | Feature | Description |
 |---------|-------------|
-| **GitHub Actions** | CI/CD with lint, test matrix (3.9–3.12), security scan, build |
-| **Docker** | Multi-stage build, session management, batch containers |
+| **GitHub Actions** | CI/CD with lint, test matrix (3.10–3.12), security scan, build |
 | **Kubernetes** | Deployment, Service, ConfigMap, sidecar YAML generation |
+
+## Quick Start (3 commands)
+
+### Step 1 — Export cookies from your browser
+
+```bash
+# See what browsers are installed
+tokenade export --list-profiles
+
+# Export ChatGPT session from Firefox
+tokenade export --browser-name firefox --domains "chatgpt.com,openai.com" -o chatgpt.tokenade
+
+# Export Gmail session from Chrome
+tokenade export --browser-name chrome --domains "google.com,accounts.google.com" -o gmail.tokenade
+```
+
+### Step 2 — Start the proxy
+
+```bash
+# Start CDP proxy (default — recommended)
+tokenade proxy -s chatgpt.tokenade
+
+# Custom port, visible browser
+tokenade proxy -s gmail.tokenade --port 8080 --visible
+```
+
+### Step 3 — Browse
+
+Open `http://127.0.0.1:9222`, enter the target URL, and click Browse.
+
+## Full CLI Reference
+
+### Export
+
+```bash
+tokenade export [options]
+
+Options:
+  --browser-name {chrome,firefox,edge,brave}
+  --browser-path PATH        Custom browser profile path
+  --profile NAME             Profile name (e.g. "Default", "Profile 1")
+  --domains DOMAINS          Comma-separated domains to filter
+  --site-config FILE         JSON site config for domain filtering
+  -o, --output FILE          Output file path
+  --list-profiles            List discovered browser profiles
+  --extract-local-storage    Also extract localStorage
+  --local-storage-origin ORIGIN
+```
+
+### Proxy
+
+```bash
+tokenade proxy -s SESSION_FILE [options]
+
+Options:
+  -s, --session FILE    .tokenade session file (required)
+  -p, --port PORT       Port (default: 9222)
+  --host HOST           Bind address (default: 127.0.0.1)
+  --visible             Show Chromium window
+  --no-open-browser     Don't auto-open GUI
+  --timeout SECONDS     Request timeout (default: 30)
+  --all                 Multi-site mode (use -d for sessions directory)
+  --mode {cdp,forward}  Proxy mode
+  --legacy              Use legacy service-worker proxy
+  --auto-refresh        Enable auto-refresh from source browser
+  --source-browser NAME Browser to refresh from
+  --rotate              Enable session rotation
+  --rotate-strategy     Rotation strategy (health-weighted, round-robin, random, lru)
+  --rotate-interval     Rotation interval in seconds
+```
+
+### Stealth
+
+```bash
+tokenade stealth test                     # Run 18-point detection test suite
+tokenade stealth report                   # Generate HTML/JSON detection report
+tokenade stealth deps                     # Check stealth system dependencies
+tokenade stealth deps-install             # Install missing dependencies
+```
+
+### Browser Launch
+
+```bash
+tokenade launch -s session.tokenade -u https://site.com [options]
+
+Options:
+  -s, --session FILE     Session file (required)
+  -u, --url URL          Target URL
+  -b, --browser NAME     Browser (chrome, firefox, brave, edge)
+  --visible              Show browser window
+  --headless             Run in headless mode
+  --proxy URL            Upstream proxy
+  --proxy-file FILE      Proxy list file
+  --proxy-rotate         Rotate proxies
+  --plugin NAME          Plugin to use
+  --encrypt              Encrypt session at rest
+```
+
+### Session Refresh
+
+```bash
+tokenade refresh-browser -s session.tokenade -b chrome --url https://github.com
+tokenade accounts list                     # List all sessions
+tokenade accounts status                   # Health status with color coding
+tokenade accounts refresh --all            # Parallel refresh with unique CDP ports
+```
+
+### Sessions
+
+```bash
+tokenade sessions list -d ./sessions         # List sessions
+tokenade sessions list --site google          # Filter by site
+tokenade sessions merge s1.tokenade s2.tokenade -o merged.tokenade
+tokenade sessions rotate s1.tokenade s2.tokenade
+tokenade sessions stats *.tokenade
+```
+
+### Session Sharing
+
+```bash
+tokenade share -s session.tokenade                    # Create URL
+tokenade share -s session.tokenade --format qr -o qr.png
+tokenade share -s session.tokenade --password x --expiry 48
+tokenade share -s session.tokenade --webhook https://hooks.slack.com/...
+tokenade unshare --list
+tokenade unshare <session-id>
+```
+
+### Encrypt / Decrypt
+
+```bash
+tokenade encrypt -s session.tokenade -o encrypted.tokenade
+tokenade decrypt -s encrypted.tokenade -o session.tokenade
+tokenade rekey -s encrypted.tokenade
+```
+
+### Health & Validation
+
+```bash
+tokenade health -s session.tokenade
+tokenade health-report --sessions-dir ./sessions
+tokenade validate-rules -s session.tokenade -r rules.json
+tokenade diff file1.tokenade file2.tokenade
+```
+
+### Profile Management
+
+```bash
+tokenade profile create --name "Work" --browser chrome
+tokenade profile list
+tokenade profile get --name "Work"
+tokenade profile delete --name "Work"
+tokenade profile export --name "Work" -o work-profile.json
+tokenade profile import --file work-profile.json
+tokenade profile recent
+tokenade profile stats
+```
+
+### Fingerprint
+
+```bash
+tokenade fingerprint --browser chrome --platform windows
+tokenade fingerprint --seed my-seed --count 5
+```
+
+### Multi-Profile Sync
+
+```bash
+tokenade sync --action "navigate,url=https://example.com;click,button#submit"
+```
+
+### Plugins
+
+```bash
+tokenade plugin list                           # List installed plugins
+tokenade plugin install <name>                 # Install from marketplace
+tokenade plugin uninstall <name>               # Remove plugin
+tokenade plugin info <name>                    # Plugin details
+tokenade plugin enable <name>                  # Enable plugin
+tokenade plugin disable <name>                 # Disable plugin
+tokenade plugin update <name>                  # Update plugin
+tokenade plugin reload                         # Reload all plugins
+tokenade plugin search <query>                 # Search marketplace
+tokenade plugin categories                     # List categories
+tokenade plugin popular                        # Top by downloads
+tokenade plugin recent                         # Recently added
+tokenade plugin trending                       # Trending plugins
+tokenade plugin rate <name> <1-5>              # Rate plugin
+tokenade plugin verify <name>                  # Verify checksum
+tokenade plugin outdated                       # Check for updates
+tokenade plugin browse                         # Generate HTML marketplace
+tokenade plugin test <name>                    # Run plugin test suite
+```
+
+### Server
+
+```bash
+tokenade serve --port 8080                     # Start REST API server
+```
+
+### Configuration
+
+```bash
+tokenade config show                          # View all config
+tokenade config set default_browser brave
+tokenade config set stealth_level maximum
+tokenade config get default_browser
+tokenade config path
+```
+
+### Daemon
+
+```bash
+tokenade daemon start                         # Start background daemon
+tokenade daemon stop                          # Stop daemon
+tokenade daemon status                        # Check daemon status
+tokenade daemon add session.tokenade          # Add session to daemon
+tokenade daemon remove session.tokenade       # Remove session
+tokenade daemon list                          # List managed sessions
+```
+
+### Session Versioning
+
+```bash
+tokenade versions list session.tokenade       # List versions
+tokenade versions create session.tokenade     # Create version
+tokenade versions delete session.tokenade 2   # Delete version
+tokenade rollback session.tokenade 2          # Rollback to version
+tokenade session-diff session.tokenade 1 2    # Diff versions
+```
+
+### Logging
+
+```bash
+tokenade logs                                 # View recent logs
+tokenade logs --follow                        # Tail logs
+tokenade logs --search "error"                # Search logs
+tokenade logs --json                          # JSON format
+```
+
+### Other Commands
+
+```bash
+tokenade batch-export                         # Batch export multiple sessions
+tokenade batch-load                           # Batch load sessions
+tokenade batch-refresh                        # Batch refresh with rate limiting
+tokenade clone-profile                        # Clone browser profile
+tokenade completion                           # Shell completion
+tokenade container start/status/health        # Docker container management
+tokenade deps                                 # System dependency check
+tokenade inject-profile                       # Inject session into browser profile
+tokenade k8s deploy/status/scale              # Kubernetes management
+tokenade mobile-import                        # Import from Android/iOS
+tokenade monitor start/stop/status/history    # Session monitoring
+tokenade oauth-config                         # Configure OAuth
+tokenade patch-chrome scan/patch/restore      # Chrome binary patching
+tokenade refresh-oauth                        # Refresh OAuth tokens
+tokenade setup                                # Initial setup
+tokenade transfer                             # Transfer sessions
+tokenade validate-session                     # CI/CD validation
+```
 
 ## How It Works
 
@@ -156,297 +439,47 @@ so servers see the donor's fingerprint, not yours.
 | **Multi-Browser** | ✅ Chrome/Firefox/Edge/Safari/Tor | ⚠️ Single browser | ❌ |
 | **localStorage Support** | ✅ Critical for Telegram, WhatsApp | ❌ | ❌ |
 | **Encrypted Session Files** | ✅ AES-256-GCM | ❌ | ⚠️ Varies |
+| **Stealth & Anti-Detection** | ✅ 14 patches, Cloudflare/Akamai bypass | ❌ | ❌ |
+| **Plugin System** | ✅ 16+ types, marketplace | ❌ | ❌ |
+| **Competitor Import** | ✅ AdsPower/Multilogin/GoLogin | ❌ | ❌ |
 | **Enterprise Features** | ✅ Audit, RBAC, LDAP | ❌ | ❌ |
-| **Docker/K8s Ready** | ✅ Built-in integration | N/A | ❌ |
 | **Self-Hosted** | ✅ No third-party | N/A | ✅ |
 
-**Unique advantage**: Tokenade is the only CLI tool that matches TLS fingerprints for cross-browser session portability.
+## What's New in v6.0
 
-## What's New in v4.1
+- **Enhanced Browser Stealth** — 14 patch categories, 2026-grade anti-detection
+- **Cloudflare & Akamai Bypass** — Turnstile solver, cf_clearance extraction, residential proxy support
+- **CAPTCHA Detection** — Turnstile, hCaptcha, reCAPTCHA detection
+- **Plugin Marketplace** — Search, categories, ratings, trending, HTML marketplace page
+- **Profile Manager** — Create, list, export/import browser profiles
+- **Fingerprint Generator** — OS/hardware-aware deterministic fingerprints
+- **Multi-Profile Sync** — Execute actions across multiple browser profiles
+- **Competitor Import** — Import sessions from AdsPower, Multilogin, GoLogin
+- **Stealth Testing** — 18-point automated detection test suite with HTML/JSON reports
+- **Python 3.10+ Required** — Dropped Python 3.9 support
 
-- **Site Configs** — Preset configs for GitHub, Discord, Reddit, Google, OpenAI with validation URLs and CSS selectors
-- **Progress Indicators** — Real-time progress bar during cookie extraction
-- **Better Error Messages** — Contextual hints for common failures (missing browser, locked DB, DNS errors)
-- **Config File** — `~/.tokenade/config.json` for persistent defaults
-- **Forward Proxy Rewrite** — Raw asyncio protocol for proper HTTPS CONNECT tunneling
-- **Decryption Logging** — Cookie decryption failures now surface as warnings instead of silent fallback
-- **Session Loader Cleanup** — Browser processes now properly closed on error
-
-## Quick Start (3 commands)
-
-### Step 1 — Export cookies from your browser
-
-```bash
-# See what browsers are installed
-tokenade export --list-profiles
-
-# Export ChatGPT session from Firefox
-tokenade export --browser-name firefox --domains "chatgpt.com,openai.com" -o chatgpt.tokenade
-
-# Export Gmail session from Chrome
-tokenade export --browser-name chrome --domains "google.com,accounts.google.com" -o gmail.tokenade
-```
-
-### Step 2 — Start the proxy
+## Installation
 
 ```bash
-# Start CDP proxy (default — recommended)
-tokenade proxy -s chatgpt.tokenade
-
-# Custom port, visible browser
-tokenade proxy -s gmail.tokenade --port 8080 --visible
+pip install tokenade
+playwright install chromium --with-deps
 ```
 
-### Step 3 — Browse
-
-Open `http://127.0.0.1:9222`, enter the target URL, and click Browse.
-
-## Full CLI Reference
-
-### Export
+### Optional Dependencies
 
 ```bash
-tokenade export [options]
-
-Options:
-  --browser-name {chrome,firefox,edge,brave}
-  --browser-path PATH        Custom browser profile path
-  --profile NAME             Profile name (e.g. "Default", "Profile 1")
-  --domains DOMAINS          Comma-separated domains to filter
-  --site-config FILE         JSON site config for domain filtering
-  -o, --output FILE          Output file path
-  --list-profiles            List discovered browser profiles
-  --extract-local-storage    Also extract localStorage
-  --local-storage-origin ORIGIN
+pip install tokenade[runtime]    # curl-cffi for TLS matching
+pip install tokenade[enterprise] # ldap3 for LDAP/SSO
+pip install tokenade[linux]      # secretstorage for Linux keyring
 ```
 
-### Proxy
+### Development
 
 ```bash
-tokenade proxy -s SESSION_FILE [options]
-
-Options:
-  -s, --session FILE    .tokenade session file (required)
-  -p, --port PORT       Port (default: 9222)
-  --host HOST           Bind address (default: 127.0.0.1)
-  --visible             Show Chromium window
-  --no-open-browser     Don't auto-open GUI
-  --timeout SECONDS     Request timeout (default: 30)
-  --all                 Multi-site mode (use -d for sessions directory)
-  --mode {cdp,forward}  Proxy mode
-  --legacy              Use legacy service-worker proxy
-  --auto-refresh        Enable auto-refresh from source browser
-  --source-browser NAME Browser to refresh from
-```
-
-### Multi-Session
-
-```bash
-tokenade sessions list -d ./sessions         # List sessions
-tokenade sessions list --site google          # Filter by site
-tokenade sessions merge s1.tokenade s2.tokenade -o merged.tokenade
-tokenade sessions rotate s1.tokenade s2.tokenade
-tokenade sessions stats *.tokenade
-```
-
-### Session Sharing
-
-```bash
-tokenade share -s session.tokenade                    # Create URL
-tokenade share -s session.tokenade --format qr -o qr.png
-tokenade share -s session.tokenade --password x --expiry 48
-tokenade share -s session.tokenade --webhook https://hooks.slack.com/...
-tokenade unshare --list
-tokenade unshare <session-id>
-```
-
-### Encrypt / Decrypt
-
-```bash
-tokenade encrypt -s session.tokenade -o encrypted.tokenade
-tokenade decrypt -s encrypted.tokenade -o session.tokenade
-tokenade rekey -s encrypted.tokenade
-```
-
-### Health & Validation
-
-```bash
-tokenade health -s session.tokenade
-tokenade validate-rules -s session.tokenade -r rules.json
-tokenade diff file1.tokenade file2.tokenade
-```
-
-### Inject Profile
-
-```bash
-tokenade inject-profile -s session.tokenade --browser firefox --profile "default"
-tokenade inject-profile -s session.tokenade --browser firefox --profile "default" --dry-run
-```
-
-### Configuration
-
-```bash
-# View all config
-tokenade config show
-
-# Set defaults
-tokenade config set default_browser brave
-tokenade config set stealth_level maximum
-tokenade config set proxy_port 9223
-
-# Get a value
-tokenade config get default_browser
-
-# Config file location
-tokenade config path
-```
-
-Config is stored at `~/.tokenade/config.json`.
-
-## Docker
-
-```bash
-# Build
-docker build -t tokenade .
-
-# Run proxy in container
-docker run --rm -p 9222:9222 \
-  -v ./sessions:/app/sessions:ro \
-  --cap-add=SYS_ADMIN \
-  tokenade proxy --host 0.0.0.0 -s /app/sessions/session.tokenade
-
-# Docker Compose
-docker compose up tokenade
-```
-
-### Docker Session Management
-
-```python
-from tokenade.core.integration import DockerSessionManager
-
-manager = DockerSessionManager()
-manager.create_session_container("session.tokenade", "my-proxy", port=9222)
-print(manager.get_status())
-```
-
-## Kubernetes
-
-### Sidecar Mode
-
-```python
-from tokenade.core.integration import KubernetesManager, KubernetesConfig
-
-k8s = KubernetesManager(KubernetesConfig(namespace="production"))
-print(k8s.generate_sidecar_yaml("my-app:latest", "tokenade-sessions"))
-```
-
-### Generate Manifests
-
-```python
-# Full deployment
-print(k8s.generate_deployment_yaml(session_configmap="tokenade-sessions"))
-
-# Service
-print(k8s.generate_service_yaml())
-
-# ConfigMap from session files
-print(k8s.generate_configmap_yaml({
-    "session.tokenade": open("session.tokenade").read()
-}))
-```
-
-## Enterprise
-
-### Audit Logging
-
-```python
-from tokenade.core.security.audit import AuditLogger
-
-logger = AuditLogger()
-logger.log_event("session_export", session_id="abc", site_name="google")
-logger.log_event("session_share", session_id="abc", method="email")
-print(logger.get_summary())
-```
-
-### Role-Based Access Control
-
-```python
-from tokenade.core.security.audit import RoleManager
-
-rbac = RoleManager()
-rbac.assign_role("user@example.com", "editor")
-rbac.check_permission("user@example.com", "view_share")  # True
-rbac.check_permission("user@example.com", "revoke_share")  # False
-```
-
-### LDAP Authentication
-
-```python
-from tokenade.core.security.audit import LDAPAuthenticator, LDAPConfig
-
-config = LDAPConfig(
-    server="ldap.example.com",
-    port=636,
-    use_ssl=True,
-    bind_dn="cn=admin,dc=example,dc=com",
-    bind_password="...",
-    user_search_base="ou=users,dc=example,dc=com",
-    user_search_filter="(uid={username})",
-)
-auth = LDAPAuthenticator(config)
-auth.authenticate("alice", "password123")
-```
-
-## Architecture
-
-```
-tokenade/
-├── core/
-│   ├── proxy/
-│   │   ├── cdp_proxy.py          # CDP proxy (recommended)
-│   │   ├── server.py             # Legacy SW proxy
-│   │   ├── forward_proxy.py      # HTTP forward proxy
-│   │   └── multi_site_proxy.py   # Multi-site bundler + connection pooling
-│   ├── runtime/
-│   │   ├── tls_matcher.py        # curl-cffi TLS fingerprint matching
-│   │   └── engine.py             # CookieJar, FingerprintMatcher
-│   ├── importer/
-│   │   ├── browser_discovery.py  # Find browser profiles
-│   │   ├── cookie_extractor.py   # Extract cookies from SQLite (with progress)
-│   │   ├── local_storage_extractor.py
-│   │   ├── session_packager.py   # Package into .tokenade (with LRU cache)
-│   │   ├── session_loader.py     # Load .tokenade into browser
-│   │   ├── session_refresher.py  # Auto-refresh with WebSocket notifications
-│   │   ├── session_sharer.py     # Email, webhook, HMAC signatures, QR codes
-│   │   ├── session_manager.py    # Multi-session management
-│   │   ├── session_comparator.py # Session diff tool
-│   │   ├── advanced_validator.py # Custom validation rules
-│   │   ├── validator.py          # Composable validation strategies
-│   │   ├── site_configs.py       # Preset configs for popular sites
-│   │   ├── safari_extractor.py   # Safari binary cookie parser
-│   │   ├── tor_extractor.py      # Tor Browser extraction
-│   │   ├── adb_extractor.py      # Android ADB extraction
-│   │   └── db_utils.py           # Shared SQLite utilities
-│   ├── security/
-│   │   ├── credentials.py        # Credential management
-│   │   └── audit.py              # Audit logging, RBAC, LDAP
-│   ├── integration/
-│   │   ├── docker_manager.py     # Docker session management
-│   │   └── kubernetes.py         # K8s deployment + sidecar
-│   ├── crypto/
-│   │   ├── encryptor.py          # AES-256-GCM encryption
-│   │   └── cookie_crypto.py      # Browser cookie decryption
-│   ├── injector/
-│   │   └── profile_manager.py    # Direct profile injection
-│   ├── batch/
-│   │   └── operations.py         # Batch export/load
-│   ├── config.py                 # ~/.tokenade/config.json support
-│   └── utils/
-│       └── performance.py        # LRU cache, connection pooling, parallel extraction
-├── cli/                          # CLI commands (22 commands)
-├── handlers/                     # Site-specific handlers
-├── extension/                    # Browser extension
-└── tests/                        # 1383 tests
+git clone https://github.com/mihir0209/tokenade.git
+cd tokenade
+pip install -e ".[dev]"
+playwright install chromium --with-deps
 ```
 
 ## .tokenade File Format
@@ -454,7 +487,7 @@ tokenade/
 ```json
 {
   "version": "2.0",
-  "created_at": "2026-06-14T12:00:00Z",
+  "created_at": "2026-06-27T12:00:00Z",
   "source_device": {
     "browser": "firefox",
     "profile": "default",
@@ -482,8 +515,8 @@ tokenade/
   },
   "tls_profile": {
     "browser": "chrome",
-    "version": "120",
-    "impersonate": "chrome120",
+    "version": "131",
+    "impersonate": "chrome131",
     "http_version": "2"
   },
   "metadata": {
@@ -493,56 +526,71 @@ tokenade/
 }
 ```
 
-## Installation
+## Architecture
 
-```bash
-git clone https://github.com/mihir0209/tokenade.git
-cd tokenade
-pip install -e ".[dev]"
-playwright install chromium --with-deps
 ```
-
-### Optional Dependencies
-
-```bash
-pip install -e ".[runtime]"    # curl-cffi for TLS matching
-pip install -e ".[enterprise]" # ldap3 for LDAP/SSO
-pip install -e ".[linux]"      # secretstorage for Linux keyring
+tokenade/
+├── core/
+│   ├── browser/
+│   │   ├── stealth.py              # 14-patch stealth injection
+│   │   ├── stealth_test.py         # 18-point detection test suite
+│   │   ├── dashboard.py            # HTML/JSON detection reports
+│   │   ├── cloudflare.py           # Cloudflare & Akamai bypass
+│   │   ├── captcha.py              # CAPTCHA detection
+│   │   ├── tls_fingerprint.py      # curl-cffi TLS matching
+│   │   ├── undetectable.py         # System browser launcher
+│   │   ├── cdp_connection.py       # CDP WebSocket connection
+│   │   ├── patcher.py              # Chrome binary patcher
+│   │   ├── profiles.py             # Browser profile manager
+│   │   ├── fingerprint.py          # Fingerprint generator
+│   │   ├── synchronizer.py         # Multi-profile sync
+│   │   └── dependencies.py         # System dependency checker
+│   ├── proxy/
+│   │   ├── cdp_proxy.py            # CDP proxy (recommended)
+│   │   ├── forward_proxy.py        # HTTP forward proxy
+│   │   ├── multi_site_proxy.py     # Multi-site bundler
+│   │   ├── rotation.py             # Proxy rotation
+│   │   └── residential.py          # Residential proxy pool
+│   ├── importer/
+│   │   ├── browser_discovery.py    # Find browser profiles
+│   │   ├── cookie_extractor.py     # Extract cookies from SQLite
+│   │   ├── session_packager.py     # Package into .tokenade
+│   │   ├── session_loader.py       # Load .tokenade into browser
+│   │   ├── session_refresher.py    # Auto-refresh sessions
+│   │   ├── session_sharer.py       # Email, webhook, QR codes
+│   │   ├── session_manager.py      # Multi-session management
+│   │   ├── competitor_import.py    # AdsPower/Multilogin/GoLogin import
+│   │   └── mobile_import.py        # Android/iOS import
+│   ├── integration/
+│   │   ├── plugin_loader.py        # Plugin auto-discovery
+│   │   ├── plugin_registry.py      # Plugin marketplace registry
+│   │   ├── plugin_search.py        # TF-IDF search index
+│   │   ├── plugin_browser.py       # HTML marketplace generator
+│   │   ├── plugin_verifier.py      # SHA256 verification
+│   │   ├── plugin_testing.py       # Plugin test runner
+│   │   └── container_orchestrator.py
+│   ├── crypto/
+│   │   ├── encryptor.py            # AES-256-GCM encryption
+│   │   └── at_rest.py              # Transparent encryption at rest
+│   ├── security/
+│   │   ├── credentials.py          # Credential management
+│   │   └── audit.py                # Audit logging, RBAC, LDAP
+│   ├── api/
+│   │   └── server.py               # REST API server
+│   ├── daemon/
+│   │   └── session_daemon.py       # Background refresh daemon
+│   ├── logging/
+│   │   └── structured.py           # JSON structured logging
+│   ├── config.py                   # Config file support
+│   └── utils/
+│       └── performance.py          # LRU cache, connection pooling
+├── cli/                            # 47 CLI commands
+├── plugin/
+│   └── base.py                     # Plugin base classes
+├── handlers/                       # Site-specific handlers
+├── extension/                      # Browser extension
+└── tests/                          # 4449+ tests
 ```
-
-## Development
-
-```bash
-make install-dev     # Install with dev deps + Playwright
-make test            # Run all 1383 tests
-make test-quick      # Skip slow/network tests
-make lint            # Flake8 linting
-make format          # Black formatting
-make typecheck       # Mypy type checking
-make clean           # Remove build artifacts
-make build           # Build distribution packages
-```
-
-### Docker Development
-
-```bash
-make docker-build    # Build Docker image
-make docker-run      # Run interactively
-make docker-proxy SESSION=session.tokenade  # Run proxy
-make docker-cleanup  # Remove all containers
-```
-
-## Documentation
-
-- [Use Cases & Competitor Comparison](USE-CASES.md) - All use cases, competitor analysis, feature matrix
-- [Site Configurations](docs/SITE_CONFIGS.md) - Preset configs, custom configs, validation
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and fixes
-- [Tutorials](docs/) - Getting started, plugin development, enterprise deployment
-- [API Reference](docs/API.md) - Complete API documentation
-- [Architecture](docs/ARCHITECTURE.md) - System design and data flow
-- [Security](docs/SECURITY.md) - Security considerations
-- [Competitor Comparison](docs/competitor-comparison.md) - Market analysis
-- [Contributing](docs/CONTRIBUTING.md) - How to contribute
 
 ## Security
 
@@ -553,6 +601,20 @@ make docker-cleanup  # Remove all containers
 - SSRF protection blocks private/loopback/link-local IPs
 - HMAC-SHA256 signatures on shared sessions
 - Audit logging tracks all session operations
+- Stealth patches hide automation artifacts from detection
+- Residential proxy support for anonymous session refresh
+
+## Documentation
+
+- [Use Cases & Competitor Comparison](USE-CASES.md)
+- [Site Configurations](docs/SITE_CONFIGS.md)
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- [Tutorials](docs/)
+- [API Reference](docs/API.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security](docs/SECURITY.md)
+- [Competitor Comparison](docs/competitor-comparison.md)
+- [Contributing](docs/CONTRIBUTING.md)
 
 ## License
 
