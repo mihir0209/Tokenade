@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any
 
 from tokenade.core.browser.stealth_test import (
     StealthTestReport,
-    TestResult,
+    DetectionTestResult,
     Verdict,
     JS_CHECKS,
 )
@@ -169,7 +169,7 @@ def generate_json_report(report: StealthTestReport, output_path: Optional[str] =
     return output
 
 
-def _categorize_results(results: List[TestResult]) -> Dict[str, List[TestResult]]:
+def _categorize_results(results: List[DetectionTestResult]) -> Dict[str, List[DetectionTestResult]]:
     """Categorize results into display categories."""
     categories = {
         "JavaScript Properties": [],

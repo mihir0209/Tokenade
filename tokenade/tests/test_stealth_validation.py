@@ -8,7 +8,7 @@ import pytest
 from tokenade.core.browser.stealth_test import (
     StealthTestSuite,
     StealthTestReport,
-    TestResult,
+    DetectionTestResult,
     Verdict,
     JS_CHECKS,
     run_stealth_tests,
@@ -20,11 +20,11 @@ from tokenade.core.browser.dashboard import (
 )
 
 
-# ─── TestResult Tests ─────────────────────────────────────────
+# ─── DetectionTestResult Tests ─────────────────────────────────────────
 
-class TestTestResult:
+class TestDetectionTestResult:
     def test_defaults(self):
-        r = TestResult(name="test", verdict=Verdict.PASS, score=100)
+        r = DetectionTestResult(name="test", verdict=Verdict.PASS, score=100)
         assert r.name == "test"
         assert r.verdict == Verdict.PASS
         assert r.score == 100
@@ -47,9 +47,9 @@ class TestStealthTestReport:
         report = StealthTestReport(
             overall_score=85.0,
             results=[
-                TestResult("t1", Verdict.PASS, 100),
-                TestResult("t2", Verdict.FAIL, 0, "failed"),
-                TestResult("t3", Verdict.WARN, 50),
+                DetectionTestResult("t1", Verdict.PASS, 100),
+                DetectionTestResult("t2", Verdict.FAIL, 0, "failed"),
+                DetectionTestResult("t3", Verdict.WARN, 50),
             ],
         )
         assert report.passed == 1
@@ -105,7 +105,7 @@ class TestStealthTestSuite:
     def test_calculate_score_perfect(self):
         suite = StealthTestSuite()
         results = [
-            TestResult(f"check_{i}", Verdict.PASS, c["weight"] * 10)
+            DetectionTestResult(f"check_{i}", Verdict.PASS, c["weight"] * 10)
             for i, c in enumerate(JS_CHECKS.values())
         ]
         score = suite._calculate_score(results)
@@ -114,7 +114,7 @@ class TestStealthTestSuite:
     def test_calculate_score_zero(self):
         suite = StealthTestSuite()
         results = [
-            TestResult(f"check_{i}", Verdict.FAIL, 0)
+            DetectionTestResult(f"check_{i}", Verdict.FAIL, 0)
             for i in range(len(JS_CHECKS))
         ]
         score = suite._calculate_score(results)
@@ -134,9 +134,9 @@ class TestDashboard:
             overall_score=85.0,
             browser="chromium",
             results=[
-                TestResult("navigator.webdriver = undefined", Verdict.PASS, 50),
-                TestResult("window.chrome exists", Verdict.PASS, 40),
-                TestResult("No automation artifacts", Verdict.FAIL, 0, "detected cdc_"),
+                DetectionTestResult("navigator.webdriver = undefined", Verdict.PASS, 50),
+                DetectionTestResult("window.chrome exists", Verdict.PASS, 40),
+                DetectionTestResult("No automation artifacts", Verdict.FAIL, 0, "detected cdc_"),
             ],
         )
         output = tmp_path / "report.html"
@@ -153,8 +153,8 @@ class TestDashboard:
             overall_score=90.0,
             browser="firefox",
             results=[
-                TestResult("test1", Verdict.PASS, 100),
-                TestResult("test2", Verdict.FAIL, 0),
+                DetectionTestResult("test1", Verdict.PASS, 100),
+                DetectionTestResult("test2", Verdict.FAIL, 0),
             ],
         )
         output = tmp_path / "report.json"
@@ -168,11 +168,11 @@ class TestDashboard:
 
     def test_categorize_results(self):
         results = [
-            TestResult("navigator.webdriver = undefined", Verdict.PASS, 50),
-            TestResult("WebGL vendor is set", Verdict.PASS, 30),
-            TestResult("No automation artifacts", Verdict.FAIL, 0),
-            TestResult("No headless detection", Verdict.PASS, 40),
-            TestResult("Site: https://example.com", Verdict.PASS, 10),
+            DetectionTestResult("navigator.webdriver = undefined", Verdict.PASS, 50),
+            DetectionTestResult("WebGL vendor is set", Verdict.PASS, 30),
+            DetectionTestResult("No automation artifacts", Verdict.FAIL, 0),
+            DetectionTestResult("No headless detection", Verdict.PASS, 40),
+            DetectionTestResult("Site: https://example.com", Verdict.PASS, 10),
         ]
         cats = _categorize_results(results)
         assert "JavaScript Properties" in cats
@@ -189,8 +189,8 @@ class TestDashboard:
         report = StealthTestReport(
             overall_score=75.0,
             results=[
-                TestResult("test1", Verdict.PASS, 50),
-                TestResult("test2", Verdict.WARN, 25),
+                DetectionTestResult("test1", Verdict.PASS, 50),
+                DetectionTestResult("test2", Verdict.WARN, 25),
             ],
         )
         path = generate_html_report(report, str(tmp_path / "r.html"))

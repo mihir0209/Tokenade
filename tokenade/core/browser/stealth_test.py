@@ -24,7 +24,7 @@ class Verdict(Enum):
 
 
 @dataclass
-class TestResult:
+class DetectionTestResult:
     """Result of a single detection test."""
     name: str
     verdict: Verdict
@@ -38,7 +38,7 @@ class TestResult:
 class StealthTestReport:
     """Full stealth test report."""
     overall_score: float = 0.0
-    results: List[TestResult] = field(default_factory=list)
+    results: List[DetectionTestResult] = field(default_factory=list)
     browser: str = "chromium"
     timestamp: float = field(default_factory=time.time)
     duration_ms: float = 0.0
@@ -206,13 +206,13 @@ class StealthTestSuite:
 
         return report
 
-    async def _run_js_checks(self) -> List[TestResult]:
+    async def _run_js_checks(self) -> List[DetectionTestResult]:
         """Run JavaScript property checks in a browser."""
         results = []
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            return [TestResult(
+            return [DetectionTestResult(
                 name="playwright",
                 verdict=Verdict.SKIP,
                 score=0,
@@ -239,14 +239,14 @@ class StealthTestSuite:
                     result = await page.evaluate(check["test_js"])
                     verdict = Verdict.PASS if result else Verdict.FAIL
                     score = check["weight"] * 10 if result else 0
-                    results.append(TestResult(
+                    results.append(DetectionTestResult(
                         name=check["name"],
                         verdict=verdict,
                         score=score,
                         duration_ms=(time.time() - start) * 1000,
                     ))
                 except Exception as e:
-                    results.append(TestResult(
+                    results.append(DetectionTestResult(
                         name=check["name"],
                         verdict=Verdict.WARN,
                         score=check["weight"] * 5,
@@ -258,7 +258,7 @@ class StealthTestSuite:
 
         return results
 
-    async def _run_site_test(self, url: str) -> List[TestResult]:
+    async def _run_site_test(self, url: str) -> List[DetectionTestResult]:
         """Test against a specific detection site."""
         results = []
         try:
@@ -283,7 +283,7 @@ class StealthTestSuite:
 
                 # Check if page loaded
                 title = await page.title()
-                results.append(TestResult(
+                results.append(DetectionTestResult(
                     name=f"Site: {url}",
                     verdict=Verdict.PASS if title else Verdict.WARN,
                     score=10 if title else 5,
@@ -291,7 +291,7 @@ class StealthTestSuite:
                     duration_ms=duration,
                 ))
             except Exception as e:
-                results.append(TestResult(
+                results.append(DetectionTestResult(
                     name=f"Site: {url}",
                     verdict=Verdict.FAIL,
                     score=0,
@@ -302,7 +302,7 @@ class StealthTestSuite:
 
         return results
 
-    def _calculate_score(self, results: List[TestResult]) -> float:
+    def _calculate_score(self, results: List[DetectionTestResult]) -> float:
         """Calculate weighted score (0-100)."""
         if not results:
             return 0.0
