@@ -3,6 +3,7 @@ import json
 import logging
 import platform
 import signal
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -171,9 +172,9 @@ def cmd_health_report(args):
     if webhook_url:
         sent = reporter.send_webhook(report, webhook_url)
         if sent:
-            print(f"\n📡 Report sent to webhook")
+            print("\n📡 Report sent to webhook")
         else:
-            print(f"\n❌ Failed to send webhook")
+            print("\n❌ Failed to send webhook")
 
     sys.exit(report.exit_code)
 
@@ -1120,7 +1121,7 @@ def cmd_launch(args):
                     return
 
                 tab_ws = await websockets.connect(
-                    tab_ws_url, max_size=10*1024*1024,
+                    tab_ws_url, max_size=10 * 1024 * 1024,
                     ping_interval=30, ping_timeout=10,
                 )
 
@@ -1155,8 +1156,8 @@ def cmd_launch(args):
         print("Browser is running. You can:")
         print(f"  1. Open http://127.0.0.1:{browser.port} in another browser")
         print(f"  2. Use Chrome DevTools to connect to ws://127.0.0.1:{browser.port}")
-        print(f"  3. Or let it run and control via CDP WebSocket")
-        print(f"\nPress Ctrl+C to close the browser")
+        print("  3. Or let it run and control via CDP WebSocket")
+        print("\nPress Ctrl+C to close the browser")
         print(f"{'=' * 80}\n")
 
         # Keep browser running
@@ -2846,8 +2847,8 @@ def cmd_mobile_import(args):
         else:
             print("Multiple devices found:")
             for i, d in enumerate(devices):
-                print(f"  [{i+1}] {d.model} ({d.serial}) — {d.platform}")
-            print(f"  Specify --device <serial> to choose")
+                print(f"  [{i + 1}] {d.model} ({d.serial}) — {d.platform}")
+            print("  Specify --device <serial> to choose")
             return
     else:
         # Find the device
@@ -2873,7 +2874,7 @@ def cmd_mobile_import(args):
     site_name = getattr(args, "site_name", None)
 
     print(f"\n{'=' * 60}")
-    print(f"TOKENADE - Mobile Import")
+    print("TOKENADE - Mobile Import")
     print(f"{'=' * 60}")
     print(f"   Device: {device.model} ({device.serial})")
     print(f"   Platform: {device.platform} {device.os_version}")

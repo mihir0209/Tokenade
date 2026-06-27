@@ -1,7 +1,5 @@
 """Tests for Phase 49.1 — Browser Profile Management + Fingerprint Generation."""
-import json
 import time
-from pathlib import Path
 
 import pytest
 

@@ -35,9 +35,9 @@ DATACENTER_ASNS = {
     "AS14618",  # Amazon AWS
     "AS24940",  # Hetzner
     "AS57043",  # HOSTKEY
-    "AS208162", # OVH
+    "AS208162",  # OVH
     "AS47583",  # Hostinger
-    "AS396982", # Google Cloud
+    "AS396982",  # Google Cloud
 }
 
 
@@ -183,7 +183,7 @@ class ResidentialProxyPool:
                 "https": proxy_url,
             })
             opener = urllib.request.build_opener(handler)
-            response = opener.open(test_url, timeout=10)
+            _ = opener.open(test_url, timeout=10)
             elapsed = time.time() - start_time
 
             health.is_healthy = True

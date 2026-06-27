@@ -96,6 +96,7 @@ class TestPluginRegistryInstall:
             {"name": "app-plugin", "version": "1.0", "entry_point": "plugin.py", "dependencies": ["base-lib"]},
         ]
         call_count = [0]
+
         def mock_download(meta):
             d = tmp_path / meta["name"]
             d.mkdir(exist_ok=True)

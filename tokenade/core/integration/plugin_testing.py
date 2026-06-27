@@ -7,7 +7,6 @@ Tests plugin loading, hooks, configuration, and integration.
 import importlib.util
 import json
 import logging
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional

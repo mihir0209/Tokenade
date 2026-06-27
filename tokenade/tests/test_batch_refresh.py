@@ -1,6 +1,8 @@
 """Tests for batch session refresh."""
 import json
 import time
+from unittest.mock import patch
+
 import pytest
 from pathlib import Path
 
@@ -171,6 +173,3 @@ class TestBatchRefresher:
         report = batch.refresh_all(session_files=[str(session_file)])
 
         assert report.total == 1
-
-
-from unittest.mock import patch

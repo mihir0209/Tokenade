@@ -9,7 +9,7 @@ import logging
 import math
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from collections import Counter
 
 logger = logging.getLogger(__name__)

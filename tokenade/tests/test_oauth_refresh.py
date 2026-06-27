@@ -1,9 +1,7 @@
 """Tests for OAuth token refresh engine."""
 import json
 import time
-import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 from tokenade.core.refresh.oauth_refresh import (
     OAuthConfig,

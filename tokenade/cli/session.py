@@ -145,8 +145,10 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> dict:
             _time.sleep(3)  # Wait for navigation
 
             # Collect localStorage for this origin
-            ls_result = await _eval_with_session(ws, msg_id, session_id,
-                "JSON.stringify(Object.entries(localStorage))")
+            ls_result = await _eval_with_session(
+                ws, msg_id, session_id,
+                "JSON.stringify(Object.entries(localStorage))"
+            )
             if ls_result:
                 try:
                     entries = json.loads(ls_result)
@@ -157,8 +159,10 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> dict:
                     print(f"   ⚠️  {domain}: localStorage parse failed")
 
             # Collect sessionStorage for this origin
-            ss_result = await _eval_with_session(ws, msg_id, session_id,
-                "JSON.stringify(Object.entries(sessionStorage))")
+            ss_result = await _eval_with_session(
+                ws, msg_id, session_id,
+                "JSON.stringify(Object.entries(sessionStorage))"
+            )
             if ss_result:
                 try:
                     entries = json.loads(ss_result)

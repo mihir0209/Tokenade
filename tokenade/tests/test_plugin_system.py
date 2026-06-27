@@ -1,7 +1,5 @@
 """Tests for Tokenade Plugin System — Base Classes and OAuth2 Plugin."""
-import json
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 

@@ -654,7 +654,8 @@ def cmd_profile(args):
 
 def cmd_stealth(args):
     """Browser stealth management."""
-    from tokenade.core.browser.stealth import StealthManager, StealthConfig
+    from pathlib import Path
+    from tokenade.core.browser.stealth import StealthManager
     from tokenade.core.browser.dependencies import DependencyChecker
 
     if args.stealth_action == "test":
@@ -1295,8 +1296,10 @@ Commands:
     launch_parser.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
     launch_parser.add_argument("--proxy-file", help="Proxy list file for rotation (one proxy per line)")
     launch_parser.add_argument("--proxy-rotate", action="store_true", help="Enable proxy rotation")
-    launch_parser.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
-                              default="health-weighted", help="Rotation strategy (default: health-weighted)")
+    launch_parser.add_argument(
+        "--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
+        default="health-weighted", help="Rotation strategy (default: health-weighted)"
+    )
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
@@ -1308,13 +1311,17 @@ Commands:
     refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
     refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
     refresh_browser_parser.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
-    refresh_browser_parser.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
-                                       help="Plugin credential (repeatable): --plugin-arg client_id XXX")
+    refresh_browser_parser.add_argument(
+        "--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
+        help="Plugin credential (repeatable): --plugin-arg client_id XXX"
+    )
     refresh_browser_parser.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
     refresh_browser_parser.add_argument("--proxy-file", help="Proxy list file for rotation (one proxy per line)")
     refresh_browser_parser.add_argument("--proxy-rotate", action="store_true", help="Enable proxy rotation")
-    refresh_browser_parser.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
-                                       default="health-weighted", help="Rotation strategy (default: health-weighted)")
+    refresh_browser_parser.add_argument(
+        "--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
+        default="health-weighted", help="Rotation strategy (default: health-weighted)"
+    )
 
     # Multi-Account Orchestration
     accounts_parser = subparsers.add_parser("accounts", help="Multi-account orchestration (list/status/refresh)")
@@ -1409,8 +1416,10 @@ Commands:
     daemon_add = daemon_subparsers.add_parser("add", help="Add session to watch list")
     daemon_add.add_argument("session", help="Session file to watch")
     daemon_add.add_argument("--browser", "-b", default="chrome", help="Browser for refresh")
-    daemon_add.add_argument("--refresh-before", type=float, default=2.0,
-                           help="Refresh this many hours before expiry (default: 2.0)")
+    daemon_add.add_argument(
+        "--refresh-before", type=float, default=2.0,
+        help="Refresh this many hours before expiry (default: 2.0)"
+    )
     daemon_add.add_argument("--url", "-u", help="Target URL (auto-detected if not set)")
     daemon_add.add_argument("--site-name", help="Site name (auto-detected from filename)")
 

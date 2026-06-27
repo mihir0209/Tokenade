@@ -1,9 +1,6 @@
 """Tests for Chrome Binary Patcher (Phase 28)."""
 import os
 import stat
-import tempfile
-
-import pytest
 
 from tokenade.core.browser.patcher import ChromePatcher, PatchResult, CDC_PATTERN, CDC_REPLACEMENT_TEMPLATE
 

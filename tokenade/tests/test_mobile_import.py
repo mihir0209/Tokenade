@@ -94,6 +94,7 @@ class TestMobileImportManager:
         # Fifth call: pm list packages (firefox)
         # etc.
         call_count = [0]
+
         def side_effect(cmd, **kwargs):
             call_count[0] += 1
             cmd_str = " ".join(cmd)
@@ -216,7 +217,7 @@ class TestMobileImportManager:
     def test_extract_android_with_domains(self, tmp_path):
         """Test Android extraction with domain filtering."""
         # This tests the domain filtering logic without ADB
-        manager = MobileImportManager()
+        _manager = MobileImportManager()
 
         # Create a mock cookies list
         cookies = [

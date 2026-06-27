@@ -13,6 +13,8 @@ import time
 import urllib.request
 import urllib.error
 from typing import Dict, List, Optional
+from pathlib import Path
+from dataclasses import dataclass, field
 from packaging.version import Version
 
 
@@ -22,8 +24,7 @@ def _version_lt(a: str, b: str) -> bool:
         return Version(a) < Version(b)
     except Exception:
         return a < b
-from pathlib import Path
-from dataclasses import dataclass, field
+
 
 logger = logging.getLogger(__name__)
 

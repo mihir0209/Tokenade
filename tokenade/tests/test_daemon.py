@@ -290,9 +290,11 @@ class TestSessionDaemon:
     def test_status_fields(self):
         daemon = SessionDaemon(DaemonConfig())
         status = daemon.status()
-        required = ["running", "pid", "state", "config_file", "pid_file",
-                     "sessions_watched", "sessions_enabled", "check_interval_minutes",
-                     "webhook_configured", "history_count"]
+        required = [
+            "running", "pid", "state", "config_file", "pid_file",
+            "sessions_watched", "sessions_enabled", "check_interval_minutes",
+            "webhook_configured", "history_count",
+        ]
         for key in required:
             assert key in status
 

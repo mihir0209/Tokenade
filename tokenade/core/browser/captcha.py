@@ -170,8 +170,8 @@ class CaptchaDetector:
         import re
 
         patterns = [
-            rf'data-sitekey="([^"]+)"',
-            rf"sitekey=([A-Za-z0-9_-]+)",
+            r'data-sitekey="([^"]+)"',
+            r"sitekey=([A-Za-z0-9_-]+)",
             rf'"{widget_class}"[^>]*data-sitekey="([^"]+)"',
         ]
 
