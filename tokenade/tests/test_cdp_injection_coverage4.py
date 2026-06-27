@@ -80,28 +80,23 @@ def _setup_raw_cdp(proxy, messages):
     return mock_ws_module, resp, ws_ctx
 
 
-def _run_raw_cdp(proxy, mock_ws, resp, ws_ctx, timeout=3):
+async def _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx, timeout=3):
     """Run inject_via_raw_cdp with mocks, returning after timeout or completion."""
-    async def _run():
-        with patch.dict("sys.modules", {"websockets": mock_ws}):
-            with patch("urllib.request.urlopen", return_value=resp):
-                task = asyncio.create_task(inject_via_raw_cdp(proxy))
-                try:
-                    await asyncio.wait_for(task, timeout=timeout)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    pass
-
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        future = pool.submit(asyncio.run, _run())
-        future.result(timeout=10)
+    with patch.dict("sys.modules", {"websockets": mock_ws}):
+        with patch("urllib.request.urlopen", return_value=resp):
+            task = asyncio.create_task(inject_via_raw_cdp(proxy))
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
 
 
 # ---------------------------------------------------------------------------
 # Lines 122-125: send_cdp_and_wait buffered events and TimeoutError
 # ---------------------------------------------------------------------------
 
-def test_send_cdp_and_wait_buffers_method_event():
+@pytest.mark.asyncio
+async def test_send_cdp_and_wait_buffers_method_event():
     """During send_cdp_and_wait, a message with 'method' gets buffered (line 122)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -114,7 +109,7 @@ def test_send_cdp_and_wait_buffers_method_event():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -123,7 +118,8 @@ def test_send_cdp_and_wait_buffers_method_event():
     assert any(c.get("method") == "Storage.setCookies" for c in send_calls)
 
 
-def test_send_cdp_and_wait_timeout_returns_none():
+@pytest.mark.asyncio
+async def test_send_cdp_and_wait_timeout_returns_none():
     """recv raises TimeoutError inside send_cdp_and_wait, causing break (lines 123-125)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -140,7 +136,7 @@ def test_send_cdp_and_wait_timeout_returns_none():
     ws_ctx.recv = _RecvHelper([])  # Empty = immediately TimeoutError
     mock_ws_module.connect.return_value = ws_ctx
 
-    _run_raw_cdp(proxy, mock_ws_module, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws_module, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -152,7 +148,8 @@ def test_send_cdp_and_wait_timeout_returns_none():
 # Lines 152-153: Cookie processing exception in raw CDP cookie loop
 # ---------------------------------------------------------------------------
 
-def test_raw_cdp_cookie_processing_exception():
+@pytest.mark.asyncio
+async def test_raw_cdp_cookie_processing_exception():
     """A cookie that raises during processing is skipped (lines 152-153)."""
     proxy = _make_proxy()
     bad_cookie = MagicMock()
@@ -169,7 +166,7 @@ def test_raw_cdp_cookie_processing_exception():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -188,7 +185,8 @@ def test_raw_cdp_cookie_processing_exception():
 # Lines 178, 181-209, 212: Event loop handling
 # ---------------------------------------------------------------------------
 
-def test_raw_cdp_target_attached_page_injects_stealth():
+@pytest.mark.asyncio
+async def test_raw_cdp_target_attached_page_injects_stealth():
     """Target.attachedToTarget with page type triggers stealth injection (lines 184-206)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -207,7 +205,7 @@ def test_raw_cdp_target_attached_page_injects_stealth():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -228,7 +226,8 @@ def test_raw_cdp_target_attached_page_injects_stealth():
     assert len(network_calls) == 1
 
 
-def test_raw_cdp_target_destroyed_noop():
+@pytest.mark.asyncio
+async def test_raw_cdp_target_destroyed_noop():
     """Target.targetDestroyed is a no-op (lines 208-209)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -244,7 +243,7 @@ def test_raw_cdp_target_destroyed_noop():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -256,7 +255,8 @@ def test_raw_cdp_target_destroyed_noop():
     assert len(stealth_calls) == 0
 
 
-def test_raw_cdp_non_page_target_ignored():
+@pytest.mark.asyncio
+async def test_raw_cdp_non_page_target_ignored():
     """attachedToTarget with non-page type is ignored (line 187 check)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -275,7 +275,7 @@ def test_raw_cdp_non_page_target_ignored():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -287,7 +287,8 @@ def test_raw_cdp_non_page_target_ignored():
     assert len(stealth_calls) == 0
 
 
-def test_raw_cdp_none_raw_in_event_loop():
+@pytest.mark.asyncio
+async def test_raw_cdp_none_raw_in_event_loop():
     """raw is None in event loop causes continue (line 178)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -300,7 +301,7 @@ def test_raw_cdp_none_raw_in_event_loop():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
@@ -308,7 +309,8 @@ def test_raw_cdp_none_raw_in_event_loop():
     assert any(c.get("method") == "Storage.enable" for c in send_calls)
 
 
-def test_raw_cdp_timeout_in_event_loop_continues():
+@pytest.mark.asyncio
+async def test_raw_cdp_timeout_in_event_loop_continues():
     """TimeoutError in event loop causes continue (line 212)."""
     proxy = _make_proxy()
     proxy.session["cookies"] = []
@@ -320,7 +322,7 @@ def test_raw_cdp_timeout_in_event_loop_continues():
     ]
 
     mock_ws, resp, ws_ctx = _setup_raw_cdp(proxy, messages)
-    _run_raw_cdp(proxy, mock_ws, resp, ws_ctx)
+    await _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx)
 
     send_calls = [
         json.loads(c.args[0]) for c in ws_ctx.send.call_args_list
