@@ -147,22 +147,26 @@ def _color(code: str, text: str) -> str:
 
 def success(message: str):
     """Print a success message to stdout."""
-    print(f"  {_color('32', '\u2713')} {message}")
+    check = "\u2713"
+    print(f"  {_color('32', check)} {message}")
 
 
 def error(message: str):
     """Print an error message to stderr."""
-    print(f"  {_color('31', '\u2717')} {message}", file=sys.stderr)
+    cross = "\u2717"
+    print(f"  {_color('31', cross)} {message}", file=sys.stderr)
 
 
 def warning(message: str):
     """Print a warning message to stdout."""
-    print(f"  {_color('33', '\u26a0')} {message}")
+    warn = "\u26a0"
+    print(f"  {_color('33', warn)} {message}")
 
 
 def info(message: str):
     """Print an info message to stdout."""
-    print(f"  {_color('34', '\u2139')} {message}")
+    icon = "\u2139"
+    print(f"  {_color('34', icon)} {message}")
 
 
 def heading(title: str, width: int = 70):
