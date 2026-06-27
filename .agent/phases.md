@@ -466,5 +466,36 @@ tokenade/core/cicd/
 **Output**: `tokenade stealth test/report`, CI/CD integration, detection score dashboard
 **Verify**: CI passes with score > 80%, detection report generated
 **Dependencies**: Phase 46, 47
-**Next**: Phase 51 — TBD
+**Next**: Phase 51 — Documentation & Release
 **Plan**: `.agent/plans/05-stealth-testing-validation.md`
+
+### Phase 51 — Documentation & Release (1 week)
+**Goal**: Ship v6.0.0 to PyPI with proper documentation
+**Output**: README overhaul, PyPI release, API docs
+**Verify**: `pip install tokenade` works, README renders correctly
+**Dependencies**: Phase 50
+**Next**: Phase 52 — End-to-End Battle Testing
+**Plan**: `.agent/plans/06-next-roadmap.md`
+
+### Phase 52 — End-to-End Battle Testing (2 weeks)
+**Goal**: Validate stealth works against real detection sites
+**Output**: Detection scores, battle test report, CI integration
+**Verify**: Score > 80% against bot.sannysoft.com, pixelscan.net, nowsecure.nl
+**Dependencies**: Phase 51
+**Next**: Phase 53 — Performance & Polish
+**Plan**: `.agent/plans/06-next-roadmap.md`
+
+### Phase 53 — Performance & Polish (1-2 weeks)
+**Goal**: Fast test suite, clean CI, polished CLI
+**Output**: Test suite < 30s, 100% CI pass, shell completion
+**Verify**: All tests pass, no exclusions, completion works
+**Dependencies**: Phase 52
+**Next**: Phase 54 — Advanced Features
+**Plan**: `.agent/plans/06-next-roadmap.md`
+
+### Phase 54 — Advanced Features (ongoing)
+**Goal**: Browser automation, monitoring, marketplace
+**Output**: Puppeteer/Playwright integration, health dashboard
+**Verify**: Session injection works, dashboard shows data
+**Dependencies**: Phase 53
+**Plan**: `.agent/plans/06-next-roadmap.md`
