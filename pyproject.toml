@@ -45,6 +45,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-aiohttp>=1.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.0.0",
     "hypothesis>=6.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
@@ -70,8 +71,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-addopts = "-q --tb=short"
+addopts = "-q --tb=short --timeout=60"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "network: marks tests requiring network access",
