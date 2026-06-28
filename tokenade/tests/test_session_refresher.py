@@ -13,11 +13,10 @@ from tokenade.core.importer.session_refresher import (
 
 def _run_async(coro):
     try:
-        asyncio.get_running_loop()
-        in_loop = True
+        running = asyncio.get_running_loop()
     except RuntimeError:
-        in_loop = False
-    if in_loop:
+        running = None
+    if running is not None:
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
