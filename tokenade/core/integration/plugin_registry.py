@@ -178,7 +178,7 @@ class PluginRegistry:
 
         return results
 
-    def check_compatibility(self, name: str, tokenade_version: str = "5.8.0") -> Dict:
+    def check_compatibility(self, name: str, tokenade_version: str = "6.0.0") -> Dict:
         """Check if a plugin is compatible with the given Tokenade version."""
         plugins = self._fetch_registry()
         plugin = None
