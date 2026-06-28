@@ -12,25 +12,18 @@ from tokenade.core.importer.session_refresher import (
 
 
 def _run_async(coro):
-    """Run an async coroutine synchronously, handling existing event loops."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
+    import concurrent.futures
 
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            def _in_new_loop():
-                new_loop = asyncio.new_event_loop()
-                try:
-                    return new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
-            future = pool.submit(_in_new_loop)
-            return future.result(timeout=10)
-    else:
-        return asyncio.run(coro)
+    def _run():
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_run)
+        return future.result()
 
 
 class TestRefreshConfig:
@@ -239,8 +232,8 @@ class TestSessionRefresher:
             await refresher.start()
             await asyncio.sleep(0.1)
             await refresher.stop()
+            assert "expired" in caplog.text.lower() or "expired" in str(caplog.records).lower()
         _run_async(_test())
-        assert "expired" in caplog.text.lower() or "expired" in str(caplog.records).lower()
 
     def test_attempt_refresh_no_config(self, session):
         async def _test():
