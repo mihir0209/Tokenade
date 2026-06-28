@@ -12,18 +12,16 @@ from tokenade.core.importer.session_refresher import (
 
 
 def _run_async(coro):
-    import concurrent.futures
-
-    def _run():
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(_run)
-        return future.result()
+    try:
+        asyncio.get_running_loop()
+        in_loop = True
+    except RuntimeError:
+        in_loop = False
+    if in_loop:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
 
 
 class TestRefreshConfig:
