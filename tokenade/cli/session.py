@@ -459,7 +459,22 @@ def cmd_export(args):
 
     domain_filter = None
     if args.domains:
-        domain_filter = [d.strip() for d in args.domains.split(",") if d.strip()]
+        # Strip protocol, paths, and trailing slashes from domain filter
+        cleaned = []
+        for d in args.domains.split(","):
+            d = d.strip()
+            if not d:
+                continue
+            # Remove protocol prefix
+            if "://" in d:
+                d = d.split("://", 1)[1]
+            # Remove path/slash suffix
+            d = d.split("/", 1)[0]
+            # Remove port
+            d = d.split(":", 1)[0]
+            if d:
+                cleaned.append(d)
+        domain_filter = cleaned if cleaned else None
 
     def _progress(current, total, stage):
         if stage == "copying_database":

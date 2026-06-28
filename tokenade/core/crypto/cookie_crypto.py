@@ -341,14 +341,15 @@ class LinuxCookieCrypto(CookieCrypto):
                 )
 
                 cipher = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
-                decrypted = cipher.decrypt(ciphertext)
-                # Verify GCM tag (raises on failure)
                 try:
-                    cipher.decrypt_and_verify(ciphertext, tag)
+                    # Verify and decrypt in one step (correct GCM usage)
+                    decrypted = cipher.decrypt_and_verify(ciphertext, tag)
                 except ValueError:
-                    logger.warning("GCM tag verification failed, trying without")
-                    # Some implementations skip tag verification
-                    pass
+                    # Fallback: decrypt without tag verification
+                    # (some implementations skip tag verification)
+                    logger.debug("GCM tag verification failed, decrypting without verification")
+                    cipher2 = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
+                    decrypted = cipher2.decrypt(ciphertext)
 
                 return decrypted.decode("utf-8", errors="replace")
             else:
