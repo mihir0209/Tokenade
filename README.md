@@ -40,6 +40,7 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | **CAPTCHA Detection** | Turnstile, hCaptcha, reCAPTCHA detection and status tracking |
 | **Residential Proxy** | Session-affinity proxy with sticky sessions and rotation |
 | **Stealth Testing** | 18-point automated detection test suite with scoring |
+| **Battle Testing** | End-to-end validation against 5 real detection sites with composite scoring |
 | **Detection Dashboard** | HTML/JSON reports with category breakdown |
 
 ### Competitor Parity
@@ -162,10 +163,31 @@ Options:
 
 ```bash
 tokenade stealth test                     # Run 18-point detection test suite
+tokenade stealth battle                   # Battle test against 5 real detection sites
 tokenade stealth report                   # Generate HTML/JSON detection report
 tokenade stealth deps                     # Check stealth system dependencies
 tokenade stealth deps-install             # Install missing dependencies
 ```
+
+**Battle Test Options:**
+
+```bash
+tokenade stealth battle --browser chromium        # Test with Chromium (default)
+tokenade stealth battle --browser firefox         # Test with Firefox
+tokenade stealth battle --site bot_sannysoft      # Test specific site only
+tokenade stealth battle --output report.json      # Save JSON report
+tokenade stealth battle -s bot_sannysoft -s creepjs  # Multiple sites
+```
+
+**Detection Sites Tested:**
+
+| Site | What It Detects | Weight |
+|------|----------------|--------|
+| bot.sannysoft.com | WebDriver, automation flags | 1.0 |
+| creepjs | Browser fingerprint anomalies | 0.8 |
+| pixelscan.net | Headless, automation vectors | 1.0 |
+| browserleaks.com | JavaScript API leaks | 0.7 |
+| iphey.com | Bot detection, behavioral analysis | 0.6 |
 
 ### Browser Launch
 
@@ -589,7 +611,7 @@ tokenade/
 │   └── base.py                     # Plugin base classes
 ├── handlers/                       # Site-specific handlers
 ├── extension/                      # Browser extension
-└── tests/                          # 4449+ tests
+└── tests/                          # 5035+ tests
 ```
 
 ## Security

@@ -731,8 +731,68 @@ def cmd_stealth(args):
             else:
                 print(f"   ❌ {r.name}: {r.message}")
 
+    elif args.stealth_action == "battle":
+        from tokenade.core.browser.battle import BattleTestSuite, DETECTION_SITES
+
+        browser = args.browser
+        sites = args.site if args.site else list(DETECTION_SITES.keys())
+        timeout_ms = args.timeout * 1000
+
+        print(f"\n⚔️  Running battle tests ({browser})...")
+        print(f"   Sites: {len(sites)}")
+        for s in sites:
+            cfg = DETECTION_SITES.get(s, {})
+            print(f"     • {cfg.get('name', s)}")
+        print()
+
+        suite = BattleTestSuite(
+            browser=browser,
+            headless=True,
+            sites=sites,
+            timeout_ms=timeout_ms,
+        )
+        report = suite.run_sync()
+
+        print(report.summary())
+        print(f"\n  Duration: {report.duration_ms / 1000:.1f}s")
+
+        if args.output:
+            import json as json_mod
+            from pathlib import Path
+            out = Path(args.output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "overall_score": report.overall_score,
+                "grade": report.grade,
+                "browser": report.browser,
+                "timestamp": report.timestamp,
+                "duration_ms": report.duration_ms,
+                "passed": report.passed,
+                "detected": report.detected,
+                "partial": report.partial,
+                "errors": report.errors,
+                "skipped": report.skipped,
+                "sites": [
+                    {
+                        "name": r.site_name,
+                        "url": r.url,
+                        "verdict": r.verdict.value,
+                        "score": r.score,
+                        "details": r.detection_details,
+                        "error": r.error,
+                        "duration_ms": r.duration_ms,
+                    }
+                    for r in report.site_results
+                ],
+            }
+            with open(out, "w") as f:
+                json_mod.dump(data, f, indent=2)
+            print(f"\n  📄 JSON report: {args.output}")
+
+        print(f"\n{'=' * 60}\n")
+
     else:
-        print("Usage: tokenade stealth {test|report|deps|deps-install}")
+        print("Usage: tokenade stealth {test|report|battle|deps|deps-install}")
 
 
 def cmd_deps(args):
@@ -1594,6 +1654,12 @@ Commands:
     stealth_report = stealth_sub.add_parser("report", help="Generate stealth report")
     stealth_report.add_argument("--output", "-o", help="Output file for report")
     stealth_report.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
+
+    stealth_battle = stealth_sub.add_parser("battle", help="Battle test against real detection sites")
+    stealth_battle.add_argument("--browser", "-b", choices=["chromium", "firefox"], default="chromium")
+    stealth_battle.add_argument("--site", "-s", action="append", help="Specific site(s) to test (default: all)")
+    stealth_battle.add_argument("--timeout", "-t", type=int, default=30, help="Per-site timeout in seconds")
+    stealth_battle.add_argument("--output", "-o", help="Output file for JSON report")
 
     stealth_sub.add_parser("deps", help="Check stealth system dependencies")
     stealth_sub.add_parser("deps-install", help="Install missing stealth dependencies")

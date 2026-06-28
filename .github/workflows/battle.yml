@@ -1,0 +1,84 @@
+name: Battle Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Browser to test with'
+        required: false
+        default: 'chromium'
+        type: choice
+        options:
+          - chromium
+          - firefox
+      sites:
+        description: 'Sites to test (comma-separated, or "all")'
+        required: false
+        default: 'all'
+  schedule:
+    # Weekly on Sunday at 06:00 UTC
+    - cron: '0 6 * * 0'
+
+jobs:
+  battle-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Install Playwright browser
+      run: |
+        python -m playwright install chromium --with-deps
+
+    - name: Run battle tests
+      run: |
+        BROWSER="${{ github.event.inputs.browser || 'chromium' }}"
+        SITES="${{ github.event.inputs.sites || 'all' }}"
+        
+        ARGS="--browser $BROWSER --output battle-report.json"
+        
+        if [ "$SITES" != "all" ]; then
+          IFS=',' read -ra SITE_ARRAY <<< "$SITES"
+          for site in "${SITE_ARRAY[@]}"; do
+            ARGS="$ARGS --site $(echo $site | xargs)"
+          done
+        fi
+        
+        python -m tokenade stealth battle $ARGS
+
+    - name: Display results
+      if: always()
+      run: |
+        if [ -f battle-report.json ]; then
+          echo "=== Battle Test Results ==="
+          python -c "
+        import json
+        with open('battle-report.json') as f:
+            data = json.load(f)
+        print(f\"Grade: {data['grade']} ({data['overall_score']:.0f}/100)\")
+        print(f\"Passed: {data['passed']}/{data['passed']+data['detected']+data['partial']}\")
+        print(f\"Duration: {data['duration_ms']/1000:.1f}s\")
+        for site in data['sites']:
+            icon = '✅' if site['verdict'] == 'clean' else '❌' if site['verdict'] == 'detected' else '⚠️'
+            print(f\"  {icon} {site['name']}: {site['verdict']} ({site['score']:.0f}/100)\")
+        "
+        fi
+
+    - name: Upload battle report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: battle-report-${{ github.event.inputs.browser || 'chromium' }}
+        path: battle-report.json
+        retention-days: 90
