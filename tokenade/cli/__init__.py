@@ -11,7 +11,7 @@ from tokenade.cli.proxy import cmd_proxy
 from tokenade.cli.management import (
     cmd_sessions, cmd_health, cmd_refresh, cmd_share, cmd_unshare,
     cmd_sync, cmd_monitor, cmd_analytics,
-    cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd,
+    cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd, cmd_ci,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
@@ -1323,6 +1323,23 @@ Commands:
     cicd_parser.add_argument("--output", "-o", help="Output file path")
     cicd_parser.add_argument("--output-dir", default=".tokenade/ci", help="Output directory for --generate-all")
 
+    # CI Runner
+    ci_parser = subparsers.add_parser("ci", help="Session CI runner")
+    ci_sub = ci_parser.add_subparsers(dest="ci_action")
+
+    ci_run = ci_sub.add_parser("run", help="Run CI pipeline from tokenade.yml")
+    ci_run.add_argument("--config", default="tokenade.yml", help="Config file path")
+    ci_run.add_argument("--format", choices=["text", "json", "junit"], help="Override output format")
+
+    ci_init = ci_sub.add_parser("init", help="Create a starter tokenade.yml")
+    ci_init.add_argument("--config", default="tokenade.yml", help="Config file path")
+
+    ci_validate = ci_sub.add_parser("validate", help="Validate tokenade.yml schema")
+    ci_validate.add_argument("--config", default="tokenade.yml", help="Config file path")
+
+    ci_lint = ci_sub.add_parser("lint", help="Lint tokenade.yml for common issues")
+    ci_lint.add_argument("--config", default="tokenade.yml", help="Config file path")
+
     # Validate Session
     validate_session_parser = subparsers.add_parser("validate-session", help="Validate session files for CI/CD")
     validate_session_parser.add_argument("--session", "-s", help="Single session file to validate")
@@ -1719,6 +1736,7 @@ def main():
         "encrypted-refresh": cmd_encrypted_refresh,
         "validate-session": cmd_validate_session,
         "cicd": cmd_cicd,
+        "ci": cmd_ci,
         "launch": cmd_launch,
         "refresh-browser": cmd_refresh_browser,
         "accounts": cmd_accounts,

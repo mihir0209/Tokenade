@@ -1,6 +1,7 @@
 """Session management CLI commands."""
 import json
 import logging
+import os
 import platform
 import signal
 import sys
@@ -1489,6 +1490,138 @@ def cmd_cicd(args):
         print(f"\n✅ Generated cron script: {output_path}")
         print(f"\n📖 Add to crontab:")
         print(f"   0 */{args.interval_hours} * * * {output_path}")
+
+
+def cmd_ci(args):
+    """Session CI runner — read tokenade.yml and run validation."""
+    from tokenade.core.cicd.runner import (
+        CIConfig, CIRunner, DEFAULT_TEMPLATE,
+    )
+
+    ci_action = getattr(args, "ci_action", "run")
+
+    if ci_action == "init":
+        config_path = getattr(args, "config", "tokenade.yml")
+        if os.path.exists(config_path):
+            print(f"❌ {config_path} already exists")
+            return
+        with open(config_path, "w") as f:
+            f.write(DEFAULT_TEMPLATE)
+        print(f"✅ Created {config_path}")
+        print("   Edit the file, then run: tokenade ci run")
+        return
+
+    if ci_action == "validate":
+        config_path = getattr(args, "config", "tokenade.yml")
+        try:
+            config = CIConfig.from_file(config_path)
+            errors = config.validate_config()
+            if errors:
+                print(f"❌ Config has {len(errors)} error(s):")
+                for e in errors:
+                    print(f"   • {e}")
+            else:
+                print(f"✅ Config is valid ({len(config.sessions)} sessions)")
+        except FileNotFoundError:
+            print(f"❌ Config not found: {config_path}")
+        except Exception as e:
+            print(f"❌ Config error: {e}")
+        return
+
+    if ci_action == "lint":
+        config_path = getattr(args, "config", "tokenade.yml")
+        try:
+            config = CIConfig.from_file(config_path)
+            errors = config.validate_config()
+            if errors:
+                for e in errors:
+                    print(f"ERROR: {e}")
+
+            # Additional lint checks
+            for entry in config.sessions:
+                session_path = os.path.join(".", entry.file)
+                if not os.path.exists(session_path):
+                    print(f"WARN: {entry.name}: file not found: {entry.file}")
+                if entry.health_threshold > 90:
+                    print(
+                        f"WARN: {entry.name}: health_threshold "
+                        f"{entry.health_threshold}% is very high"
+                    )
+            if not errors:
+                print(f"Lint passed ({len(config.sessions)} sessions)")
+        except Exception as e:
+            print(f"ERROR: {e}")
+        return
+
+    # Default: run
+    config_path = getattr(args, "config", "tokenade.yml")
+    try:
+        config = CIConfig.from_file(config_path)
+    except FileNotFoundError:
+        print(f"❌ Config not found: {config_path}")
+        print("   Create one with: tokenade ci init")
+        return
+    except Exception as e:
+        print(f"❌ Config error: {e}")
+        return
+
+    errors = config.validate_config()
+    if errors:
+        print(f"❌ Config has {len(errors)} error(s):")
+        for e in errors:
+            print(f"   • {e}")
+        return
+
+    # Override output format if specified
+    fmt = getattr(args, "format", None)
+    if fmt:
+        config.output.format = fmt
+
+    runner = CIRunner(config, base_dir=".")
+    report = runner.run()
+    report.config_path = config_path
+
+    # Output
+    if config.output.format == "json":
+        output = report.to_json()
+    elif config.output.format == "junit":
+        output = report.to_junit()
+    else:
+        output = report.to_text()
+
+    print(output)
+
+    # Save to file if configured
+    if config.output.path:
+        from pathlib import Path
+        out_path = Path(config.output.path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            f.write(output)
+        print(f"\n  📄 Report saved: {config.output.path}")
+
+    # Handle failure action
+    if report.overall_status == "fail":
+        if config.on_failure.action == "webhook" and config.on_failure.webhook:
+            _send_ci_webhook(config.on_failure.webhook, report)
+
+    import sys
+    sys.exit(report.exit_code)
+
+
+def _send_ci_webhook(url: str, report):
+    """Send CI failure notification to webhook."""
+    try:
+        import requests
+        payload = {
+            "text": (
+                f"Tokenade CI: {report.overall_status.upper()} — "
+                f"{report.failed}/{len(report.session_results)} sessions failed"
+            ),
+        }
+        requests.post(url, json=payload, timeout=10)
+    except Exception:
+        pass
 
 
 def _run_post_refresh_plugins(loader, session):
