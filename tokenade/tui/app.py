@@ -540,10 +540,10 @@ def run_tui(mode: str = "full"):
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
             with TabbedContent("Marketplace", "Installed", "Sessions", "Settings", id="main-tabs"):
-                yield TabPane(MarketplaceView(), id="tab-marketplace")
-                yield TabPane(InstalledView(), id="tab-installed")
-                yield TabPane(SessionsView(), id="tab-sessions")
-                yield TabPane(SettingsView(), id="tab-settings")
+                yield TabPane("Marketplace", MarketplaceView(), id="tab-marketplace")
+                yield TabPane("Installed", InstalledView(), id="tab-installed")
+                yield TabPane("Sessions", SessionsView(), id="tab-sessions")
+                yield TabPane("Settings", SettingsView(), id="tab-settings")
             yield Footer()
 
         def on_mount(self):
