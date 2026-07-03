@@ -1672,6 +1672,62 @@ def cmd_fleet(args):
         print("Usage: tokenade fleet {status|health|refresh|logs}")
 
 
+def cmd_autopsy(args):
+    """Session forensics — analyze why a session died."""
+    from tokenade.core.forensics.autopsy import SessionAutopsy
+
+    session_file = args.session
+    if not session_file:
+        print("❌ Specify session: tokenade autopsy -s <session.tokenade>")
+        return
+
+    if not os.path.exists(session_file):
+        print(f"❌ File not found: {session_file}")
+        return
+
+    autopsy = SessionAutopsy(session_file)
+    report = autopsy.analyze()
+
+    fmt = getattr(args, "format", "text")
+    if fmt == "json":
+        print(report.to_json())
+    else:
+        print(report.to_text())
+
+    # Compare mode
+    compare_file = getattr(args, "compare", None)
+    if compare_file and os.path.exists(compare_file):
+        print("\n" + "=" * 60)
+        print("COMPARISON")
+        print("=" * 60)
+        autopsy2 = SessionAutopsy(compare_file)
+        report2 = autopsy2.analyze()
+
+        print(f"  Dead session:    {report.cause_of_death} "
+              f"({report.confidence})")
+        print(f"  Compare session: {report2.cause_of_death} "
+              f"({report2.confidence})")
+        print(f"  Dead cookies: {report.cookie_count} "
+              f"({report.expired_count} expired)")
+        print(f"  Compare cookies: {report2.cookie_count} "
+              f"({report2.expired_count} expired)")
+
+        # Show differences in critical cookies
+        dead_crits = {
+            e.name for e in report.cookie_evidence if e.is_critical
+        }
+        cmp_crits = {
+            e.name for e in report2.cookie_evidence if e.is_critical
+        }
+        missing_in_dead = cmp_crits - dead_crits
+        extra_in_dead = dead_crits - cmp_crits
+
+        if missing_in_dead:
+            print(f"  Missing in dead: {', '.join(missing_in_dead)}")
+        if extra_in_dead:
+            print(f"  Extra in dead: {', '.join(extra_in_dead)}")
+
+
 def _run_post_refresh_plugins(loader, session):
     """Run post-refresh plugins (webhooks, notifications, etc.)."""
     refreshers = loader.list_refreshers()

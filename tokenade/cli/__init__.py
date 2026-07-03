@@ -16,7 +16,7 @@ from tokenade.cli.management import (
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
-    cmd_container, cmd_k8s, cmd_fleet,
+    cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1356,6 +1356,12 @@ Commands:
     fleet_logs.add_argument("container", nargs="?", help="Container name")
     fleet_logs.add_argument("--lines", "-n", type=int, default=50, help="Number of log lines")
 
+    # Autopsy (Forensics)
+    autopsy_parser = subparsers.add_parser("autopsy", help="Analyze why a session died")
+    autopsy_parser.add_argument("--session", "-s", required=True, help="Session file to analyze")
+    autopsy_parser.add_argument("--compare", "-c", help="Compare with another session file")
+    autopsy_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
     # Validate Session
     validate_session_parser = subparsers.add_parser("validate-session", help="Validate session files for CI/CD")
     validate_session_parser.add_argument("--session", "-s", help="Single session file to validate")
@@ -1779,6 +1785,7 @@ def main():
         "container": cmd_container,
         "k8s": cmd_k8s,
         "fleet": cmd_fleet,
+        "autopsy": cmd_autopsy,
         "stealth": cmd_stealth,
         "deps": cmd_deps,
         "profile": cmd_profile,
