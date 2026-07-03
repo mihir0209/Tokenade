@@ -16,7 +16,7 @@ from tokenade.cli.management import (
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
-    cmd_container, cmd_k8s,
+    cmd_container, cmd_k8s, cmd_fleet,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1340,6 +1340,22 @@ Commands:
     ci_lint = ci_sub.add_parser("lint", help="Lint tokenade.yml for common issues")
     ci_lint.add_argument("--config", default="tokenade.yml", help="Config file path")
 
+    # Fleet Management
+    fleet_parser = subparsers.add_parser("fleet", help="Fleet status across containers/pods")
+    fleet_sub = fleet_parser.add_subparsers(dest="fleet_action")
+
+    fleet_status = fleet_sub.add_parser("status", help="Show all sessions across containers")
+    fleet_status.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    fleet_health = fleet_sub.add_parser("health", help="Run health checks across the fleet")
+    fleet_health.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    fleet_sub.add_parser("refresh", help="Trigger refresh in all running containers")
+
+    fleet_logs = fleet_sub.add_parser("logs", help="Get logs from a container")
+    fleet_logs.add_argument("container", nargs="?", help="Container name")
+    fleet_logs.add_argument("--lines", "-n", type=int, default=50, help="Number of log lines")
+
     # Validate Session
     validate_session_parser = subparsers.add_parser("validate-session", help="Validate session files for CI/CD")
     validate_session_parser.add_argument("--session", "-s", help="Single session file to validate")
@@ -1762,6 +1778,7 @@ def main():
         "completion": cmd_completion,
         "container": cmd_container,
         "k8s": cmd_k8s,
+        "fleet": cmd_fleet,
         "stealth": cmd_stealth,
         "deps": cmd_deps,
         "profile": cmd_profile,

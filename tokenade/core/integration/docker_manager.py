@@ -73,6 +73,8 @@ class DockerSessionManager:
             cmd.append("-d")
         cmd.extend([
             "--name", name,
+            "--label", "tokenade=true",
+            "--label", f"session={name}",
             "-p", f"{port}:9222",
             "-v", f"{session_path}:/app/sessions/input.tokenade:ro",
         ])
