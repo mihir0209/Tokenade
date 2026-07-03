@@ -414,7 +414,7 @@ def run_tui(mode: str = "full"):
         def compose(self) -> ComposeResult:
             yield Static("📦 Installed Plugins", classes="card-title")
             yield Rule()
-            Container(id="installed-list")
+            yield Container(id="installed-list")
 
     # ── Sessions View ─────────────────────────────────────────
 
@@ -424,7 +424,7 @@ def run_tui(mode: str = "full"):
         def compose(self) -> ComposeResult:
             yield Static("📁 Sessions", classes="card-title")
             yield Rule()
-            Container(id="sessions-list")
+            yield Container(id="sessions-list")
 
     # ── Settings View ─────────────────────────────────────────
 
@@ -540,14 +540,10 @@ def run_tui(mode: str = "full"):
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
             yield TabbedContent(
-                "Marketplace",
-                "Installed",
-                "Sessions",
-                "Settings",
-                TabPane(MarketplaceView(), id="tab-marketplace"),
-                TabPane(InstalledView(), id="tab-installed"),
-                TabPane(SessionsView(), id="tab-sessions"),
-                TabPane(SettingsView(), id="tab-settings"),
+                TabPane("Marketplace", MarketplaceView(), id="tab-marketplace"),
+                TabPane("Installed", InstalledView(), id="tab-installed"),
+                TabPane("Sessions", SessionsView(), id="tab-sessions"),
+                TabPane("Settings", SettingsView(), id="tab-settings"),
                 id="main-tabs",
             )
             yield Footer()
