@@ -56,39 +56,39 @@ def run_tui(mode: str = "full"):
         DEFAULT_CSS = """
         PluginCard {
             height: auto;
-            min-height: 8;
-            margin: 0 1;
-            padding: 1 2;
+            min-height: 3;
+            max-height: 5;
+            margin: 0 0;
+            padding: 0 1;
             background: $surface;
-            border: tall $primary-background-lighten-2;
+            border-bottom: tall $primary-background-lighten-2;
         }
         PluginCard:hover {
             background: $surface-lighten-1;
-            border: tall $primary;
         }
         PluginCard:focus {
             background: $surface-lighten-1;
-            border: tall $accent;
+            border-bottom: tall $accent;
         }
         PluginCard .card-title {
             text-style: bold;
             color: $text;
         }
-        PluginCard .card-version {
-            color: $text-muted;
-        }
         PluginCard .card-desc {
             color: $text-muted;
-            margin: 0 0 1 0;
+            height: 0;
+            overflow: hidden;
         }
         PluginCard .card-meta {
             color: $text-muted;
         }
         PluginCard .card-tags {
-            color: $warning;
+            height: 0;
+            overflow: hidden;
         }
         PluginCard .card-actions {
-            margin: 1 0 0 0;
+            height: auto;
+            margin: 0;
         }
         """
 
@@ -107,28 +107,16 @@ def run_tui(mode: str = "full"):
             rating = p.get("rating", 0)
             downloads = p.get("downloads", 0)
             verified = p.get("verified", False)
-            tags = p.get("tags", [])
 
-            # Rating stars
             stars = "★" * int(rating) + "☆" * (5 - int(rating))
-
-            # Verified badge
-            verified_str = "  ✓ verified" if verified else ""
-
-            # Tags
-            tag_str = " ".join(f"[{t}]" for t in tags[:4])
+            verified_str = " ✓" if verified else ""
 
             yield Static(
-                f"{icon} {name} v{version}{verified_str}",
+                f"{icon} {name} v{version}{verified_str}  "
+                f"{stars} {rating:.1f}  {downloads}↓  by {author}",
                 classes="card-title",
             )
             yield Static(desc[:80], classes="card-desc")
-            yield Static(
-                f"{stars} ({rating:.1f})  •  {downloads} downloads  •  by {author}",
-                classes="card-meta",
-            )
-            if tag_str:
-                yield Static(tag_str, classes="card-tags")
             yield Horizontal(
                 Button("Install", variant="success", compact=True,
                        id=f"install-{name}"),
@@ -328,6 +316,18 @@ def run_tui(mode: str = "full"):
 
         def action_rate(self):
             self.app.push_screen(RateScreen(self.plugin))
+
+        @on(Button.Pressed, "#detail-install")
+        def on_install(self):
+            self.app.install_plugin(self.plugin.get("name", ""))
+
+        @on(Button.Pressed, "#detail-rate")
+        def on_rate(self):
+            self.app.push_screen(RateScreen(self.plugin))
+
+        @on(Button.Pressed, "#detail-back")
+        def on_back(self):
+            self.app.pop_screen()
 
     # ── Rate Screen ───────────────────────────────────────────
 
@@ -689,6 +689,22 @@ def run_tui(mode: str = "full"):
                         container.mount(PluginCard(p))
             except Exception:
                 pass
+
+        @on(Button.Pressed)
+        def handle_button(self, event: Button.Pressed):
+            """Handle install and details button presses."""
+            btn_id = event.button.id or ""
+            if btn_id.startswith("install-"):
+                name = btn_id.removeprefix("install-")
+                self.install_plugin(name)
+            elif btn_id.startswith("details-"):
+                name = btn_id.removeprefix("details-")
+                plugin = next(
+                    (p for p in self._plugins if p.get("name") == name),
+                    None,
+                )
+                if plugin:
+                    self.push_screen(PluginDetailScreen(plugin))
 
         @on(Button.Pressed, "#add-registry")
         def add_registry(self):
