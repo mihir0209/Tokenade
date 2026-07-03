@@ -540,10 +540,14 @@ def run_tui(mode: str = "full"):
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
             yield TabbedContent(
-                TabPane("Marketplace", MarketplaceView(), id="tab-marketplace"),
-                TabPane("Installed", InstalledView(), id="tab-installed"),
-                TabPane("Sessions", SessionsView(), id="tab-sessions"),
-                TabPane("Settings", SettingsView(), id="tab-settings"),
+                "Marketplace",
+                "Installed",
+                "Sessions",
+                "Settings",
+                TabPane(MarketplaceView(), id="tab-marketplace"),
+                TabPane(InstalledView(), id="tab-installed"),
+                TabPane(SessionsView(), id="tab-sessions"),
+                TabPane(SettingsView(), id="tab-settings"),
                 id="main-tabs",
             )
             yield Footer()
@@ -573,10 +577,10 @@ def run_tui(mode: str = "full"):
             try:
                 from tokenade.core.integration.plugin_loader import PluginLoader
                 loader = PluginLoader()
-                installed = loader.list_all()
+                installed_plugins = loader.list_all()
                 self._installed = [
-                    {"name": n, "enabled": True}
-                    for n in (installed or {}).keys()
+                    {"name": p.name, "enabled": p.enabled}
+                    for p in installed_plugins
                 ]
             except Exception as e:
                 logger.debug(f"Failed to load installed: {e}")
