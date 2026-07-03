@@ -92,9 +92,10 @@ def run_tui(mode: str = "full"):
         }
         """
 
-        def __init__(self, plugin: Dict[str, Any], **kwargs):
+        def __init__(self, plugin: Dict[str, Any], installed: bool = False, **kwargs):
             super().__init__(**kwargs)
             self.plugin = plugin
+            self.installed = installed
             self.can_focus = True
 
         def compose(self) -> ComposeResult:
@@ -118,8 +119,13 @@ def run_tui(mode: str = "full"):
             )
             yield Static(desc[:80], classes="card-desc")
             yield Horizontal(
-                Button("Install", variant="success", compact=True,
-                       id=f"install-{name}"),
+                Button(
+                    "Installed" if self.installed else "Install",
+                    variant="default" if self.installed else "success",
+                    compact=True,
+                    id=f"install-{name}",
+                    disabled=self.installed,
+                ),
                 Button("Details", variant="default", compact=True,
                        id=f"details-{name}"),
                 classes="card-actions",
@@ -339,9 +345,9 @@ def run_tui(mode: str = "full"):
             align: center middle;
         }
         RateScreen Container {
-            width: 50;
+            width: 60;
             height: auto;
-            max-height: 20;
+            max-height: 25;
             background: $surface;
             border: tall $primary;
             padding: 1 2;
@@ -359,8 +365,10 @@ def run_tui(mode: str = "full"):
             yield Container(
                 Static(f"Rate: {name}", classes="card-title"),
                 Rule(),
-                Static("Enter rating (1-5 stars):"),
+                Static("Rating (1-5 stars):"),
                 Input(placeholder="4", id="rating-input"),
+                Static("Review (optional):"),
+                Input(placeholder="Great plugin!", id="review-input"),
                 Horizontal(
                     Button("Submit", variant="success", id="rate-submit"),
                     Button("Cancel", variant="default", id="rate-cancel"),
@@ -369,12 +377,14 @@ def run_tui(mode: str = "full"):
 
         @on(Button.Pressed, "#rate-submit")
         def submit_rating(self):
-            inp = self.query_one("#rating-input", Input)
+            rating_inp = self.query_one("#rating-input", Input)
+            review_inp = self.query_one("#review-input", Input)
             try:
-                rating = int(inp.value)
+                rating = int(rating_inp.value)
                 if 1 <= rating <= 5:
                     name = self.plugin.get("name", "")
-                    self.app.rate_plugin(name, rating)
+                    review = review_inp.value.strip()
+                    self.app.rate_plugin(name, rating, review)
                     self.app.pop_screen()
             except ValueError:
                 pass
@@ -571,6 +581,7 @@ def run_tui(mode: str = "full"):
             try:
                 from tokenade.core.integration.plugin_loader import PluginLoader
                 loader = PluginLoader()
+                loader.load_all()
                 installed_plugins = loader.list_all()
                 self._installed = [
                     {"name": p.name, "enabled": p.enabled}
@@ -615,13 +626,16 @@ def run_tui(mode: str = "full"):
             try:
                 container = self.query_one("#plugin-list", Container)
                 container.remove_children()
+                installed_names = {p["name"] for p in self._installed}
                 for p in self._plugins:
-                    container.mount(PluginCard(p))
+                    is_installed = p.get("name", "") in installed_names
+                    container.mount(PluginCard(p, installed=is_installed))
                 sidebar = self.query_one("#sidebar", CategorySidebar)
                 sidebar.update_categories(self._categories)
                 sidebar.update_registry(self._registry_url)
                 status = self.query_one("#marketplace-status", StatusBar)
-                status.text = f"📦 {len(self._plugins)} plugins available"
+                installed_count = len(installed_names)
+                status.text = f"📦 {len(self._plugins)} available  •  {installed_count} installed"
             except Exception:
                 pass
 
@@ -630,14 +644,18 @@ def run_tui(mode: str = "full"):
             try:
                 container = self.query_one("#installed-list", Container)
                 container.remove_children()
-                for p in self._installed:
-                    name = p.get("name", "unknown")
-                    enabled = p.get("enabled", True)
-                    status = "✅ enabled" if enabled else "⏸️ disabled"
-                    container.mount(Static(
-                        f"  {name}  •  {status}",
-                        classes="installed-card",
-                    ))
+                if not self._installed:
+                    container.mount(Static("  No plugins installed yet.", classes="installed-card"))
+                    container.mount(Static("  Go to Marketplace tab to install plugins.", classes="installed-card"))
+                else:
+                    for p in self._installed:
+                        name = p.get("name", "unknown")
+                        enabled = p.get("enabled", True)
+                        status = "✅ enabled" if enabled else "⏸️ disabled"
+                        container.mount(Static(
+                            f"  {name}  •  {status}",
+                            classes="installed-card",
+                        ))
             except Exception:
                 pass
 
@@ -679,6 +697,7 @@ def run_tui(mode: str = "full"):
             try:
                 container = self.query_one("#plugin-list", Container)
                 container.remove_children()
+                installed_names = {p["name"] for p in self._installed}
                 for p in self._plugins:
                     searchable = (
                         p.get("name", "") + " " +
@@ -686,7 +705,8 @@ def run_tui(mode: str = "full"):
                         " ".join(p.get("tags", []))
                     ).lower()
                     if query in searchable:
-                        container.mount(PluginCard(p))
+                        is_installed = p.get("name", "") in installed_names
+                        container.mount(PluginCard(p, installed=is_installed))
             except Exception:
                 pass
 
@@ -736,22 +756,35 @@ def run_tui(mode: str = "full"):
                 registry = PluginRegistry()
                 result = registry.install(name)
                 if result:
-                    self.notify(f"Installed: {name}")
+                    self.notify(f"✅ Installed: {name}", timeout=3)
+                    # Update button state
+                    try:
+                        btn = self.query_one(f"#install-{name}", Button)
+                        btn.label = "Installed"
+                        btn.disabled = True
+                        btn.variant = "default"
+                    except Exception:
+                        pass
+                    # Refresh installed list
                     self._load_data()
+                    self._update_installed()
                 else:
-                    self.notify(f"Failed to install: {name}", severity="error")
+                    self.notify(f"❌ Failed to install: {name}", severity="error")
             except Exception as e:
-                self.notify(f"Error: {e}", severity="error")
+                self.notify(f"❌ Error: {e}", severity="error")
 
-        def rate_plugin(self, name: str, rating: int):
-            """Rate a plugin."""
+        def rate_plugin(self, name: str, rating: int, review: str = ""):
+            """Rate a plugin with optional review."""
             try:
                 from tokenade.core.integration.plugin_registry import PluginRegistry
                 registry = PluginRegistry()
                 registry.rate_plugin(name, rating)
-                self.notify(f"Rated {name}: {rating} stars")
+                self.notify(f"⭐ Rated {name}: {rating}/5 stars")
+                # Refresh marketplace to show updated rating
+                self._load_data()
+                self._update_marketplace()
             except Exception as e:
-                self.notify(f"Error: {e}", severity="error")
+                self.notify(f"❌ Error: {e}", severity="error")
 
         def action_show_marketplace(self):
             self.query_one("#main-tabs").active = "tab-marketplace"
