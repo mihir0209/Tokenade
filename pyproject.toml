@@ -40,6 +40,7 @@ linux = ["secretstorage>=3.3.3"]
 runtime = ["curl-cffi>=0.6.0"]
 ldap = ["ldap3>=2.9"]
 enterprise = ["ldap3>=2.9"]
+tui = ["textual>=0.40.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

@@ -1728,6 +1728,19 @@ def cmd_autopsy(args):
             print(f"  Extra in dead: {', '.join(extra_in_dead)}")
 
 
+def cmd_tui(args):
+    """Launch interactive terminal UI."""
+    from tokenade.tui import run_tui, _check_textual
+
+    if not _check_textual():
+        print("TUI requires textual: pip install 'tokenade[tui]'")
+        print("Or use: tokenade plugin browse (static HTML)")
+        return
+
+    mode = getattr(args, "tui_mode", "full")
+    run_tui(mode=mode)
+
+
 def _run_post_refresh_plugins(loader, session):
     """Run post-refresh plugins (webhooks, notifications, etc.)."""
     refreshers = loader.list_refreshers()

@@ -16,7 +16,7 @@ from tokenade.cli.management import (
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
-    cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy,
+    cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_tui,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1362,6 +1362,12 @@ Commands:
     autopsy_parser.add_argument("--compare", "-c", help="Compare with another session file")
     autopsy_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
+    # TUI
+    tui_parser = subparsers.add_parser("tui", help="Launch interactive terminal UI")
+    tui_parser.add_argument("tui_mode", nargs="?", default="full",
+                            choices=["full", "marketplace", "sessions"],
+                            help="TUI mode")
+
     # Validate Session
     validate_session_parser = subparsers.add_parser("validate-session", help="Validate session files for CI/CD")
     validate_session_parser.add_argument("--session", "-s", help="Single session file to validate")
@@ -1786,6 +1792,7 @@ def main():
         "k8s": cmd_k8s,
         "fleet": cmd_fleet,
         "autopsy": cmd_autopsy,
+        "tui": cmd_tui,
         "stealth": cmd_stealth,
         "deps": cmd_deps,
         "profile": cmd_profile,
