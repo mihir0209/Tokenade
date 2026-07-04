@@ -1728,6 +1728,88 @@ def cmd_autopsy(args):
             print(f"  Extra in dead: {', '.join(extra_in_dead)}")
 
 
+def cmd_cloak(args):
+    """CloakBrowser stealth browser management."""
+    from tokenade.core.browser.cloak import (
+        CloakBrowserBackend,
+        is_cloakbrowser_available,
+        get_binary_info,
+        ensure_binary,
+    )
+
+    cloak_action = getattr(args, "cloak_action", "info")
+
+    if cloak_action == "info":
+        info = get_binary_info()
+        print("\n" + "=" * 60)
+        print("CLOAKBROWSER STATUS")
+        print("=" * 60)
+        print(f"  Package installed: {'Yes' if is_cloakbrowser_available() else 'No'}")
+        print(f"  Binary installed:  {'Yes' if info.get('installed') else 'No'}")
+        if info.get("version"):
+            print(f"  Binary version:    {info['version']}")
+        if info.get("platform"):
+            print(f"  Platform:          {info['platform']}")
+        if info.get("tier"):
+            print(f"  License tier:      {info['tier']}")
+        if info.get("binary_path"):
+            print(f"  Binary path:       {info['binary_path']}")
+        if info.get("download_url"):
+            print(f"  Download URL:      {info['download_url']}")
+        if info.get("error"):
+            print(f"  Error:             {info['error']}")
+        print("=" * 60)
+        print()
+
+    elif cloak_action == "install":
+        if not is_cloakbrowser_available():
+            print("❌ cloakbrowser package not installed")
+            print("   Install with: pip install cloakbrowser")
+            return
+        print("Downloading CloakBrowser binary...")
+        if ensure_binary():
+            info = get_binary_info()
+            print(f"✅ CloakBrowser installed: v{info.get('version', '?')}")
+            print(f"   Platform: {info.get('platform', '?')}")
+            print(f"   Tier: {info.get('tier', '?')}")
+        else:
+            print("❌ Failed to download CloakBrowser binary")
+
+    elif cloak_action == "serve":
+        if not is_cloakbrowser_available():
+            print("❌ cloakbrowser package not installed")
+            return
+        port = getattr(args, "port", 9222)
+        proxy = getattr(args, "proxy", None)
+        headless = not getattr(args, "visible", False)
+        idle_timeout = getattr(args, "idle_timeout", None)
+
+        print(f"Starting CloakBrowser CDP server on port {port}...")
+        backend = CloakBrowserBackend()
+        try:
+            proc = backend.serve_cdp(
+                port=port,
+                proxy=proxy,
+                headless=headless,
+                idle_timeout=idle_timeout,
+            )
+            print(f"✅ CloakBrowser CDP server running on port {port}")
+            print(f"   PID: {proc.pid}")
+            print(f"   Connect: http://127.0.0.1:{port}")
+            print()
+            print("   Press Ctrl+C to stop")
+            try:
+                proc.wait()
+            except KeyboardInterrupt:
+                proc.terminate()
+                print("\nStopped.")
+        except Exception as e:
+            print(f"❌ Failed to start server: {e}")
+
+    else:
+        print("Usage: tokenade cloak {info|install|serve}")
+
+
 def cmd_tui(args):
     """Launch interactive terminal UI."""
     from tokenade.tui import run_tui, _check_textual

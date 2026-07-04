@@ -16,7 +16,7 @@ from tokenade.cli.management import (
     cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
-    cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_tui,
+    cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_cloak, cmd_tui,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -1387,6 +1387,20 @@ Commands:
     encrypted_refresh_parser.add_argument("--source-browser", "-b", default="firefox", help="Source browser for cookie refresh")
     encrypted_refresh_parser.add_argument("--force", action="store_true", help="Force refresh even if not expired")
 
+    # CloakBrowser
+    cloak_parser = subparsers.add_parser("cloak", help="CloakBrowser stealth browser management")
+    cloak_sub = cloak_parser.add_subparsers(dest="cloak_action")
+
+    cloak_sub.add_parser("info", help="Show CloakBrowser status and binary info")
+    cloak_sub.add_parser("install", help="Download/update CloakBrowser binary")
+
+    cloak_serve = cloak_sub.add_parser("serve", help="Start CDP server (cloakserve)")
+    cloak_serve.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on")
+    cloak_serve.add_argument("--proxy", help="Upstream proxy URL")
+    cloak_serve.add_argument("--headless", action="store_true", default=True, help="Run headless")
+    cloak_serve.add_argument("--visible", action="store_true", help="Run headed")
+    cloak_serve.add_argument("--idle-timeout", type=int, help="Idle timeout in seconds")
+
     # Launch Undetectable Browser
     launch_parser = subparsers.add_parser("launch", help="Launch undetectable system browser with CDP")
     launch_parser.add_argument("--browser", "-b", default="chrome", help="Browser to launch (chrome, firefox, brave, edge)")
@@ -1405,6 +1419,10 @@ Commands:
         "--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
         default="health-weighted", help="Rotation strategy (default: health-weighted)"
     )
+    launch_parser.add_argument("--humanize", action="store_true", help="Human-like mouse/keyboard/scroll (CloakBrowser)")
+    launch_parser.add_argument("--geoip", action="store_true", help="Auto-detect timezone/locale from proxy IP (CloakBrowser)")
+    launch_parser.add_argument("--no-cloak", action="store_true", help="Force Playwright + JS patches (skip CloakBrowser)")
+    launch_parser.add_argument("--profile", help="Persistent profile directory (CloakBrowser)")
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
@@ -1791,6 +1809,7 @@ def main():
         "container": cmd_container,
         "k8s": cmd_k8s,
         "fleet": cmd_fleet,
+        "cloak": cmd_cloak,
         "autopsy": cmd_autopsy,
         "tui": cmd_tui,
         "stealth": cmd_stealth,

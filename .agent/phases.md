@@ -552,3 +552,31 @@ tokenade/core/cicd/
 **Verify**: Session injection works, dashboard shows data
 **Dependencies**: Phase 53
 **Plan**: `.agent/plans/06-next-roadmap.md`
+
+### Phase 55 — Session CI Runner (next)
+**Goal**: `tokenade ci run` reads `tokenade.yml` and executes session validation locally
+**Output**: Local CI runner with YAML config, health checks, refresh, JUnit output
+**Verify**: `tokenade ci run` passes on healthy session, fails on dead session
+**Dependencies**: Phase 52 ✅
+**Plan**: `.agent/plans/07-next-roadmap.md`
+
+### Phase 56 — Fleet Management
+**Goal**: Unified view of sessions across Docker/k8s without a server
+**Output**: `tokenade fleet status|health|refresh|logs` commands
+**Verify**: Fleet status shows all container sessions in one table
+**Dependencies**: Phase 55
+**Plan**: `.agent/plans/07-next-roadmap.md`
+
+### Phase 57 — Session Forensics
+**Goal**: Root-cause analysis for dead/expired sessions
+**Output**: `tokenade autopsy -s dead.tokenade` — tells you WHY it died
+**Verify**: Autopsy correctly identifies expiry vs revocation vs missing cookies
+**Dependencies**: Phase 52 ✅
+**Plan**: `.agent/plans/07-next-roadmap.md`
+
+### Phase 58 — Interactive TUI
+**Goal**: Terminal UI for plugin marketplace browsing and session management
+**Output**: `tokenade tui` — textual-based TUI with marketplace, sessions, settings tabs
+**Verify**: Can browse plugins, install, rate, and manage sessions visually
+**Dependencies**: Phases 55-57
+**Plan**: `.agent/plans/07-next-roadmap.md`
