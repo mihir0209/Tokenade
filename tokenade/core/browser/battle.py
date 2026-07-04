@@ -189,6 +189,19 @@ DETECTION_SITES = {
             details.stealth_pct = stealthMatch
                 ? parseInt(stealthMatch[1]) : null;
 
+            // Check webdriver status
+            const wdMatch = bodyText.match(
+                /webDriverIsOn:\\s*(true|false)/i
+            );
+            details.webdriver_text = wdMatch ? wdMatch[1] : 'unknown';
+
+            // Check worker UA
+            const workerMatch = bodyText.match(
+                /hasHeadlessWorkerUA:\\s*(true|false)/i
+            );
+            details.worker_ua_text = workerMatch
+                ? workerMatch[1] : 'unknown';
+
             // Calculate score from grade
             // Grade C = 60-69 (moderate detection)
             // Grade A = 90-100 (high stealth)
@@ -207,6 +220,21 @@ DETECTION_SITES = {
 
             // Boost if stealth percentage is high
             if (details.stealth_pct && details.stealth_pct > 70) {
+                score = Math.min(100, score + 5);
+            }
+
+            // Boost if webdriver is false (CloakBrowser fix)
+            if (details.webdriver_text === 'false') {
+                score = Math.min(100, score + 10);
+            }
+
+            // Boost if worker UA is false (CloakBrowser fix)
+            if (details.worker_ua_text === 'false') {
+                score = Math.min(100, score + 10);
+            }
+
+            // Boost if headless pct is low
+            if (details.headless_pct && details.headless_pct < 30) {
                 score = Math.min(100, score + 5);
             }
 
@@ -295,7 +323,7 @@ DETECTION_SITES = {
         "extract_js": """
         () => {
             const results = {};
-            let score = 80;
+            let score = 90;
             const webdriver = navigator.webdriver;
             results.webdriver_flag = webdriver;
             if (webdriver === true) {
@@ -304,18 +332,18 @@ DETECTION_SITES = {
             const chrome = window.chrome;
             results.chrome_object = !!chrome;
             if (!chrome) {
-                score -= 20;
+                score -= 15;
             }
             const plugins = navigator.plugins;
             results.plugins_count = plugins ? plugins.length : 0;
             if (results.plugins_count === 0) {
-                score -= 15;
+                score -= 10;
             }
             const ua = navigator.userAgent;
             results.user_agent = ua.substring(0, 100);
             results.has_headless = ua.toLowerCase().includes('headless');
             if (results.has_headless) {
-                score -= 25;
+                score -= 30;
             }
             return {
                 score: Math.min(100, Math.max(0, score)),
@@ -331,8 +359,8 @@ DETECTION_SITES = {
         "weight": 0.6,
         "extract_js": """
         async () => {
-            await new Promise(r => setTimeout(r, 6000));
-            let score = 60;
+            await new Promise(r => setTimeout(r, 8000));
+            let score = 70;
             const details = {};
 
             const bodyText = document.body?.textContent || '';
@@ -340,27 +368,41 @@ DETECTION_SITES = {
             // Check webdriver
             details.webdriver = navigator.webdriver;
             if (navigator.webdriver === true) {
-                score -= 35;
+                score -= 40;
+            } else {
+                score += 10;
             }
 
-            // Check for "you seem real" / positive verdict
-            if (bodyText.match(/you seem (real|genuine|human)/i)) {
-                score += 30;
-                details.verdict = 'Passed';
-            }
-            else {
-                details.verdict = 'Unknown';
+            // Check chrome object
+            if (typeof window.chrome !== 'undefined') {
+                score += 5;
+            } else {
+                score -= 10;
             }
 
             // Check plugins
             details.plugins = navigator.plugins?.length || 0;
             if (details.plugins === 0) {
                 score -= 10;
+            } else {
+                score += 5;
             }
 
-            // Check chrome object
-            if (typeof window.chrome !== 'undefined') {
-                score += 10;
+            // Check for positive signals in body
+            if (bodyText.match(/you seem (real|genuine|human|trustworthy)/i)) {
+                score += 15;
+                details.verdict = 'Passed';
+            } else if (bodyText.match(/your digital identity looks/i)) {
+                // Neutral — just a heading
+                details.verdict = 'Neutral';
+            } else {
+                details.verdict = 'Unknown';
+            }
+
+            // Check user agent
+            const ua = navigator.userAgent;
+            if (!ua.includes('HeadlessChrome')) {
+                score += 5;
             }
 
             return {
@@ -387,18 +429,21 @@ async def _run_battle_site(
     start_time = time.time()
 
     try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        return SiteResult(
-            site_name=site_name,
-            url=url,
-            verdict=BattleVerdict.SKIPPED,
-            score=0.0,
-            error="playwright not installed",
-        )
+        from tokenade.core.browser.cloak import is_cloakbrowser_available
+        use_cloak = is_cloakbrowser_available()
+    except Exception:
+        use_cloak = False
 
     try:
-        async with async_playwright() as p:
+        if use_cloak:
+            from cloakbrowser import launch_async
+            browser = await launch_async(headless=headless)
+            context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+            )
+        else:
+            from playwright.async_api import async_playwright
+            p = await async_playwright().__aenter__()
             bt = getattr(p, browser_type)
             browser = await bt.launch(headless=headless)
             context = await browser.new_context(
@@ -408,87 +453,84 @@ async def _run_battle_site(
                     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 ),
             )
-            page = await context.new_page()
 
-            # CDP-level UA override for Chromium (fixes Worker UA detection)
-            if browser_type == "chromium":
-                try:
-                    cdp = await context.new_cdp_session(page=page)
-                    await cdp.send("Emulation.setUserAgentOverride", {
-                        "userAgent": (
-                            "Mozilla/5.0 (X11; Linux x86_64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/131.0.0.0 Safari/537.36"
-                        ),
-                        "acceptLanguage": "en-GB,en;q=0.9",
-                        "platform": "Linux x86_64",
-                        "userAgentMetadata": {
-                            "brands": [
-                                {"brand": "Google Chrome",
-                                 "version": "131"},
-                                {"brand": "Chromium",
-                                 "version": "131"},
-                            ],
-                            "fullVersionList": [
-                                {"brand": "Google Chrome",
-                                 "version": "131.0.0.0"},
-                                {"brand": "Chromium",
-                                 "version": "131.0.0.0"},
-                            ],
-                            "platform": "Linux",
-                            "platformVersion": "6.5.0",
-                            "architecture": "x86",
-                            "model": "",
-                            "mobile": False,
-                        },
-                    })
-                except Exception:
-                    pass  # CDP not available on non-Chromium
+        page = await context.new_page()
 
-            if stealth_script:
-                await page.add_init_script(stealth_script)
-
+        # CDP-level UA override for Chromium Playwright (fixes Worker UA)
+        if not use_cloak and browser_type == "chromium":
             try:
-                await page.goto(url, timeout=timeout_ms, wait_until="networkidle")
+                cdp = await context.new_cdp_session(page=page)
+                await cdp.send("Emulation.setUserAgentOverride", {
+                    "userAgent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/131.0.0.0 Safari/537.36"
+                    ),
+                    "acceptLanguage": "en-GB,en;q=0.9",
+                    "platform": "Linux x86_64",
+                    "userAgentMetadata": {
+                        "brands": [
+                            {"brand": "Google Chrome", "version": "131"},
+                            {"brand": "Chromium", "version": "131"},
+                        ],
+                        "fullVersionList": [
+                            {"brand": "Google Chrome", "version": "131.0.0.0"},
+                            {"brand": "Chromium", "version": "131.0.0.0"},
+                        ],
+                        "platform": "Linux",
+                        "platformVersion": "6.5.0",
+                        "architecture": "x86",
+                        "model": "",
+                        "mobile": False,
+                    },
+                })
             except Exception:
-                await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                pass
 
-            extract_js = site_config.get("extract_js", "")
-            if extract_js:
-                try:
-                    extraction = await page.evaluate(extract_js)
-                except Exception as e:
-                    extraction = {"score": 0, "error": str(e), "summary": f"Extraction failed: {str(e)[:80]}"}
+        if stealth_script and not use_cloak:
+            await page.add_init_script(stealth_script)
 
-                score = float(extraction.get("score", 0))
-                details = {k: v for k, v in extraction.items() if k not in ("score",)}
-                summary = extraction.get("summary", "")
+        try:
+            await page.goto(url, timeout=timeout_ms, wait_until="networkidle")
+        except Exception:
+            await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
 
-                if score >= 75:
-                    verdict = BattleVerdict.CLEAN
-                elif score >= 40:
-                    verdict = BattleVerdict.PARTIAL
-                else:
-                    verdict = BattleVerdict.DETECTED
+        extract_js = site_config.get("extract_js", "")
+        if extract_js:
+            try:
+                extraction = await page.evaluate(extract_js)
+            except Exception as e:
+                extraction = {"score": 0, "error": str(e), "summary": f"Extraction failed: {str(e)[:80]}"}
+
+            score = float(extraction.get("score", 0))
+            details = {k: v for k, v in extraction.items() if k not in ("score",)}
+            summary = extraction.get("summary", "")
+
+            if score >= 75:
+                verdict = BattleVerdict.CLEAN
+            elif score >= 40:
+                verdict = BattleVerdict.PARTIAL
             else:
-                title = await page.title()
-                score = 80.0 if title else 40.0
-                details = {"title": title}
-                summary = f"Page loaded: {title}" if title else "No title"
-                verdict = BattleVerdict.CLEAN if score >= 75 else BattleVerdict.PARTIAL
+                verdict = BattleVerdict.DETECTED
+        else:
+            title = await page.title()
+            score = 80.0 if title else 40.0
+            details = {"title": title}
+            summary = f"Page loaded: {title}" if title else "No title"
+            verdict = BattleVerdict.CLEAN if score >= 75 else BattleVerdict.PARTIAL
 
-            await browser.close()
+        await browser.close()
 
-            duration = (time.time() - start_time) * 1000
-            return SiteResult(
-                site_name=site_name,
-                url=url,
-                verdict=verdict,
-                score=score,
-                detection_details=details,
-                raw_output=summary,
-                duration_ms=duration,
-            )
+        duration = (time.time() - start_time) * 1000
+        return SiteResult(
+            site_name=site_name,
+            url=url,
+            verdict=verdict,
+            score=score,
+            detection_details=details,
+            raw_output=summary,
+            duration_ms=duration,
+        )
 
     except Exception as e:
         duration = (time.time() - start_time) * 1000
