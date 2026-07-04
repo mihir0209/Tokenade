@@ -175,3 +175,85 @@ class TestRichComponents:
         ]
         total = sum(c["count"] for c in categories)
         assert total == 6
+
+    def test_installed_plugin_data_structure(self):
+        """Installed plugin data should have version."""
+        plugin = {
+            "name": "oauth2",
+            "enabled": True,
+            "version": "1.1.0",
+        }
+        assert plugin["name"] == "oauth2"
+        assert plugin["version"] == "1.1.0"
+        assert plugin["enabled"] is True
+
+    def test_update_available_detection(self):
+        """Should detect when installed version < registry version."""
+        installed = [
+            {"name": "oauth2", "version": "1.0.0", "enabled": True},
+        ]
+        registry = [
+            {"name": "oauth2", "version": "1.1.0"},
+        ]
+        installed_ver = installed[0]["version"]
+        registry_ver = registry[0]["version"]
+        update_available = registry_ver != installed_ver
+        assert update_available is True
+
+    def test_search_filtering(self):
+        """Search should match name, description, and tags."""
+        plugins = [
+            {"name": "oauth2", "description": "OAuth2 refresh", "tags": ["oauth", "google"]},
+            {"name": "webhook-notify", "description": "Webhook notifications", "tags": ["webhook", "slack"]},
+            {"name": "session-health", "description": "Health validation", "tags": ["health", "monitoring"]},
+        ]
+        query = "oauth"
+        results = []
+        for p in plugins:
+            searchable = (
+                p.get("name", "") + " " +
+                p.get("description", "") + " " +
+                " ".join(p.get("tags", []))
+            ).lower()
+            if query in searchable:
+                results.append(p["name"])
+        assert "oauth2" in results
+        assert "webhook-notify" not in results
+        assert "session-health" not in results
+
+    def test_search_filtering_by_tag(self):
+        """Search should match tags."""
+        plugins = [
+            {"name": "oauth2", "description": "OAuth2 refresh", "tags": ["oauth", "google"]},
+            {"name": "webhook-notify", "description": "Webhook notifications", "tags": ["webhook", "slack"]},
+        ]
+        query = "slack"
+        results = []
+        for p in plugins:
+            searchable = (
+                p.get("name", "") + " " +
+                p.get("description", "") + " " +
+                " ".join(p.get("tags", []))
+            ).lower()
+            if query in searchable:
+                results.append(p["name"])
+        assert "webhook-notify" in results
+        assert "oauth2" not in results
+
+    def test_search_empty_query_returns_all(self):
+        """Empty search should return all plugins."""
+        plugins = [
+            {"name": "oauth2", "description": "OAuth2 refresh", "tags": ["oauth"]},
+            {"name": "webhook-notify", "description": "Webhook", "tags": ["webhook"]},
+        ]
+        query = ""
+        results = []
+        for p in plugins:
+            searchable = (
+                p.get("name", "") + " " +
+                p.get("description", "") + " " +
+                " ".join(p.get("tags", []))
+            ).lower()
+            if not query or query in searchable:
+                results.append(p["name"])
+        assert len(results) == 2

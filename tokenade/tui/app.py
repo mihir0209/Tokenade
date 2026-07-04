@@ -584,7 +584,7 @@ def run_tui(mode: str = "full"):
                 loader.load_all()
                 installed_plugins = loader.list_all()
                 self._installed = [
-                    {"name": p.name, "enabled": p.enabled}
+                    {"name": p.name, "enabled": p.enabled, "version": p.version}
                     for p in installed_plugins
                 ]
             except Exception as e:
@@ -652,9 +652,32 @@ def run_tui(mode: str = "full"):
                         name = p.get("name", "unknown")
                         enabled = p.get("enabled", True)
                         status = "✅ enabled" if enabled else "⏸️ disabled"
+                        # Check if update available
+                        registry_ver = None
+                        for rp in self._plugins:
+                            if rp.get("name") == name:
+                                registry_ver = rp.get("version")
+                                break
+                        installed_ver = p.get("version", "?")
+                        update_available = (
+                            registry_ver and registry_ver != installed_ver
+                        )
                         container.mount(Static(
-                            f"  {name}  •  {status}",
+                            f"  {name} v{installed_ver}  •  {status}",
                             classes="installed-card",
+                        ))
+                        container.mount(Horizontal(
+                            Button(
+                                "Uninstall", variant="error", compact=True,
+                                id=f"uninstall-{name}",
+                            ),
+                            Button(
+                                f"Update → v{registry_ver}" if update_available else "Up to date",
+                                variant="primary" if update_available else "default",
+                                compact=True,
+                                id=f"update-{name}",
+                                disabled=not update_available,
+                            ),
                         ))
             except Exception:
                 pass
@@ -712,11 +735,17 @@ def run_tui(mode: str = "full"):
 
         @on(Button.Pressed)
         def handle_button(self, event: Button.Pressed):
-            """Handle install and details button presses."""
+            """Handle install, uninstall, update, and details button presses."""
             btn_id = event.button.id or ""
             if btn_id.startswith("install-"):
                 name = btn_id.removeprefix("install-")
                 self.install_plugin(name)
+            elif btn_id.startswith("uninstall-"):
+                name = btn_id.removeprefix("uninstall-")
+                self.uninstall_plugin(name)
+            elif btn_id.startswith("update-"):
+                name = btn_id.removeprefix("update-")
+                self.update_plugin(name)
             elif btn_id.startswith("details-"):
                 name = btn_id.removeprefix("details-")
                 plugin = next(
@@ -765,11 +794,45 @@ def run_tui(mode: str = "full"):
                         btn.variant = "default"
                     except Exception:
                         pass
-                    # Refresh installed list
+                    # Reload plugins and refresh views
                     self._load_data()
                     self._update_installed()
+                    self._update_marketplace()
                 else:
                     self.notify(f"❌ Failed to install: {name}", severity="error")
+            except Exception as e:
+                self.notify(f"❌ Error: {e}", severity="error")
+
+        def uninstall_plugin(self, name: str):
+            """Uninstall a plugin by name."""
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                registry = PluginRegistry()
+                result = registry.uninstall(name)
+                if result:
+                    self.notify(f"🗑️ Uninstalled: {name}", timeout=3)
+                    # Reload plugins and refresh views
+                    self._load_data()
+                    self._update_installed()
+                    self._update_marketplace()
+                else:
+                    self.notify(f"❌ Failed to uninstall: {name}", severity="error")
+            except Exception as e:
+                self.notify(f"❌ Error: {e}", severity="error")
+
+        def update_plugin(self, name: str):
+            """Update a plugin to latest version."""
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                registry = PluginRegistry()
+                result = registry.update(name)
+                if result:
+                    self.notify(f"🔄 Updated: {name}", timeout=3)
+                    self._load_data()
+                    self._update_installed()
+                    self._update_marketplace()
+                else:
+                    self.notify(f"❌ Failed to update: {name}", severity="error")
             except Exception as e:
                 self.notify(f"❌ Error: {e}", severity="error")
 
