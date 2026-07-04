@@ -15,7 +15,7 @@ Requires: pip install textual
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,10 @@ def run_tui(mode: str = "full"):
             height: 0;
             overflow: hidden;
         }
+        PluginCard .card-desc.expanded {
+            height: auto;
+            overflow: visible;
+        }
         PluginCard .card-meta {
             color: $text-muted;
         }
@@ -90,12 +94,20 @@ def run_tui(mode: str = "full"):
             height: auto;
             margin: 0;
         }
+        PluginCard .badge-installed {
+            color: $success;
+        }
+        PluginCard .badge-update {
+            color: $warning;
+        }
         """
 
-        def __init__(self, plugin: Dict[str, Any], installed: bool = False, **kwargs):
+        def __init__(self, plugin: Dict[str, Any], installed: bool = False,
+                     update_available: bool = False, **kwargs):
             super().__init__(**kwargs)
             self.plugin = plugin
             self.installed = installed
+            self.update_available = update_available
             self.can_focus = True
 
         def compose(self) -> ComposeResult:
@@ -112,12 +124,20 @@ def run_tui(mode: str = "full"):
             stars = "★" * int(rating) + "☆" * (5 - int(rating))
             verified_str = " ✓" if verified else ""
 
+            # Badges
+            badges = ""
+            if self.installed:
+                badges += " [installed]"
+            if self.update_available:
+                badges += " [update]"
+
             yield Static(
                 f"{icon} {name} v{version}{verified_str}  "
-                f"{stars} {rating:.1f}  {downloads}↓  by {author}",
+                f"{stars} {rating:.1f}  {downloads}↓  by {author}"
+                f"{badges}",
                 classes="card-title",
             )
-            yield Static(desc[:80], classes="card-desc")
+            yield Static(desc[:80], classes="card-desc", id=f"desc-{name}")
             yield Horizontal(
                 Button(
                     "Installed" if self.installed else "Install",
@@ -536,6 +556,12 @@ def run_tui(mode: str = "full"):
             Binding("q", "quit", "Quit"),
             Binding("slash", "focus_search", "Search", show=False),
             Binding("question_mark", "help", "Help"),
+            Binding("j", "focus_next_card", "Next plugin", show=False),
+            Binding("k", "focus_prev_card", "Prev plugin", show=False),
+            Binding("enter", "open_details", "Details", show=False),
+            Binding("i", "install_focused", "Install", show=False),
+            Binding("u", "uninstall_focused", "Uninstall", show=False),
+            Binding("r", "rate_focused", "Rate", show=False),
         ]
 
         def __init__(self, mode: str = "full", **kwargs):
@@ -597,12 +623,28 @@ def run_tui(mode: str = "full"):
                     try:
                         with open(f) as fh:
                             data = json.load(fh)
+                        cookies = data.get("cookies", [])
+                        expired = 0
+                        import time
+                        now = time.time()
+                        for c in cookies:
+                            exp = c.get("expires", 0)
+                            if exp and int(exp) > 0:
+                                exp_int = int(exp)
+                                if exp_int > 1262304000000:
+                                    exp_int = exp_int // 1000
+                                if exp_int < now:
+                                    expired += 1
+                        total = len(cookies)
+                        health = ((total - expired) / total * 100) if total > 0 else 0
                         self._sessions.append({
                             "name": f.stem,
                             "file": str(f),
                             "site": data.get("site_name", "unknown"),
                             "auth": data.get("auth_status", "unknown"),
-                            "cookies": len(data.get("cookies", [])),
+                            "cookies": total,
+                            "expired": expired,
+                            "health": health,
                         })
                     except Exception:
                         pass
@@ -626,15 +668,23 @@ def run_tui(mode: str = "full"):
             try:
                 container = self.query_one("#plugin-list", Container)
                 container.remove_children()
-                installed_names = {p["name"] for p in self._installed}
+                installed_map = {p["name"]: p.get("version", "") for p in self._installed}
                 for p in self._plugins:
-                    is_installed = p.get("name", "") in installed_names
-                    container.mount(PluginCard(p, installed=is_installed))
+                    name = p.get("name", "")
+                    is_installed = name in installed_map
+                    update_available = (
+                        is_installed
+                        and p.get("version", "") != installed_map.get(name, "")
+                    )
+                    container.mount(PluginCard(
+                        p, installed=is_installed,
+                        update_available=update_available,
+                    ))
                 sidebar = self.query_one("#sidebar", CategorySidebar)
                 sidebar.update_categories(self._categories)
                 sidebar.update_registry(self._registry_url)
                 status = self.query_one("#marketplace-status", StatusBar)
-                installed_count = len(installed_names)
+                installed_count = len(installed_map)
                 status.text = f"📦 {len(self._plugins)} available  •  {installed_count} installed"
             except Exception:
                 pass
@@ -683,12 +733,28 @@ def run_tui(mode: str = "full"):
                 pass
 
         def _update_sessions(self):
-            """Update sessions list."""
+            """Update sessions list with health scores and action buttons."""
             try:
                 container = self.query_one("#sessions-list", Container)
                 container.remove_children()
+                if not self._sessions:
+                    container.mount(Static("  No sessions found.", classes="session-card"))
+                    container.mount(Static(
+                        "  Export one: tokenade export --browser-name brave "
+                        "--domains 'google.com' -o gmail.tokenade",
+                        classes="session-card",
+                    ))
                 for s in self._sessions:
                     auth = s.get("auth", "unknown")
+                    health = s.get("health", 0)
+                    expired = s.get("expired", 0)
+                    # Color-code health
+                    if health >= 80:
+                        health_cls = "status-healthy"
+                    elif health >= 50:
+                        health_cls = "status-warn"
+                    else:
+                        health_cls = "status-expired"
                     status_cls = {
                         "logged_in": "status-healthy",
                         "session_expired": "status-expired",
@@ -696,8 +762,16 @@ def run_tui(mode: str = "full"):
                     container.mount(Static(
                         f"  {s['name']}  •  {s['site']}  •  "
                         f"{s['cookies']} cookies  •  "
+                        f"[{health_cls}]{health:.0f}%[/{health_cls}]  •  "
+                        f"{expired} expired  •  "
                         f"[{status_cls}]{auth}[/{status_cls}]",
                         classes="session-card",
+                    ))
+                    container.mount(Horizontal(
+                        Button("Autopsy", variant="default", compact=True,
+                               id=f"autopsy-{s['name']}"),
+                        Button("Delete", variant="error", compact=True,
+                               id=f"delete-session-{s['name']}"),
                     ))
             except Exception:
                 pass
@@ -754,6 +828,12 @@ def run_tui(mode: str = "full"):
                 )
                 if plugin:
                     self.push_screen(PluginDetailScreen(plugin))
+            elif btn_id.startswith("autopsy-"):
+                name = btn_id.removeprefix("autopsy-")
+                self._run_autopsy(name)
+            elif btn_id.startswith("delete-session-"):
+                name = btn_id.removeprefix("delete-session-")
+                self._delete_session(name)
 
         @on(Button.Pressed, "#add-registry")
         def add_registry(self):
@@ -836,6 +916,48 @@ def run_tui(mode: str = "full"):
             except Exception as e:
                 self.notify(f"❌ Error: {e}", severity="error")
 
+        def _run_autopsy(self, name: str):
+            """Run autopsy on a session and show results."""
+            try:
+                session = next(
+                    (s for s in self._sessions if s["name"] == name),
+                    None,
+                )
+                if not session:
+                    self.notify(f"Session not found: {name}", severity="error")
+                    return
+                from tokenade.core.forensics.autopsy import SessionAutopsy
+                autopsy = SessionAutopsy(session["file"])
+                report = autopsy.analyze()
+                # Show summary as notification
+                self.notify(
+                    f"{name}: {report.cause_of_death} "
+                    f"({report.confidence}) — "
+                    f"{report.cookie_count} cookies, "
+                    f"{report.expired_count} expired",
+                    timeout=5,
+                )
+            except Exception as e:
+                self.notify(f"Autopsy error: {e}", severity="error")
+
+        def _delete_session(self, name: str):
+            """Delete a session file."""
+            try:
+                session = next(
+                    (s for s in self._sessions if s["name"] == name),
+                    None,
+                )
+                if not session:
+                    self.notify(f"Session not found: {name}", severity="error")
+                    return
+                import os
+                os.remove(session["file"])
+                self.notify(f"🗑️ Deleted: {name}", timeout=3)
+                self._load_data()
+                self._update_sessions()
+            except Exception as e:
+                self.notify(f"Delete error: {e}", severity="error")
+
         def rate_plugin(self, name: str, rating: int, review: str = ""):
             """Rate a plugin with optional review."""
             try:
@@ -869,11 +991,87 @@ def run_tui(mode: str = "full"):
 
         def action_help(self):
             self.notify(
-                "1-4: switch tabs  •  /: search  •  "
-                "j/k: navigate  •  i: install  •  "
-                "r: rate  •  q: quit",
+                "1-4: tabs  /: search  j/k: nav  "
+                "Enter: details  i: install  u: uninstall  "
+                "r: rate  q: quit",
                 timeout=5,
             )
+
+        def action_focus_next_card(self):
+            """Focus next plugin card in marketplace."""
+            try:
+                cards = self.query("PluginCard")
+                if not cards:
+                    return
+                focused = self.focused
+                if focused and focused in cards:
+                    idx = list(cards).index(focused)
+                    next_idx = (idx + 1) % len(cards)
+                    cards[next_idx].focus()
+                else:
+                    cards[0].focus()
+            except Exception:
+                pass
+
+        def action_focus_prev_card(self):
+            """Focus previous plugin card in marketplace."""
+            try:
+                cards = self.query("PluginCard")
+                if not cards:
+                    return
+                focused = self.focused
+                if focused and focused in cards:
+                    idx = list(cards).index(focused)
+                    prev_idx = (idx - 1) % len(cards)
+                    cards[prev_idx].focus()
+                else:
+                    cards[-1].focus()
+            except Exception:
+                pass
+
+        def _get_focused_plugin(self) -> Optional[Dict[str, Any]]:
+            """Get the plugin data from the currently focused card."""
+            try:
+                focused = self.focused
+                if focused and hasattr(focused, "plugin"):
+                    return focused.plugin
+            except Exception:
+                pass
+            return None
+
+        def action_open_details(self):
+            """Open detail view for focused plugin."""
+            plugin = self._get_focused_plugin()
+            if plugin:
+                self.push_screen(PluginDetailScreen(plugin))
+
+        def action_install_focused(self):
+            """Install the focused plugin."""
+            plugin = self._get_focused_plugin()
+            if plugin:
+                name = plugin.get("name", "")
+                installed_names = {p["name"] for p in self._installed}
+                if name not in installed_names:
+                    self.install_plugin(name)
+                else:
+                    self.notify(f"Already installed: {name}")
+
+        def action_uninstall_focused(self):
+            """Uninstall the focused plugin."""
+            plugin = self._get_focused_plugin()
+            if plugin:
+                name = plugin.get("name", "")
+                installed_names = {p["name"] for p in self._installed}
+                if name in installed_names:
+                    self.uninstall_plugin(name)
+                else:
+                    self.notify(f"Not installed: {name}")
+
+        def action_rate_focused(self):
+            """Rate the focused plugin."""
+            plugin = self._get_focused_plugin()
+            if plugin:
+                self.push_screen(RateScreen(plugin))
 
     # ── Launch ────────────────────────────────────────────────
 
