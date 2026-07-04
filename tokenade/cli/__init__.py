@@ -282,6 +282,9 @@ def cmd_plugin(args):
     elif args.plugin_command == "rate":
         _plugin_rate(registry, args)
 
+    elif args.plugin_command == "ratings":
+        _plugin_ratings(registry, args)
+
     elif args.plugin_command == "verify":
         _plugin_verify(args)
 
@@ -397,8 +400,55 @@ def _plugin_rate(registry, args):
         print(f"✅ Rated {args.name}: {args.rating}/5")
         if args.review:
             print(f"   Review: {args.review}")
+
+        # Sync to GitHub if PAT is set
+        from tokenade.core.integration.rating_sync import RatingSync
+        sync = RatingSync()
+        if sync.has_pat():
+            if sync.submit_rating(args.name, args.rating, args.review or ""):
+                print("   🌐 Synced to GitHub")
+            else:
+                print("   ⚠️ GitHub sync failed (local rating saved)")
+        else:
+            print("   💡 Set github-token to sync globally: tokenade config set github-token <PAT>")
     else:
         print(f"❌ Failed to rate {args.name} (rating must be 1.0-5.0)")
+
+
+def _plugin_ratings(registry, args):
+    """View global ratings from GitHub."""
+    from tokenade.core.integration.rating_sync import RatingSync
+    sync = RatingSync()
+
+    global_ratings = sync.get_global_ratings()
+
+    if not global_ratings:
+        print("\n  No global ratings found.")
+        if not sync.has_pat():
+            print("  💡 Set github-token to sync ratings: tokenade config set github-token <PAT>")
+        return
+
+    name = getattr(args, "name", None)
+
+    if name:
+        # Show specific plugin
+        if name in global_ratings:
+            r = global_ratings[name]
+            stars = "★" * int(r.get("rating", 0)) + "☆" * (5 - int(r.get("rating", 0)))
+            print(f"\n  {name} — {stars} ({r.get('rating', 0):.1f}/5)")
+            print(f"  Reviews: {r.get('review_count', 0)}")
+            for rev in r.get("reviews", []):
+                print(f"    ⭐ {rev.get('rating', 0)}: {rev.get('review', '')[:80]}")
+        else:
+            print(f"\n  No global ratings for: {name}")
+    else:
+        # Show all
+        print(f"\n  🌐 Global Ratings ({len(global_ratings)} plugins)\n")
+        for name, r in sorted(global_ratings.items()):
+            stars = "★" * int(r.get("rating", 0)) + "☆" * (5 - int(r.get("rating", 0)))
+            print(f"  {stars} {r.get('rating', 0):.1f}  {name}  ({r.get('review_count', 0)} reviews)")
+        if not sync.has_pat():
+            print(f"\n  💡 Set github-token to sync: tokenade config set github-token <PAT>")
 
 
 def _plugin_verify(args):
@@ -1212,6 +1262,10 @@ Commands:
     plugin_rate_parser.add_argument("name", help="Plugin name")
     plugin_rate_parser.add_argument("rating", type=float, help="Rating (1.0-5.0)")
     plugin_rate_parser.add_argument("--review", help="Written review")
+
+    # plugin ratings
+    plugin_ratings_parser = plugin_sub.add_parser("ratings", help="View global ratings from GitHub")
+    plugin_ratings_parser.add_argument("name", nargs="?", help="Plugin name (all if omitted)")
 
     # plugin verify
     plugin_verify_parser = plugin_sub.add_parser("verify", help="Verify plugin integrity via checksums")
