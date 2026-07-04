@@ -56,16 +56,6 @@ class PluginBase(ABC):
             "dependencies": self.dependencies,
         }
 
-    def get_info(self) -> Dict[str, Any]:
-        """Return plugin metadata."""
-        return {
-            "name": self.name,
-            "version": self.version,
-            "description": self.description,
-            "author": self.author,
-            "dependencies": self.dependencies,
-        }
-
 
 class SessionRefreshPlugin(PluginBase):
     """Plugin that can refresh sessions (OAuth2, API tokens, etc.).
