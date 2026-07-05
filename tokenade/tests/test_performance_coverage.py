@@ -3,7 +3,6 @@
 import asyncio
 import time
 import pytest
-from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from tokenade.core.utils.performance import (
@@ -17,9 +16,7 @@ from tokenade.core.utils.performance import (
 
 
 def _run_async(coro):
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=10)
+    return asyncio.run(coro)
 
 
 class TestCacheEntry:

@@ -4,7 +4,6 @@ page lifecycle, extension bridge, session refresh, lenient protocol, etc.
 """
 
 import asyncio
-import concurrent.futures
 import time
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -13,10 +12,7 @@ from aiohttp import web
 
 
 def _run_async(coro):
-    """Run async coroutine in a new event loop via ThreadPoolExecutor."""
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=10)
+    return asyncio.run(coro)
 
 
 class TestStripDuplicateHeaders(unittest.TestCase):

@@ -4,7 +4,6 @@ WebSocket communication, broadcast, session updates, status.
 """
 
 import asyncio
-import concurrent.futures
 import json
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -13,10 +12,7 @@ from tokenade.core.proxy.extension_bridge import BridgeMessage, ExtensionBridge
 
 
 def _run_async(coro):
-    """Run async coroutine in a new event loop via ThreadPoolExecutor."""
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=10)
+    return asyncio.run(coro)
 
 
 class TestBridgeMessage(unittest.TestCase):

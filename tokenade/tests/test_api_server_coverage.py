@@ -1,14 +1,12 @@
 """Tests for tokenade/core/api/server.py uncovered lines."""
 
 import asyncio
-import concurrent.futures
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
 
 
 def _run_async(coro):
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        return pool.submit(asyncio.run, coro).result(timeout=10)
+    return asyncio.run(coro)
 
 
 def _make_request(headers=None, match_info=None):

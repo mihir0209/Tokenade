@@ -1,7 +1,6 @@
 """Comprehensive tests for multi_site_proxy.py — targeting 60%+ coverage."""
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
@@ -13,9 +12,7 @@ from tokenade.core.proxy.multi_site_proxy import (
 
 
 def _run_async(coro):
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=10)
+    return asyncio.run(coro)
 
 
 def _make_session(name="github", domain=".github.com"):

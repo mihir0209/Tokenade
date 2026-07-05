@@ -11,11 +11,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 
 def _run_async(coro):
-    """Run async coroutine in a thread to avoid event loop conflicts."""
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=10)
+    return asyncio.run(coro)
 
 
 from tokenade.core.config import TokenadeConfig, load_config, DEFAULTS, DEFAULT_CONFIG_FILE  # noqa: E402
