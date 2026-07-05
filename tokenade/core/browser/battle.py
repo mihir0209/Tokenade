@@ -413,6 +413,249 @@ DETECTION_SITES = {
         }
         """,
     },
+    "fingerprintjs": {
+        "name": "FingerprintJS",
+        "url": "https://demo.fingerprint.com/",
+        "weight": 1.0,
+        "extract_js": """
+        async () => {
+            await new Promise(r => setTimeout(r, 8000));
+            let score = 70;
+            const details = {};
+            const bodyText = document.body?.textContent || '';
+
+            // Check for bot detection result
+            if (bodyText.match(/bot.*detected|automation.*detected/i)) {
+                score = 10;
+                details.verdict = 'Bot detected';
+            } else if (bodyText.match(/visitor.*id|fingerprint.*id/i)) {
+                score = 95;
+                details.verdict = 'Passed - visitor ID generated';
+            } else if (bodyText.match(/blocked|denied|error/i)) {
+                score = 20;
+                details.verdict = 'Blocked';
+            } else {
+                details.verdict = 'Unknown';
+            }
+
+            // Check for visitor ID element
+            const idEl = document.querySelector('[class*="visitor"], [class*="fingerprint"], [id*="visitor"]');
+            if (idEl) {
+                const idText = idEl.textContent.trim();
+                if (idText && idText.length > 10) {
+                    score = Math.max(score, 90);
+                    details.visitor_id = idText.substring(0, 50);
+                }
+            }
+
+            // Check for error messages
+            const errEl = document.querySelector('[class*="error"], [class*="blocked"]');
+            if (errEl) {
+                details.error = errEl.textContent.trim().substring(0, 100);
+                if (details.error) {
+                    score = Math.min(score, 30);
+                }
+            }
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                details: details,
+                summary: details.verdict || 'Unknown',
+            };
+        }
+        """,
+    },
+    "browserscan": {
+        "name": "BrowserScan",
+        "url": "https://www.browserscan.net/bot-detection",
+        "weight": 0.9,
+        "extract_js": """
+        async () => {
+            await new Promise(r => setTimeout(r, 6000));
+            let score = 70;
+            const details = {};
+            const bodyText = document.body?.textContent || '';
+
+            // Check for bot detection result
+            if (bodyText.match(/you are (not )?a bot/i)) {
+                if (bodyText.match(/you are not a bot|not a bot/i)) {
+                    score = 95;
+                    details.verdict = 'Not a bot';
+                } else {
+                    score = 10;
+                    details.verdict = 'Bot detected';
+                }
+            }
+
+            // Check for normal/abnormal
+            if (bodyText.match(/normal|passed|clean/i)) {
+                score = Math.max(score, 85);
+            } else if (bodyText.match(/abnormal|suspicious|flagged/i)) {
+                score = Math.min(score, 30);
+            }
+
+            // Check webdriver
+            details.webdriver = navigator.webdriver;
+            if (navigator.webdriver === true) {
+                score = Math.min(score, 20);
+            }
+
+            // Check plugins
+            details.plugins = navigator.plugins?.length || 0;
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                details: details,
+                summary: details.verdict || 'Unknown',
+            };
+        }
+        """,
+    },
+    "bot_incolumitas": {
+        "name": "bot.incolumitas.com",
+        "url": "https://bot.incolumitas.com/",
+        "weight": 0.8,
+        "extract_js": """
+        async () => {
+            await new Promise(r => setTimeout(r, 15000));
+            let score = 50;
+            const details = {};
+            const bodyText = document.body?.textContent || '';
+
+            // Look for score pattern (X/Y)
+            const scoreMatch = bodyText.match(/(\\d+)\\/(\\d+)/);
+            if (scoreMatch) {
+                const passed = parseInt(scoreMatch[1]);
+                const total = parseInt(scoreMatch[2]);
+                if (total > 0) {
+                    score = Math.round((passed / total) * 100);
+                    details.passed = passed;
+                    details.total = total;
+                }
+            }
+
+            // Count PASS/FAIL in test results
+            const passCount = (bodyText.match(/PASS/gi) || []).length;
+            const failCount = (bodyText.match(/FAIL/gi) || []).length;
+            const totalTests = passCount + failCount;
+            if (totalTests > 0) {
+                const testScore = Math.round((passCount / totalTests) * 100);
+                score = Math.max(score, testScore);
+                details.pass_tests = passCount;
+                details.fail_tests = failCount;
+            }
+
+            // Check behavioral classification
+            const behaviorMatch = bodyText.match(/(\\d+\\.\\d+).*?Human/i);
+            if (behaviorMatch) {
+                const behaviorScore = parseFloat(behaviorMatch[1]);
+                details.behavior_score = behaviorScore;
+                // behaviorScore is 0-1, where 1 = human
+                score = Math.max(score, Math.round(behaviorScore * 100));
+            }
+
+            // Check webdriver
+            details.webdriver = navigator.webdriver;
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                details: details,
+                summary: (details.passed !== undefined)
+                    ? (details.passed + '/' + details.total + ' passed')
+                    : ('Pass: ' + passCount + ', Fail: ' + failCount),
+            };
+        }
+        """,
+    },
+    "deviceandbrowserinfo": {
+        "name": "deviceandbrowserinfo.com",
+        "url": "https://deviceandbrowserinfo.com/are_you_a_bot",
+        "weight": 0.7,
+        "extract_js": """
+        async () => {
+            await new Promise(r => setTimeout(r, 6000));
+            let score = 70;
+            const details = {};
+            const bodyText = document.body?.textContent || '';
+
+            // Check for isBot result
+            if (bodyText.match(/isBot.*false|you are human|not a bot/i)) {
+                score = 95;
+                details.isBot = false;
+                details.verdict = 'Human';
+            } else if (bodyText.match(/isBot.*true|you are a bot/i)) {
+                score = 10;
+                details.isBot = true;
+                details.verdict = 'Bot';
+            }
+
+            // Check for true/false flags
+            const trueFlags = (bodyText.match(/: true/gi) || []).length;
+            const falseFlags = (bodyText.match(/: false/gi) || []).length;
+            details.true_flags = trueFlags;
+            details.false_flags = falseFlags;
+
+            // Check webdriver
+            details.webdriver = navigator.webdriver;
+            if (navigator.webdriver === true) {
+                score = Math.min(score, 30);
+            }
+
+            // If verdict is Human, give high score
+            if (details.verdict === 'Human') {
+                score = Math.max(score, 90);
+            }
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                details: details,
+                summary: details.verdict || 'Unknown',
+            };
+        }
+        """,
+    },
+    "nowsecure": {
+        "name": "nowsecure.nl",
+        "url": "https://nowsecure.nl/",
+        "weight": 0.9,
+        "extract_js": """
+        async () => {
+            await new Promise(r => setTimeout(r, 10000));
+            let score = 70;
+            const details = {};
+            const bodyText = document.body?.textContent || '';
+
+            // Check for Cloudflare Turnstile result
+            if (bodyText.match(/passed|success|verified|challenge completed/i)) {
+                score = 95;
+                details.verdict = 'Passed Turnstile';
+            } else if (bodyText.match(/blocked|failed|denied|challenge failed/i)) {
+                score = 15;
+                details.verdict = 'Blocked by Cloudflare';
+            } else if (bodyText.match(/challenge|verify|turnstile/i)) {
+                score = 40;
+                details.verdict = 'Challenge present';
+            }
+
+            // Check for error page
+            if (bodyText.match(/error|timeout|gateway/i)) {
+                score = Math.min(score, 30);
+            }
+
+            // Check title
+            const title = document.title || '';
+            if (title.match(/nowsecure|challenge/i)) {
+                details.title = title;
+            }
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                details: details,
+                summary: details.verdict || 'Unknown',
+            };
+        }
+        """,
+    },
 }
 
 
