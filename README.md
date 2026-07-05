@@ -1,6 +1,8 @@
-# Tokenade v6.0 — Browser Session Portability Tool
+# Tokenade v6.2 — Browser Session Portability Tool
 
 Extract browser sessions from one device, package them into portable `.tokenade` files, and browse as the donor on another device using a **CDP reverse proxy** with TLS fingerprint matching.
+
+**5224+ tests** · **58 CLI commands** · **14 plugins** · **Grade A stealth**
 
 ## Features
 
@@ -34,7 +36,8 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 
 | Feature | Description |
 |---------|-------------|
-| **14 Patch Categories** | Webdriver, plugins, permissions, WebGL, canvas, audio, screen, automation |
+| **CloakBrowser** | Stealth Chromium binary with 58 C++ source-level patches (default backend) |
+| **14 JS Patch Fallback** | Webdriver, plugins, permissions, WebGL, canvas, audio (when CloakBrowser unavailable) |
 | **Cloudflare Bypass** | Turnstile solver, cf_clearance extraction, multi-domain support |
 | **Akamai Bypass** | Bot detection bypass, akamai cookies extraction |
 | **CAPTCHA Detection** | Turnstile, hCaptcha, reCAPTCHA detection and status tracking |
@@ -42,6 +45,7 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | **Stealth Testing** | 18-point automated detection test suite with scoring |
 | **Battle Testing** | End-to-end validation against 5 real detection sites with composite scoring |
 | **Detection Dashboard** | HTML/JSON reports with category breakdown |
+| **Humanize** | Human-like mouse curves, keyboard timing, scroll patterns |
 
 ### Competitor Parity
 
@@ -57,10 +61,11 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 | Feature | Description |
 |---------|-------------|
 | **16+ Plugin Types** | Site handlers, export formats, validators, stealth, proxy, captcha |
-| **Plugin Marketplace** | Search, categories, ratings, trending, compatibility checks |
+| **Plugin Marketplace** | TUI marketplace with search, categories, ratings, install/uninstall |
+| **Global Ratings** | Sync ratings via GitHub Issues API (PAT required for writes) |
 | **Plugin Testing** | Automated test suite for plugin validation |
 | **HTML Marketplace** | Static marketplace page with search and filters |
-| **Official Plugins** | 10+ plugins (OAuth2, Discord, Reddit, WhatsApp, Telegram, etc.) |
+| **14 Official Plugins** | OAuth2, Google/GitHub/Discord handlers, session-health, webhook-notify, etc. |
 
 ### Enterprise
 
@@ -91,7 +96,13 @@ Extract browser sessions from one device, package them into portable `.tokenade`
 
 ## Quick Start (3 commands)
 
-### Step 1 — Export cookies from your browser
+### Step 1 — Install
+
+```bash
+pip install tokenade
+```
+
+### Step 2 — Export cookies from your browser
 
 ```bash
 # See what browsers are installed
@@ -101,52 +112,163 @@ tokenade export --list-profiles
 tokenade export --browser-name firefox --domains "chatgpt.com,openai.com" -o chatgpt.tokenade
 
 # Export Gmail session from Chrome
-tokenade export --browser-name chrome --domains "google.com,accounts.google.com" -o gmail.tokenade
+tokenade export --browser-name chrome --domains "google.com,accounts.google.com,mail.google.com" -o gmail.tokenade
 ```
 
-### Step 2 — Start the proxy
+### Step 3 — Launch with stealth (CloakBrowser)
 
 ```bash
-# Start CDP proxy (default — recommended)
-tokenade proxy -s chatgpt.tokenade
+# Launch stealth browser with session injected
+tokenade launch -s gmail.tokenade -u https://mail.google.com
 
-# Custom port, visible browser
-tokenade proxy -s gmail.tokenade --port 8080 --visible
+# With human-like behavior
+tokenade launch -s gmail.tokenade -u https://mail.google.com --humanize
+
+# Or use the proxy mode
+tokenade proxy -s gmail.tokenade
 ```
 
-### Step 3 — Browse
+## Full CLI Reference (58 Commands)
 
-Open `http://127.0.0.1:9222`, enter the target URL, and click Browse.
-
-## Full CLI Reference
-
-### Export
-
+### Session Management
 ```bash
-tokenade export [options]
-
-Options:
-  --browser-name {chrome,firefox,edge,brave}
-  --browser-path PATH        Custom browser profile path
-  --profile NAME             Profile name (e.g. "Default", "Profile 1")
-  --domains DOMAINS          Comma-separated domains to filter
-  --site-config FILE         JSON site config for domain filtering
-  -o, --output FILE          Output file path
-  --list-profiles            List discovered browser profiles
-  --extract-local-storage    Also extract localStorage
-  --local-storage-origin ORIGIN
+tokenade export         # Extract cookies from browser
+tokenade load           # Load session into browser
+tokenade sessions list  # List all sessions
+tokenade sessions stats # Session statistics
+tokenade session-diff   # Compare two sessions
+tokenade validate       # Validate session integrity
+tokenade validate-rules # Validate against custom rules
+tokenade validate-session # Validate for CI/CD health gates
+tokenade health         # Check session health
+tokenade health-report  # Batch health report for CI/CD
+tokenade diff           # Diff two sessions
+tokenade merge          # Merge multiple sessions
+tokenade rotate         # Rotate sessions
+tokenade transfer       # Transfer session between browsers
+tokenade extract        # Extract session (alias for export)
+tokenade inject-profile # Inject session into browser profile
+tokenade import         # Import from competitor format
+tokenade versions       # Show session versions
+tokenade rollback       # Rollback to previous version
 ```
 
-### Proxy
-
+### Stealth & Browser
 ```bash
-tokenade proxy -s SESSION_FILE [options]
+tokenade stealth test   # 18-point detection test suite
+tokenade stealth battle # Battle test against 5 detection sites
+tokenade stealth report # Generate detection report
+tokenade stealth deps   # Check stealth dependencies
+tokenade launch         # Launch stealth browser with session
+tokenade patch-chrome   # Binary patch Chrome for stealth
+tokenade fingerprint    # Generate fingerprint
+tokenade clone-profile  # Clone browser profile
+```
 
-Options:
-  -s, --session FILE    .tokenade session file (required)
-  -p, --port PORT       Port (default: 9222)
-  --host HOST           Bind address (default: 127.0.0.1)
-  --visible             Show Chromium window
+### CloakBrowser
+```bash
+tokenade cloak info     # Show CloakBrowser status
+tokenade cloak install  # Download CloakBrowser binary
+tokenade cloak serve    # Start CDP server (cloakserve)
+```
+
+### Session Refresh
+```bash
+tokenade refresh        # Refresh session from source browser
+tokenade refresh-browser # Refresh via undetectable browser
+tokenade refresh-oauth  # Refresh OAuth2 tokens
+tokenade encrypted-refresh # Refresh encrypted sessions
+tokenade batch-refresh  # Refresh multiple sessions
+tokenade oauth-config   # Configure OAuth settings
+```
+
+### Plugins
+```bash
+tokenade plugin list    # List installed plugins
+tokenade plugin install # Install a plugin
+tokenade plugin uninstall # Uninstall a plugin
+tokenade plugin info    # Show plugin details
+tokenade plugin search  # Search marketplace
+tokenade plugin rate    # Rate a plugin (syncs to GitHub)
+tokenade plugin ratings # View global ratings
+tokenade plugin popular # Show popular plugins
+tokenade plugin recent  # Show newest plugins
+tokenade plugin categories # List categories
+tokenade plugin verify  # Verify plugin integrity
+tokenade plugin outdated # Show outdated plugins
+tokenade plugin browse  # Generate HTML marketplace
+tokenade plugin test    # Test a plugin
+tokenade plugin enable  # Enable a plugin
+tokenade plugin disable # Disable a plugin
+tokenade plugin update  # Update plugins
+tokenade plugin reload  # Reload a plugin
+```
+
+### Proxy & Network
+```bash
+tokenade proxy          # Start CDP reverse proxy
+tokenade serve          # Serve session via HTTP
+```
+
+### Session Sharing
+```bash
+tokenade share          # Share session (URL, QR, email)
+tokenade unshare        # Revoke shared session
+tokenade sync           # Sync sessions across devices
+```
+
+### Encryption
+```bash
+tokenade encrypt        # Encrypt session file
+tokenade decrypt        # Decrypt session file
+tokenade rekey          # Re-encrypt with new key
+```
+
+### CI/CD & Fleet
+```bash
+tokenade ci run         # Run CI pipeline from tokenade.yml
+tokenade ci init        # Create starter tokenade.yml
+tokenade ci validate    # Validate tokenade.yml
+tokenade ci lint        # Lint tokenade.yml
+tokenade cicd           # Generate CI/CD workflow files
+tokenade fleet status   # Show all containers/pods
+tokenade fleet health   # Health check across fleet
+tokenade fleet refresh  # Refresh all containers
+tokenade fleet logs     # Get container logs
+```
+
+### Forensics
+```bash
+tokenade autopsy        # Analyze why a session died
+```
+
+### Container & Kubernetes
+```bash
+tokenade container start/stop/restart/status/logs/refresh/scale/cleanup/health/generate
+tokenade k8s deploy/status/scale/logs/delete/pods
+```
+
+### TUI
+```bash
+tokenade tui            # Launch interactive terminal UI
+```
+
+### Other
+```bash
+tokenade setup          # Initial setup
+tokenade config show/get/set # Manage configuration
+tokenade monitor start/stop/status # Session monitoring
+tokenade analytics report/cleanup # Session analytics
+tokenade daemon start/stop/status # Background daemon
+tokenade logs           # View logs
+tokenade diff           # Diff sessions
+tokenade deps check/install # System dependencies
+tokenade batch-export   # Export multiple sessions
+tokenade batch-load     # Load multiple sessions
+tokenade completion     # Shell completion scripts
+tokenade test           # Run built-in tests
+tokenade mobile-import  # Import from mobile device
+```
   --no-open-browser     Don't auto-open GUI
   --timeout SECONDS     Request timeout (default: 30)
   --all                 Multi-site mode (use -d for sessions directory)
@@ -467,6 +589,19 @@ so servers see the donor's fingerprint, not yours.
 | **Enterprise Features** | ✅ Audit, RBAC, LDAP | ❌ | ❌ |
 | **Self-Hosted** | ✅ No third-party | N/A | ✅ |
 
+## What's New in v6.2
+
+- **CloakBrowser Integration** — Stealth Chromium binary with 58 C++ patches as default backend (Grade A stealth, 96/100)
+- **Session CI Runner** — `tokenade ci run` reads `tokenade.yml` for automated session validation
+- **Fleet Management** — `tokenade fleet status|health|refresh|logs` across Docker/k8s containers
+- **Session Forensics** — `tokenade autopsy -s session.tokenade` — root-cause analysis for dead sessions
+- **Interactive TUI** — `tokenade tui` — marketplace browser, session manager, keyboard navigation (j/k/i/u/r)
+- **Site Handler Plugins** — Google, GitHub, Discord, Generic handlers for site-specific extraction/injection
+- **Global Ratings** — Sync plugin ratings via GitHub Issues API
+- **14 Official Plugins** — OAuth2, site handlers, session-health, webhook-notify, etc.
+- **58 CLI Commands** — Complete automation toolkit
+- **5224+ Tests** — Comprehensive test coverage
+
 ## What's New in v6.0
 
 - **Enhanced Browser Stealth** — 14 patch categories, 2026-grade anti-detection
@@ -484,8 +619,9 @@ so servers see the donor's fingerprint, not yours.
 
 ```bash
 pip install tokenade
-playwright install chromium --with-deps
 ```
+
+CloakBrowser (stealth Chromium with 58 C++ patches) is a core dependency. The binary (~200MB) auto-downloads on first use.
 
 ### Optional Dependencies
 
@@ -493,6 +629,7 @@ playwright install chromium --with-deps
 pip install tokenade[runtime]    # curl-cffi for TLS matching
 pip install tokenade[enterprise] # ldap3 for LDAP/SSO
 pip install tokenade[linux]      # secretstorage for Linux keyring
+pip install 'tokenade[tui]'     # Interactive terminal UI (textual)
 ```
 
 ### Development
@@ -611,7 +748,7 @@ tokenade/
 │   └── base.py                     # Plugin base classes
 ├── handlers/                       # Site-specific handlers
 ├── extension/                      # Browser extension
-└── tests/                          # 5035+ tests
+└── tests/                          # 5224+ tests
 ```
 
 ## Security
