@@ -1741,25 +1741,30 @@ def cmd_cloak(args):
 
     if cloak_action == "info":
         info = get_binary_info()
-        print("\n" + "=" * 60)
-        print("CLOAKBROWSER STATUS")
-        print("=" * 60)
-        print(f"  Package installed: {'Yes' if is_cloakbrowser_available() else 'No'}")
-        print(f"  Binary installed:  {'Yes' if info.get('installed') else 'No'}")
-        if info.get("version"):
-            print(f"  Binary version:    {info['version']}")
-        if info.get("platform"):
-            print(f"  Platform:          {info['platform']}")
-        if info.get("tier"):
-            print(f"  License tier:      {info['tier']}")
-        if info.get("binary_path"):
-            print(f"  Binary path:       {info['binary_path']}")
-        if info.get("download_url"):
-            print(f"  Download URL:      {info['download_url']}")
-        if info.get("error"):
-            print(f"  Error:             {info['error']}")
-        print("=" * 60)
-        print()
+        json_output = getattr(args, "json_output", False)
+        if json_output:
+            import json as json_mod
+            print(json_mod.dumps(info, indent=2))
+        else:
+            print("\n" + "=" * 60)
+            print("CLOAKBROWSER STATUS")
+            print("=" * 60)
+            print(f"  Package installed: {'Yes' if is_cloakbrowser_available() else 'No'}")
+            print(f"  Binary installed:  {'Yes' if info.get('installed') else 'No'}")
+            if info.get("version"):
+                print(f"  Binary version:    {info['version']}")
+            if info.get("platform"):
+                print(f"  Platform:          {info['platform']}")
+            if info.get("tier"):
+                print(f"  License tier:      {info['tier']}")
+            if info.get("binary_path"):
+                print(f"  Binary path:       {info['binary_path']}")
+            if info.get("download_url"):
+                print(f"  Download URL:      {info['download_url']}")
+            if info.get("error"):
+                print(f"  Error:             {info['error']}")
+            print("=" * 60)
+            print()
 
     elif cloak_action == "install":
         if not is_cloakbrowser_available():

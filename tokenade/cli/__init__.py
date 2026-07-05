@@ -1445,7 +1445,8 @@ Commands:
     cloak_parser = subparsers.add_parser("cloak", help="CloakBrowser stealth browser management")
     cloak_sub = cloak_parser.add_subparsers(dest="cloak_action")
 
-    cloak_sub.add_parser("info", help="Show CloakBrowser status and binary info")
+    cloak_info = cloak_sub.add_parser("info", help="Show CloakBrowser status and binary info")
+    cloak_info.add_argument("--json", dest="json_output", action="store_true", help="Output as JSON")
     cloak_sub.add_parser("install", help="Download/update CloakBrowser binary")
 
     cloak_serve = cloak_sub.add_parser("serve", help="Start CDP server (cloakserve)")
