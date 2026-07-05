@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from tokenade.core.browser.cloak import (
+from tokenade.core.browser.stealth.cloak import (
     CloakBrowserBackend,
     is_cloakbrowser_available,
     get_binary_info,
@@ -284,8 +284,8 @@ class TestCloakCLIParser:
 # ─── Backend Method Tests (mocked) ──────────────────────────
 
 class TestCloakBackendMethods:
-    @patch("tokenade.core.browser.cloak._cloakbrowser")
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", True)
+    @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
     def test_launch_calls_cloakbrowser(self, mock_cb):
         mock_cb.launch = MagicMock(return_value="browser")
         mock_cb.binary_info.return_value = {"installed": True}
@@ -296,8 +296,8 @@ class TestCloakBackendMethods:
         mock_cb.launch.assert_called_once()
         assert result == "browser"
 
-    @patch("tokenade.core.browser.cloak._cloakbrowser")
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", True)
+    @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
     def test_launch_context_with_storage_state(self, mock_cb):
         mock_cb.launch_context = MagicMock(return_value="context")
         mock_cb.binary_info.return_value = {"installed": True}
@@ -309,8 +309,8 @@ class TestCloakBackendMethods:
         call_kwargs = mock_cb.launch_context.call_args
         assert call_kwargs[1]["storage_state"] == "state.json"
 
-    @patch("tokenade.core.browser.cloak._cloakbrowser")
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", True)
+    @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
     def test_launch_persistent(self, mock_cb):
         mock_cb.launch_persistent_context = MagicMock(return_value="ctx")
         mock_cb.binary_info.return_value = {"installed": True}
@@ -320,26 +320,26 @@ class TestCloakBackendMethods:
 
         mock_cb.launch_persistent_context.assert_called_once()
 
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", False)
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", False)
     def test_launch_raises_when_not_available(self):
         backend = CloakBrowserBackend()
         with pytest.raises(RuntimeError, match="not available"):
             backend.launch()
 
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", False)
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", False)
     def test_launch_context_raises_when_not_available(self):
         backend = CloakBrowserBackend()
         with pytest.raises(RuntimeError, match="not available"):
             backend.launch_context()
 
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", False)
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", False)
     def test_launch_persistent_raises_when_not_available(self):
         backend = CloakBrowserBackend()
         with pytest.raises(RuntimeError, match="not available"):
             backend.launch_persistent("./profile")
 
-    @patch("tokenade.core.browser.cloak._cloakbrowser")
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", True)
+    @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
     def test_launch_with_fingerprint_seed(self, mock_cb):
         mock_cb.launch = MagicMock(return_value="browser")
         mock_cb.binary_info.return_value = {"installed": True}
@@ -350,8 +350,8 @@ class TestCloakBackendMethods:
         call_kwargs = mock_cb.launch.call_args
         assert "--fingerprint=42069" in call_kwargs[1]["args"]
 
-    @patch("tokenade.core.browser.cloak._cloakbrowser")
-    @patch("tokenade.core.browser.cloak._CLOAKBROWSER_AVAILABLE", True)
+    @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
+    @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
     def test_serve_cdp(self, mock_cb):
         mock_cb.binary_info.return_value = {"installed": True}
 
@@ -366,10 +366,10 @@ class TestCloakBackendMethods:
 # ─── Stealth Backend Detection Tests ────────────────────────
 
 class TestStealthBackendDetection:
-    @patch("tokenade.core.browser.cloak.is_binary_installed", return_value=True)
+    @patch("tokenade.core.browser.stealth.cloak.is_binary_installed", return_value=True)
     def test_cloakbrowser_when_binary_installed(self, mock):
         assert get_stealth_backend_name() == "cloakbrowser"
 
-    @patch("tokenade.core.browser.cloak.is_binary_installed", return_value=False)
+    @patch("tokenade.core.browser.stealth.cloak.is_binary_installed", return_value=False)
     def test_playwright_when_binary_not_installed(self, mock):
         assert get_stealth_backend_name() == "playwright"

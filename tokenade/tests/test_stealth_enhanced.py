@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tokenade.core.browser.stealth import (
+from tokenade.core.browser.stealth.manager import (
     StealthConfig,
     StealthManager,
     build_stealth_script,
