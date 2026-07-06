@@ -1029,6 +1029,9 @@ Commands:
     export_parser.add_argument("--full", action="store_true", help="Extract cookies + localStorage + sessionStorage (v3.0 format)")
     export_parser.add_argument("--no-storage", action="store_true", help="Extract only cookies (backward compat)")
     export_parser.add_argument("--encrypt-password", help="Encrypt .tokenade file with this password at export time")
+    export_parser.add_argument("--plugin", help="Force specific site handler plugin (e.g., google-handler)")
+    export_parser.add_argument("--no-plugin", action="store_true", help="Skip plugin, use default extraction")
+    export_parser.add_argument("--list-handlers", action="store_true", help="List available site handler plugins")
 
     # Load
     load_parser = subparsers.add_parser("load", help="Load session file into browser")
