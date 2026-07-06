@@ -391,7 +391,7 @@ class ProxyProviderPlugin(PluginBase):
 
     @abstractmethod
     def get_proxy(self, options: Optional[Dict[str, Any]] = None) -> PluginResult:
-        """Get a proxy.
+        """Get a proxy (backward compatible).
 
         Args:
             options: Provider-specific options (country, session_id, etc.)
@@ -399,6 +399,25 @@ class ProxyProviderPlugin(PluginBase):
         Returns:
             PluginResult with data={"host", "port", "protocol", "username", "password"}
         """
+
+    def get_sticky_proxy(self, session_id: str = None) -> PluginResult:
+        """Get a sticky proxy (same IP for same session).
+
+        Args:
+            session_id: Session ID for sticky binding
+
+        Returns:
+            PluginResult with proxy config data
+        """
+        return self.get_proxy({"session_id": session_id, "mode": "sticky"})
+
+    def get_rotating_proxy(self) -> PluginResult:
+        """Get a rotating proxy (different IP per call).
+
+        Returns:
+            PluginResult with proxy config data
+        """
+        return self.get_proxy({"mode": "rotating"})
 
     @abstractmethod
     def rotate(self, session_id: Optional[str] = None) -> PluginResult:

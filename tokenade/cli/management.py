@@ -1575,8 +1575,13 @@ def cmd_refresh_browser(args):
     port = args.port
     browser = None
 
-    # Resolve upstream proxy
-    upstream_proxy = _resolve_upstream_proxy(args)
+    # Resolve upstream proxy using ProxyManager
+    from tokenade.core.proxy.manager import ProxyManager
+    proxy_mgr = ProxyManager(
+        cli_proxy=getattr(args, "proxy", None),
+    )
+    proxy = proxy_mgr.get_proxy(session_id=args.session, mode="sticky")
+    upstream_proxy = proxy.server_url if proxy else None
     if upstream_proxy:
         print(f"   🔀 Upstream proxy: {upstream_proxy}")
 
