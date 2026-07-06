@@ -1,5 +1,6 @@
 """Proxy CLI commands."""
 import asyncio
+import json
 import logging
 import time
 import webbrowser
@@ -97,6 +98,22 @@ def cmd_proxy(args):
     if not session_file.exists():
         print(f"❌ Session file not found: {args.session}")
         return
+
+    # Decrypt if password provided
+    decrypt_password = getattr(args, 'decrypt_password', None)
+    if decrypt_password:
+        import tempfile
+        try:
+            from tokenade.core.crypto.at_rest import load_encrypted
+            session_data = load_encrypted(str(session_file), password=decrypt_password)
+            temp_path = Path(tempfile.mktemp(suffix='.tokenade'))
+            with open(temp_path, 'w') as f:
+                json.dump(session_data, f)
+            session_file = temp_path
+            print(f"🔓 Decrypted session with password")
+        except Exception as e:
+            print(f"❌ Decryption failed: {e}")
+            return
 
     print("\n" + "=" * 80)
     print("TOKENADE - Fingerprint Proxy Server")

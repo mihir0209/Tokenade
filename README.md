@@ -1,8 +1,8 @@
-# Tokenade v6.2 — Browser Session Portability Tool
+# Tokenade v6.4 — Browser Session Portability Tool
 
 Extract browser sessions from one device, package them into portable `.tokenade` files, and browse as the donor on another device using a **CDP reverse proxy** with TLS fingerprint matching.
 
-**5224+ tests** · **58 CLI commands** · **14 plugins** · **Grade A stealth**
+**5165+ tests** · **50 CLI commands** · **20 plugins** · **Grade A stealth**
 
 ## Features
 
@@ -589,18 +589,33 @@ so servers see the donor's fingerprint, not yours.
 | **Enterprise Features** | ✅ Audit, RBAC, LDAP | ❌ | ❌ |
 | **Self-Hosted** | ✅ No third-party | N/A | ✅ |
 
+## What's New in v6.4
+
+- **Plugin API v1.0** — All 20 plugins inherit from proper base classes (SessionRefreshPlugin, SiteHandlerPlugin, ProxyProviderPlugin, etc.)
+- **API_VERSION checking** — Plugins declare API version, loader validates at load time
+- **PluginResult** — Standard result type for all plugin methods
+- **PluginConfig** — Config with JSON schema validation
+- **Full Ecosystem Transfer** — .tokenade v3.0 format with per-origin localStorage + sessionStorage
+- **CDP StorageExtractor** — Extract localStorage/sessionStorage via Chrome DevTools Protocol
+- **Encryption at Export** — `--encrypt-password` flag encrypts .tokenade files at export time
+- **Plugin-First Export** — Auto-discovers site handler plugins for extraction
+- **ProxyProviderPlugin** — New base class for commercial proxy providers (AnyIP, BrightData, etc.)
+- **NotificationPlugin** — New base class for notification providers (Slack, Discord, Email)
+- **5165+ tests** — Comprehensive test coverage
+
+## What's New in v6.3
+
+- **Stealth modules consolidated** — `core/browser/stealth/` package (manager, launcher, cloak, backend)
+- **CLI handlers split** — `cli/handlers/` with infrastructure, CI, misc modules
+- **Test suite optimization** — pytest-xdist parallel execution (150s → 27s)
+
 ## What's New in v6.2
 
-- **CloakBrowser Integration** — Stealth Chromium binary with 58 C++ patches as default backend (Grade A stealth, 96/100)
+- **CloakBrowser Integration** — Stealth Chromium binary with 58 C++ patches as default backend
 - **Session CI Runner** — `tokenade ci run` reads `tokenade.yml` for automated session validation
 - **Fleet Management** — `tokenade fleet status|health|refresh|logs` across Docker/k8s containers
 - **Session Forensics** — `tokenade autopsy -s session.tokenade` — root-cause analysis for dead sessions
-- **Interactive TUI** — `tokenade tui` — marketplace browser, session manager, keyboard navigation (j/k/i/u/r)
-- **Site Handler Plugins** — Google, GitHub, Discord, Generic handlers for site-specific extraction/injection
-- **Global Ratings** — Sync plugin ratings via GitHub Issues API
-- **14 Official Plugins** — OAuth2, site handlers, session-health, webhook-notify, etc.
-- **58 CLI Commands** — Complete automation toolkit
-- **5224+ Tests** — Comprehensive test coverage
+- **Interactive TUI** — `tokenade tui` — marketplace browser, session manager, keyboard navigation
 
 ## What's New in v6.0
 
@@ -748,7 +763,7 @@ tokenade/
 │   └── base.py                     # Plugin base classes
 ├── handlers/                       # Site-specific handlers
 ├── extension/                      # Browser extension
-└── tests/                          # 5224+ tests
+└── tests/                          # 5165+ tests
 ```
 
 ## Security

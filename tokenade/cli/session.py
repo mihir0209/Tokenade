@@ -343,6 +343,20 @@ def cmd_export(args):
                 print()
         return
 
+    # List available site handler plugins
+    if getattr(args, 'list_handlers', False):
+        from tokenade.core.importer.plugin_export import PluginExporter
+        exporter = PluginExporter()
+        handlers = exporter.list_handlers()
+        if not handlers:
+            print("   No site handler plugins installed.")
+            print("   Install one: tokenade plugin install google-handler")
+        else:
+            print(f"\n🔌 Available site handlers ({len(handlers)}):\n")
+            for h in handlers:
+                print(f"   {h['name']} v{h['version']} — {h['description']}")
+        return
+
     browser_path = args.browser_path
     browser_name = args.browser_name or "unknown"
 
@@ -451,6 +465,27 @@ def cmd_export(args):
     else:
         print(f"\n🍪 Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)
+
+    # Plugin-first: try site handler plugin if --plugin specified
+    plugin_name = getattr(args, 'plugin', None)
+    use_plugin = not getattr(args, 'no_plugin', False)
+    
+    if plugin_name or use_plugin:
+        from tokenade.core.importer.plugin_export import PluginExporter
+        exporter = PluginExporter()
+        
+        if plugin_name:
+            handler = exporter._handlers.get(plugin_name)
+            if handler:
+                print(f"   🔌 Using plugin: {plugin_name}")
+            else:
+                print(f"   ⚠️  Plugin not found: {plugin_name}")
+        elif domain_filter:
+            handler = exporter.find_handler(domain_filter)
+            if handler:
+                print(f"   🔌 Auto-discovered handler: {handler.name}")
+            else:
+                print(f"   ℹ️  No handler found for domains, using default extraction")
 
     site_config = None
     if args.site_config:

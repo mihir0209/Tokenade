@@ -870,8 +870,25 @@ def cmd_launch(args):
             print(f"   ❌ Fails: Chrome → Chrome (DBSC on Windows)")
             print(f"   For multi-device: use 'tokenade proxy --host 0.0.0.0' instead.")
 
+            session_path = args.session
+            decrypt_password = getattr(args, 'decrypt_password', None)
+            if decrypt_password:
+                import tempfile
+                try:
+                    from tokenade.core.crypto.at_rest import load_encrypted
+                    session = load_encrypted(session_path, password=decrypt_password)
+                    # Write decrypted to temp file
+                    temp_path = tempfile.mktemp(suffix='.tokenade')
+                    with open(temp_path, 'w') as f:
+                        json.dump(session, f)
+                    session_path = temp_path
+                    print(f"   🔓 Decrypted with password")
+                except Exception as e:
+                    print(f"❌ Decryption failed: {e}")
+                    return
+
             packager = SessionPackager()
-            session = packager.load(args.session)
+            session = packager.load(session_path)
 
             cookies = session.get("cookies", [])
             source_browser = session.get("source_device", {}).get("browser", "unknown")
