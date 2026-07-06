@@ -140,11 +140,13 @@ def run_tui(mode: str = "full"):
             yield Static(desc[:80], classes="card-desc", id=f"desc-{name}")
             yield Horizontal(
                 Button(
-                    "Installed" if self.installed else "Install",
-                    variant="default" if self.installed else "success",
+                    "Update" if self.update_available else
+                    ("Installed" if self.installed else "Install"),
+                    variant="warning" if self.update_available else
+                    ("default" if self.installed else "success"),
                     compact=True,
                     id=f"install-{name}",
-                    disabled=self.installed,
+                    disabled=self.installed and not self.update_available,
                 ),
                 Button("Details", variant="default", compact=True,
                        id=f"details-{name}"),
@@ -467,6 +469,12 @@ def run_tui(mode: str = "full"):
             yield Container(
                 Static("Plugin Registry", classes="card-title"),
                 Static("", id="current-registry"),
+                Rule(),
+                Static("Plugin Management:", classes="card-title"),
+                Horizontal(
+                    Button("Sync All", variant="primary", compact=True, id="sync-plugins"),
+                    Button("Update All", variant="warning", compact=True, id="update-plugins"),
+                ),
                 Rule(),
                 Static("Add Custom Registry:"),
                 Horizontal(
@@ -820,6 +828,10 @@ def run_tui(mode: str = "full"):
             elif btn_id.startswith("update-"):
                 name = btn_id.removeprefix("update-")
                 self.update_plugin(name)
+            elif btn_id == "sync-plugins":
+                self._sync_all_plugins()
+            elif btn_id == "update-plugins":
+                self._update_all_plugins()
             elif btn_id.startswith("details-"):
                 name = btn_id.removeprefix("details-")
                 plugin = next(
@@ -915,6 +927,55 @@ def run_tui(mode: str = "full"):
                     self.notify(f"❌ Failed to update: {name}", severity="error")
             except Exception as e:
                 self.notify(f"❌ Error: {e}", severity="error")
+
+        def _sync_all_plugins(self):
+            """Install all available plugins from registry."""
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                registry = PluginRegistry()
+                plugins = registry.get_popular(limit=100)
+                installed = {p["name"] for p in self._installed}
+                to_install = [p for p in plugins if p.get("name") not in installed]
+                
+                if not to_install:
+                    self.notify("✅ All plugins already installed", timeout=3)
+                    return
+                
+                count = 0
+                for p in to_install:
+                    name = p.get("name", "")
+                    if registry.install(name):
+                        count += 1
+                
+                self.notify(f"✅ Synced {count} plugins", timeout=3)
+                self._load_data()
+                self._update_installed()
+                self._update_marketplace()
+            except Exception as e:
+                self.notify(f"❌ Sync error: {e}", severity="error")
+
+        def _update_all_plugins(self):
+            """Update all installed plugins."""
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                registry = PluginRegistry()
+                outdated = registry.get_outdated()
+                
+                if not outdated:
+                    self.notify("✅ All plugins up to date", timeout=3)
+                    return
+                
+                count = 0
+                for name in outdated:
+                    if registry.update(name):
+                        count += 1
+                
+                self.notify(f"🔄 Updated {count} plugins", timeout=3)
+                self._load_data()
+                self._update_installed()
+                self._update_marketplace()
+            except Exception as e:
+                self.notify(f"❌ Update error: {e}", severity="error")
 
         def _run_autopsy(self, name: str):
             """Run autopsy on a session and show results."""

@@ -260,6 +260,26 @@ def cmd_plugin(args):
                     if not success:
                         print(f"      Failed: {name}")
 
+    elif args.plugin_command == "sync":
+        print("\n🔄 Syncing plugins from registry...")
+        plugins = registry.get_popular(limit=100)
+        installed = {p.name for p in loader.list_all()}
+        to_install = [p for p in plugins if p.get("name") not in installed]
+        
+        if not to_install:
+            print("✅ All available plugins already installed.")
+        else:
+            print(f"   Installing {len(to_install)} plugin(s)...")
+            for p in to_install:
+                name = p.get("name", "")
+                success = registry.install(name)
+                if success:
+                    print(f"   ✅ {name}")
+                else:
+                    print(f"   ❌ {name}")
+            loader.load_all()
+            print(f"\n   Done. {len(loader.list_all())} plugins installed.")
+
     elif args.plugin_command == "reload":
         loaded = loader.reload(args.name)
         if loaded:
@@ -1241,6 +1261,9 @@ Commands:
 
     plugin_update_parser = plugin_sub.add_parser("update", help="Update plugins from registry")
     plugin_update_parser.add_argument("name", nargs="?", default=None, help="Plugin name to update (all if omitted)")
+
+    plugin_sync_parser = plugin_sub.add_parser("sync", help="Install all available plugins from registry")
+    plugin_sync_parser.add_argument("--force", action="store_true", help="Reinstall even if already installed")
 
     plugin_reload_parser = plugin_sub.add_parser("reload", help="Reload a plugin")
     plugin_reload_parser.add_argument("name", help="Plugin name to reload")

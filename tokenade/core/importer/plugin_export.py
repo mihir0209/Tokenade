@@ -139,7 +139,22 @@ class PluginExporter:
 
             # Use handler to extract session
             url = f"https://{domains[0]}"
-            session = handler.extract_session(context, url)
+            result = handler.extract_session(context, url)
+
+            # Handle PluginResult or dict (backward compat)
+            if hasattr(result, 'success'):
+                if not result.success:
+                    browser.close()
+                    pw.stop()
+                    return {
+                        "success": False,
+                        "method": "plugin",
+                        "handler": handler.name,
+                        "error": result.error or "Handler extraction failed",
+                    }
+                session = result.data
+            else:
+                session = result
 
             # Save
             from tokenade.core.importer.session_packager import SessionPackager

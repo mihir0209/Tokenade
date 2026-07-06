@@ -174,9 +174,10 @@ class PluginLoader:
 
         # Call on_load lifecycle hook
         try:
-            instance.on_load()
+            if hasattr(instance, 'on_load'):
+                instance.on_load()
         except Exception as e:
-            logger.warning(f"Plugin {name}: on_load failed: {e}")
+            logger.debug(f"Plugin {name}: on_load failed: {e}")
 
         loaded = LoadedPlugin(
             name=name,
