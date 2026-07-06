@@ -1,97 +1,58 @@
-# Tokenade Browser Extension
+# Tokenade Session Exporter — Chrome Extension
 
-Export browser sessions directly from Chrome or Firefox to Tokenade format.
-
-## Features
-
-- Export cookies from current tab with one click
-- Export localStorage data (optional)
-- Send sessions directly to running Tokenade proxy
-- Password protection for exported sessions
-- Context menu integration (right-click)
-- Proxy connection status indicator
-- Export history tracking
-- Session format v3.0 (matches CLI output)
+Export browser sessions as `.tokenade` files for cross-device portability.
 
 ## Installation
 
-### Chrome
+### From Source (Developer Mode)
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable "Developer mode" (toggle in top right)
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable "Developer mode" (top right)
 3. Click "Load unpacked"
-4. Select the `extension/` directory
-5. The Tokenade icon should appear in your toolbar
+4. Select this `extension/` directory
+5. The Tokenade icon appears in your toolbar
 
-### Firefox
+### From Chrome Web Store
 
-1. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on"
-3. Select `extension/manifest.json`
-4. The Tokenade icon should appear in your toolbar
+Coming soon.
 
 ## Usage
 
-### Export Session
+1. Navigate to any website where you're logged in
+2. Click the Tokenade extension icon
+3. See cookie count, expired count, and health score
+4. Click "Download .tokenade" to save the session file
+5. Transfer the file to another device
+6. Use `tokenade proxy -s <file>` or `tokenade launch -s <file>` to browse
 
-1. Navigate to the website you want to export
-2. Click the Tokenade icon in the toolbar
-3. (Optional) Check "Include localStorage" if the site uses it
-4. (Optional) Check "Encrypt session" and enter a password
-5. Click "Export Session"
-6. A `.tokenade` file will be downloaded
+## Features
 
-### Send to Proxy
-
-1. Start the Tokenade proxy: `tokenade proxy -s session.tokenade`
-2. Navigate to the website you want to export
-3. Click the Tokenade icon in the toolbar
-4. Enter the proxy URL (default: `http://127.0.0.1:9222`)
-5. Click "Send to Proxy"
-6. The session will be sent to the running proxy
-
-### Context Menu
-
-- Right-click on any page
-- Select "Export session with Tokenade" to download
-- Select "Send session to Tokenade proxy" to send directly
-
-## API
-
-The extension injects a `window.Tokenade` object into web pages:
-
-```javascript
-// Get cookies for current page
-const cookies = await window.Tokenade.getCookies();
-
-// Get localStorage for current page
-const localStorage = await window.Tokenade.getLocalStorage();
-
-// Send session to proxy
-const result = await window.Tokenade.sendSession({
-  cookies: cookies,
-  localStorage: localStorage,
-  site_name: 'example_com',
-}, 'http://127.0.0.1:9222');
-```
+- **One-click export** — Click icon, download session
+- **Domain filtering** — Auto-detects relevant cookies
+- **Health scoring** — Shows cookie health (expired vs valid)
+- **All-domains mode** — Option to export all cookies
+- **Clipboard copy** — Copy .tokenade JSON to clipboard
 
 ## Permissions
 
-- `cookies`: Read browser cookies
-- `storage`: Save extension settings and export history
-- `activeTab`: Access current tab
-- `scriptInjection`: Inject content scripts
+| Permission | Why |
+|-----------|-----|
+| `cookies` | Read cookies for export |
+| `activeTab` | Get current tab URL |
+| `storage` | Store settings |
+| `downloads` | Save .tokenade files |
 
-## Limitations
+## Development
 
-- Cannot read HttpOnly cookies (browser security restriction)
-- localStorage may be restricted by same-origin policy
-- Some sites may block extension access
-- Proxy must be running to use "Send to Proxy"
+```bash
+# Load in Chrome
+1. chrome://extensions/
+2. Enable Developer mode
+3. Load unpacked → select this directory
 
-## Privacy
-
-This extension:
-- Does not send data to any external servers
-- Only communicates with your local Tokenade proxy
-- All data stays on your machine
+# Test
+1. Navigate to any site
+2. Click extension icon
+3. Verify cookie count
+4. Download and verify .tokenade format
+```
