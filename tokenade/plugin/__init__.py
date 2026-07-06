@@ -6,11 +6,16 @@ Plugins extend tokenade with new capabilities:
 - SiteHandlerPlugin: Handle specific sites (custom extraction, login flows)
 - ExportFormatPlugin: Custom export formats
 - SessionValidatorPlugin: Custom validation rules
+- ProxyProviderPlugin: Commercial proxy providers (AnyIP, BrightData, etc.)
+- NotificationPlugin: Notification providers (Slack, Discord, Email, etc.)
+- StealthPlugin: Browser stealth patches
+- CaptchaPlugin: CAPTCHA solving
 
 Usage:
-    from tokenade.plugin import SessionRefreshPlugin
+    from tokenade.plugin import SessionRefreshPlugin, PluginResult
 
     class MyOAuth2Plugin(SessionRefreshPlugin):
+        API_VERSION = "1.0.0"
         name = "my-oauth2"
         version = "1.0.0"
         description = "OAuth2 refresh for MyService"
@@ -18,9 +23,8 @@ Usage:
         def can_refresh(self, session: dict) -> bool:
             return "myservice.com" in str(session)
 
-        def refresh(self, session: dict, credentials: dict) -> dict:
-            # Implement OAuth2 refresh logic
-            return session
+        def refresh(self, session: dict, credentials: dict) -> PluginResult:
+            return PluginResult(success=True, data={"session": session})
 """
 
 from tokenade.plugin.base import (
@@ -29,6 +33,16 @@ from tokenade.plugin.base import (
     SiteHandlerPlugin,
     ExportFormatPlugin,
     SessionValidatorPlugin,
+    ProxyProviderPlugin,
+    NotificationPlugin,
+    StealthPlugin,
+    CaptchaPlugin,
+)
+from tokenade.plugin.api import (
+    API_VERSION,
+    PluginResult,
+    PluginConfig,
+    PluginMetadata,
 )
 
 __all__ = [
@@ -37,4 +51,12 @@ __all__ = [
     "SiteHandlerPlugin",
     "ExportFormatPlugin",
     "SessionValidatorPlugin",
+    "ProxyProviderPlugin",
+    "NotificationPlugin",
+    "StealthPlugin",
+    "CaptchaPlugin",
+    "API_VERSION",
+    "PluginResult",
+    "PluginConfig",
+    "PluginMetadata",
 ]

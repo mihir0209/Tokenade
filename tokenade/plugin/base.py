@@ -1,5 +1,5 @@
 """
-Abstract base classes for Tokenade plugins.
+Abstract base classes for Tokenade plugins (API v1.0).
 
 All plugins must subclass PluginBase and implement the required methods.
 Plugin types add specific capabilities on top of the base.
@@ -8,6 +8,7 @@ Plugin Manifest (plugin.json):
 {
     "name": "my-plugin",
     "version": "1.0.0",
+    "api_version": "1.0.0",
     "description": "Does something useful",
     "author": "Your Name",
     "type": "session_refresh",
@@ -20,25 +21,34 @@ Plugin Manifest (plugin.json):
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from tokenade.plugin.api import API_VERSION, PluginResult, PluginConfig
+
 
 class PluginBase(ABC):
-    """Base class for all Tokenade plugins.
+    """Base class for all Tokenade plugins (API v1.0).
 
-    Every plugin must subclass this and implement at minimum:
-    - name: str
-    - version: str
-    - description: str
+    Every plugin MUST:
+    - Subclass PluginBase (or a subclass of it)
+    - Set API_VERSION = "1.0.0"
+    - Set name, version, description
 
-    Optional lifecycle hooks:
+    Lifecycle hooks:
     - on_load(): Called when plugin is loaded
+    - on_configure(config): Called with PluginConfig after load
     - on_unload(): Called when plugin is unloaded
+
+    All methods should return PluginResult for consistent error handling.
     """
 
+    API_VERSION: str = "1.0.0"
     name: str = ""
     version: str = "0.0.0"
     description: str = ""
     author: str = ""
     dependencies: List[str] = []
+
+    def __init__(self):
+        self._config: Optional[PluginConfig] = None
 
     def on_load(self) -> None:
         """Called when the plugin is loaded. Override for initialization."""
@@ -46,15 +56,36 @@ class PluginBase(ABC):
     def on_unload(self) -> None:
         """Called when the plugin is unloaded. Override for cleanup."""
 
+    def on_configure(self, config: PluginConfig) -> None:
+        """Called with PluginConfig after load. Override to validate config."""
+        self._config = config
+
     def get_info(self) -> Dict[str, Any]:
         """Return plugin metadata."""
         return {
             "name": self.name,
             "version": self.version,
+            "api_version": self.API_VERSION,
             "description": self.description,
             "author": self.author,
             "dependencies": self.dependencies,
         }
+
+    def get_metadata(self):
+        """Return PluginMetadata object."""
+        from tokenade.plugin.api import PluginMetadata
+        return PluginMetadata(
+            name=self.name,
+            version=self.version,
+            api_version=self.API_VERSION,
+            author=self.author,
+            description=self.description,
+            dependencies=self.dependencies,
+        )
+
+    def health_check(self) -> bool:
+        """Check if the plugin is healthy. Override for custom checks."""
+        return True
 
 
 class SessionRefreshPlugin(PluginBase):
@@ -75,7 +106,7 @@ class SessionRefreshPlugin(PluginBase):
 
             def refresh(self, session, credentials):
                 # Use refresh_token to get new access_token
-                return session
+                return PluginResult(success=True, data={"session": session})
     """
 
     @abstractmethod
@@ -90,15 +121,15 @@ class SessionRefreshPlugin(PluginBase):
         """
 
     @abstractmethod
-    def refresh(self, session: dict, credentials: dict) -> dict:
+    def refresh(self, session: dict, credentials: dict) -> PluginResult:
         """Refresh the session.
 
         Args:
             session: Current session data
-            credentials: Plugin-specific credentials (client_id, client_secret, tokens, etc.)
+            credentials: Plugin-specific credentials
 
         Returns:
-            Updated session data with fresh cookies/tokens
+            PluginResult with data={"session": updated_session}
         """
 
     def get_credentials_args(self) -> List[Dict[str, str]]:
@@ -321,4 +352,121 @@ class CaptchaPlugin(PluginBase):
         Returns:
             Balance amount or None if not applicable
         """
+
+
+class ProxyProviderPlugin(PluginBase):
+    """Plugin for commercial proxy providers (AnyIP, BrightData, etc.).
+
+    Providers implement this to integrate their proxy service with Tokenade.
+    Users install via: tokenade plugin install anyip-proxy
+
+    Example:
+        class AnyIPProxyPlugin(ProxyProviderPlugin):
+            API_VERSION = "1.0.0"
+            name = "anyip-proxy"
+            version = "1.0.0"
+            description = "AnyIP residential proxy"
+            author = "AnyIP Inc."
+            supports_sticky = True
+            supports_rotation = True
+            countries = ["US", "UK", "DE"]
+
+            def get_proxy(self, options=None):
+                return PluginResult(success=True, data={
+                    "host": "proxy.anyip.io", "port": 1080,
+                    "protocol": "http", "username": "user", "password": "pass"
+                })
+
+            def rotate(self, session_id=None):
+                return PluginResult(success=True, data={
+                    "host": "proxy2.anyip.io", "port": 1080,
+                    "protocol": "http", "username": "user", "password": "pass"
+                })
+    """
+
+    supports_sticky: bool = False
+    supports_rotation: bool = False
+    countries: List[str] = []
+    website: str = ""
+
+    @abstractmethod
+    def get_proxy(self, options: Optional[Dict[str, Any]] = None) -> PluginResult:
+        """Get a proxy.
+
+        Args:
+            options: Provider-specific options (country, session_id, etc.)
+
+        Returns:
+            PluginResult with data={"host", "port", "protocol", "username", "password"}
+        """
+
+    @abstractmethod
+    def rotate(self, session_id: Optional[str] = None) -> PluginResult:
+        """Rotate to a new proxy.
+
+        Args:
+            session_id: Optional session ID for sticky rotation
+
+        Returns:
+            PluginResult with new proxy config
+        """
+
+    def check_health(self, proxy: Dict[str, Any]) -> PluginResult:
+        """Check if a proxy is healthy.
+
+        Args:
+            proxy: Proxy config dict
+
+        Returns:
+            PluginResult with data={"healthy": bool, "latency_ms": float}
+        """
+        return PluginResult(success=True, data={"healthy": True, "latency_ms": 0})
+
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Return provider information."""
+        return {
+            "provider": self.name,
+            "website": self.website,
+            "supports_sticky": self.supports_sticky,
+            "supports_rotation": self.supports_rotation,
+            "countries": self.countries,
+        }
+
+
+class NotificationPlugin(PluginBase):
+    """Plugin for notification providers (Slack, Discord, Email, etc.).
+
+    Providers implement this to send notifications on session events.
+
+    Example:
+        class SlackNotifyPlugin(NotificationPlugin):
+            API_VERSION = "1.0.0"
+            name = "slack-notify"
+            version = "1.0.0"
+            description = "Slack notifications"
+            author = "Tokenade Team"
+
+            def send(self, event, data):
+                # Send Slack message
+                return PluginResult(success=True)
+
+            def get_supported_events(self):
+                return ["session_expired", "refresh_failed", "refresh_success"]
+    """
+
+    @abstractmethod
+    def send(self, event: str, data: Dict[str, Any]) -> PluginResult:
+        """Send a notification.
+
+        Args:
+            event: Event type (session_expired, refresh_failed, etc.)
+            data: Event data
+
+        Returns:
+            PluginResult
+        """
+
+    @abstractmethod
+    def get_supported_events(self) -> List[str]:
+        """Return list of supported event types."""
         return None

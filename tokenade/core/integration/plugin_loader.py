@@ -161,6 +161,23 @@ class PluginLoader:
             logger.error(f"Plugin {name}: failed to instantiate: {e}", exc_info=True)
             return None
 
+        # Check API version
+        from tokenade.plugin.api import API_VERSION
+        plugin_api_version = getattr(instance, "API_VERSION", None)
+        if plugin_api_version is None:
+            logger.debug(f"Plugin {name}: no API_VERSION (legacy mode)")
+        elif plugin_api_version != API_VERSION:
+            logger.warning(
+                f"Plugin {name}: API version {plugin_api_version} "
+                f"!= expected {API_VERSION} — loading anyway"
+            )
+
+        # Call on_load lifecycle hook
+        try:
+            instance.on_load()
+        except Exception as e:
+            logger.warning(f"Plugin {name}: on_load failed: {e}")
+
         loaded = LoadedPlugin(
             name=name,
             version=meta.get("version", "0.0.0"),
