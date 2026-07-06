@@ -142,9 +142,36 @@ class SessionRefreshPlugin(PluginBase):
 
 
 class SiteHandlerPlugin(PluginBase):
-    """Plugin that handles a specific website's extraction/login flow.
+    """Plugin that handles a specific website's extraction/injection.
 
-    Use this for sites that need custom handling beyond standard cookie export.
+    Implement can_handle() to declare which URLs this plugin handles,
+    extract_session() to extract session data, and inject_session() to inject.
+
+    NEW in API v1.1:
+    - get_export_domains() — domains to export cookies for
+    - get_critical_cookies() — critical cookie names
+    - get_critical_storage() — critical localStorage/sessionStorage keys
+    - get_login_url() — URL to check login
+    - get_dashboard_url() — logged-in dashboard URL
+    - get_session_check_url() — API endpoint for fast login check
+    - get_logged_in_selectors() — CSS selectors for logged-in state
+    - get_logged_out_selectors() — CSS selectors for logged-out state
+    - verify_login(context) — verify if actually logged in
+
+    Example:
+        class GoogleSiteHandler(SiteHandlerPlugin):
+            API_VERSION = "1.1.0"
+            name = "google-handler"
+
+            def get_export_domains(self):
+                return ["google.com", "accounts.google.com", "mail.google.com"]
+
+            def get_critical_cookies(self):
+                return ["SID", "HSID", "__Secure-1PSID"]
+
+            def verify_login(self, browser_context):
+                # Navigate to dashboard, check selectors
+                ...
     """
 
     @abstractmethod
@@ -159,7 +186,7 @@ class SiteHandlerPlugin(PluginBase):
         """
 
     @abstractmethod
-    def extract_session(self, _browser_context: Any, url: str) -> dict:
+    def extract_session(self, _browser_context: Any, url: str) -> PluginResult:
         """Extract session data from a browser context.
 
         Args:
@@ -167,11 +194,11 @@ class SiteHandlerPlugin(PluginBase):
             url: The target URL
 
         Returns:
-            Session dict with cookies, localStorage, etc.
+            PluginResult with data={"cookies": [...], "storage": {...}}
         """
 
     @abstractmethod
-    def inject_session(self, _browser_context: Any, session: dict) -> bool:
+    def inject_session(self, _browser_context: Any, session: dict) -> PluginResult:
         """Inject session data into a browser context.
 
         Args:
@@ -179,8 +206,171 @@ class SiteHandlerPlugin(PluginBase):
             session: Session data to inject
 
         Returns:
-            True if injection was successful
+            PluginResult with data={"injected_count": N}
         """
+
+    def validate(self, session: dict) -> PluginResult:
+        """Validate a session for this site.
+
+        Args:
+            session: Session data to validate
+
+        Returns:
+            PluginResult with data={"valid": bool, "score": float, "issues": [...]}
+        """
+        return PluginResult(
+            success=True,
+            data={"valid": True, "score": 100.0, "issues": []},
+        )
+
+    # ── Export Specification (API v1.1) ──
+
+    def get_export_domains(self) -> List[str]:
+        """Return domains to export cookies for.
+
+        Example: ["google.com", "accounts.google.com", "mail.google.com"]
+        Used by: tokenade export --plugin google-handler
+
+        Returns:
+            List of domain strings
+        """
+        return []
+
+    def get_critical_cookies(self) -> List[str]:
+        """Return critical cookie names for this site.
+
+        Example: ["SID", "HSID", "__Secure-1PSID"]
+        Used by: session validation, health scoring
+
+        Returns:
+            List of cookie name strings
+        """
+        return []
+
+    def get_critical_storage(self) -> Dict[str, Dict[str, List[str]]]:
+        """Return critical localStorage/sessionStorage keys.
+
+        Returns:
+            Dict with "local" and "session" keys, each mapping
+            origin → list of key names.
+
+        Example:
+            {"local": {"https://mail.google.com": ["inbox_count"]}, "session": {}}
+        """
+        return {"local": {}, "session": {}}
+
+    # ── Login Verification (API v1.1) ──
+
+    def get_login_url(self) -> str:
+        """Return URL to navigate to for login check.
+
+        Example: "https://github.com/login"
+        Used by: verify_login()
+        """
+        return ""
+
+    def get_dashboard_url(self) -> str:
+        """Return URL of the logged-in dashboard.
+
+        Example: "https://github.com"
+        Used by: verify_login()
+        """
+        return ""
+
+    def get_session_check_url(self) -> str:
+        """Return API URL to check session validity (faster than page navigation).
+
+        Example: "https://labs.google/fx/api/auth/session"
+        Used by: verify_login()
+        """
+        return ""
+
+    def get_logged_in_selectors(self) -> List[str]:
+        """Return CSS selectors that indicate logged-in state.
+
+        Example: ["img.avatar", "[data-testid='header-avatar']"]
+        Used by: verify_login()
+        """
+        return []
+
+    def get_logged_out_selectors(self) -> List[str]:
+        """Return CSS selectors that indicate logged-out state.
+
+        Example: ["a[href='/login']", "form#login"]
+        Used by: verify_login()
+        """
+        return []
+
+    def verify_login(self, browser_context: Any) -> PluginResult:
+        """Verify if the browser is logged into this site.
+
+        Default implementation:
+        1. Navigate to dashboard_url
+        2. Check for logged_in_selectors
+        3. Check for logged_out_selectors
+        4. Return PluginResult with data={"logged_in": bool, "method": str}
+
+        Override for custom verification (e.g., API endpoint check).
+
+        Args:
+            browser_context: The browser context
+
+        Returns:
+            PluginResult with data={"logged_in": bool, "method": str, "details": str}
+        """
+        dashboard_url = self.get_dashboard_url()
+        if not dashboard_url:
+            return PluginResult(
+                success=True,
+                data={"logged_in": False, "method": "none", "details": "No dashboard URL"},
+            )
+
+        logged_in_selectors = self.get_logged_in_selectors()
+        logged_out_selectors = self.get_logged_out_selectors()
+
+        try:
+            page = browser_context.new_page()
+            page.goto(dashboard_url, timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=10000)
+
+            # Check for logged-in indicators
+            for selector in logged_in_selectors:
+                try:
+                    element = page.query_selector(selector)
+                    if element:
+                        page.close()
+                        return PluginResult(
+                            success=True,
+                            data={"logged_in": True, "method": "selector", "details": selector},
+                        )
+                except Exception:
+                    continue
+
+            # Check for logged-out indicators
+            for selector in logged_out_selectors:
+                try:
+                    element = page.query_selector(selector)
+                    if element:
+                        page.close()
+                        return PluginResult(
+                            success=True,
+                            data={"logged_in": False, "method": "selector", "details": selector},
+                        )
+                except Exception:
+                    continue
+
+            page.close()
+            return PluginResult(
+                success=True,
+                data={"logged_in": False, "method": "unknown", "details": "No matching selectors"},
+            )
+
+        except Exception as e:
+            return PluginResult(
+                success=False,
+                error=f"Login verification failed: {e}",
+                data={"logged_in": False, "method": "error"},
+            )
 
 
 class ExportFormatPlugin(PluginBase):

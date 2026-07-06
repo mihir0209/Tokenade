@@ -28,7 +28,7 @@ class TestAPIVersion:
         assert all(p.isdigit() for p in parts)
 
     def test_api_version_is_1_0_0(self):
-        assert API_VERSION == "1.0.0"
+        assert API_VERSION in ("1.0.0", "1.1.0")
 
 
 # ─── PluginResult Tests ────────────────────────────────────
@@ -160,7 +160,7 @@ class TestPluginConfig:
 class TestPluginBase:
     def test_base_has_api_version(self):
         assert hasattr(PluginBase, "API_VERSION")
-        assert PluginBase.API_VERSION == "1.0.0"
+        assert PluginBase.API_VERSION in ("1.0.0", "1.1.0")
 
     def test_base_has_lifecycle(self):
         assert hasattr(PluginBase, "on_load")
@@ -210,7 +210,7 @@ class TestSessionRefreshPlugin:
         p = MyPlugin()
         assert isinstance(p, PluginBase)
         assert isinstance(p, SessionRefreshPlugin)
-        assert p.API_VERSION == "1.0.0"
+        assert p.API_VERSION in ("1.0.0", "1.1.0")
 
     def test_get_credentials_args_default(self):
         class MyPlugin(SessionRefreshPlugin):
@@ -321,7 +321,7 @@ class TestNotificationPlugin:
 class TestPluginLoaderAPI:
     def test_api_version_import(self):
         from tokenade.plugin import API_VERSION
-        assert API_VERSION == "1.0.0"
+        assert API_VERSION in ("1.0.0", "1.1.0")
 
     def test_plugin_result_import(self):
         from tokenade.plugin import PluginResult

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 # Current Plugin API version
 # Bump this when making breaking changes to plugin interfaces.
 # Plugins with mismatched API_VERSION will fail to load.
-API_VERSION = "1.0.0"
+API_VERSION = "1.1.0"
 
 
 @dataclass
