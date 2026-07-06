@@ -172,14 +172,14 @@ class TestPackage:
     def test_basic_package(self, packager):
         cookies = [{"name": "pref_lang", "value": "en", "domain": ".example.com", "path": "/"}]
         pkg = packager.package(cookies=cookies, browser="chrome", profile="default")
-        assert pkg["version"] == "2.0"
+        assert pkg["version"] == "3.0"
         assert pkg["source_device"]["browser"] == "chrome"
         assert pkg["source_device"]["profile"] == "default"
         assert pkg["site_name"] == "unknown"
         assert pkg["auth_status"] == AuthStatus.LOGGED_OUT.value
         assert len(pkg["cookies"]) == 1
         assert pkg["tokens"] == []
-        assert pkg["local_storage"] == {}
+        assert pkg["storage"]["local"] == {}
 
     def test_package_with_fingerprint(self, packager):
         fp = {"user_agent": "Mozilla/5.0 Chrome/120.0", "platform": "Win32"}
@@ -198,8 +198,9 @@ class TestPackage:
 
     def test_package_with_local_storage(self, packager):
         ls = {"theme": "dark", "lang": "en"}
-        pkg = packager.package(cookies=[], local_storage=ls)
-        assert pkg["local_storage"] == ls
+        cookies = [{"name": "c1", "value": "v1", "domain": ".example.com"}]
+        pkg = packager.package(cookies=cookies, local_storage=ls)
+        assert pkg["storage"]["local"]["https://example.com"] == ls
         assert pkg["metadata"]["local_storage_count"] == 2
 
     def test_package_critical_cookie_count(self, packager, github_cookies):
@@ -273,7 +274,7 @@ class TestSaveLoad:
         path = str(tmp_path / "test.tokenade")
         packager.save(pkg, path)
         loaded = packager.load(path)
-        assert loaded["version"] == "2.0"
+        assert loaded["version"] == "3.0"
         assert len(loaded["cookies"]) == 1
 
     def test_load_not_found(self, packager, tmp_path):
@@ -297,7 +298,7 @@ class TestSaveLoad:
         assert len(loaded["cookies"]) == 2
         assert loaded["fingerprint"]["user_agent"] == "TestUA"
         assert loaded["tokens"][0]["value"] == "tok"
-        assert loaded["local_storage"]["k"] == "v"
+        assert loaded["storage"]["local"]["https://example.com"]["k"] == "v"
 
     def test_load_stores_in_cache(self, packager_with_cache, tmp_path):
         pkg = packager_with_cache.package(cookies=[{"name": "a", "value": "1", "domain": ".x.com"}])
@@ -306,7 +307,7 @@ class TestSaveLoad:
         # Clear cache to force reload from file
         packager_with_cache._cache._cache.clear()
         loaded = packager_with_cache.load(path)
-        assert loaded["version"] == "2.0"
+        assert loaded["version"] == "3.0"
         # Verify it's now in cache
         abs_path = str(Path(path).absolute())
         assert packager_with_cache._cache.get(abs_path) is not None
@@ -326,10 +327,10 @@ class TestLRUCache:
         path = str(tmp_path / "cached.tokenade")
         packager_with_cache.save(pkg, path)
         loaded = packager_with_cache.load(path)
-        assert loaded["version"] == "2.0"
+        assert loaded["version"] == "3.0"
         # Second load should hit cache
         loaded2 = packager_with_cache.load(path)
-        assert loaded2["version"] == "2.0"
+        assert loaded2["version"] == "3.0"
 
     def test_cache_disabled(self, packager, tmp_path):
         pkg = packager.package(cookies=[])
@@ -337,7 +338,7 @@ class TestLRUCache:
         packager.save(pkg, path)
         assert packager._cache is None
         loaded = packager.load(path)
-        assert loaded["version"] == "2.0"
+        assert loaded["version"] == "3.0"
 
     def test_cache_load_not_found(self, packager_with_cache, tmp_path):
         # Verify cache does not prevent FileNotFoundError

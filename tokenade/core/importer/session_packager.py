@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class SessionPackager:
     """Packages cookies into portable .tokenade session files."""
 
-    TOKENADE_VERSION = "2.0"
+    TOKENADE_VERSION = "3.0"
 
     def __init__(self, site_filter: Optional[SiteFilter] = None, cache_ttl: int = 300):
         """
@@ -131,11 +131,12 @@ class SessionPackager:
                 tokens: Optional[List[Dict]] = None,
                 local_storage: Optional[Dict[str, str]] = None,
                 session_storage: Optional[Dict[str, str]] = None,
+                storage: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
                 source_browser_manager=None,
                 tls_profile: Optional[Dict] = None,
                 oauth_config: Optional[Dict] = None) -> Dict:
         """
-        Package cookies into .tokenade format.
+        Package cookies into .tokenade format (v3.0).
 
         Args:
             cookies: List of extracted cookies
@@ -143,14 +144,15 @@ class SessionPackager:
             profile: Source profile name
             fingerprint: Optional fingerprint dict
             tokens: Optional list of tokens
-            local_storage: Optional localStorage key-value dict
-            session_storage: Optional sessionStorage key-value dict
+            local_storage: Optional localStorage key-value dict (flat, legacy)
+            session_storage: Optional sessionStorage key-value dict (flat, legacy)
+            storage: Optional per-origin storage dict {"local": {origin: {k: v}}, "session": {origin: {k: v}}}
             source_browser_manager: Optional browser manager for fingerprint collection
             tls_profile: Optional TLS profile for proxy mode
             oauth_config: Optional OAuth 2.0 configuration dict
 
         Returns:
-            .tokenade format dictionary
+            .tokenade format dictionary (v3.0)
         """
         site_name = self.detect_site(cookies)
         auth_status = self.infer_auth_status(cookies, site_name)
@@ -171,6 +173,18 @@ class SessionPackager:
 
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
+        # Build storage dict (v3.0 per-origin format)
+        storage_data = {"local": {}, "session": {}}
+        if storage:
+            storage_data = storage
+        elif local_storage or session_storage:
+            # Convert flat dicts to per-origin format
+            origin = self._infer_origin(cookies)
+            if local_storage:
+                storage_data["local"][origin] = local_storage
+            if session_storage:
+                storage_data["session"][origin] = session_storage
+
         package = {
             "version": self.TOKENADE_VERSION,
             "created_at": now,
@@ -184,8 +198,7 @@ class SessionPackager:
             "auth_status": auth_status.value,
             "cookies": cookies,
             "tokens": tokens or [],
-            "local_storage": local_storage or {},
-            "session_storage": session_storage or {},
+            "storage": storage_data,
             "fingerprint": fingerprint,
             "tls_profile": tls_profile,
             "oauth_config": oauth_config,
@@ -193,15 +206,27 @@ class SessionPackager:
                 "extraction_method": "sqlite_direct",
                 "cookie_count": len(cookies),
                 "critical_cookie_count": critical_count,
-                "local_storage_count": len(local_storage) if local_storage else 0,
-                "session_storage_count": len(session_storage) if session_storage else 0,
+                "local_storage_count": sum(len(v) for v in storage_data["local"].values()),
+                "session_storage_count": sum(len(v) for v in storage_data["session"].values()),
             },
         }
 
-        ls_info = f", {len(local_storage)} localStorage" if local_storage else ""
-        ss_info = f", {len(session_storage)} sessionStorage" if session_storage else ""
+        ls_count = sum(len(v) for v in storage_data["local"].values())
+        ss_count = sum(len(v) for v in storage_data["session"].values())
+        ls_info = f", {ls_count} localStorage" if ls_count else ""
+        ss_info = f", {ss_count} sessionStorage" if ss_count else ""
         logger.info(f"Packaged session: {site_name} ({len(cookies)} cookies, {critical_count} critical{ls_info}{ss_info})")
         return package
+
+    def _infer_origin(self, cookies: List[Dict]) -> str:
+        """Infer the origin from cookie domains."""
+        for c in cookies:
+            domain = c.get("domain", "")
+            if domain.startswith("."):
+                domain = domain[1:]
+            if domain:
+                return f"https://{domain}"
+        return "https://unknown"
 
     def _detect_tls_profile(self, browser: str, fingerprint: Optional[Dict] = None) -> Dict:
         """

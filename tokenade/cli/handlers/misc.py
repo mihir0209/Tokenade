@@ -186,12 +186,14 @@ def cmd_analytics(args):
     analytics = SessionAnalytics()
 
     if args.analytics_command == "report":
-        report = analytics.get_report()
+        days = getattr(args, "days", 30)
+        report = analytics.get_usage_report(days=days)
         print(json.dumps(report, indent=2))
     elif args.analytics_command == "cleanup":
         analytics.cleanup()
         print("✅ Analytics data cleaned up")
     else:
+        print("Usage: tokenade analytics {report|cleanup}")
         print("Usage: tokenade analytics {report|cleanup}")
 
 

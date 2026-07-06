@@ -19,7 +19,7 @@ class TestSessionPackager:
             browser="firefox",
             profile="default",
         )
-        assert package["version"] == "2.0"
+        assert package["version"] == "3.0"
         assert len(package["cookies"]) == 2
         assert package["source_device"]["browser"] == "firefox"
 
@@ -32,7 +32,7 @@ class TestSessionPackager:
             profile="default",
             local_storage=ls,
         )
-        assert package["local_storage"] == ls
+        assert package["storage"]["local"]["https://example.com"] == ls
 
     def test_infer_auth_status_known_site(self, packager):
         # GitHub with critical cookie
@@ -81,7 +81,7 @@ class TestSessionPackager:
         output = str(tmp_path / "test.tokenade")
         saved = packager.save(package, output)
         loaded = packager.load(saved)
-        assert loaded["version"] == "2.0"
+        assert loaded["version"] == "3.0"
         assert len(loaded["cookies"]) == 1
 
     def test_validate_format_valid(self, packager):

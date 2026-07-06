@@ -539,7 +539,9 @@ def cmd_export(args):
 
     local_storage = {}
     session_storage = {}
-    if args.extract_local_storage:
+    do_extract_storage = args.extract_local_storage or getattr(args, 'full', False)
+
+    if do_extract_storage:
         print(f"\n💾 Extracting localStorage from: {browser_path}")
         ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
 
@@ -550,12 +552,15 @@ def cmd_export(args):
             else:
                 origins = ls_extractor.list_origins()
                 if origins:
-                    print(f"   📋 Available origins ({len(origins)}):")
-                    for origin in origins[:10]:
-                        print(f"      • {origin}")
-                    if len(origins) > 10:
-                        print(f"      ... and {len(origins) - 10} more")
-                    print("\n   💡 Use --local-storage-origin to specify which origin to extract")
+                    print(f"   📋 Found {len(origins)} origin(s) with localStorage")
+                    # Extract all origins for --full mode
+                    for origin in origins:
+                        try:
+                            origin_data = ls_extractor.extract(origin_filter=origin)
+                            local_storage.update(origin_data)
+                        except Exception:
+                            pass
+                    print(f"   📊 Extracted {len(local_storage)} localStorage entries total")
                 else:
                     print("   ⚠️  No localStorage data found")
         except Exception as e:
@@ -593,8 +598,20 @@ def cmd_export(args):
     site_name = package.get("site_name", "session")
     output = args.output or f"{site_name}_session"
 
-    saved_path = packager.save(package, output)
-    print(f"\n💾 Exported: {saved_path}")
+    # Handle --encrypt-password
+    encrypt_password = getattr(args, 'encrypt_password', None)
+    if encrypt_password:
+        saved_path = packager.save(package, output, encrypt=True)
+        # Encrypt with password
+        from tokenade.core.crypto.encryptor import SessionEncryptor
+        encryptor = SessionEncryptor()
+        encryptor.encrypt_file(saved_path, saved_path + ".enc", encrypt_password)
+        os.rename(saved_path + ".enc", saved_path)
+        print(f"\n🔒 Encrypted and exported: {saved_path}")
+    else:
+        saved_path = packager.save(package, output)
+        print(f"\n💾 Exported: {saved_path}")
+
     print(f"   Site: {package['site_name']}")
     print(f"   Auth: {package['auth_status']}")
     print(f"   Cookies: {package['metadata']['cookie_count']}")

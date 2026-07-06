@@ -1026,6 +1026,9 @@ Commands:
     export_parser.add_argument("--decrypt", action="store_true", help="Decrypt cookies (auto-detected)")
     export_parser.add_argument("--extract-local-storage", action="store_true", help="Also extract localStorage data")
     export_parser.add_argument("--local-storage-origin", help="Origin to extract localStorage from")
+    export_parser.add_argument("--full", action="store_true", help="Extract cookies + localStorage + sessionStorage (v3.0 format)")
+    export_parser.add_argument("--no-storage", action="store_true", help="Extract only cookies (backward compat)")
+    export_parser.add_argument("--encrypt-password", help="Encrypt .tokenade file with this password at export time")
 
     # Load
     load_parser = subparsers.add_parser("load", help="Load session file into browser")
@@ -1120,6 +1123,7 @@ Commands:
     proxy_parser.add_argument("--session", "-s", help="Path to .tokenade session file (single mode)")
     proxy_parser.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
     proxy_parser.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
+    proxy_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
     proxy_parser.add_argument("--mode", choices=["gui", "forward"], default="gui",
                               help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
     proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
@@ -1478,6 +1482,7 @@ Commands:
     launch_parser.add_argument("--geoip", action="store_true", help="Auto-detect timezone/locale from proxy IP (CloakBrowser)")
     launch_parser.add_argument("--no-cloak", action="store_true", help="Force Playwright + JS patches (skip CloakBrowser)")
     launch_parser.add_argument("--profile", help="Persistent profile directory (CloakBrowser)")
+    launch_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")

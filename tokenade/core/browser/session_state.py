@@ -27,11 +27,12 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def tokenade_to_storage_state(session_file: str) -> Dict[str, Any]:
+def tokenade_to_storage_state(session_file: str, password: Optional[str] = None) -> Dict[str, Any]:
     """Convert a .tokenade session file to Playwright storage_state format.
 
     Args:
         session_file: Path to .tokenade file.
+        password: Optional decryption password for encrypted files.
 
     Returns:
         Dict with "cookies" and "origins" keys (Playwright storage_state format).
@@ -39,8 +40,30 @@ def tokenade_to_storage_state(session_file: str) -> Dict[str, Any]:
     with open(session_file) as f:
         session = json.load(f)
 
+    # Handle encrypted files
+    if session.get("encrypted") and password:
+        try:
+            from tokenade.core.crypto.at_rest import decrypt_session
+            session = decrypt_session(session, password)
+        except Exception as e:
+            raise ValueError(f"Decryption failed: {e}")
+
     cookies = session.get("cookies", [])
-    local_storage = session.get("local_storage", {})
+
+    # Handle both v2.0 (flat) and v3.0 (per-origin) storage formats
+    storage = session.get("storage", {})
+    local_storage_flat = session.get("local_storage", {})
+
+    # v3.0: storage.local is {origin: {key: value}}
+    # v2.0: local_storage is flat {key: value}
+    if storage.get("local"):
+        local_storage_per_origin = storage["local"]
+    elif local_storage_flat:
+        # Convert flat to per-origin
+        domain = _infer_origin_from_cookies(cookies)
+        local_storage_per_origin = {domain: local_storage_flat}
+    else:
+        local_storage_per_origin = {}
 
     # Convert cookies to Playwright format
     pw_cookies = []
@@ -79,20 +102,14 @@ def tokenade_to_storage_state(session_file: str) -> Dict[str, Any]:
 
     # Convert localStorage to Playwright origins format
     origins = []
-    if local_storage:
-        # Group localStorage entries by domain
-        domains: Dict[str, List[Dict[str, str]]] = {}
-        for key, value in local_storage.items():
-            domain = _infer_domain(session, key)
-            if domain not in domains:
-                domains[domain] = []
-            domains[domain].append({"name": key, "value": str(value)})
-
-        for domain, entries in domains.items():
-            origins.append({
-                "origin": f"https://{domain}",
-                "localStorage": entries,
-            })
+    if local_storage_per_origin:
+        for origin, items in local_storage_per_origin.items():
+            entries = [{"name": k, "value": str(v)} for k, v in items.items()]
+            if entries:
+                origins.append({
+                    "origin": origin,
+                    "localStorage": entries,
+                })
 
     return {
         "cookies": pw_cookies,
@@ -163,17 +180,18 @@ def storage_state_to_tokenade(state_file: str) -> Dict[str, Any]:
     }
 
 
-def load_as_storage_state(session_file: str, output_path: Optional[str] = None) -> str:
+def load_as_storage_state(session_file: str, output_path: Optional[str] = None, password: Optional[str] = None) -> str:
     """Load a .tokenade file and write it as a Playwright storage_state JSON.
 
     Args:
         session_file: Path to .tokenade file.
         output_path: Where to write the JSON. If None, writes to a temp file.
+        password: Optional decryption password.
 
     Returns:
         Path to the written storage_state JSON file.
     """
-    state = tokenade_to_storage_state(session_file)
+    state = tokenade_to_storage_state(session_file, password=password)
 
     if output_path is None:
         import tempfile
@@ -189,6 +207,17 @@ def load_as_storage_state(session_file: str, output_path: Optional[str] = None) 
         f"({len(state['cookies'])} cookies, {len(state['origins'])} origins)"
     )
     return output_path
+
+
+def _infer_origin_from_cookies(cookies: List[Dict]) -> str:
+    """Infer the origin URL from cookie domains."""
+    for c in cookies:
+        domain = c.get("domain", "")
+        if domain.startswith("."):
+            domain = domain[1:]
+        if domain:
+            return f"https://{domain}"
+    return "https://unknown"
 
 
 def _infer_domain(session: Dict[str, Any], key: str) -> str:
