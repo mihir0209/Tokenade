@@ -18,7 +18,7 @@ Usage:
     result = manager.extract(device=devices[0], browser="chrome")
 """
 
-import json
+
 import logging
 import platform
 import subprocess

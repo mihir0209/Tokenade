@@ -15,7 +15,7 @@ Usage:
 
 import json
 import logging
-import time
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

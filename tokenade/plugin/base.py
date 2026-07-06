@@ -128,7 +128,7 @@ class SiteHandlerPlugin(PluginBase):
         """
 
     @abstractmethod
-    def extract_session(self, browser_context: Any, url: str) -> dict:
+    def extract_session(self, _browser_context: Any, url: str) -> dict:
         """Extract session data from a browser context.
 
         Args:
@@ -140,7 +140,7 @@ class SiteHandlerPlugin(PluginBase):
         """
 
     @abstractmethod
-    def inject_session(self, browser_context: Any, session: dict) -> bool:
+    def inject_session(self, _browser_context: Any, session: dict) -> bool:
         """Inject session data into a browser context.
 
         Args:
@@ -303,7 +303,7 @@ class CaptchaPlugin(PluginBase):
 
     @abstractmethod
     def solve(self, captcha_type: str, site_key: Optional[str] = None,
-              page_url: Optional[str] = None) -> Dict[str, Any]:
+              _page_url: Optional[str] = None) -> Dict[str, Any]:
         """Solve a CAPTCHA.
 
         Args:

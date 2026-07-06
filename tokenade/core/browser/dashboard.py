@@ -8,13 +8,11 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 from tokenade.core.browser.stealth_test import (
     StealthTestReport,
     DetectionTestResult,
-    Verdict,
-    JS_CHECKS,
 )
 
 logger = logging.getLogger(__name__)

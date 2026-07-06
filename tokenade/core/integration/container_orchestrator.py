@@ -2,14 +2,14 @@
 Container orchestration for Tokenade — manages session refresh inside containers,
 health monitoring with auto-restart, and session distribution across containers.
 """
-import json
+
 import logging
 import subprocess
 import time
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

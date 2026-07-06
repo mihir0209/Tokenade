@@ -6,9 +6,9 @@ Fingerprints are consistent per session (same seed = same fingerprint).
 """
 
 import hashlib
-import json
+
 import logging
-import math
+
 import random
 import time
 from typing import Dict, List, Optional, Any

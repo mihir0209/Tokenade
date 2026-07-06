@@ -6,10 +6,10 @@ preserving fingerprint-relevant data (extensions, settings, bookmarks).
 Optionally injects session cookies/storage into the clone.
 """
 
-import json
+
 import logging
 import shutil
-import tempfile
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -194,7 +194,7 @@ class ProfileCloner:
         file_count = 0
         total_size = 0
 
-        def _ignore(directory, contents):
+        def _ignore(_directory, contents):
             return [c for c in contents if c in SKIP_DIRS]
 
         shutil.copytree(str(source), str(dest), ignore=_ignore)

@@ -20,7 +20,7 @@ import sys
 import time
 import threading
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Any
@@ -553,12 +553,12 @@ class SessionDaemon:
         self._original_handlers[signal.SIGHUP] = signal.getsignal(signal.SIGHUP)
         self._original_handlers[signal.SIGINT] = signal.getsignal(signal.SIGINT)
 
-        def handle_stop(signum, frame):
+        def handle_stop(signum, _frame):
             logger.info(f"Received signal {signum}, stopping...")
             self.state = DaemonState.STOPPING
             self._stop_event.set()
 
-        def handle_reload(signum, frame):
+        def handle_reload(signum, _frame):
             logger.info(f"Received SIGHUP, reloading config...")
             self._reload_event.set()
 

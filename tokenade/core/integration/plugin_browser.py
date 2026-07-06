@@ -9,7 +9,7 @@ import json
 import logging
 import html as html_mod
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 

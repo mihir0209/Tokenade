@@ -16,11 +16,11 @@ Usage:
     generator.save(workflow, ".github/workflows/refresh-sessions.yml")
 """
 
-import json
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

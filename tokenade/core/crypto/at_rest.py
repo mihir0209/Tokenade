@@ -5,7 +5,7 @@ Automatically encrypts sessions on save and decrypts on load
 when encryption is configured. Uses TokenadeEncryptor (AES-256-GCM).
 """
 
-import json
+
 import logging
 import os
 from pathlib import Path

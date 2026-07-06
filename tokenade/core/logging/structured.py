@@ -3,15 +3,16 @@ Structured logging for Tokenade.
 
 Provides JSON-formatted log output, log rotation, and structured fields.
 """
+
 import json
 import logging
 import logging.handlers
-import os
+
 import sys
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 DEFAULT_LOG_DIR = Path.home() / ".tokenade" / "logs"
 MAX_LOG_SIZE_MB = 10

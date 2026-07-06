@@ -6,7 +6,7 @@ and evaluates whether the browser is detected as automated.
 """
 
 import asyncio
-import json
+
 import logging
 import time
 from dataclasses import dataclass, field

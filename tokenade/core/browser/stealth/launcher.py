@@ -25,14 +25,14 @@ import logging
 import os
 import platform
 import shutil
-import signal
+
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
+
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +295,7 @@ class SystemBrowserLauncher:
             "BudgetDatabase", "WebStorage",
         }
 
-        def _ignore(directory, contents):
+        def _ignore(_directory, contents):
             return [c for c in contents if c in SKIP_DIRS]
 
         try:

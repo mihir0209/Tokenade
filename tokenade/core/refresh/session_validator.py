@@ -19,7 +19,7 @@ Usage:
 
 import json
 import logging
-import sys
+
 import time
 from dataclasses import dataclass, field
 from pathlib import Path

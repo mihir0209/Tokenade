@@ -18,9 +18,7 @@ Usage:
 import asyncio
 import json
 import logging
-import time
 from typing import Any, Callable, Dict, List, Optional
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 

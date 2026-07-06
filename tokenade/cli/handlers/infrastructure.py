@@ -2,11 +2,7 @@
 Infrastructure CLI commands — fleet, container, k8s.
 """
 
-import json
 import logging
-import os
-import sys
-from pathlib import Path
 
 logger = logging.getLogger("tokenade")
 
