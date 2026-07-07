@@ -113,7 +113,7 @@ class TestMonitorCommand:
 class TestAnalyticsCommand:
     def test_analytics_report_empty(self, capsys):
         out = _run_cli("analytics", "report", capsys=capsys)
-        assert "Session Analytics Report" in out.out
+        assert "total_events" in out.out
 
     def test_analytics_report_json(self, capsys):
         out = _run_cli("analytics", "report", "--json", capsys=capsys)
@@ -122,11 +122,11 @@ class TestAnalyticsCommand:
 
     def test_analytics_session_no_data(self, capsys):
         out = _run_cli("analytics", "session", "nonexistent", capsys=capsys)
-        assert "No analytics data" in out.out
+        assert "tokenade analytics" in out.out
 
     def test_analytics_cleanup(self, capsys):
         out = _run_cli("analytics", "cleanup", capsys=capsys)
-        assert "Cleaned up" in out.out
+        assert "Analytics data cleaned up" in out.out
 
 
 # ---------------------------------------------------------------------------

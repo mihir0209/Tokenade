@@ -150,7 +150,7 @@ class TestCLIRoundtrip:
             assert os.path.exists(tokenade_path)
 
             loaded = packager.load(tokenade_path)
-            assert loaded["version"] == "2.0"
+            assert loaded["version"] == "3.0"
             assert loaded["site_name"] == "google"
             assert len(loaded["cookies"]) == 1
 

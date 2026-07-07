@@ -466,14 +466,30 @@ def cmd_export(args):
         print(f"\n🍪 Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)
 
+    # Parse domain filter early (needed for plugin discovery)
+    domain_filter = None
+    if args.domains:
+        cleaned = []
+        for d in args.domains.split(","):
+            d = d.strip()
+            if not d:
+                continue
+            if "://" in d:
+                d = d.split("://", 1)[1]
+            d = d.split("/", 1)[0]
+            d = d.split(":", 1)[0]
+            if d:
+                cleaned.append(d)
+        domain_filter = cleaned if cleaned else None
+
     # Plugin-first: try site handler plugin if --plugin specified
     plugin_name = getattr(args, 'plugin', None)
     use_plugin = not getattr(args, 'no_plugin', False)
-    
+
     if plugin_name or use_plugin:
         from tokenade.core.importer.plugin_export import PluginExporter
         exporter = PluginExporter()
-        
+
         if plugin_name:
             handler = exporter._handlers.get(plugin_name)
             if handler:
@@ -491,25 +507,6 @@ def cmd_export(args):
     if args.site_config:
         with open(args.site_config) as f:
             site_config = json.load(f)
-
-    domain_filter = None
-    if args.domains:
-        # Strip protocol, paths, and trailing slashes from domain filter
-        cleaned = []
-        for d in args.domains.split(","):
-            d = d.strip()
-            if not d:
-                continue
-            # Remove protocol prefix
-            if "://" in d:
-                d = d.split("://", 1)[1]
-            # Remove path/slash suffix
-            d = d.split("/", 1)[0]
-            # Remove port
-            d = d.split(":", 1)[0]
-            if d:
-                cleaned.append(d)
-        domain_filter = cleaned if cleaned else None
 
     def _progress(current, total, stage):
         if stage == "copying_database":

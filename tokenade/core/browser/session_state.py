@@ -27,12 +27,17 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def tokenade_to_storage_state(session_file: str, password: Optional[str] = None) -> Dict[str, Any]:
+def tokenade_to_storage_state(
+    session_file: str,
+    password: Optional[str] = None,
+    browser: Optional[str] = None,
+) -> Dict[str, Any]:
     """Convert a .tokenade session file to Playwright storage_state format.
 
     Args:
         session_file: Path to .tokenade file.
         password: Optional decryption password for encrypted files.
+        browser: Source browser name (firefox/chrome/brave). Helps with expires conversion.
 
     Returns:
         Dict with "cookies" and "origins" keys (Playwright storage_state format).
@@ -87,12 +92,19 @@ def tokenade_to_storage_state(session_file: str, password: Optional[str] = None)
         else:
             pw_cookie["sameSite"] = "None"
 
-        # Handle expires
+        # Handle expires — different formats per browser
+        # Firefox: milliseconds since Unix epoch (~1.8 trillion, 13 digits)
+        # Chrome/Brave/Edge: microseconds since 1601-01-01 (~13 quadrillion, 16 digits)
+        # Playwright expects: Unix timestamp in seconds
         expires = c.get("expires", 0)
         if expires and int(expires) > 0:
             exp_int = int(expires)
-            # Chrome epoch → Unix timestamp
-            if exp_int > 1262304000000:
+            # Heuristic: 14+ digits = Chrome epoch, 13 digits = Firefox ms
+            if exp_int > 10000000000000:
+                # Chrome epoch (microseconds since 1601) → Unix seconds
+                exp_int = (exp_int // 1000000) - 11644473600
+            elif exp_int > 1000000000000:
+                # Firefox milliseconds → Unix seconds
                 exp_int = exp_int // 1000
             pw_cookie["expires"] = exp_int
         else:
@@ -154,8 +166,8 @@ def storage_state_to_tokenade(state_file: str) -> Dict[str, Any]:
 
         expires = c.get("expires", -1)
         if expires and expires > 0:
-            # Unix → Chrome epoch
-            tk_cookie["expires"] = int(expires) * 1000000
+            # Unix seconds → Firefox milliseconds
+            tk_cookie["expires"] = int(expires) * 1000
         else:
             tk_cookie["expires"] = 0
 
