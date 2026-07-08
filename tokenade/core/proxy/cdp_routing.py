@@ -141,10 +141,23 @@ async def forward_via_curl_cffi(
     headers: Dict[str, str],
     body: Optional[str] = None,
 ):
-    """Forward request via curl-cffi with donor TLS fingerprint. Falls back to aiohttp."""
+    """Forward request via curl-cffi with donor TLS fingerprint.
+
+    Missing curl-cffi is a hard failure (DependencyError). Transient request
+    errors still fall back to aiohttp so pages can load without TLS match.
+    """
     try:
         from curl_cffi import requests as curl_requests
+    except ImportError as e:
+        from tokenade.core.errors import DependencyError
+        raise DependencyError(
+            "curl-cffi is required for TLS-matched proxy forwarding. "
+            "Install with: pip install curl-cffi",
+            operation="cdp_route",
+            cause=e,
+        ) from e
 
+    try:
         donor_headers = proxy.fingerprint.get_headers(url, None, method)
 
         for key, value in headers.items():
@@ -195,7 +208,10 @@ async def forward_via_curl_cffi(
         })()
 
     except Exception as e:
-        logger.debug(f"curl-cffi failed for {url}: {e}")
+        from tokenade.core.errors import DependencyError
+        if isinstance(e, DependencyError):
+            raise
+        logger.warning("curl-cffi request failed for %s: %s — falling back to aiohttp", url[:80], e)
         return await forward_via_aiohttp(proxy, method, url, headers, body)
 
 

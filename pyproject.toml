@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "playwright>=1.40.0",
     "cloakbrowser>=0.4.0",
+    "curl-cffi>=0.6.0",
     "requests>=2.28.0",
     "pycryptodome>=3.19.0",
     "cryptography>=41.0.0",
@@ -39,6 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 windows = ["pywin32>=306"]
 linux = ["secretstorage>=3.3.3"]
+# runtime kept as alias for older docs/install scripts; curl-cffi is now a core dep
 runtime = ["curl-cffi>=0.6.0"]
 ldap = ["ldap3>=2.9"]
 enterprise = ["ldap3>=2.9"]

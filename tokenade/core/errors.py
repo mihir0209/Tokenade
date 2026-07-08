@@ -49,6 +49,14 @@ class ProxyError(TokenadeError):
     """Raised when proxy operation fails."""
 
 
+class DependencyError(TokenadeError):
+    """Raised when a required optional/runtime dependency is missing.
+
+    Prefer hard dependencies in packaging; use this when a feature is
+    requested but the library cannot be imported (broken install).
+    """
+
+
 class ConfigurationError(TokenadeError):
     """Raised when configuration is invalid or missing."""
 

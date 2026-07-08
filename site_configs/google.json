@@ -1,0 +1,30 @@
+{
+  "name": "google",
+  "domains": [
+    "google.com",
+    "accounts.google.com",
+    "mail.google.com",
+    "labs.google.com",
+    "myaccount.google.com"
+  ],
+  "critical_cookies": [
+    "SID",
+    "SSID",
+    "APISID",
+    "SAPISID",
+    "HSID",
+    "__Secure-1PSID",
+    "__Secure-3PSID",
+    "__Secure-1PAPISID",
+    "__Secure-3PAPISID",
+    "OSID",
+    "__Secure-OSID",
+    "__Host-GAPS",
+    "COMPASS"
+  ],
+  "login_url": "https://accounts.google.com/signin",
+  "dashboard_url": "https://labs.google/fx/tools/flow",
+  "session_check_url": "https://labs.google/fx/api/auth/session",
+  "source": "migrated-from-tokenade.handlers.google (P1)",
+  "preferred_plugin": "google-handler"
+}

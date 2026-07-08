@@ -40,11 +40,13 @@ def _make_session(tmp_path, name="test", site="github", auth="logged_in",
             "httpOnly": False,
         })
 
+    from datetime import datetime, timezone
     session = {
         "version": "2.0",
         "site_name": site,
         "auth_status": auth,
-        "created_at": "2026-07-01T00:00:00Z",
+        # Recent timestamp so max_age_hours (default 168) does not fail over time
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cookies": cookies,
     }
     path = tmp_path / f"{name}.tokenade"

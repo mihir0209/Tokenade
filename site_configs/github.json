@@ -1,0 +1,15 @@
+{
+  "name": "github",
+  "domains": [
+    "github.com",
+    ".github.com"
+  ],
+  "critical_cookies": [
+    "user_session",
+    "__Host-user_session_same_site"
+  ],
+  "login_url": "https://github.com/login",
+  "dashboard_url": "https://github.com/",
+  "source": "migrated-from-tokenade.handlers.github (P1)",
+  "preferred_plugin": "github-handler"
+}

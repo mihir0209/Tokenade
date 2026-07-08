@@ -4,16 +4,23 @@ Misc CLI commands — tui, daemon, analytics, monitor.
 
 import json
 import logging
+import time
 from pathlib import Path
 
 logger = logging.getLogger("tokenade")
 
 
 def _health_bar(score: float, width: int = 20) -> str:
-    """Render a health score bar."""
+    """Create a visual health bar (legacy glyph style kept for CLI/tests)."""
     filled = int(score / 100 * width)
-    bar = "█" * filled + "░" * (width - filled)
-    return f"[{bar}] {score:.0f}%"
+    empty = width - filled
+    if score >= 80:
+        char = "█"
+    elif score >= 50:
+        char = "▓"
+    else:
+        char = "░"
+    return f"[{char * filled}{'.' * empty}]"
 
 
 def cmd_monitor(args):
@@ -38,7 +45,6 @@ def cmd_monitor(args):
 
 def _monitor_start(args):
     """Start background monitoring."""
-    import time
     from tokenade.core.monitoring.session_monitor import SessionMonitor, MonitorConfig
 
     session = getattr(args, "session", None)

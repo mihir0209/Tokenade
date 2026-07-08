@@ -189,12 +189,13 @@ class TestTLSMatcherGetImpersonateTarget(unittest.TestCase):
 
 class TestTLSMatcherRequest(unittest.TestCase):
     def test_no_session_raises(self):
+        from tokenade.core.errors import DependencyError
         with patch(
             "tokenade.core.runtime.tls_matcher.TLSMatcher._setup_session"
         ):
             m = TLSMatcher()
             m._session = None
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, DependencyError)):
                 m.request("GET", "https://example.com")
 
     def test_get_request(self):

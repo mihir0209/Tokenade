@@ -13,6 +13,17 @@ logger = logging.getLogger("tokenade")
 def cmd_proxy(args):
     """Start fingerprint-matched proxy server."""
     from tokenade.core.importer.session_packager import SessionPackager
+    from tokenade.core.errors import DependencyError, TokenadeError
+
+    # Fail closed before launching browser if TLS matching requested without curl-cffi
+    if getattr(args, "fingerprint", False) and getattr(args, "mode", "cdp") != "forward":
+        try:
+            from tokenade.core.runtime.tls_matcher import require_curl_cffi
+            require_curl_cffi()
+        except DependencyError as e:
+            print(f"❌ {e}")
+            raise SystemExit(2) from e
+
     packager = SessionPackager()
 
     if args.all:

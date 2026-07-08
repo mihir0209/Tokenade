@@ -652,6 +652,10 @@ class CDPProxy:
                 "Install with: pip install playwright && playwright install chromium"
             )
 
+        if self.config.use_fingerprint:
+            from tokenade.core.runtime.tls_matcher import require_curl_cffi
+            require_curl_cffi()
+
         self._playwright = await async_playwright().start()
         launch_args = [
             "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",

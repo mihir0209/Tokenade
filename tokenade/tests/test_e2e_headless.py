@@ -42,8 +42,8 @@ def convert_cookie(c):
     return pw
 
 
-async def test_site(browser, context, site_name, cookie_domains, nav_url, ls_key=None):
-    """Test a single site."""
+async def run_site_check(browser, context, site_name, cookie_domains, nav_url, ls_key=None):
+    """Manual E2E helper for a single site (not a pytest unit test)."""
     firefox_path = get_firefox_path()
     extractor = CookieExtractor(firefox_path, browser="firefox")
     all_cookies = extractor.extract()
@@ -134,10 +134,10 @@ async def main():
     context = await browser.new_context(viewport={"width": 1920, "height": 1080})
 
     # Test each site
-    await test_site(browser, context, "Google", [".google.com"], "https://mail.google.com")
-    await test_site(browser, context, "GitHub", [".github.com"], "https://github.com")
-    await test_site(browser, context, "Discord", [".discord.com", "discordapp.com"], "https://discord.com")
-    await test_site(browser, context, "Reddit", [".reddit.com"], "https://www.reddit.com")
+    await run_site_check(browser, context, "Google", [".google.com"], "https://mail.google.com")
+    await run_site_check(browser, context, "GitHub", [".github.com"], "https://github.com")
+    await run_site_check(browser, context, "Discord", [".discord.com", "discordapp.com"], "https://discord.com")
+    await run_site_check(browser, context, "Reddit", [".reddit.com"], "https://www.reddit.com")
 
     # Test Telegram (localStorage-based)
     firefox_path = get_firefox_path()
@@ -201,4 +201,7 @@ async def main():
     print(f"\n{'='*60}")
     print("Test complete.")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    # Manual only: python -m tokenade.tests.test_e2e_headless
+    # Not collected by pytest (no test_* fixtures / no module-level run).
+    asyncio.run(main())

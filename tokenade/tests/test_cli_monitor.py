@@ -117,7 +117,7 @@ class TestMonitorStart:
     def test_start_with_session(self, tmp_path, capsys):
         path = _make_session_file(tmp_path)
         args = _make_args(monitor_command="start", session=path, interval=1)
-        with patch("tokenade.cli.management.time.sleep", side_effect=KeyboardInterrupt):
+        with patch("tokenade.cli.handlers.misc.time.sleep", side_effect=KeyboardInterrupt):
             cmd_monitor(args)
         output = capsys.readouterr().out
         assert "Monitoring session" in output
@@ -126,7 +126,7 @@ class TestMonitorStart:
     def test_start_with_sessions_dir(self, tmp_path, capsys):
         _make_session_file(tmp_path)
         args = _make_args(monitor_command="start", sessions_dir=str(tmp_path), interval=1)
-        with patch("tokenade.cli.management.time.sleep", side_effect=KeyboardInterrupt):
+        with patch("tokenade.cli.handlers.misc.time.sleep", side_effect=KeyboardInterrupt):
             cmd_monitor(args)
         output = capsys.readouterr().out
         assert "Monitoring" in output

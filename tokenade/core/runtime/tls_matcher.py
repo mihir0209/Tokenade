@@ -9,7 +9,25 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
+from tokenade.core.errors import DependencyError
+
 logger = logging.getLogger(__name__)
+
+
+def require_curl_cffi() -> None:
+    """Fail closed if curl-cffi is not importable.
+
+    curl-cffi is a core dependency (pyproject). This catches broken installs.
+    """
+    try:
+        import curl_cffi  # noqa: F401
+    except ImportError as e:
+        raise DependencyError(
+            "curl-cffi is required for TLS fingerprint matching (core dependency). "
+            "Install with: pip install 'tokenade[runtime]'  # or: pip install curl-cffi",
+            operation="tls_match",
+            cause=e,
+        ) from e
 
 
 @dataclass
@@ -82,28 +100,39 @@ class TLSMatcher:
         self._setup_session()
 
     def _setup_session(self) -> None:
-        """Setup curl-cffi session with impersonation."""
+        """Setup curl-cffi session with impersonation.
+
+        ImportError is deferred to first request() / require_curl_cffi() so
+        unit construction does not hard-fail without the package.
+        """
         try:
             from curl_cffi import requests as curl_requests
-
-            # Try the requested impersonation first
-            try:
-                self._session = curl_requests.Session(
-                    impersonate=self.fingerprint.impersonate
-                )
-                logger.debug(f"TLSMatcher initialized with impersonation: {self.fingerprint.impersonate}")
-            except Exception as e:
-                # Firefox impersonation may not be supported, fallback to Chrome
-                if "firefox" in self.fingerprint.impersonate.lower():
-                    logger.warning(f"Firefox impersonation not supported, falling back to Chrome: {e}")
-                    self._session = curl_requests.Session(impersonate="chrome120")
-                    self.fingerprint.impersonate = "chrome120"
-                else:
-                    raise
-
         except ImportError:
-            logger.warning("curl-cffi not installed. TLS fingerprint matching disabled.")
+            logger.warning(
+                "curl-cffi not installed. TLS matching disabled until install "
+                "(core dependency — proxy --fingerprint will fail closed)."
+            )
             self._session = None
+            return
+
+        try:
+            self._session = curl_requests.Session(
+                impersonate=self.fingerprint.impersonate
+            )
+            logger.debug(
+                "TLSMatcher initialized with impersonation: %s",
+                self.fingerprint.impersonate,
+            )
+        except Exception as e:
+            # Firefox impersonation may not be supported, fallback to Chrome
+            if "firefox" in self.fingerprint.impersonate.lower():
+                logger.warning(
+                    "Firefox impersonation not supported, falling back to Chrome: %s", e
+                )
+                self._session = curl_requests.Session(impersonate="chrome120")
+                self.fingerprint.impersonate = "chrome120"
+            else:
+                raise
 
     def _get_impersonate_target(self, browser: str, version: str) -> str:
         """Get the impersonation target for a browser version."""
@@ -141,8 +170,10 @@ class TLSMatcher:
             Response object
         """
         if not self._session:
-            raise RuntimeError(
-                "curl-cffi not installed. Install with: pip install curl-cffi"
+            require_curl_cffi()
+            raise DependencyError(
+                "TLSMatcher session not initialized",
+                operation="tls_match",
             )
 
         logger.debug(f"TLS Request: {method} {url}")

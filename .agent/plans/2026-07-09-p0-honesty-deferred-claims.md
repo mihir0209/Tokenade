@@ -93,15 +93,15 @@
 | **Acceptance** | Documented workflow + E2E for GitHub with open-browser extract |
 | **Priority** | High |
 
-### 8. `curl-cffi` as non-optional for proxy
+### 8. `curl-cffi` as non-optional for proxy — DONE (P1)
 
 | Field | Value |
 |-------|--------|
 | **Removed claim** | Implicit “TLS matching always on” |
-| **Current truth** | Optional `[runtime]` extra; degraded without it |
-| **To make true** | Hard dependency **or** proxy command fails closed with install message (no silent degrade) |
-| **Acceptance** | Clean `pip install tokenade` proxy path either works fully or errors clearly |
-| **Priority** | High |
+| **Was** | Optional `[runtime]` extra; silent degrade |
+| **Now** | Core dependency in pyproject; `require_curl_cffi()` fail-closed on `--fingerprint` and CDP start; ImportError no longer falls back to aiohttp |
+| **Acceptance** | ✅ hard dep + fail closed; aiohttp only for transient request failures after curl import succeeds |
+| **Priority** | High — closed |
 
 ### 9. Plugin type purity / no core duplicates
 

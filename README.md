@@ -615,13 +615,13 @@ CloakBrowser (stealth Chromium with 58 C++ patches) is a core dependency. The bi
 ### Optional Dependencies
 
 ```bash
-pip install tokenade[runtime]    # curl-cffi — required for TLS-matched proxy (core value)
 pip install tokenade[enterprise] # ldap3 for LDAP/SSO (experimental)
 pip install tokenade[linux]      # secretstorage for Linux keyring
 pip install 'tokenade[tui]'     # Interactive terminal UI (textual)
+# tokenade[runtime] still installs curl-cffi (now also a core dependency)
 ```
 
-**Note:** Proxy TLS matching without `curl-cffi` is degraded. Install `tokenade[runtime]` for the real product path.
+**Note:** `curl-cffi` is a **core** dependency (P1). TLS-matched proxy fails closed if it is missing (broken install), instead of silently degrading.
 
 ### Development
 

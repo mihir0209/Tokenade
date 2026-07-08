@@ -17,9 +17,13 @@ from tokenade.core.forensics.autopsy import (
 
 def _make_session_file(tmp_path, name="test", site="github",
                        auth="logged_in", cookies=None,
-                       created_at="2026-07-01T00:00:00Z"):
+                       created_at=None):
     """Create a session file with custom cookies."""
+    from datetime import datetime, timezone
     now = int(time.time())
+    if created_at is None:
+        # Fresh by default so "old_session" does not dominate cause-of-death
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if cookies is None:
         cookies = [
             {

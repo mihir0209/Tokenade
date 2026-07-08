@@ -101,14 +101,13 @@ class SessionData:
 
 
 class SiteHandler(ABC):
-    """
-    Abstract base class for site-specific handlers.
+    """Legacy site-specific handler base.
 
-    Each handler knows:
-    - How to navigate and authenticate on the site
-    - How to extract tokens/cookies
-    - How to validate session status
-    - Site-specific anti-bot measures
+    Prefer ``tokenade.plugin.SiteHandlerPlugin`` and ``site_configs/*.json``
+    for new sites. This ABC remains for backward-compatible CLI paths.
+
+    Each handler knows how to authenticate, extract tokens/cookies, and
+    validate session status for one site family.
     """
 
     # Site identification

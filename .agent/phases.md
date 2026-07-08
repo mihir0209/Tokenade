@@ -919,7 +919,19 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 - Plan for deferred claims: `.agent/plans/2026-07-09-p0-honesty-deferred-claims.md`
 - Review: `.agent/reviews/2026-07-09-brutal-code-review-tokenade-ecosystem.md`
 **Output:** Honest docs + registry v1.2.0  
-**Next:** P1 — CLI split, dual-handler collapse, curl-cffi fail-closed (see deferred claims plan)
+
+### Phase P1 — CLI split, curl-cffi fail-closed, dual-handler path (2026-07-09) ✅ (partial)
+**Status:** Complete for P1 scope (2026-07-09) — further line-count pressure still welcome  
+**Goal:** Real modular CLI; hard TLS dep; start dual-handler collapse  
+**What was done:**
+- `cli/management.py` reduced **3379 → ~67 lines** (facade only)
+- Split into `handlers/session_ops.py`, `handlers/browser_ops.py`; container/k8s into `infrastructure.py`
+- Removed dead duplicate monitor/analytics/daemon helpers from management
+- `curl-cffi` core dependency; `require_curl_cffi()` + CDP/proxy fail-closed on `--fingerprint`
+- `DependencyError` added; routing no longer silent-aiohttp on ImportError
+- Legacy `tokenade.handlers` documented as legacy; `site_configs/google.json` + `github.json` extracted
+**Verify:** CLI imports; pytest plugin + cli management/proxy/tls suites green  
+**Next:** P2 — plugin CI / verified badges; deeper dual-handler migration of CLI call sites
 
 ### Phase 71 — Code Audit & Dead Code Removal (next)
 **Goal**: Remove dead code, consolidate overlapping modules

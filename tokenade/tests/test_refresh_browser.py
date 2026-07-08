@@ -446,7 +446,7 @@ class TestPluginIntegration:
                 MockLauncher.return_value = mock_launcher
                 mock_launcher.launch.return_value = mock_launcher
                 mock_launcher.get_cookies.return_value = session["cookies"][:1]
-                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                with patch("tokenade.cli.handlers.browser_ops._refresh_session_cookies") as mock_refresh:
                     mock_refresh.return_value = ([session["cookies"][0]], {}, {})
                     cmd_refresh_browser(args)
 
@@ -478,7 +478,7 @@ class TestPluginIntegration:
                 MockLauncher.return_value = mock_launcher
                 mock_launcher.launch.return_value = mock_launcher
                 mock_launcher.get_cookies.return_value = session["cookies"][:1]
-                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                with patch("tokenade.cli.handlers.browser_ops._refresh_session_cookies") as mock_refresh:
                     mock_refresh.return_value = ([session["cookies"][0]], {}, {})
                     cmd_refresh_browser(args)
 
@@ -503,7 +503,7 @@ class TestPluginIntegration:
                 MockLauncher.return_value = mock_launcher
                 mock_launcher.launch.return_value = mock_launcher
                 mock_launcher.get_cookies.return_value = session["cookies"][:1]
-                with patch("tokenade.cli.management._refresh_session_cookies") as mock_refresh:
+                with patch("tokenade.cli.handlers.browser_ops._refresh_session_cookies") as mock_refresh:
                     mock_refresh.return_value = ([session["cookies"][0]], {}, {})
                     with patch("subprocess.run", return_value=mock_proc):
                         cmd_refresh_browser(args)
