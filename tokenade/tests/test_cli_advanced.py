@@ -626,7 +626,9 @@ class TestCmdTest:
         args = Namespace(session="/nonexistent/session.json", stealth_level="balanced",
                          variations=False, source_fp=None, target_fp="default",
                          test_api=False, validate_stealth=False, output=None)
-        cmd_test(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_test(args)
+        assert ei.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
@@ -801,20 +803,23 @@ class TestCmdSetup:
         mock_cred._keyring_available = True
         mock_cred_cls.return_value = mock_cred
 
-        with patch("builtins.input", side_effect=["yes", "test@example.com", "no"]):
+        mock_handler = MagicMock()
+        login_result = MagicMock()
+        login_result.value = "logged_in"
+        mock_handler.login.return_value = login_result
+        mock_cls = MagicMock(return_value=mock_handler)
+        mock_cls.__name__ = "MockHandler"
+
+        with patch("builtins.input", side_effect=["yes", "test@example.com", "google", "no"]):
             with patch("getpass.getpass", return_value="password123"):
                 with patch("tokenade.core.browser.manager.BrowserFactory") as mock_bf_cls:
                     mock_bf = MagicMock()
                     mock_bf.launch.return_value = MagicMock()
                     mock_bf_cls.create.return_value = mock_bf
-
-                    with patch("tokenade.handlers.google.GoogleHandler") as mock_handler_cls:
-                        mock_handler = MagicMock()
-                        login_result = MagicMock()
-                        login_result.value = "logged_in"
-                        mock_handler.login.return_value = login_result
-                        mock_handler_cls.return_value = mock_handler
-
+                    with patch(
+                        "tokenade.handlers.resolve.resolve_legacy_handler_class",
+                        return_value=mock_cls,
+                    ):
                         args = Namespace()
                         cmd_setup(args)
         out = capsys.readouterr().out
@@ -826,20 +831,23 @@ class TestCmdSetup:
         mock_cred.load_accounts.return_value = []
         mock_cred_cls.return_value = mock_cred
 
-        with patch("builtins.input", side_effect=["yes", "test@example.com", "no"]):
+        mock_handler = MagicMock()
+        login_result = MagicMock()
+        login_result.value = "login_failed"
+        mock_handler.login.return_value = login_result
+        mock_cls = MagicMock(return_value=mock_handler)
+        mock_cls.__name__ = "MockHandler"
+
+        with patch("builtins.input", side_effect=["yes", "test@example.com", "google", "no"]):
             with patch("getpass.getpass", return_value="wrongpass"):
                 with patch("tokenade.core.browser.manager.BrowserFactory") as mock_bf_cls:
                     mock_bf = MagicMock()
                     mock_bf.launch.return_value = MagicMock()
                     mock_bf_cls.create.return_value = mock_bf
-
-                    with patch("tokenade.handlers.google.GoogleHandler") as mock_handler_cls:
-                        mock_handler = MagicMock()
-                        login_result = MagicMock()
-                        login_result.value = "login_failed"
-                        mock_handler.login.return_value = login_result
-                        mock_handler_cls.return_value = mock_handler
-
+                    with patch(
+                        "tokenade.handlers.resolve.resolve_legacy_handler_class",
+                        return_value=mock_cls,
+                    ):
                         args = Namespace()
                         cmd_setup(args)
         out = capsys.readouterr().out
@@ -865,20 +873,23 @@ class TestCmdSetup:
         mock_cred._keyring_available = False
         mock_cred_cls.return_value = mock_cred
 
-        with patch("builtins.input", side_effect=["yes", "a@test.com", "yes", "b@test.com", "no"]):
+        mock_handler = MagicMock()
+        login_result = MagicMock()
+        login_result.value = "logged_in"
+        mock_handler.login.return_value = login_result
+        mock_cls = MagicMock(return_value=mock_handler)
+        mock_cls.__name__ = "MockHandler"
+
+        with patch("builtins.input", side_effect=["yes", "a@test.com", "google", "yes", "b@test.com", "google", "no"]):
             with patch("getpass.getpass", side_effect=["pass1", "pass2"]):
                 with patch("tokenade.core.browser.manager.BrowserFactory") as mock_bf_cls:
                     mock_bf = MagicMock()
                     mock_bf.launch.return_value = MagicMock()
                     mock_bf_cls.create.return_value = mock_bf
-
-                    with patch("tokenade.handlers.google.GoogleHandler") as mock_handler_cls:
-                        mock_handler = MagicMock()
-                        login_result = MagicMock()
-                        login_result.value = "logged_in"
-                        mock_handler.login.return_value = login_result
-                        mock_handler_cls.return_value = mock_handler
-
+                    with patch(
+                        "tokenade.handlers.resolve.resolve_legacy_handler_class",
+                        return_value=mock_cls,
+                    ):
                         args = Namespace()
                         cmd_setup(args)
         out = capsys.readouterr().out
@@ -891,20 +902,23 @@ class TestCmdSetup:
         mock_cred._keyring_available = False
         mock_cred_cls.return_value = mock_cred
 
-        with patch("builtins.input", side_effect=["yes", "test@test.com", "no"]):
+        mock_handler = MagicMock()
+        login_result = MagicMock()
+        login_result.value = "logged_in"
+        mock_handler.login.return_value = login_result
+        mock_cls = MagicMock(return_value=mock_handler)
+        mock_cls.__name__ = "MockHandler"
+
+        with patch("builtins.input", side_effect=["yes", "test@test.com", "google", "no"]):
             with patch("getpass.getpass", return_value="pass"):
                 with patch("tokenade.core.browser.manager.BrowserFactory") as mock_bf_cls:
                     mock_bf = MagicMock()
                     mock_bf.launch.return_value = MagicMock()
                     mock_bf_cls.create.return_value = mock_bf
-
-                    with patch("tokenade.handlers.google.GoogleHandler") as mock_handler_cls:
-                        mock_handler = MagicMock()
-                        login_result = MagicMock()
-                        login_result.value = "logged_in"
-                        mock_handler.login.return_value = login_result
-                        mock_handler_cls.return_value = mock_handler
-
+                    with patch(
+                        "tokenade.handlers.resolve.resolve_legacy_handler_class",
+                        return_value=mock_cls,
+                    ):
                         args = Namespace()
                         cmd_setup(args)
         out = capsys.readouterr().out

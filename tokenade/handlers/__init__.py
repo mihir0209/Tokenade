@@ -29,6 +29,7 @@ from tokenade.handlers.base import (  # noqa: F401
     AuthStatus,
     TokenType,
 )
+from tokenade.handlers.resolve import resolve_legacy_handler_class  # noqa: F401
 
 __all__ = [
     "SiteHandler",
@@ -37,4 +38,5 @@ __all__ = [
     "ExtractedToken",
     "AuthStatus",
     "TokenType",
+    "resolve_legacy_handler_class",
 ]

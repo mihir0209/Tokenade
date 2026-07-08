@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tokenade.core.errors import InjectionError
 from tokenade.core.proxy.cdp_injection import (
     inject_via_cdp,
     inject_via_raw_cdp,
@@ -38,8 +39,8 @@ def _make_proxy(**overrides):
 @pytest.mark.asyncio
 async def test_inject_via_cdp_returns_when_no_session():
     proxy = _make_proxy(_cdp_session=None)
-    await inject_via_cdp(proxy)
-    # Should simply return without error
+    with pytest.raises(InjectionError):
+        await inject_via_cdp(proxy)
 
 
 @pytest.mark.asyncio
@@ -171,7 +172,9 @@ async def test_inject_via_cdp_cookie_send_failure_is_swallowed():
         None,
         Exception("cookie fail"),
     ]
-    await inject_via_cdp(proxy)
+    # All cookie setCookie calls fail => hard InjectionError (P3 honesty)
+    with pytest.raises(InjectionError):
+        await inject_via_cdp(proxy)
 
 
 @pytest.mark.asyncio

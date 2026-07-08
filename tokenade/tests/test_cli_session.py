@@ -1,6 +1,7 @@
 """Tests for CLI session commands."""
 
 import json
+import pytest
 from unittest.mock import patch, MagicMock
 from argparse import Namespace
 
@@ -97,10 +98,12 @@ class TestCmdExtract:
         mock_cm = MagicMock()
         mock_cm.load_accounts.return_value = [_make_account(profile_dir="/nonexistent")]
         mock_cm_cls.return_value = mock_cm
-        cmd_extract(Namespace(visible=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_extract(Namespace(visible=False))
+        assert ei.value.code == 1
         assert "profile not found" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_success_with_token(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -116,14 +119,14 @@ class TestCmdExtract:
         mock_handler = MagicMock()
         mock_handler.get_session.return_value = mock_session
         mock_handler.extract_tokens.return_value = [MagicMock(token_type="access_token")]
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
 
         cmd_extract(Namespace(visible=False))
         output = capsys.readouterr().out
         assert "extraction complete" in output.lower()
         mock_browser.close.assert_called_once()
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_success_no_tokens(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -139,12 +142,12 @@ class TestCmdExtract:
         mock_handler = MagicMock()
         mock_handler.get_session.return_value = mock_session
         mock_handler.extract_tokens.return_value = []
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
 
         cmd_extract(Namespace(visible=False))
         assert "extraction complete" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_browser_exception(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -157,7 +160,9 @@ class TestCmdExtract:
         mock_browser.launch.side_effect = RuntimeError("browser crash")
         mock_bf_cls.create.return_value = mock_browser
 
-        cmd_extract(Namespace(visible=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_extract(Namespace(visible=False))
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "extraction" in output.lower()
         mock_browser.close.assert_called_once()
@@ -167,10 +172,12 @@ class TestCmdExtract:
         mock_cm = MagicMock()
         mock_cm.load_accounts.return_value = [_make_account(profile_dir=None)]
         mock_cm_cls.return_value = mock_cm
-        cmd_extract(Namespace(visible=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_extract(Namespace(visible=False))
+        assert ei.value.code == 1
         assert "profile not found" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_visible_mode(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -184,13 +191,13 @@ class TestCmdExtract:
         mock_handler = MagicMock()
         mock_handler.get_session.return_value = _make_mock_session(tokens=[])
         mock_handler.extract_tokens.return_value = []
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
 
         cmd_extract(Namespace(visible=True))
         call_kwargs = mock_bf_cls.create.call_args[1]
         assert call_kwargs.get("headless") is False
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_saves_token_file(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -210,7 +217,7 @@ class TestCmdExtract:
         mock_handler = MagicMock()
         mock_handler.get_session.return_value = mock_session
         mock_handler.extract_tokens.return_value = [token_obj]
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
 
         with patch("tokenade.cli.session.Path"):
             real_path = tmp_path / "sessions"
@@ -219,7 +226,7 @@ class TestCmdExtract:
         output = capsys.readouterr().out
         assert "extraction complete" in output.lower()
 
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     @patch("tokenade.core.security.credentials.CredentialManager")
     def test_extract_success_summary(self, mock_cm_cls, mock_bf_cls, mock_gh_cls,
@@ -238,7 +245,7 @@ class TestCmdExtract:
         mock_handler = MagicMock()
         mock_handler.get_session.return_value = mock_session
         mock_handler.extract_tokens.return_value = []
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
 
         cmd_extract(Namespace(visible=False))
         output = capsys.readouterr().out
@@ -772,9 +779,11 @@ class TestCmdLoad:
         mock_loader = MagicMock()
         mock_loader.load.side_effect = RuntimeError("corrupt file")
         mock_loader_cls.return_value = mock_loader
-        cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
-                           stealth_level="maximum", validate=False, visible=False,
-                           profile_dir=None, no_local_storage=False, runtime=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
+                               stealth_level="maximum", validate=False, visible=False,
+                               profile_dir=None, no_local_storage=False, runtime=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
         mock_loader.close.assert_called_once()
 
@@ -857,14 +866,16 @@ class TestCmdLoad:
 
 class TestCmdTransfer:
     def test_transfer_session_not_found(self, capsys):
-        cmd_transfer(Namespace(session="/nonexistent/session.json", fingerprint="default",
-                               stealth_level="maximum", visible=False, profile_dir=None,
-                               validate_stealth=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_transfer(Namespace(session="/nonexistent/session.json", fingerprint="default",
+                                   stealth_level="maximum", visible=False, profile_dir=None,
+                                   validate_stealth=False))
+        assert ei.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_success(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                               mock_validate, tmp_path, capsys):
@@ -876,7 +887,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         cmd_transfer(Namespace(session=str(f), fingerprint=None, stealth_level="maximum",
                                visible=False, profile_dir=None, validate_stealth=False))
         assert "successful" in capsys.readouterr().out.lower()
@@ -884,7 +895,7 @@ class TestCmdTransfer:
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_with_fingerprint(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                        mock_validate, tmp_path, capsys):
@@ -902,7 +913,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         cmd_transfer(Namespace(session=str(f), fingerprint="my_fp", stealth_level="maximum",
                                visible=False, profile_dir=None, validate_stealth=False))
         output = capsys.readouterr().out
@@ -910,7 +921,7 @@ class TestCmdTransfer:
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_with_validate_stealth(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                             mock_validate, tmp_path, capsys):
@@ -928,7 +939,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         mock_validate.return_value = {
             "valid": True, "webdriver_undefined": True, "user_agent": "Mozilla/5.0"
         }
@@ -938,7 +949,7 @@ class TestCmdTransfer:
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_inject_fails(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                    mock_validate, tmp_path, capsys):
@@ -950,14 +961,16 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = False
-        mock_gh_cls.return_value = mock_handler
-        cmd_transfer(Namespace(session=str(f), fingerprint=None, stealth_level="maximum",
-                               visible=False, profile_dir=None, validate_stealth=False))
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
+        with pytest.raises(SystemExit) as ei:
+            cmd_transfer(Namespace(session=str(f), fingerprint=None, stealth_level="maximum",
+                                   visible=False, profile_dir=None, validate_stealth=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_stealth_invalid(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                       mock_validate, tmp_path, capsys):
@@ -975,7 +988,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         mock_validate.return_value = {
             "valid": False, "webdriver_undefined": False, "user_agent": "Bot/1.0"
         }
@@ -986,7 +999,7 @@ class TestCmdTransfer:
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_with_profile_dir(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                        mock_validate, tmp_path, capsys):
@@ -998,7 +1011,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         profile_dir = str(tmp_path / "profile")
         cmd_transfer(Namespace(session=str(f), fingerprint=None, stealth_level="maximum",
                                visible=False, profile_dir=profile_dir, validate_stealth=False))
@@ -1006,7 +1019,7 @@ class TestCmdTransfer:
 
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.cli.session.GoogleHandler")
+    @patch("tokenade.cli.session.resolve_legacy_handler_class")
     @patch("tokenade.cli.session.BrowserFactory")
     def test_transfer_visible_mode(self, mock_bf_cls, mock_gh_cls, mock_fp_cls,
                                    mock_validate, tmp_path, capsys):
@@ -1018,7 +1031,7 @@ class TestCmdTransfer:
         mock_bf_cls.create.return_value = mock_browser
         mock_handler = MagicMock()
         mock_handler.inject_session.return_value = True
-        mock_gh_cls.return_value = mock_handler
+        mock_gh_cls.return_value = MagicMock(return_value=mock_handler)
         cmd_transfer(Namespace(session=str(f), fingerprint=None, stealth_level="maximum",
                                visible=True, profile_dir=None, validate_stealth=False))
         call_kwargs = mock_bf_cls.create.call_args[1]

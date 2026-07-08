@@ -17,8 +17,13 @@ logger = logging.getLogger(__name__)
 
 async def inject_via_cdp(proxy: "CDPProxy"):
     """Inject stealth script and cookies via CDP protocol (browser-level)."""
+    from tokenade.core.errors import InjectionError
+
     if not proxy._cdp_session:
-        return
+        raise InjectionError(
+            "No CDP session available for cookie injection",
+            operation="inject_via_cdp",
+        )
 
     try:
         await proxy._cdp_session.send("Page.addScriptToEvaluateOnNewDocument", {
@@ -26,15 +31,17 @@ async def inject_via_cdp(proxy: "CDPProxy"):
         })
         logger.info("Injected stealth script via CDP (browser-level)")
     except Exception as e:
-        logger.warning(f"CDP stealth injection failed: {e}")
+        logger.warning("CDP stealth injection failed: %s", e)
 
     try:
         await proxy._cdp_session.send("Network.enable")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Network.enable failed (continuing): %s", e)
 
     cookies = proxy.session.get("cookies", [])
     injected = 0
+    failed = 0
+    last_error = None
     for cookie in cookies:
         try:
             params = {
@@ -64,10 +71,28 @@ async def inject_via_cdp(proxy: "CDPProxy"):
 
             await proxy._cdp_session.send("Network.setCookie", params)
             injected += 1
-        except Exception:
-            pass
+        except Exception as e:
+            failed += 1
+            last_error = e
+            logger.debug(
+                "Cookie inject failed for %s@%s: %s",
+                cookie.get("name"),
+                cookie.get("domain"),
+                e,
+            )
 
-    logger.info(f"Injected {injected}/{len(cookies)} cookies via CDP (browser-level)")
+    logger.info(
+        "Injected %s/%s cookies via CDP (failed=%s)",
+        injected,
+        len(cookies),
+        failed,
+    )
+    if cookies and injected == 0:
+        raise InjectionError(
+            f"Failed to inject any of {len(cookies)} cookies via CDP",
+            operation="inject_via_cdp",
+            cause=last_error,
+        )
 
 
 async def inject_via_raw_cdp(proxy: "CDPProxy"):

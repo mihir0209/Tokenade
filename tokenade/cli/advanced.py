@@ -318,26 +318,12 @@ def cmd_fingerprint(args):
             print(f"❌ Not found: {args.name}")
 
 
-def _resolve_legacy_handler_class(session_data: dict):
-    """Pick a legacy SiteHandler for portability tests.
-
-    Prefer site_name-driven selection. New work should use plugins +
-    site_configs JSON; these imports stay for backward-compatible tests.
-    """
-    site = (session_data.get("site_name") or "google").lower()
-    if site in ("github", "gh"):
-        from tokenade.handlers.github import GitHubHandler
-        return GitHubHandler
-    # Default legacy path (google) — dual-system still present
-    from tokenade.handlers.google import GoogleHandler
-    return GoogleHandler
-
-
 def cmd_test(args):
     """Run portability tests with fingerprint spoofing."""
     from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
     from tokenade.core.fingerprint.manager import FingerprintManager
     from tokenade.core.fingerprint.injector import validate_injection
+    from tokenade.handlers.resolve import resolve_legacy_handler_class
     from tokenade.tests.portability import PortabilityTester
 
     print("\n" + "=" * 80)
@@ -347,14 +333,15 @@ def cmd_test(args):
     session_file = Path(args.session)
     if not session_file.exists():
         print(f"❌ Session file not found: {args.session}")
-        return
+        raise SystemExit(1)
 
     with open(session_file) as f:
         session_data = json.load(f)
 
-    handler_class = _resolve_legacy_handler_class(session_data)
+    handler_class = resolve_legacy_handler_class(session_data.get("site_name"))
+    hname = getattr(handler_class, "__name__", str(handler_class))
     print(
-        f"\n⚠️  Using legacy handler {handler_class.__name__} "
+        f"\n⚠️  Using legacy handler {hname} "
         f"(prefer site plugins / site_configs for new work)"
     )
 
@@ -415,7 +402,7 @@ def cmd_setup(args):
     import getpass
     from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
     from tokenade.core.security.credentials import CredentialManager, AccountCredentials
-    from tokenade.handlers.google import GoogleHandler
+    from tokenade.handlers.resolve import resolve_legacy_handler_class
 
     print("\n" + "=" * 80)
     print("TOKENADE - Account Setup")
@@ -433,11 +420,14 @@ def cmd_setup(args):
             break
 
         email = input("📧 Email: ").strip()
-        password = getpass.getpass("🔒 Password: ")
-
-        if not email or not password:
+        if not email:
             print("❌ Email and password required")
             continue
+        password = getpass.getpass("🔒 Password: ")
+        if not password:
+            print("❌ Email and password required")
+            continue
+        site = input("🌐 Site [google]: ").strip() or "google"
 
         account_num = len(accounts) + 1
         profile_dir = f"browser_data/{account_num}"
@@ -453,7 +443,10 @@ def cmd_setup(args):
         browser.launch()
 
         try:
-            handler = GoogleHandler(browser)
+            handler_cls = resolve_legacy_handler_class(site)
+            handler = handler_cls(browser)
+            hname = getattr(handler_cls, "__name__", str(handler_cls))
+            print(f"   Handler: {hname} (legacy; prefer plugins)")
             status = handler.login(email, password, headless=False)
 
             if status.value == "logged_in":
@@ -462,7 +455,7 @@ def cmd_setup(args):
                     email=email,
                     password=password,
                     profile_dir=profile_dir,
-                    site="google",
+                    site=site,
                     metadata={"created_at": datetime.now().isoformat()},
                 )
                 accounts.append(account)

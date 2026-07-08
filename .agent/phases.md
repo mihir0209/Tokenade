@@ -945,6 +945,16 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 **Verify:** full suite 5248 passed, 7 skipped; `scripts/run_contracts.py` 22/22 PASS  
 **Next:** P3 debt — deeper CLI off GoogleHandler, delete core-duplicate plugins, real ratings telemetry
 
+### Phase P3 — Empty package cleanup, handler resolve, typed injection (2026-07-09) ✅
+**Status:** Complete (2026-07-09)  
+**Goal:** Next brutal-review debt items without marketing lies  
+**What was done:**
+- Removed empty `tokenade/core/extractor` and `tokenade/utils` packages
+- `handlers/resolve.py` — site-driven legacy handler resolution (no hardcoded GoogleHandler)
+- CLI extract/transfer/test/setup use resolve; non-zero exits on hard failures
+- `inject_via_cdp` raises `InjectionError` when CDP missing or zero cookies injected
+**Verify:** full suite 5251 passed, 7 skipped
+
 ### Phase 71 — Code Audit & Dead Code Removal (next)
 **Goal**: Remove dead code, consolidate overlapping modules
 **Output**: ~3,000 lines removed

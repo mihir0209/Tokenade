@@ -11,7 +11,7 @@ from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 from tokenade.core.importer.session_packager import SessionPackager
 from tokenade.core.importer.session_loader import SessionLoader
 from tokenade.core.injector.profile_manager import inject_session_to_profile
-from tokenade.handlers.google import GoogleHandler
+from tokenade.handlers.resolve import resolve_legacy_handler_class
 
 logger = logging.getLogger("tokenade")
 
@@ -277,10 +277,16 @@ def cmd_extract(args):
         try:
             browser.launch()
 
-            handler = GoogleHandler(browser)
+            site = getattr(account, "site", None)
+            if not isinstance(site, str) or not site:
+                site = "google"
+            handler_cls = resolve_legacy_handler_class(site)
+            handler = handler_cls(browser)
+            hname = getattr(handler_cls, "__name__", handler_cls.__class__.__name__)
+            print(f"   Handler: {hname} (legacy; prefer plugins)")
             session = handler.get_session()
 
-            session_path = output_dir / f"google_{account_num}_{email.replace('@', '_at_')}.json"
+            session_path = output_dir / f"{site}_{account_num}_{email.replace('@', '_at_')}.json"
             handler.save_session(str(session_path))
 
             token = session.get_token(handler.extract_tokens()[0].token_type if session.tokens else None)
@@ -316,6 +322,8 @@ def cmd_extract(args):
     successful = sum(1 for r in results if r.get("status") == "logged_in")
     print(f"\n✅ Successful: {successful}/{len(accounts)}")
     print(f"📁 Sessions saved to: {output_dir}/")
+    if successful == 0 and accounts:
+        raise SystemExit(1)
 
 
 def cmd_export(args):
@@ -714,6 +722,7 @@ def cmd_load(args):
     except Exception as e:
         logger.error(f"Load failed: {e}", exc_info=True)
         print("❌ Load failed — verify session file is valid and not corrupted")
+        raise SystemExit(1) from e
     finally:
         loader.close()
 
@@ -731,7 +740,7 @@ def cmd_transfer(args):
     session_file = Path(args.session)
     if not session_file.exists():
         print(f"❌ Session file not found: {args.session}")
-        return
+        raise SystemExit(1)
 
     with open(session_file) as f:
         session_data = json.load(f)
@@ -770,11 +779,21 @@ def cmd_transfer(args):
             else:
                 print("   ⚠️  Stealth injection may not be fully active")
 
-        handler = GoogleHandler(browser)
+        site = session_data.get("site_name") or "google"
+        handler_cls = resolve_legacy_handler_class(site)
+        handler = handler_cls(browser)
+        hname = getattr(handler_cls, "__name__", handler_cls.__class__.__name__)
+        print(f"   Handler: {hname} (legacy; prefer plugins)")
+
+        auth_raw = session_data.get("auth_status", "unknown")
+        try:
+            auth_status = AuthStatus(auth_raw)
+        except (ValueError, KeyError):
+            auth_status = AuthStatus.UNKNOWN
 
         session = SessionData(
-            site_name=session_data["site_name"],
-            auth_status=AuthStatus(session_data["auth_status"]),
+            site_name=site,
+            auth_status=auth_status,
             tokens=[],
             cookies=session_data.get("cookies", []),
         )
@@ -787,6 +806,7 @@ def cmd_transfer(args):
                 print(f"💾 Profile saved to: {args.profile_dir}")
         else:
             print("❌ Session transfer failed")
+            raise SystemExit(1)
 
     finally:
         browser.close()

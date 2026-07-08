@@ -8,10 +8,10 @@ Modules:
     core.browser: Browser automation abstractions
     core.crypto: Cross-platform cookie encryption/decryption
     core.fingerprint: Browser fingerprint collection and matching
-    core.extractor: Token extraction utilities
-    handlers: Site-specific handlers (Google, etc.)
+    core.importer: Cookie extraction, packaging, session lifecycle
+    handlers: Legacy site handlers (prefer plugins + site_configs)
+    plugin: Plugin API base classes
     tests: Portability testing framework
-    utils: Helper utilities
 
 Usage:
     from tokenade.cli import main
