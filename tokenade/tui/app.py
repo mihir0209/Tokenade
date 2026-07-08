@@ -117,12 +117,15 @@ def run_tui(mode: str = "full"):
             version = p.get("version", "?")
             desc = p.get("description", "No description")
             author = p.get("author", "Unknown")
-            rating = p.get("rating", 0)
-            downloads = p.get("downloads", 0)
             verified = p.get("verified", False)
-
-            stars = "★" * int(rating) + "☆" * (5 - int(rating))
-            verified_str = " ✓" if verified else ""
+            verified_str = " ✓" if verified else " (unverified)"
+            # rating/downloads omitted until real telemetry exists
+            social = ""
+            if p.get("rating") is not None:
+                rating = float(p["rating"])
+                social += f"  {'★' * int(rating)}{'☆' * (5 - int(rating))} {rating:.1f}"
+            if p.get("downloads") is not None:
+                social += f"  {p['downloads']}↓"
 
             # Badges
             badges = ""
@@ -132,8 +135,7 @@ def run_tui(mode: str = "full"):
                 badges += " [update]"
 
             yield Static(
-                f"{icon} {name} v{version}{verified_str}  "
-                f"{stars} {rating:.1f}  {downloads}↓  by {author}"
+                f"{icon} {name} v{version}{verified_str}{social}  by {author}"
                 f"{badges}",
                 classes="card-title",
             )
@@ -293,8 +295,6 @@ def run_tui(mode: str = "full"):
             version = p.get("version", "?")
             desc = p.get("description", "No description")
             author = p.get("author", "Unknown")
-            rating = p.get("rating", 0)
-            downloads = p.get("downloads", 0)
             verified = p.get("verified", False)
             tags = p.get("tags", [])
             category = p.get("category", "")
@@ -302,8 +302,16 @@ def run_tui(mode: str = "full"):
             min_ver = p.get("min_version", "")
             deps = p.get("dependencies", [])
 
-            stars = "★" * int(rating) + "☆" * (5 - int(rating))
-            verified_str = "✓ verified" if verified else "✗ not verified"
+            verified_str = "✓ verified" if verified else "✗ unverified (default for all until review)"
+            if p.get("rating") is not None:
+                rating = float(p["rating"])
+                social = f"{'★' * int(rating)}{'☆' * (5 - int(rating))} ({rating:.1f})"
+            else:
+                social = "rating: n/a (not tracked)"
+            if p.get("downloads") is not None:
+                social += f"  •  {p['downloads']} downloads"
+            else:
+                social += "  •  downloads: n/a (not tracked)"
             tag_str = "  ".join(f"[{t}]" for t in tags)
 
             yield Header(show_clock=False)
@@ -317,10 +325,7 @@ def run_tui(mode: str = "full"):
                 Static(f"Type:      {ptype}", classes="detail-meta"),
                 Static(f"Verified:  {verified_str}", classes="detail-meta"),
                 Static("", classes="detail-meta"),
-                Static(
-                    f"{stars} ({rating:.1f})  •  {downloads} downloads",
-                    classes="detail-meta",
-                ),
+                Static(social, classes="detail-meta"),
                 Static(f"Compatible: tokenade >= {min_ver}", classes="detail-meta"),
                 Static(f"Dependencies: {', '.join(deps) if deps else 'none'}", classes="detail-meta"),
                 Static("", classes="detail-tags"),

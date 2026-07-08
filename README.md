@@ -2,97 +2,80 @@
 
 Extract browser sessions from one device, package them into portable `.tokenade` files, and browse as the donor on another device using a **CDP reverse proxy** with TLS fingerprint matching.
 
-**5165+ tests** · **50 CLI commands** · **20 plugins** · **Grade A stealth**
+**Product focus:** session portability + TLS-matched replay — not a Multilogin replacement.
+
+**~5250 automated tests** · **large CLI surface** · **22 official plugins (unverified)** · **stealth: measured, not “Grade A”**
+
+> **Honesty policy:** This README separates **battle-tested** behavior from **code that exists but is not production-proven**. Overclaims were removed 2026-07-09. Deferred goals live in [`.agent/plans/2026-07-09-p0-honesty-deferred-claims.md`](.agent/plans/2026-07-09-p0-honesty-deferred-claims.md).
+
+## What actually works (battle-tested)
+
+Evidence: `.agent/working.md`, `.agent/testing-reports/2026-07-06-e2e-headless-test.md`, manual multi-device notes.
+
+| Capability | Status | Notes |
+|------------|--------|-------|
+| Cookie export (Chrome/Firefox/Brave/Edge) | **Works** | SQLite extraction, domain filters |
+| CDP proxy + session inject (Gmail, ChatGPT) | **Works** | Confirmed logged-in in real runs |
+| localStorage transfer (Telegram Web) | **Works** | E2E headless 2026-07-06 |
+| Google persistent cookies → CloakBrowser | **Works** | 171 cookies, login selectors matched |
+| AES-256-GCM session file encryption | **Works** | Core `TokenadeEncryptor`, PBKDF2 600k |
+| Session health scoring (cookie heuristics) | **Works** | Heuristic score — not a live auth proof |
+| Forward proxy CONNECT | **Works** | Battle-tested 2026-06-17 |
+| Multi-site proxy (2 sessions) | **Works** | Battle-tested 2026-06-17 |
+| CloakBrowser as default stealth backend | **Works** | Prefer over pure JS patches |
+| GitHub/Discord/Reddit from **session-only** Firefox cookies | **Often fails** | Auth cookies not always persisted to disk |
+| Google Chrome→Chrome / multi-device | **Often fails** | DBSC + risk signals; see working notes |
+| Cloudflare Turnstile / hard bot labs | **Often fails** | Battle suite ~Grade C (~78/100), not A |
+| Enterprise LDAP / fleet / K8s generators | **Code present** | Not battle-tested as a product |
+| Official plugin marketplace “ratings/downloads” | **Removed** | Were never real telemetry |
 
 ## Features
 
-### Core
+### Core (primary product)
 
-| Feature | Description |
-|---------|-------------|
-| **Session Export** | Extract cookies from Chrome, Firefox, Brave, Edge, Safari, Tor Browser |
-| **Session Injection** | Inject sessions via CDP proxy or direct profile modification |
-| **TLS Fingerprint Matching** | Bypass Cloudflare, DataDome with curl-cffi |
-| **localStorage Support** | Extract/inject localStorage (Telegram, WhatsApp) |
-| **Encryption** | AES-256-GCM encryption for session files |
-| **Multi-Browser** | Cross-browser support (extract from Firefox, inject into Chrome) |
-| **Session Refresh** | Auto-refresh expiring cookies with multi-browser fallback |
-| **Health Scoring** | OWASP-based session health scoring and validation |
-| **Site Configs** | Preset configs for GitHub, Discord, Reddit, Google, OpenAI |
+| Feature | Description | Confidence |
+|---------|-------------|------------|
+| **Session Export** | Extract cookies from Chrome, Firefox, Brave, Edge; Safari/Tor/mobile available | High for desktop Chromium/Firefox |
+| **Session Injection** | CDP proxy or direct profile modification | High for persistent-cookie sites |
+| **TLS Fingerprint Matching** | `curl-cffi` impersonation on proxied requests | High when `tokenade[runtime]` installed |
+| **localStorage Support** | Extract/inject localStorage (critical for Telegram) | High for Telegram; mixed for Discord |
+| **Encryption** | AES-256-GCM via **core** encryptor only | High |
+| **Session Refresh** | Cookie re-warm via headless browser; OAuth path exists | Medium (site-dependent) |
+| **Health Scoring** | Heuristic cookie/auth scoring | Medium (not live site proof) |
+| **Site Configs / plugins** | Domain + critical-cookie presets | Medium (configs/lists, not deep site engines) |
 
-### Advanced
+### Stealth (honest)
 
-| Feature | Description |
-|---------|-------------|
-| **Session Auto-Refresh** | WebSocket notifications, multi-browser fallback, hot-reload |
-| **Session Sharing** | Email, webhook (Slack/Discord), QR codes, HMAC-SHA256 signatures |
-| **Multi-Session Management** | List, merge, rotate, stats across multiple sessions |
-| **Advanced Validation** | Custom JS rules, screenshot comparison, API validation |
-| **Browser Extension** | Chrome/Firefox extension for one-click export |
-| **HTTP Forward Proxy** | `HTTP_PROXY` mode with TLS matching |
-| **Multi-Site Bundler** | Serve multiple sessions with tabbed GUI |
+| Feature | Description | Confidence |
+|---------|-------------|------------|
+| **CloakBrowser** | Stealth Chromium backend (default when available) | High as launcher |
+| **JS patch fallback** | Webdriver/plugins/WebGL/canvas/etc. when CloakBrowser unavailable | Best-effort |
+| **Battle testing** | Multi-site detection suite with scores | Use scores; do not assume “undetectable” |
+| **CAPTCHA / CF / Akamai helpers** | Detection + partial automation | Partial — not a guaranteed bypass product |
+| **Humanize** | Mouse/keyboard timing helpers | Best-effort |
 
-### Browser Stealth
+### Also present (code exists — not the sales pitch)
 
-| Feature | Description |
-|---------|-------------|
-| **CloakBrowser** | Stealth Chromium binary with 58 C++ source-level patches (default backend) |
-| **14 JS Patch Fallback** | Webdriver, plugins, permissions, WebGL, canvas, audio (when CloakBrowser unavailable) |
-| **Cloudflare Bypass** | Turnstile solver, cf_clearance extraction, multi-domain support |
-| **Akamai Bypass** | Bot detection bypass, akamai cookies extraction |
-| **CAPTCHA Detection** | Turnstile, hCaptcha, reCAPTCHA detection and status tracking |
-| **Residential Proxy** | Session-affinity proxy with sticky sessions and rotation |
-| **Stealth Testing** | 18-point automated detection test suite with scoring |
-| **Battle Testing** | End-to-end validation against 5 real detection sites with composite scoring |
-| **Detection Dashboard** | HTML/JSON reports with category breakdown |
-| **Humanize** | Human-like mouse curves, keyboard timing, scroll patterns |
+| Area | What exists | Caveat |
+|------|-------------|--------|
+| Advanced refresh/share/merge/rotate | CLI + modules | Prefer core loop first |
+| Browser extension | MV3 export helper | Manual install; not a full product surface |
+| Plugin marketplace | Install/search/TUI; 22 official plugins | Plugins **unverified**; many thin or core-overlapping |
+| Profile / fingerprint / competitor import | Modules + CLI | Competitor parity is incomplete vs AdsPower/Multilogin |
+| Enterprise (audit, RBAC, LDAP) | Modules + optional deps | Not production-hardened for multi-tenant ops |
+| Fleet / K8s YAML / CI generators | CLI scaffolding | Generators ≠ managed platform |
+| GitHub Actions CI for this repo | Present | Matrix lint/test |
 
-### Competitor Parity
-
-| Feature | Description |
-|---------|-------------|
-| **Profile Manager** | Create, list, delete, export/import browser profiles |
-| **Fingerprint Generator** | OS/hardware-aware deterministic fingerprint generation |
-| **Multi-Profile Sync** | Execute actions across multiple browser profiles simultaneously |
-| **Competitor Import** | Import sessions from AdsPower, Multilogin, GoLogin |
-
-### Plugin System
-
-| Feature | Description |
-|---------|-------------|
-| **16+ Plugin Types** | Site handlers, export formats, validators, stealth, proxy, captcha |
-| **Plugin Marketplace** | TUI marketplace with search, categories, ratings, install/uninstall |
-| **Global Ratings** | Sync ratings via GitHub Issues API (PAT required for writes) |
-| **Plugin Testing** | Automated test suite for plugin validation |
-| **HTML Marketplace** | Static marketplace page with search and filters |
-| **14 Official Plugins** | OAuth2, Google/GitHub/Discord handlers, session-health, webhook-notify, etc. |
-
-### Enterprise
-
-| Feature | Description |
-|---------|-------------|
-| **Audit Logging** | Structured JSONL logs for all session operations |
-| **Role-Based Access Control** | Admin/editor/viewer roles with persistent storage |
-| **LDAP/SSO Integration** | LDAP bind authentication with group membership checks |
-
-### Browser Support
+### Browser support
 
 | Browser | Status | Notes |
 |---------|--------|-------|
-| Chrome | Full | SQLite extraction, profile discovery, binary patching |
-| Firefox | Full | SQLite extraction, profile discovery |
-| Edge | Full | Chromium-based, same as Chrome |
-| Brave | Full | Chromium-based, same as Chrome |
-| Safari | Partial | Binary cookie parsing, macOS only |
-| Tor Browser | Full | Firefox-based, cross-platform profile discovery |
-| Mobile (Android) | Full | Via ADB — Chrome and Firefox on Android |
-
-### Integration
-
-| Feature | Description |
-|---------|-------------|
-| **GitHub Actions** | CI/CD with lint, test matrix (3.10–3.12), security scan, build |
-| **Kubernetes** | Deployment, Service, ConfigMap, sidecar YAML generation |
+| Chrome | Strong | SQLite extraction, profile discovery; binary patch experimental |
+| Firefox | Strong | SQLite + LevelDB localStorage paths used in E2E |
+| Edge / Brave | Strong | Chromium-based |
+| Safari | Partial | macOS cookie parsing |
+| Tor Browser | Available | Firefox-based profile discovery |
+| Mobile (Android) | Available | Via ADB — less battle coverage than desktop |
 
 ## Quick Start (3 commands)
 
@@ -575,33 +558,24 @@ so servers see the donor's fingerprint, not yours.
 
 ## Why Tokenade?
 
-| Feature | Tokenade | Browser Extensions | Simple CLI Tools |
-|---------|----------|-------------------|------------------|
-| **CLI Interface** | ✅ Scriptable, automatable | ❌ GUI-only | ✅ |
-| **TLS Fingerprint Matching** | ✅ Bypasses Cloudflare/DataDome | ❌ | ❌ |
-| **Site-Agnostic** | ✅ Works with any website | ❌ Often site-specific | ⚠️ Limited |
-| **Multi-Browser** | ✅ Chrome/Firefox/Edge/Safari/Tor | ⚠️ Single browser | ❌ |
-| **localStorage Support** | ✅ Critical for Telegram, WhatsApp | ❌ | ❌ |
-| **Encrypted Session Files** | ✅ AES-256-GCM | ❌ | ⚠️ Varies |
-| **Stealth & Anti-Detection** | ✅ 14 patches, Cloudflare/Akamai bypass | ❌ | ❌ |
-| **Plugin System** | ✅ 16+ types, marketplace | ❌ | ❌ |
-| **Competitor Import** | ✅ AdsPower/Multilogin/GoLogin | ❌ | ❌ |
-| **Enterprise Features** | ✅ Audit, RBAC, LDAP | ❌ | ❌ |
-| **Self-Hosted** | ✅ No third-party | N/A | ✅ |
+| Feature | Tokenade (honest) | Browser Extensions | Simple cookie dump tools |
+|---------|-------------------|--------------------|--------------------------|
+| **CLI + portable `.tokenade` files** | Yes | Usually no | Partial |
+| **TLS-matched CDP proxy** | Yes (needs `curl-cffi`) | No | No |
+| **Multi-browser extract** | Yes (desktop strong) | Limited | Varies |
+| **localStorage packaging** | Yes (Telegram proven) | Varies | Rare |
+| **Encrypted session files** | Yes (core AES-GCM) | Rare | Rare |
+| **Undetectable vs all bot labs** | **No — do not claim this** | No | No |
+| **Full Multilogin replacement** | **No** | No | No |
+| **Self-hosted** | Yes | N/A | Yes |
 
 ## What's New in v6.4
 
-- **Plugin API v1.0** — All 20 plugins inherit from proper base classes (SessionRefreshPlugin, SiteHandlerPlugin, ProxyProviderPlugin, etc.)
-- **API_VERSION checking** — Plugins declare API version, loader validates at load time
-- **PluginResult** — Standard result type for all plugin methods
-- **PluginConfig** — Config with JSON schema validation
-- **Full Ecosystem Transfer** — .tokenade v3.0 format with per-origin localStorage + sessionStorage
-- **CDP StorageExtractor** — Extract localStorage/sessionStorage via Chrome DevTools Protocol
-- **Encryption at Export** — `--encrypt-password` flag encrypts .tokenade files at export time
-- **Plugin-First Export** — Auto-discovers site handler plugins for extraction
-- **ProxyProviderPlugin** — New base class for commercial proxy providers (AnyIP, BrightData, etc.)
-- **NotificationPlugin** — New base class for notification providers (Slack, Discord, Email)
-- **5165+ tests** — Comprehensive test coverage
+- **Plugin API v1.0/v1.1** — Base classes + PluginResult/PluginConfig
+- **Full ecosystem transfer format** — `.tokenade` v3 storage.local / storage.session per origin
+- **Encryption at export** — `--encrypt-password` uses core encryptor
+- **Plugin-first export** — site handlers can drive domains/critical cookies
+- **Honesty pass (2026-07-09)** — removed Grade A / fake plugin stats; single crypto path for session-encrypt plugin
 
 ## What's New in v6.3
 
@@ -641,11 +615,13 @@ CloakBrowser (stealth Chromium with 58 C++ patches) is a core dependency. The bi
 ### Optional Dependencies
 
 ```bash
-pip install tokenade[runtime]    # curl-cffi for TLS matching
-pip install tokenade[enterprise] # ldap3 for LDAP/SSO
+pip install tokenade[runtime]    # curl-cffi — required for TLS-matched proxy (core value)
+pip install tokenade[enterprise] # ldap3 for LDAP/SSO (experimental)
 pip install tokenade[linux]      # secretstorage for Linux keyring
 pip install 'tokenade[tui]'     # Interactive terminal UI (textual)
 ```
+
+**Note:** Proxy TLS matching without `curl-cffi` is degraded. Install `tokenade[runtime]` for the real product path.
 
 ### Development
 
@@ -763,7 +739,7 @@ tokenade/
 │   └── base.py                     # Plugin base classes
 ├── handlers/                       # Site-specific handlers
 ├── extension/                      # Browser extension
-└── tests/                          # 5165+ tests
+└── tests/                          # large automated suite (~5250 tests; not a quality grade)
 ```
 
 ## Security

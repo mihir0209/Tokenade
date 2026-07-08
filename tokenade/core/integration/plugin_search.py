@@ -74,8 +74,8 @@ class PluginSearchIndex:
                     "author": plugin.get("author", ""),
                     "category": plugin.get("category", ""),
                     "tags": plugin.get("tags", []),
-                    "rating": plugin.get("rating", 0),
-                    "downloads": plugin.get("downloads", 0),
+                    # rating/downloads omitted until real telemetry exists
+                    "verified": plugin.get("verified", False),
                 },
             }
             # Update document frequencies
@@ -113,10 +113,10 @@ class PluginSearchIndex:
             if query.lower() in name.lower():
                 score += 2.0
 
-            # Boost by rating and downloads
+            # Prefer verified plugins when real verification exists
             meta = doc["metadata"]
-            score += meta.get("rating", 0) * 0.05
-            score += min(math.log(meta.get("downloads", 0) + 1) * 0.1, 1.0)
+            if meta.get("verified"):
+                score += 0.5
 
             if score > 0:
                 results.append((name, score, meta))

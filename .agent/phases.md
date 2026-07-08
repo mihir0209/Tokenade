@@ -4,13 +4,14 @@
 
 | Metric | Value |
 |--------|-------|
-| Version | 6.3.0 |
-| Tests | 5126 passing |
-| CI | All green |
-| Plugins | 20 |
-| CLI Commands | 58 |
-| Core Lines | 49,616 |
-| Last updated | 2026-07-05 |
+| Version | 6.4.0 |
+| Tests | ~5250 collected (count is not a quality score) |
+| CI | Present |
+| Official plugins | 22 (all `verified=false` until contract review) |
+| CLI Commands | Large surface (~50+); core loop is ~6 commands |
+| Core Lines | ~51k |
+| Last updated | 2026-07-09 |
+| Honesty | P0 pass: fake marketplace metrics removed; Grade A stealth claim removed |
 
 ---
 
@@ -904,6 +905,21 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 **Verify**: 5126 tests passing, 0 failures
 **Dependencies**: Phase 69 ✅
 **Plan**: `.agent/plans/2026-07-05-code-audit-refactoring.md`
+
+### Phase P0 — Honesty Pass (2026-07-09) ✅
+**Status:** Complete (2026-07-09)  
+**Goal:** Stop lying in docs/marketplace; single crypto path; fix plugin types  
+**Checkpoint before work:** `checkpoint-2` (tokenade @ 1649d32, plugins @ 31654fc)  
+**What was done:**
+- Removed fake `downloads`/`rating` from tokenade-plugins registry; all `verified=false`
+- Corrected plugin manifest types (stealth/proxy/notification/export_format)
+- `session-encrypt` wraps core `TokenadeEncryptor` (600k PBKDF2); legacy decrypt only
+- Loader: `notification` registry; proxy auto-discover accepts ProxyProviderPlugin + ProxyPlugin
+- README battle-tested table; Grade A / Production Stable claims removed (→ Beta)
+- Plan for deferred claims: `.agent/plans/2026-07-09-p0-honesty-deferred-claims.md`
+- Review: `.agent/reviews/2026-07-09-brutal-code-review-tokenade-ecosystem.md`
+**Output:** Honest docs + registry v1.2.0  
+**Next:** P1 — CLI split, dual-handler collapse, curl-cffi fail-closed (see deferred claims plan)
 
 ### Phase 71 — Code Audit & Dead Code Removal (next)
 **Goal**: Remove dead code, consolidate overlapping modules

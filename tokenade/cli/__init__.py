@@ -389,7 +389,14 @@ def _plugin_popular(registry, args):
     for i, p in enumerate(plugins, 1):
         print(f"\n  {i}. {p['name']} v{p.get('version', '?')}")
         print(f"     {p.get('description', '')}")
-        print(f"     ↓ {p.get('downloads', 0)} downloads | ★ {p.get('rating', 0):.1f}")
+        dl = p.get("downloads")
+        rt = p.get("rating")
+        if dl is None and rt is None:
+            print("     metrics: n/a (downloads/ratings not tracked yet)")
+        else:
+            dl_s = f"↓ {dl} downloads" if dl is not None else "↓ n/a"
+            rt_s = f"★ {rt:.1f}" if rt is not None else "★ n/a"
+            print(f"     {dl_s} | {rt_s}")
 
     print(f"\n{'=' * 60}\n")
 
@@ -1274,7 +1281,12 @@ Commands:
     plugin_search_parser.add_argument("--type", dest="plugin_type", help="Filter by plugin type")
     plugin_search_parser.add_argument("--category", help="Filter by category")
     plugin_search_parser.add_argument("--tags", help="Comma-separated tags to filter")
-    plugin_search_parser.add_argument("--sort", choices=["rating", "downloads", "name", "recent", "trending"], default="rating", help="Sort order")
+    plugin_search_parser.add_argument(
+        "--sort",
+        choices=["rating", "downloads", "name", "recent", "trending"],
+        default="name",
+        help="Sort order (default: name — registry has no fake download/rating metrics)",
+    )
 
     # plugin categories
     plugin_sub.add_parser("categories", help="List plugin categories")

@@ -4,7 +4,8 @@ Plugin registry using GitHub raw content.
 Plugins are listed in a JSON file hosted in a public GitHub repo.
 No domain or hosting costs required.
 
-Enhanced with categories, tags, ratings, download tracking, and verification.
+Enhanced with categories, tags, local ratings/downloads (optional), and verification.
+Registry JSON must not ship hand-edited vanity downloads/ratings (honesty policy).
 """
 
 import json
@@ -155,11 +156,22 @@ class PluginRegistry:
             if name in self._local_downloads:
                 p["downloads"] = p.get("downloads", 0) + self._local_downloads[name]
 
-        # Sort
+        # Sort — name is the honest default when registry has no metrics
         if sort_by == "rating":
-            results.sort(key=lambda p: (-p.get("rating", 0), -p.get("review_count", 0)))
+            results.sort(
+                key=lambda p: (
+                    -float(p["rating"]) if p.get("rating") is not None else 0,
+                    -p.get("review_count", 0),
+                    p.get("name", ""),
+                )
+            )
         elif sort_by == "downloads":
-            results.sort(key=lambda p: -p.get("downloads", 0))
+            results.sort(
+                key=lambda p: (
+                    -int(p["downloads"]) if p.get("downloads") is not None else 0,
+                    p.get("name", ""),
+                )
+            )
         elif sort_by == "name":
             results.sort(key=lambda p: p.get("name", ""))
         elif sort_by == "recent":
@@ -168,13 +180,16 @@ class PluginRegistry:
             import time
             week_ago = time.time() - 7 * 86400
             for p in results:
-                recent = p.get("recent_downloads", {})
+                recent = p.get("recent_downloads", {}) or []
                 trending_score = 0
-                for entry in recent:
-                    if entry.get("date", 0) > week_ago:
-                        trending_score += entry.get("count", 0)
+                if isinstance(recent, list):
+                    for entry in recent:
+                        if entry.get("date", 0) > week_ago:
+                            trending_score += entry.get("count", 0)
                 p["_trending"] = trending_score
-            results.sort(key=lambda p: -p.get("_trending", 0))
+            results.sort(key=lambda p: (-p.get("_trending", 0), p.get("name", "")))
+        else:
+            results.sort(key=lambda p: p.get("name", ""))
 
         return results
 

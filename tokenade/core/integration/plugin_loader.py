@@ -43,6 +43,7 @@ class PluginLoader:
         self._stealths: Dict[str, Any] = {}
         self._proxies: Dict[str, Any] = {}
         self._captchas: Dict[str, Any] = {}
+        self._notifications: Dict[str, Any] = {}
         self._disabled: set = set()
         self._load_disabled_list()
 
@@ -131,24 +132,34 @@ class PluginLoader:
         else:
             # Auto-discover: look for class that subclasses the target type
             type_class_map = {
-                "handler": "SiteHandlerPlugin",
-                "export_format": "ExportFormatPlugin",
-                "validator": "SessionValidatorPlugin",
-                "session_refresh": "SessionRefreshPlugin",
-                "stealth": "StealthPlugin",
-                "proxy": "ProxyPlugin",
-                "captcha": "CaptchaPlugin",
+                "handler": ("SiteHandlerPlugin",),
+                "export_format": ("ExportFormatPlugin",),
+                "validator": ("SessionValidatorPlugin",),
+                "session_refresh": ("SessionRefreshPlugin",),
+                "stealth": ("StealthPlugin",),
+                # Prefer Provider; fall back to legacy ProxyPlugin
+                "proxy": ("ProxyProviderPlugin", "ProxyPlugin"),
+                "notification": ("NotificationPlugin",),
+                "captcha": ("CaptchaPlugin",),
             }
-            target_name = type_class_map.get(plugin_type, "")
-            if target_name:
+            target_names = type_class_map.get(plugin_type, ())
+            if target_names:
                 from tokenade.plugin import base as _base
-                target_cls = getattr(_base, target_name, None)
-                if target_cls:
+                for target_name in target_names:
+                    target_cls = getattr(_base, target_name, None)
+                    if not target_cls:
+                        continue
                     for attr_name in dir(module):
                         attr = getattr(module, attr_name)
-                        if isinstance(attr, type) and issubclass(attr, target_cls) and attr is not target_cls:
+                        if (
+                            isinstance(attr, type)
+                            and issubclass(attr, target_cls)
+                            and attr is not target_cls
+                        ):
                             entry_class = attr
                             break
+                    if entry_class:
+                        break
 
         if not entry_class:
             logger.error(f"Plugin {name}: no entry class found")
@@ -207,8 +218,14 @@ class PluginLoader:
             self._stealths[name] = instance
         elif plugin_type == "proxy":
             self._proxies[name] = instance
+        elif plugin_type == "notification":
+            self._notifications[name] = instance
         elif plugin_type == "captcha":
             self._captchas[name] = instance
+        else:
+            logger.warning(
+                f"Plugin {name}: unknown type '{plugin_type}' — loaded but not typed-registered"
+            )
 
         logger.info(f"Loaded plugin: {name} v{loaded.version} ({plugin_type})")
         return loaded
@@ -233,6 +250,10 @@ class PluginLoader:
             self._stealths = {k: v for k, v in self._stealths.items() if v is not plugin.instance}
         elif plugin.plugin_type == "proxy":
             self._proxies = {k: v for k, v in self._proxies.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "notification":
+            self._notifications = {
+                k: v for k, v in self._notifications.items() if v is not plugin.instance
+            }
         elif plugin.plugin_type == "captcha":
             self._captchas = {k: v for k, v in self._captchas.items() if v is not plugin.instance}
 

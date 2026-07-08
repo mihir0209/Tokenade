@@ -59,8 +59,13 @@ my-plugin/
 | `tags` | array | Searchable tags |
 | `dependencies` | array | Python package dependencies |
 | `min_version` | string | Minimum tokenade version |
-| `verified` | boolean | Verified by Tokenade team |
+| `verified` | boolean | **Only true after contract tests + human review** (default false) |
+| `api_version` | string | Plugin API version (e.g. `1.0.0`) |
 | `icon` | string | Emoji icon for marketplace |
+
+### Forbidden vanity fields
+
+Do **not** add hand-edited `downloads` or `rating` to manifests. Those fields are omitted until real telemetry exists. Inventing them is a honesty-policy violation.
 
 ### Plugin Types
 
@@ -71,8 +76,13 @@ my-plugin/
 | `export_format` | `ExportFormatPlugin` | Custom export formats |
 | `validator` | `SessionValidatorPlugin` | Session health validation |
 | `stealth` | `StealthPlugin` | Browser stealth patches |
-| `proxy` | `ProxyPlugin` | Proxy providers |
+| `proxy` | `ProxyProviderPlugin` / `ProxyPlugin` | Proxy providers |
+| `notification` | `NotificationPlugin` | Webhooks / alerts |
 | `captcha` | `CaptchaPlugin` | CAPTCHA solving |
+
+### Crypto rule
+
+Session encryption must use `tokenade.core.crypto.encryptor.TokenadeEncryptor` (AES-256-GCM, PBKDF2 600k). Plugins must not ship weaker parallel crypto.
 
 ## Writing a Plugin
 

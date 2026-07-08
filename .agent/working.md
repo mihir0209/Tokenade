@@ -1,5 +1,12 @@
 # Tokenade — Working Notes
 
+## Honesty Policy (2026-07-09)
+
+- Public docs must not claim Grade A stealth, fake plugin downloads/ratings, or Production/Stable without evidence.
+- Deferred overclaims: `.agent/plans/2026-07-09-p0-honesty-deferred-claims.md`
+- Brutal review: `.agent/reviews/2026-07-09-brutal-code-review-tokenade-ecosystem.md`
+- Checkpoint before honesty work: branch `checkpoint-2` @ 1649d32
+
 ## Release Policy
 
 **DO NOT create releases or tags per feature.**
@@ -11,9 +18,14 @@
 - PyPI publishes only happen when user explicitly requests it
 - This keeps the repo clean and avoids premature versioning
 
-## Current State (2026-06-21)
+## Current State (2026-07-09)
 
-### Version: 5.7.0 (released)
+### Version: 6.4.0 (local / PyPI as last published — confirm before assuming)
+### P0 honesty pass applied on main (post checkpoint-2)
+
+## Historical note — state at 2026-06-21
+
+### Version: 5.7.0 (released then)
 - **PyPI:** https://pypi.org/project/tokenade/5.7.0/
 - **GitHub:** https://github.com/mihir0209/Tokenade/releases/tag/v5.7.0
 - 4385 tests passing, 8 skipped, 0 failures
