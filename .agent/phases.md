@@ -933,6 +933,18 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 **Verify:** CLI imports; pytest plugin + cli management/proxy/tls suites green  
 **Next:** P2 — plugin CI / verified badges; deeper dual-handler migration of CLI call sites
 
+### Phase P2 — Plugin contracts CI + dual-handler migration (2026-07-09) ✅
+**Status:** Complete (2026-07-09)  
+**Goal:** Official plugins fail-closed on contract tests; verified badge policy real  
+**What was done:**
+- PluginTestRunner: notification type, vanity-metric ban, type↔class match
+- tokenade-plugins: GitHub Actions CI + `scripts/run_contracts.py`
+- session-backup/session-merge type fixed to `handler` (class match)
+- site_configs JSON overlay loader; CLI portability test picks handler by site_name
+- Core test `test_official_plugin_contracts.py` when plugins repo present
+**Verify:** full suite 5248 passed, 7 skipped; `scripts/run_contracts.py` 22/22 PASS  
+**Next:** P3 debt — deeper CLI off GoogleHandler, delete core-duplicate plugins, real ratings telemetry
+
 ### Phase 71 — Code Audit & Dead Code Removal (next)
 **Goal**: Remove dead code, consolidate overlapping modules
 **Output**: ~3,000 lines removed

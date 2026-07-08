@@ -266,11 +266,49 @@ SITE_CONFIGS = {
 }
 
 
+def _load_json_site_configs() -> dict:
+    """Load optional JSON site configs from package site_configs/ and CWD.
+
+    JSON files extend/override the built-in SITE_CONFIGS table. This is the
+    preferred place for domain/critical-cookie lists (P1/P2 honesty).
+    """
+    import json
+    from pathlib import Path
+
+    merged = {}
+    candidates = []
+    # Repo / install layout: <root>/site_configs/*.json
+    pkg_root = Path(__file__).resolve().parents[3]
+    candidates.append(pkg_root / "site_configs")
+    candidates.append(Path.cwd() / "site_configs")
+    home = Path.home() / ".tokenade" / "site_configs"
+    candidates.append(home)
+
+    for directory in candidates:
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            name = (data.get("name") or path.stem).lower()
+            merged[name] = data
+    return merged
+
+
 def get_site_config(site_name: str) -> dict:
-    """Get config for a specific site."""
-    return SITE_CONFIGS.get(site_name.lower(), {})
+    """Get config for a specific site (built-in + JSON overlays)."""
+    key = site_name.lower()
+    cfg = dict(SITE_CONFIGS.get(key, {}))
+    overlay = _load_json_site_configs().get(key, {})
+    if overlay:
+        cfg.update(overlay)
+    return cfg
 
 
 def list_sites() -> list:
-    """List all available site configs."""
-    return list(SITE_CONFIGS.keys())
+    """List all available site configs (built-in + JSON)."""
+    names = set(SITE_CONFIGS.keys())
+    names.update(_load_json_site_configs().keys())
+    return sorted(names)

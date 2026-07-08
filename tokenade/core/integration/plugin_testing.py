@@ -68,6 +68,7 @@ class PluginTestRunner:
         suite.results.append(self._test_plugin_instantiable(plugin_name))
         suite.results.append(self._test_plugin_metadata(plugin_name))
         suite.results.append(self._test_plugin_type_methods(plugin_name))
+        suite.results.append(self._test_type_class_match(plugin_name))
 
         return suite
 
@@ -98,13 +99,23 @@ class PluginTestRunner:
                     passed=False,
                     message=f"Missing fields: {missing}",
                 )
-            valid_types = ["handler", "export_format", "validator", "session_refresh",
-                           "stealth", "proxy", "captcha"]
+            valid_types = [
+                "handler", "export_format", "validator", "session_refresh",
+                "stealth", "proxy", "captcha", "notification",
+            ]
             if meta["type"] not in valid_types:
                 return PluginTestResult(
                     test_name="manifest_valid",
                     passed=False,
                     message=f"Invalid type: {meta['type']}",
+                )
+            # Honesty: no hand-edited vanity metrics in official manifests
+            vanity = [k for k in ("downloads", "rating") if k in meta]
+            if vanity:
+                return PluginTestResult(
+                    test_name="manifest_valid",
+                    passed=False,
+                    message=f"Vanity metrics not allowed until real telemetry: {vanity}",
                 )
             return PluginTestResult(test_name="manifest_valid", passed=True)
         except (json.JSONDecodeError, OSError) as e:
@@ -184,7 +195,8 @@ class PluginTestRunner:
             from tokenade.plugin.base import (
                 PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
                 ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyPlugin, CaptchaPlugin,
+                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                CaptchaPlugin, NotificationPlugin,
             )
             type_bases = {
                 "handler": SiteHandlerPlugin,
@@ -192,15 +204,21 @@ class PluginTestRunner:
                 "validator": SessionValidatorPlugin,
                 "session_refresh": SessionRefreshPlugin,
                 "stealth": StealthPlugin,
-                "proxy": ProxyPlugin,
+                "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                "notification": NotificationPlugin,
                 "captcha": CaptchaPlugin,
             }
-            base = type_bases.get(meta["type"], PluginBase)
+            bases = type_bases.get(meta["type"], PluginBase)
+            if not isinstance(bases, tuple):
+                bases = (bases,)
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                if isinstance(attr, type) and issubclass(attr, base) and attr is not base:
-                    instance = attr()
-                    return PluginTestResult(test_name="plugin_instantiable", passed=True)
+                if not isinstance(attr, type):
+                    continue
+                for base in bases:
+                    if issubclass(attr, base) and attr is not base:
+                        instance = attr()
+                        return PluginTestResult(test_name="plugin_instantiable", passed=True)
 
             return PluginTestResult(
                 test_name="plugin_instantiable",
@@ -255,7 +273,8 @@ class PluginTestRunner:
             from tokenade.plugin.base import (
                 PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
                 ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyPlugin, CaptchaPlugin,
+                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                CaptchaPlugin, NotificationPlugin,
             )
             type_methods = {
                 "handler": ["can_handle", "extract_session", "inject_session"],
@@ -264,6 +283,7 @@ class PluginTestRunner:
                 "session_refresh": ["can_refresh", "refresh"],
                 "stealth": ["get_patches"],
                 "proxy": ["get_proxy"],
+                "notification": ["send", "get_supported_events"],
                 "captcha": ["get_supported_types", "solve"],
             }
             required = type_methods.get(meta["type"], [])
@@ -284,14 +304,22 @@ class PluginTestRunner:
                     "validator": SessionValidatorPlugin,
                     "session_refresh": SessionRefreshPlugin,
                     "stealth": StealthPlugin,
-                    "proxy": ProxyPlugin,
+                    "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                    "notification": NotificationPlugin,
                     "captcha": CaptchaPlugin,
                 }
-                base = type_bases.get(meta["type"], PluginBase)
+                bases = type_bases.get(meta["type"], PluginBase)
+                if not isinstance(bases, tuple):
+                    bases = (bases,)
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    if isinstance(attr, type) and issubclass(attr, base) and attr is not base:
-                        instance = attr()
+                    if not isinstance(attr, type):
+                        continue
+                    for base in bases:
+                        if issubclass(attr, base) and attr is not base:
+                            instance = attr()
+                            break
+                    if instance:
                         break
 
             if not instance:
@@ -311,6 +339,77 @@ class PluginTestRunner:
             return PluginTestResult(test_name="type_methods", passed=True)
         except Exception as e:
             return PluginTestResult(test_name="type_methods", passed=False, message=str(e))
+
+    def _test_type_class_match(self, plugin_name: str) -> PluginTestResult:
+        """Manifest type must match the entry class base (no mis-typed plugins)."""
+        plugin_dir = self.plugins_dir / plugin_name
+        meta_path = plugin_dir / "plugin.json"
+        if not meta_path.exists():
+            return PluginTestResult(test_name="type_class_match", passed=False, message="No manifest")
+
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+            entry_class_name = meta.get("entry_class", "")
+            if not entry_class_name:
+                # Legacy manifests may omit entry_class; type_methods already covered them
+                return PluginTestResult(
+                    test_name="type_class_match",
+                    passed=True,
+                    message="skipped (no entry_class)",
+                )
+
+            entry_file = plugin_dir / meta["entry_point"]
+            spec = importlib.util.spec_from_file_location(
+                f"plugin_match_{plugin_name}", str(entry_file)
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            cls = getattr(module, entry_class_name, None)
+            if cls is None:
+                return PluginTestResult(
+                    test_name="type_class_match",
+                    passed=False,
+                    message=f"Class {entry_class_name} not found",
+                )
+
+            from tokenade.plugin.base import (
+                SessionRefreshPlugin, SiteHandlerPlugin,
+                ExportFormatPlugin, SessionValidatorPlugin,
+                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                CaptchaPlugin, NotificationPlugin,
+            )
+            expected = {
+                "handler": (SiteHandlerPlugin,),
+                "export_format": (ExportFormatPlugin,),
+                "validator": (SessionValidatorPlugin,),
+                "session_refresh": (SessionRefreshPlugin,),
+                "stealth": (StealthPlugin,),
+                "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                "notification": (NotificationPlugin,),
+                "captcha": (CaptchaPlugin,),
+            }.get(meta.get("type", ""), ())
+
+            if not expected:
+                return PluginTestResult(
+                    test_name="type_class_match",
+                    passed=False,
+                    message=f"Unknown type {meta.get('type')}",
+                )
+
+            if any(issubclass(cls, base) for base in expected):
+                return PluginTestResult(test_name="type_class_match", passed=True)
+
+            return PluginTestResult(
+                test_name="type_class_match",
+                passed=False,
+                message=(
+                    f"type={meta.get('type')} but {entry_class_name} is not "
+                    f"subclass of {[b.__name__ for b in expected]}"
+                ),
+            )
+        except Exception as e:
+            return PluginTestResult(test_name="type_class_match", passed=False, message=str(e))
 
     def test_all(self) -> List[PluginTestSuite]:
         """Test all installed plugins."""

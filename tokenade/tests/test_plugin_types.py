@@ -310,8 +310,8 @@ class MyPlugin(StealthPlugin):
         runner = PluginTestRunner(plugins_dir=tmp_path)
         suite = runner.test_plugin("my-plugin")
         assert suite.passed is True
-        assert suite.total == 7
-        assert suite.passed_count == 7
+        assert suite.total == 8  # includes type_class_match (P2)
+        assert suite.passed_count == 8
         assert suite.failed_count == 0
 
     def test_test_all(self, tmp_path):

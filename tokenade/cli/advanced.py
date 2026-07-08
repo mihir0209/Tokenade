@@ -318,12 +318,26 @@ def cmd_fingerprint(args):
             print(f"❌ Not found: {args.name}")
 
 
+def _resolve_legacy_handler_class(session_data: dict):
+    """Pick a legacy SiteHandler for portability tests.
+
+    Prefer site_name-driven selection. New work should use plugins +
+    site_configs JSON; these imports stay for backward-compatible tests.
+    """
+    site = (session_data.get("site_name") or "google").lower()
+    if site in ("github", "gh"):
+        from tokenade.handlers.github import GitHubHandler
+        return GitHubHandler
+    # Default legacy path (google) — dual-system still present
+    from tokenade.handlers.google import GoogleHandler
+    return GoogleHandler
+
+
 def cmd_test(args):
     """Run portability tests with fingerprint spoofing."""
     from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
     from tokenade.core.fingerprint.manager import FingerprintManager
     from tokenade.core.fingerprint.injector import validate_injection
-    from tokenade.handlers.google import GoogleHandler
     from tokenade.tests.portability import PortabilityTester
 
     print("\n" + "=" * 80)
@@ -338,6 +352,12 @@ def cmd_test(args):
     with open(session_file) as f:
         session_data = json.load(f)
 
+    handler_class = _resolve_legacy_handler_class(session_data)
+    print(
+        f"\n⚠️  Using legacy handler {handler_class.__name__} "
+        f"(prefer site plugins / site_configs for new work)"
+    )
+
     fp_manager = FingerprintManager()
     tester = PortabilityTester(BrowserFactory, fp_manager)
 
@@ -348,7 +368,7 @@ def cmd_test(args):
         tester.test_fingerprint_variations(
             session_data=session_data,
             base_fp_name=args.source_fp or "default",
-            handler_class=GoogleHandler,
+            handler_class=handler_class,
         )
     else:
         print(f"\n🧪 Testing transfer to: {args.target_fp}")
@@ -362,7 +382,7 @@ def cmd_test(args):
             session_data=session_data,
             source_fp_name=args.source_fp or "default",
             target_fp_name=args.target_fp,
-            handler_class=GoogleHandler,
+            handler_class=handler_class,
             test_api=args.test_api,
         )
         [result]
