@@ -226,4 +226,56 @@ So: **flow correction was valid; outcome still not logged-in Gmail** under curre
 - Target was **Edge/Windows** (non-Chrome DBSC) not Canary Chrome headless/headed temp profile  
 - Session used **immediately** after login/export (less risk aging)  
 - Different command: `proxy` / `load` / profile inject rather than CDP `launch`  
-- Older launcher without accounts.google.com bounce (now removed)
+- Older launcher without accounts.google.com bounce (now removed)  
+
+---
+
+## Successful retest (2026-07-10) — fresh Firefox login + clean profiles
+
+User re-logged Google in Firefox, quit Firefox, flagged ready.
+
+### Export (user-corrected command)
+
+```bash
+tokenade export --browser-name firefox \
+  --domains "google.com,accounts.google.com" \
+  -o gmail.tokenade
+```
+
+| Metric | Value |
+|--------|------:|
+| Cookies | **178** |
+| Critical | 50 (SID family present) |
+| Health | **✅ HEALTHY 99.4%** |
+| Control chars | **0** |
+| `gmail.tokenade` | gitignored (not committed) |
+
+### Launch targets (clean `--profile-dir`, not system Brave/Chrome)
+
+| Flow | Result |
+|------|--------|
+| **Firefox → clean Brave** + Gmail | **PASS — Inbox** `Inbox (3,703) - mihirpatil128@gmail.com - Gmail` · `#inbox` · compose present |
+| **Firefox → clean Chrome** (same jar, after Brave test) | **FAIL** — accountchooser **Signed out** for all identities |
+
+### Lessons (root causes of earlier agent failures)
+
+1. **Stale / signed-out donor cookies** — earlier Firefox jar was already “Signed out” at Google; export looked fine but auth was dead.  
+2. **Dirty target profile** — system Brave had signed-out chooser state; must use **fresh profile**.  
+3. **Donor still running** — Firefox open during prior export could race; quit first.  
+4. **Wrong flow flags** — headless / wrong browser / accounts.google.com bounce (removed).  
+5. **Chrome as target** still flaky (this run failed after Brave already used the jar — multi-use and/or Chrome risk).  
+
+### Recommended golden path (proven this session)
+
+```bash
+# 1) Log into Google in Firefox, fully quit Firefox
+tokenade export --browser-name firefox \
+  --domains "google.com,accounts.google.com" \
+  -o gmail.tokenade
+
+# 2) Clean Brave (or Edge), not a profile that already has Signed out
+tokenade launch -b brave -s gmail.tokenade -u https://mail.google.com \
+  --profile-dir /tmp/tokenade-gmail-brave
+```
+
+**Do not** reuse the same jar on a second browser without re-export; Google multi-device will kill it.
