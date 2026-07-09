@@ -162,8 +162,17 @@ def cmd_proxy(args):
             from tokenade.core.proxy.forward_proxy import ForwardProxy
             session = packager.load(str(session_file))
             proxy = ForwardProxy(session, port=args.port, host=args.host)
+            if not args.no_open_browser:
+                def open_browser_thread():
+                    time.sleep(2)
+                    webbrowser.open(f"http://{args.host if args.host != '0.0.0.0' else '127.0.0.1'}:{args.port}")
+                threading.Thread(target=open_browser_thread, daemon=True).start()
+            print("\n🚀 Starting proxy server...")
+            # ForwardProxy.start() blocks until cancelled; do not call proxy.run()
             asyncio.run(proxy.start())
-        elif args.legacy:
+            return
+
+        if args.legacy:
             from tokenade.core.proxy.server import TokenadeProxy, ProxyConfig
             gui_mode = not args.no_gui
             config = ProxyConfig(
@@ -206,8 +215,8 @@ def cmd_proxy(args):
 
         if not args.no_open_browser:
             def open_browser_thread():
-                import time
-                time.sleep(2)
+                import time as _time
+                _time.sleep(2)
                 if args.host == "0.0.0.0":
                     import socket
                     try:
@@ -229,7 +238,18 @@ def cmd_proxy(args):
             threading.Thread(target=open_browser_thread, daemon=True).start()
 
         print("\n🚀 Starting proxy server...")
-        proxy.run()
+        if hasattr(proxy, "run"):
+            proxy.run()
+        elif hasattr(proxy, "start"):
+            # TokenadeProxy / other start APIs
+            maybe = proxy.start()
+            if asyncio.iscoroutine(maybe):
+                asyncio.run(maybe)
+            else:
+                # blocking start
+                pass
+        else:
+            raise RuntimeError(f"Proxy type {type(proxy).__name__} has no run/start method")
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Proxy stopped by user")

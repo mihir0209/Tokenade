@@ -36,6 +36,12 @@ def cmd_launch(args):
         print(f"❌ {args.browser} not found. Install it or specify --browser-path")
         return
 
+    # --headless wins; otherwise default to visible UI
+    visible = bool(getattr(args, "visible", False)) or not bool(getattr(args, "headless", False))
+    if getattr(args, "headless", False):
+        visible = False
+    args.visible = visible  # normalize for rest of function
+
     print(f"\n🌐 Browser: {args.browser} ({browser_path})")
     print(f"🔌 CDP Port: {args.port}")
     print(f"👁️  Visible: {args.visible}")
@@ -46,23 +52,28 @@ def cmd_launch(args):
         print(f"🔀 Upstream proxy: {upstream_proxy}")
 
     try:
-        # Check if browser is already running (profile will be locked)
-        import subprocess as _sp
-        _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
-        try:
-            _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
-            _is_running = False
-            if platform.system() != "Windows" and _running.returncode == 0:
-                _is_running = int(_running.stdout.strip()) > 0
-            elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
-                _is_running = True
-            if _is_running:
-                print(f"   ⚠️  {args.browser} is already running. Profile is locked.")
-                print(f"   Close all {args.browser} windows first, then retry.")
-                print(f"   Or start {args.browser} with: {args.browser} --remote-debugging-port={args.port}")
-                return
-        except Exception:
-            pass  # If we can't check, just try to launch
+        # Profile lock only matters when reusing the *default system* profile.
+        # Custom --profile-dir or --session uses a separate user-data-dir and can
+        # run alongside an open browser (feature testing / multi-profile).
+        using_isolated_profile = bool(args.profile_dir or args.session)
+        if not using_isolated_profile:
+            import subprocess as _sp
+            _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
+            try:
+                _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+                _is_running = False
+                if platform.system() != "Windows" and _running.returncode == 0:
+                    _is_running = int(_running.stdout.strip()) > 0
+                elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
+                    _is_running = True
+                if _is_running:
+                    print(f"   ⚠️  {args.browser} is already running. Default profile is locked.")
+                    print(f"   Close all {args.browser} windows first, then retry.")
+                    print(f"   Or use --profile-dir / --session for an isolated profile.")
+                    print(f"   Or start {args.browser} with: {args.browser} --remote-debugging-port={args.port}")
+                    return
+            except Exception:
+                pass  # If we can't check, just try to launch
 
         # Copy real profile only when NO session file (cookies come from profile)
         # When session file IS provided, use fresh profile (session cookies are authoritative)
@@ -198,37 +209,92 @@ def cmd_launch(args):
                 await cdp_cmd(tab_ws, "Page.enable")
                 await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
 
-                # Step 4: Inject cookies
+                # Step 4: Inject cookies (per-cookie — batch setCookies fails hard on one bad field)
                 print(f"   Injecting {len(cookies)} cookies...", flush=True)
                 cdp_cookies = []
                 for cookie in cookies:
+                    name = cookie.get("name") or ""
+                    if not name:
+                        continue
+                    domain = cookie.get("domain") or ""
+                    # CDP rejects empty domain without url
+                    if not domain and not cookie.get("url"):
+                        continue
                     cdp_cookie = {
-                        "name": cookie.get("name", ""),
-                        "value": cookie.get("value", ""),
-                        "domain": cookie.get("domain", ""),
-                        "path": cookie.get("path", "/"),
+                        "name": name,
+                        "value": str(cookie.get("value", "")),
+                        "path": cookie.get("path") or "/",
                     }
+                    if domain:
+                        cdp_cookie["domain"] = domain
+                    elif cookie.get("url"):
+                        cdp_cookie["url"] = cookie["url"]
                     if cookie.get("secure"):
                         cdp_cookie["secure"] = True
                     if cookie.get("httpOnly"):
                         cdp_cookie["httpOnly"] = True
                     if cookie.get("sameSite"):
-                        same_site = cookie["sameSite"]
+                        same_site = str(cookie["sameSite"])
+                        # Normalize common variants
+                        ss_map = {
+                            "strict": "Strict",
+                            "lax": "Lax",
+                            "none": "None",
+                            "no_restriction": "None",
+                            "unspecified": "Lax",
+                        }
+                        same_site = ss_map.get(same_site.lower(), same_site)
                         if same_site in ("Strict", "Lax", "None"):
                             cdp_cookie["sameSite"] = same_site
-                    expires = cookie.get("expires", 0)
-                    if expires and int(expires) > 0:
-                        exp = int(expires)
+                    expires = cookie.get("expires", 0) or 0
+                    try:
+                        exp = int(float(expires))
+                    except (TypeError, ValueError):
+                        exp = 0
+                    if exp > 0:
+                        # ms → s
                         if exp > 1262304000000:
                             exp = exp // 1000
-                        cdp_cookie["expires"] = exp
+                        # skip already-expired (Chrome can reject)
+                        if exp > time.time():
+                            cdp_cookie["expires"] = exp
                     # CDP requires secure=true when sameSite=None
                     if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                        cdp_cookie["secure"] = True
+                    # __Host- / __Secure- cookies need secure + correct domain shape
+                    if name.startswith("__Host-"):
+                        cdp_cookie["secure"] = True
+                        cdp_cookie["path"] = "/"
+                        # __Host- must not have Domain attribute
+                        cdp_cookie.pop("domain", None)
+                        if not cdp_cookie.get("url"):
+                            # best-effort origin from domain-like data
+                            host = (domain or "").lstrip(".")
+                            if host:
+                                cdp_cookie["url"] = f"https://{host}/"
+                    elif name.startswith("__Secure-"):
                         cdp_cookie["secure"] = True
                     cdp_cookies.append(cdp_cookie)
 
                 await cdp_cmd(tab_ws, "Network.enable")
-                await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+                injected = 0
+                failed = 0
+                # Try batch first for speed
+                try:
+                    await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+                    injected = len(cdp_cookies)
+                except Exception as batch_err:
+                    print(f"   ⚠️  Batch cookie inject failed ({batch_err}); retrying per-cookie...", flush=True)
+                    for cdp_cookie in cdp_cookies:
+                        try:
+                            await cdp_cmd(tab_ws, "Network.setCookie", cdp_cookie)
+                            injected += 1
+                        except Exception:
+                            failed += 1
+                print(f"   Cookies injected: {injected}/{len(cdp_cookies)}"
+                      + (f" (skipped {failed})" if failed else ""), flush=True)
+                if injected == 0 and cdp_cookies:
+                    raise RuntimeError(f"Failed to inject any of {len(cdp_cookies)} cookies")
 
                 # Step 5: Navigate to site
                 if args.url:

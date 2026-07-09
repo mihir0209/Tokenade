@@ -1505,7 +1505,7 @@ Commands:
     launch_parser.add_argument("--url", "-u", help="URL to navigate to after injection")
     launch_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
     launch_parser.add_argument("--profile-dir", help="Custom profile directory")
-    launch_parser.add_argument("--visible", action="store_true", default=True, help="Show browser window (default: True)")
+    launch_parser.add_argument("--visible", action="store_true", help="Show browser window (default unless --headless)")
     launch_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
     launch_parser.add_argument("--extra-args", help="Extra browser args (comma-separated)")
     launch_parser.add_argument("--browser-path", help="Path to browser executable")

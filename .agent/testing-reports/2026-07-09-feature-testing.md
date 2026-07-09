@@ -95,3 +95,54 @@ Repo-root `.tokenade` samples are **stale** (June ages / expired criticals) — 
 
 **Core loop works on this machine for export → package → health → crypto → autopsy → accounts.**  
 Two real product bugs were found and fixed during testing. Inject/launch E2E needs a free browser profile (or temp profile-dir) before claiming live inject battle results today.
+
+---
+
+## Pass 2 — launch inject + proxy (2026-07-09 evening)
+
+### Launch inject (temp profile, headless)
+
+| Session | Result | Evidence |
+|---------|--------|----------|
+| Firefox → GitHub → Chrome headless | **PASS — LOGGED IN** | CDP cookies include `user_session`, `logged_in`, `__Host-user_session_same_site`; SW URL has `current_user=mihir0209`; title `GitHub` @ `https://github.com/` |
+| Brave → Google → Chrome headless | **FAIL (export quality)** | All 80 cookie values are undecrypted binary (control/non-ASCII). CDP rejects with `Sanitizing cookie failed` / `Invalid cookie fields`. Not an inject bug once values are garbage. |
+
+### Proxy
+
+| Mode | Result | Evidence |
+|------|--------|----------|
+| CDP proxy (Playwright, no fingerprint) | **PASS** | Starts on port; GUI `/` 200; context inject 9/9 cookies (raw CDP batch failed then fallback) |
+| CDP proxy + `--fingerprint` | **PASS** | curl-cffi TLS matching enabled; GUI 200 |
+| Forward proxy | **PASS (after fix)** | `HTTPS api.github.com/zen` → 200 via `HTTP_PROXY` |
+
+### Bugs fixed this pass
+
+1. **`launch` refused isolated profiles** when any Chrome process existed — even with `--profile-dir` / `--session`. Now only blocks default-profile reuse.
+2. **`--headless` ignored** (`--visible` defaulted `store_true=True`). Headless now forces `visible=False`.
+3. **`proxy --mode forward` crashed** after start: `ForwardProxy` has no `.run()` (CDP does). CLI no longer calls `run()` after `asyncio.run(start())`.
+4. **Bulk cookie inject hard-fail** — now per-cookie fallback + clearer counts (still cannot inject undecrypted Brave values).
+
+### Open (export / inject)
+
+| ID | Severity | Issue |
+|----|----------|-------|
+| O6 | **High** | Brave/Chromium **cookie decryption** on this Linux host exports binary garbage for all google.com cookies. Firefox SQLite path works. Blocks real Google inject/proxy until fixed. |
+| O7 | Med | CDP proxy: raw CDP `Page.addScriptToEvaluateOnNewDocument` / batch cookie inject fails; context inject fallback works — noisy warnings. |
+| O8 | Low | `launch` blocks on `process.wait()` until Ctrl+C (by design for interactive use). |
+
+### Commands used
+
+```bash
+tokenade launch -b chrome -s export-ff-github.tokenade -u https://github.com \
+  --headless --no-cloak --port 9344 --profile-dir /tmp/.../chrome-gh2
+
+tokenade proxy -s export-ff-github.tokenade --port 9355 --no-open-browser
+tokenade proxy -s export-ff-github.tokenade --mode forward --port 9377 --no-open-browser
+tokenade proxy -s export-ff-github.tokenade --fingerprint --port 9388 --no-open-browser
+```
+
+### Verdict (pass 2)
+
+- **GitHub session portability via launch inject: battle-confirmed on this machine.**
+- **Proxy (CDP + forward + fingerprint flag): operational.**
+- **Google via Brave export: blocked on cookie decryption, not launch.**
