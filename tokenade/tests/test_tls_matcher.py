@@ -109,6 +109,7 @@ class TestCreateTLSMatcher:
         assert matcher.fingerprint.impersonate == "chrome120"
 
 
+@pytest.mark.network
 class TestTLSMatcherIntegration:
     """Integration tests for TLS matcher (requires curl-cffi)."""
 

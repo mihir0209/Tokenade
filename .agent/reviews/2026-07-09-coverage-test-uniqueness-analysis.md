@@ -57,3 +57,69 @@ Line coverage incentivizes empty asserts and path spam. Mutation testing (mutmut
 
 - No bulk delete of the 50+ coverage files
 - No deletion of coverage2/4 edge suites without per-test diff
+
+## P7 follow-up (2026-07-09)
+
+### Network / slow markers
+- `TestTLSMatcherIntegration` → `@pytest.mark.network` (class)
+- `test_proxy.py::test_chrome_tls_matching`, `test_firefox_fallback_to_chrome` → network
+- `test_playwright_e2e.py` → `pytestmark = [pytest.mark.slow]`
+
+### Proven near-duplicates removed (method-level only)
+From `test_advanced_validator_coverage.py` (renamed `test_advanced_validator_edge_cases.py`):
+- `TestValidationResult.test_defaults` / `test_with_details` (duplicate of base)
+- `TestValidationRule.test_defaults` (duplicate of base)
+- `TestLoadAndCreateRules.test_load_defaults` (duplicate of base)
+
+Kept: all unique edge/API paths in the renamed file; `TestValidationRule.test_custom_values`.
+
+### Large coverage files re-checked (not deleted)
+| File | Sibling | Method-name overlap | Decision |
+|------|---------|--------------------:|----------|
+| advanced_validator_coverage | yes | 3 near-identical | trimmed dups, renamed |
+| cdp_routing_coverage | none | — | KEEP (sole suite) |
+| engine_coverage | none | — | KEEP |
+| browser_manager_coverage | none | — | KEEP |
+| forward_proxy_coverage | yes | 1 name, different body | KEEP both |
+| session_packager_coverage | yes | 1 name, different body | KEEP both |
+| session_loader_coverage | yes | 0 | KEEP |
+
+### Body-hash pass on name overlaps (P7)
+
+Same `test_*` name ≠ same test. Normalized-source SHA of overlapping methods:
+
+| Pair | Name overlap | Identical body | Decision |
+|------|-------------:|---------------:|----------|
+| profile_manager_coverage vs profile_manager | 6 | **0** | KEEP both |
+| batch_operations_coverage vs batch_operations | 5 | **0** | KEEP both |
+| session_monitor_coverage vs session_monitor_enhanced | 5 | **0** | KEEP both |
+| session_sync_coverage vs session_sync | 4 | **0** | KEEP both |
+| fingerprint_collectors_coverage vs base | 3 | **0** | KEEP both |
+| local_storage_extractor_coverage vs base | 2 | **0** | KEEP both |
+| tls_matcher_coverage vs base | 2 | **0** | KEEP both |
+
+**Conclusion:** No bulk/method delete justified beyond advanced_validator near-dups already removed. Further cleanup needs mutmut survivors or line-by-line proof, not name matching.
+
+### Mutmut
+- Paths: `resolve.py`, `errors.py`, `encryptor.py`, `site_configs.py`
+- Runner excludes `-m 'not network'`; `backup = false` (avoid dirtying tree)
+- `make test-mut` / `make test-mut-ci`
+- After mutmut runs: restore any accidental source edits; `.mutmut-cache` / `mutants/` gitignored
+
+## Mutmut baseline (2026-07-09, mutmut 2.5.1)
+
+Partial run (timed ~4 min) on high-value slice:
+
+| Metric | Value |
+|--------|------:|
+| Mutants generated | 433 |
+| Checked (partial) | ~23 |
+| 🎉 Killed | 10 |
+| 🙁 Survived | 13 |
+| Untested (timeout) | ~410 |
+
+**Interpretation:** Baseline exists; many survivors expected on first pass. Improve kill rate by adding targeted tests for survivors (`mutmut show <id>`), not by adding more coverage-named files.
+
+**Config notes:**
+- Pin `mutmut>=2.4.0,<3` — mutmut 3 expects top-level `tests/` and copies into `mutants/`
+- Use `make test-mut` for local baseline expansion

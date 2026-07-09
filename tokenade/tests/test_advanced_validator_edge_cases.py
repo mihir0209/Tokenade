@@ -1,4 +1,8 @@
-"""Comprehensive tests for advanced_validator module - coverage boost."""
+"""Advanced validator edge/API paths (unique branches).
+
+Dataclass smoke tests duplicated in test_advanced_validator.py were removed.
+Formerly test_advanced_validator_coverage.
+"""
 
 import json
 import pytest
@@ -1099,41 +1103,12 @@ class TestLoadAndCreateRules:
         for r in rules:
             assert r.name
 
-    def test_load_defaults(self, tmp_path):
-        rules_file = tmp_path / "rules.json"
-        rules_file.write_text(json.dumps([{"name": "minimal"}]))
-        rules = load_validation_rules(str(rules_file))
-        assert rules[0].type == "js"
-        assert rules[0].config == {}
-        assert rules[0].timeout == 30
-
-
-# ---------------------------------------------------------------------------
-# Tests: ValidationResult dataclass
-# ---------------------------------------------------------------------------
-
-class TestValidationResult:
-    def test_defaults(self):
-        r = ValidationResult(rule_name="x", passed=True, message="ok")
-        assert r.details is None
-        assert r.duration_ms is None
-
-    def test_with_details(self):
-        r = ValidationResult(rule_name="x", passed=False, message="fail", details={"k": "v"}, duration_ms=12.5)
-        assert r.details == {"k": "v"}
-        assert r.duration_ms == 12.5
-
 
 # ---------------------------------------------------------------------------
 # Tests: ValidationRule dataclass
 # ---------------------------------------------------------------------------
 
 class TestValidationRule:
-    def test_defaults(self):
-        r = ValidationRule(name="test", type="js")
-        assert r.config == {}
-        assert r.timeout == 30
-
     def test_custom_values(self):
         r = ValidationRule(name="custom", type="api", config={"url": "x"}, timeout=10)
         assert r.config == {"url": "x"}

@@ -16,6 +16,9 @@ from pathlib import Path
 
 import pytest
 
+# Real browser E2E — slow; deselect with -m "not slow"
+pytestmark = [pytest.mark.slow]
+
 # Skip entire module if Playwright not available
 pw = pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright  # noqa: E402

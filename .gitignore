@@ -60,3 +60,9 @@ test_output*.log
 
 temp_scripts/
 .tokenade_rotation_state
+
+# Mutation testing
+.mutmut-cache
+mutants/
+html/
+

@@ -212,6 +212,7 @@ class TestFingerprintMatcher:
 class TestTLSMatcher:
     """Test TLS fingerprint matching."""
 
+    @pytest.mark.network
     def test_chrome_tls_matching(self):
         """Test Chrome TLS impersonation."""
         matcher = create_tls_matcher(browser="chrome", version="120")
@@ -228,6 +229,7 @@ class TestTLSMatcher:
 
         matcher.close()
 
+    @pytest.mark.network
     def test_firefox_fallback_to_chrome(self):
         """Test that Firefox falls back to Chrome on actual request."""
         matcher = create_tls_matcher(browser="firefox", version="128")

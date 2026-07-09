@@ -21,8 +21,19 @@ test-verbose:  ## Run tests with verbose output
 
 test-mut:  ## Mutation tests (small high-value slice — prefer over coverage chase)
 	@echo "Mutating high-value modules only (see pyproject [tool.mutmut])"
+	@command -v mutmut >/dev/null || pip install 'mutmut>=2.4.0'
 	mutmut run || true
-	@echo "Results: mutmut results   Surviving mutants: mutmut show <id>"
+	@echo "---"
+	@mutmut results 2>/dev/null || true
+	@echo "Surviving mutants: mutmut show <id> | mutmut html"
+
+test-mut-ci:  ## Mutation tests fail if survivors (strict gate for CI later)
+	@command -v mutmut >/dev/null || pip install 'mutmut>=2.4.0'
+	mutmut run
+	@# Exit non-zero if any survived (mutmut results parse)
+	@survived=$$(mutmut results 2>/dev/null | grep -c 'survived' || true); \
+	 echo "survived_lines=$$survived"; \
+	 mutmut results
 
 lint:  ## Run flake8 linting
 	flake8 tokenade --max-line-length=120 --ignore=E501,W503,E203

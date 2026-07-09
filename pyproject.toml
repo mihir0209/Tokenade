@@ -53,7 +53,8 @@ dev = [
     "pytest-timeout>=2.0.0",
     "pytest-xdist>=3.0.0",
     "hypothesis>=6.0.0",
-    "mutmut>=2.4.0",
+    # mutmut 3.x expects top-level tests/; we use tokenade/tests/ — pin 2.x
+    "mutmut>=2.4.0,<3",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
@@ -95,15 +96,15 @@ ignore = ["E501", "W503", "E203"]
 exclude = [".git", "__pycache__", "build", "dist", "*.egg-info"]
 
 # Mutation testing (prefer over pure line-coverage theater).
-# Run: make test-mut  OR  mutmut run --paths-to-mutate=tokenade/handlers/resolve.py
+# Run: make test-mut
 # See .agent/reviews/2026-07-09-coverage-test-uniqueness-analysis.md
+# Pin mutmut 2.x — 3.x copies into mutants/ and expects top-level tests/.
 [tool.mutmut]
-paths_to_mutate = "tokenade/handlers/resolve.py,tokenade/core/errors.py,tokenade/core/crypto/encryptor.py"
+paths_to_mutate = "tokenade/handlers/resolve.py,tokenade/core/errors.py,tokenade/core/crypto/encryptor.py,tokenade/core/importer/site_configs.py"
 backup = false
-runner = "python -m pytest tokenade/tests/test_handler_resolve.py tokenade/tests/test_site_configs.py tokenade/tests/test_encryptor.py tokenade/tests/test_encryptor_edge.py -q --tb=line -o addopts="
+runner = "python -m pytest tokenade/tests/test_handler_resolve.py tokenade/tests/test_site_configs.py tokenade/tests/test_encryptor.py tokenade/tests/test_encryptor_edge.py -q --tb=line -o addopts= -m 'not network'"
 tests_dir = "tokenade/tests/"
 dict_synonyms = "Struct, NamedStruct"
-
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = true
