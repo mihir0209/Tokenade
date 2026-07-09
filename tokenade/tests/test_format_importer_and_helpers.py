@@ -1,4 +1,7 @@
-"""Tests for format importer, health checker, session loader helpers, and fingerprint manager."""
+"""FormatImporter, SessionHealthChecker helpers, SessionLoader normalize, fingerprint helpers.
+
+Formerly test_coverage_boost — primary suite for FormatImporter (no other dedicated file).
+"""
 
 import json
 import time

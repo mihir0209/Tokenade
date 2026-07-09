@@ -1,10 +1,6 @@
-"""
-Targeted coverage tests for local_storage_extractor.py — uncovered lines.
+"""localStorage extractor tests with mocked plyvel/LevelDB paths.
 
-Covers:
-  - Lines 93-94:  extract_firefox exception path inside try/finally
-  - Lines 127-169: extract_chrome with mocked plyvel
-  - Lines 229-246: _list_origins_chrome with mocked plyvel
+Formerly test_local_storage_extractor_coverage2 — unique browser DB edge cases.
 """
 
 import os

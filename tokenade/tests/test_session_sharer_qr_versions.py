@@ -1,5 +1,7 @@
-"""Tests for session_sharer.py — uncovered lines 193-224, 255-261, 281, 326-327,
-337-338, 348-349, 544-545, 560-561, 603-604."""
+"""Session sharer QR and version-list edge cases.
+
+Formerly test_session_sharer_coverage2 — unique paths.
+"""
 
 import os
 import tempfile

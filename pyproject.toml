@@ -53,6 +53,7 @@ dev = [
     "pytest-timeout>=2.0.0",
     "pytest-xdist>=3.0.0",
     "hypothesis>=6.0.0",
+    "mutmut>=2.4.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
@@ -92,6 +93,16 @@ target-version = ["py39", "py310", "py311", "py312"]
 max-line-length = 120
 ignore = ["E501", "W503", "E203"]
 exclude = [".git", "__pycache__", "build", "dist", "*.egg-info"]
+
+# Mutation testing (prefer over pure line-coverage theater).
+# Run: make test-mut  OR  mutmut run --paths-to-mutate=tokenade/handlers/resolve.py
+# See .agent/reviews/2026-07-09-coverage-test-uniqueness-analysis.md
+[tool.mutmut]
+paths_to_mutate = "tokenade/handlers/resolve.py,tokenade/core/errors.py,tokenade/core/crypto/encryptor.py"
+backup = false
+runner = "python -m pytest tokenade/tests/test_handler_resolve.py tokenade/tests/test_site_configs.py tokenade/tests/test_encryptor.py tokenade/tests/test_encryptor_edge.py -q --tb=line -o addopts="
+tests_dir = "tokenade/tests/"
+dict_synonyms = "Struct, NamedStruct"
 
 [tool.mypy]
 python_version = "3.9"

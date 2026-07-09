@@ -1001,3 +1001,15 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 - fingerprint-rotate → core FingerprintGenerator wrapper
 - Renamed test_cdp_stealth_coverage2 → test_cdp_stealth_urls (less coverage theater)
 **Verify:** full suite 5251 passed, 8 skipped; 22/22 plugin contracts PASS
+
+
+### Phase P6 — Coverage uniqueness analysis + mutation testing path (2026-07-09) ✅
+**Status:** Complete (2026-07-09)
+**What was done:**
+- Analyzed all `*_coverage*.py` files; documented findings in `.agent/reviews/2026-07-09-coverage-test-uniqueness-analysis.md`
+- **No bulk delete** of numbered coverage2/4 files (proven unique edge paths)
+- DELETE only trivial `test_cli_main_coverage.py` (2 non-behavioral smokes)
+- REPLACE weak site_configs smoke with `test_site_configs.py` (overlay + mutation-oriented asserts)
+- RENAME unique suites to honest names (edge_cases, plyvel, errors, qr_versions, format_importer_and_helpers, keyring_errors)
+- Add mutmut to dev deps, `make test-mut`, pyproject mutmut config
+**Verify:** full suite 5251 passed, 8 skipped

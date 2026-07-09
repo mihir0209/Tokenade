@@ -124,6 +124,7 @@ class TestTLSMatcherIntegration:
         not _has_curl_cffi(),
         reason="curl-cffi not installed"
     )
+    @pytest.mark.network
     def test_tls_get_request(self):
         matcher = TLSMatcher()
         response = matcher.get("https://httpbin.org/get")

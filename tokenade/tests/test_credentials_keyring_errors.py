@@ -1,3 +1,8 @@
+"""CredentialManager keyring failure paths.
+
+Formerly test_credentials_coverage — unique exception handling.
+"""
+
 import json
 import os
 import tempfile

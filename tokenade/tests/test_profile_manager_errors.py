@@ -1,5 +1,7 @@
-"""Tests for profile_manager.py — uncovered lines 98, 108, 117, 131, 133, 135, 137,
-245-246, 273-278, 295-296, 337, 346, 350-352."""
+"""Profile manager error-path tests (locked DB, permissions, missing tables).
+
+Formerly test_profile_manager_coverage2 — unique failure branches.
+"""
 
 import os
 import shutil

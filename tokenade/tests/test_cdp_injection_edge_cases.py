@@ -1,5 +1,6 @@
-"""Tests for cdp_injection.py uncovered lines: 111, 122-125, 152-153, 178,
-181-209, 212, 241-242, 283-284.
+"""Edge-case CDP injection paths (raw CDP, per-cookie failures).
+
+Formerly test_cdp_injection_coverage4 — unique paths not covered by the main suite.
 """
 
 import asyncio

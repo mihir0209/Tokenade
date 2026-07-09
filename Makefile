@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-quick lint format typecheck clean build docker docker-run
+.PHONY: help install install-dev test test-quick lint format typecheck clean build docker docker-run test-mut
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -18,6 +18,11 @@ test-quick:  ## Run tests without slow/network tests
 
 test-verbose:  ## Run tests with verbose output
 	python -m pytest tokenade/tests/ -v --tb=short
+
+test-mut:  ## Mutation tests (small high-value slice — prefer over coverage chase)
+	@echo "Mutating high-value modules only (see pyproject [tool.mutmut])"
+	mutmut run || true
+	@echo "Results: mutmut results   Surviving mutants: mutmut show <id>"
 
 lint:  ## Run flake8 linting
 	flake8 tokenade --max-line-length=120 --ignore=E501,W503,E203
