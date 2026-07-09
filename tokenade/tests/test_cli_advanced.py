@@ -269,6 +269,24 @@ class TestCmdValidate:
         assert "0 valid" in out
         assert "0 invalid" in out
 
+    def test_tokenade_extension_and_auth_state(self, capsys, tmp_path):
+        """Product .tokenade files + historical auth_state field."""
+        s = tmp_path / "github.tokenade"
+        s.write_text(
+            json.dumps(
+                {
+                    "site_name": "github",
+                    "auth_state": "logged_in",
+                    "cookies": [{"name": "user_session", "value": "x"}],
+                }
+            )
+        )
+        args = Namespace(sessions_dir=str(tmp_path))
+        cmd_validate(args)
+        out = capsys.readouterr().out
+        assert "1 valid" in out
+        assert "github.tokenade" in out
+
 
 # ---------------------------------------------------------------------------
 # TestCmdValidateRules

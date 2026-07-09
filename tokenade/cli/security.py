@@ -16,7 +16,7 @@ def cmd_encrypt(args):
     input_file = Path(args.input)
     if not input_file.exists():
         print(f"❌ Input file not found: {args.input}")
-        return
+        raise SystemExit(1)
 
     if args.key_file:
         password = load_key_from_file(args.key_file)
@@ -29,7 +29,7 @@ def cmd_encrypt(args):
         confirm = getpass.getpass("🔑 Confirm password: ")
         if password != confirm:
             print("❌ Passwords don't match")
-            return
+            raise SystemExit(1)
 
     output = args.output or str(input_file) + '.encrypted'
 
@@ -46,9 +46,12 @@ def cmd_encrypt(args):
         output_size = Path(result).stat().st_size
         print(f"   Size: {input_size} -> {output_size} bytes")
 
+    except SystemExit:
+        raise
     except Exception as e:
         logger.error(f"Encryption failed: {e}", exc_info=True)
         print("❌ Encryption failed — check input file is readable")
+        raise SystemExit(1) from e
 
 
 def cmd_decrypt(args):
@@ -60,7 +63,7 @@ def cmd_decrypt(args):
     input_file = Path(args.input)
     if not input_file.exists():
         print(f"❌ Input file not found: {args.input}")
-        return
+        raise SystemExit(1)
 
     if args.key_file:
         password = load_key_from_file(args.key_file)
@@ -88,12 +91,16 @@ def cmd_decrypt(args):
         output_size = Path(result).stat().st_size
         print(f"   Size: {input_size} -> {output_size} bytes")
 
+    except SystemExit:
+        raise
     except ValueError as e:
         print("❌ Wrong password or corrupted file")
         logger.debug(f"Decryption error: {e}")
+        raise SystemExit(1) from e
     except Exception as e:
         logger.error(f"Decryption failed: {e}", exc_info=True)
         print("❌ Decryption failed — verify password and file integrity")
+        raise SystemExit(1) from e
 
 
 def cmd_rekey(args):
@@ -105,7 +112,7 @@ def cmd_rekey(args):
     input_file = Path(args.input)
     if not input_file.exists():
         print(f"❌ Input file not found: {args.input}")
-        return
+        raise SystemExit(1)
 
     if args.old_key_file:
         old_password = load_key_from_file(args.old_key_file)
@@ -127,7 +134,7 @@ def cmd_rekey(args):
         confirm = getpass.getpass("🔑 Confirm new password: ")
         if new_password != confirm:
             print("❌ Passwords don't match")
-            return
+            raise SystemExit(1)
 
     output = args.output or str(input_file)
 
@@ -148,9 +155,13 @@ def cmd_rekey(args):
         print("\n✅ Rekeyed successfully")
         print(f"   Output: {output}")
 
+    except SystemExit:
+        raise
     except ValueError as e:
         print("❌ Wrong old password or corrupted file")
         logger.debug(f"Rekey error: {e}")
+        raise SystemExit(1) from e
     except Exception as e:
         logger.error(f"Rekey failed: {e}", exc_info=True)
         print("❌ Rekey failed — verify old password and file integrity")
+        raise SystemExit(1) from e

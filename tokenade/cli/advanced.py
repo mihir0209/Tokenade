@@ -108,15 +108,31 @@ def cmd_validate(args):
     valid = 0
     invalid = 0
 
-    for session_file in sessions_dir.glob("*.json"):
+    # Prefer product extension; also accept legacy .json dumps
+    session_files = sorted(
+        set(sessions_dir.glob("*.tokenade")) | set(sessions_dir.glob("*.json"))
+    )
+    if not session_files:
+        print(f"\n⚠️  No .tokenade or .json sessions in {sessions_dir}")
+        print("📊 Summary: 0 valid, 0 invalid")
+        return
+
+    for session_file in session_files:
         print(f"\n📁 Checking: {session_file.name}")
 
         try:
             with open(session_file) as f:
                 data = json.load(f)
 
-            required = ["site_name", "auth_status", "cookies"]
+            # auth_state is historical; auth_status is v3 packager naming
+            if "auth_status" not in data and "auth_state" in data:
+                data = dict(data)
+                data["auth_status"] = data["auth_state"]
+
+            required = ["site_name", "cookies"]
             missing = [f for f in required if f not in data]
+            if "auth_status" not in data and "auth_state" not in data:
+                missing.append("auth_status|auth_state")
 
             if missing:
                 print(f"   ❌ Missing fields: {missing}")
@@ -133,7 +149,7 @@ def cmd_validate(args):
             if tokens:
                 print(f"   ✅ {len(tokens)} tokens")
 
-            status = data.get("auth_status", "unknown")
+            status = data.get("auth_status") or data.get("auth_state") or "unknown"
             if status == "logged_in":
                 print("   ✅ Status: logged_in")
                 valid += 1

@@ -32,10 +32,15 @@ def _encrypt_file(tmp_path, password="testpw"):
 # cmd_encrypt
 # ---------------------------------------------------------------------------
 
+import pytest
+
+
 class TestCmdEncrypt:
     def test_file_not_found(self, capsys):
         args = Namespace(input="/nonexistent/file", key_file=None, password=None, output=None)
-        cmd_encrypt(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_encrypt(args)
+        assert ei.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     def test_password_arg(self, tmp_path, capsys):
@@ -71,7 +76,9 @@ class TestCmdEncrypt:
         src.write_text('{"cookies":[]}')
         mock_getpass.side_effect = ["pass1", "pass2"]
         args = Namespace(input=str(src), key_file=None, password=None, output=None)
-        cmd_encrypt(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_encrypt(args)
+        assert ei.value.code == 1
         assert "don't match" in capsys.readouterr().out
 
     def test_explicit_output(self, tmp_path, capsys):
@@ -87,7 +94,9 @@ class TestCmdEncrypt:
         src.write_text('{"cookies":[]}')
         args = Namespace(input=str(src), key_file=None, password="pw", output=None)
         with patch("tokenade.cli.security.encrypt_session", side_effect=RuntimeError("fail")):
-            cmd_encrypt(args)
+            with pytest.raises(SystemExit) as ei:
+                cmd_encrypt(args)
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
 
@@ -98,7 +107,9 @@ class TestCmdEncrypt:
 class TestCmdDecrypt:
     def test_file_not_found(self, capsys):
         args = Namespace(input="/nonexistent/file", key_file=None, password=None, output=None)
-        cmd_decrypt(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_decrypt(args)
+        assert ei.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     def test_password_arg(self, tmp_path, capsys):
@@ -146,7 +157,9 @@ class TestCmdDecrypt:
     def test_wrong_password(self, tmp_path, capsys):
         enc_path = _encrypt_file(tmp_path, "right")
         args = Namespace(input=str(enc_path), key_file=None, password="wrong", output=None)
-        cmd_decrypt(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_decrypt(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "wrong" in output.lower() or "failed" in output.lower()
 
@@ -154,7 +167,9 @@ class TestCmdDecrypt:
         enc_path = _encrypt_file(tmp_path)
         args = Namespace(input=str(enc_path), key_file=None, password="testpw", output=None)
         with patch("tokenade.cli.security.decrypt_session", side_effect=Exception("generic")):
-            cmd_decrypt(args)
+            with pytest.raises(SystemExit) as ei:
+                cmd_decrypt(args)
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
 
@@ -170,7 +185,9 @@ class TestCmdRekey:
             new_key_file=None, new_password=None,
             output=None,
         )
-        cmd_rekey(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_rekey(args)
+        assert ei.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     def test_old_and_new_password_args(self, tmp_path, capsys):
@@ -252,7 +269,9 @@ class TestCmdRekey:
             new_key_file=None, new_password=None,
             output=None,
         )
-        cmd_rekey(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_rekey(args)
+        assert ei.value.code == 1
         assert "don't match" in capsys.readouterr().out
 
     def test_wrong_old_password(self, tmp_path, capsys):
@@ -263,7 +282,9 @@ class TestCmdRekey:
             new_key_file=None, new_password="new",
             output=None,
         )
-        cmd_rekey(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_rekey(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "wrong" in output.lower() or "failed" in output.lower()
 
@@ -279,5 +300,7 @@ class TestCmdRekey:
             mock_enc = MagicMock()
             mock_enc.rekey.side_effect = Exception("boom")
             mock_cls.return_value = mock_enc
-            cmd_rekey(args)
+            with pytest.raises(SystemExit) as ei:
+                cmd_rekey(args)
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
