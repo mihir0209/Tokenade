@@ -134,6 +134,48 @@ Tokenade correctly exports and injects Google cookies from Brave. Google does no
 
 Pick **one** of:
 
-- [ ] Close Brave → re-export → headed launch to Gmail  
+- [x] Close Brave → re-export → headed launch to Gmail  
 - [ ] Host CDP proxy, you open GUI and check Gmail manually  
 - [ ] Implement/test `refresh-browser` re-warm for Google and re-measure  
+
+---
+
+## Plan A follow-up (2026-07-10) — donor fully quit
+
+**Preconditions checked:** no Brave process; SingletonLock/Cookie/Socket absent.
+
+| Step | Result |
+|------|--------|
+| Re-export after quit | **PASS** — 80 cookies, all critical, 0 ctrl chars (`google-brave-A.tokenade`) |
+| Headed Brave launch + inject | **PASS** — Visible=True, **80/80** cookies, all SID-family present in jar |
+| Gmail product outcome | **FAIL** — still account chooser |
+
+Automated signals after headed inject to `https://mail.google.com`:
+
+```json
+{
+  "signed_out": true,
+  "choose_account": true,
+  "sign_in": true,
+  "inbox": false,
+  "email_visible": true,
+  "snip": "Choose an account Mihir Patil mihirpatil128@gmail.com Signed out ..."
+}
+```
+
+Final URL: `accounts.google.com/.../accountchooser?...&service=mail` (GlifWebSignIn).
+
+### Updated verdict
+
+Closing the donor **does not** fix Google session acceptance. Concurrent use was **not** the sole cause.
+
+**Still true:** export decrypt + inject work.  
+**Still false:** portable Google cookie jar → live Gmail session on a fresh Brave profile.
+
+Likely remaining causes: server-side risk binding (device/fingerprint/TLS), incomplete session material beyond Cookies SQLite, or session already invalidated by Google after prior multi-device experiments.
+
+### Practical product guidance
+
+- Prefer **`tokenade proxy` on the donor machine** (cookies never leave / same TLS egress) for multi-device Google.
+- Do **not** claim “Google migrate works” from cookie export alone.
+- GitHub-class sites remain the stronger portability story.
