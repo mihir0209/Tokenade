@@ -1,4 +1,4 @@
-"""Tests for tokenade/core/proxy/cdp_stealth.py uncovered lines 39-41, 215."""
+"""URL safety and site URL helpers for cdp_stealth."""
 
 import unittest
 from unittest.mock import patch

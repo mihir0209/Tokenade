@@ -991,3 +991,13 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 **Verify**: Test suite runs in <90s
 **Dependencies**: Phase 71
 **Plan**: `.agent/plans/2026-07-05-code-slimming-extension-perf.md`
+
+
+### Phase P5 — Injection fail-closed + fingerprint wrapper + coverage rename (2026-07-09) ✅
+**Status:** Complete (2026-07-09)
+**What was done:**
+- inject_cookies / inject_local_storage raise InjectionError on hard failures
+- export extraction + profile inject CLI SystemExit(1)
+- fingerprint-rotate → core FingerprintGenerator wrapper
+- Renamed test_cdp_stealth_coverage2 → test_cdp_stealth_urls (less coverage theater)
+**Verify:** full suite 5251 passed, 8 skipped; 22/22 plugin contracts PASS

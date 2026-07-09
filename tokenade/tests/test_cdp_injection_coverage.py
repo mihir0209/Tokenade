@@ -771,7 +771,18 @@ async def test_inject_stealth_script_context_failure_swallowed():
 @pytest.mark.asyncio
 async def test_inject_cookies_returns_when_no_context():
     proxy = _make_proxy(_context=None)
+    # empty cookies → no-op
     await inject_cookies(proxy)
+
+
+@pytest.mark.asyncio
+async def test_inject_cookies_no_context_with_cookies_raises():
+    proxy = _make_proxy(_context=None)
+    proxy.session["cookies"] = [
+        {"name": "c", "value": "v", "domain": "d", "path": "/"},
+    ]
+    with pytest.raises(InjectionError):
+        await inject_cookies(proxy)
 
 
 @pytest.mark.asyncio
@@ -894,13 +905,14 @@ async def test_inject_cookies_default_path():
 
 
 @pytest.mark.asyncio
-async def test_inject_cookies_add_failure_swallowed():
+async def test_inject_cookies_add_failure_raises():
     proxy = _make_proxy()
     proxy.session["cookies"] = [
         {"name": "c", "value": "v", "domain": "d", "path": "/"},
     ]
     proxy._context.add_cookies.side_effect = Exception("add fail")
-    await inject_cookies(proxy)
+    with pytest.raises(InjectionError):
+        await inject_cookies(proxy)
 
 
 @pytest.mark.asyncio
@@ -1015,12 +1027,13 @@ async def test_inject_local_storage_escaping():
 
 
 @pytest.mark.asyncio
-async def test_inject_local_storage_evaluate_failure_swallowed():
+async def test_inject_local_storage_evaluate_failure_raises():
     proxy = _make_proxy()
     proxy.session["local_storage"] = {"k": "v"}
     page = AsyncMock()
     page.evaluate.side_effect = Exception("eval fail")
-    await inject_local_storage(proxy, page)
+    with pytest.raises(InjectionError):
+        await inject_local_storage(proxy, page)
 
 
 @pytest.mark.asyncio

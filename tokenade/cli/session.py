@@ -536,7 +536,7 @@ def cmd_export(args):
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)
         print("❌ Extraction failed — check browser profile is accessible")
-        return
+        raise SystemExit(1) from e
 
     print(f"   📊 Total cookies: {len(cookies)}")
 
@@ -864,7 +864,11 @@ def cmd_inject_profile(args):
                 print("\n❌ Injection failed")
                 if result.error:
                     print(f"   Error: {result.error}")
+                raise SystemExit(1)
 
+    except SystemExit:
+        raise
     except Exception as e:
         logger.error(f"Profile injection failed: {e}", exc_info=True)
         print("❌ Profile injection failed — check browser is not running")
+        raise SystemExit(1) from e

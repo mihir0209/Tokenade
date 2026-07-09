@@ -382,7 +382,9 @@ class TestCmdExport:
         mock_config_cls.return_value.get.return_value = None
         mock_disc_cls.return_value.discover_all.return_value = {}
         mock_ce_cls.return_value.extract.side_effect = RuntimeError("db locked")
-        cmd_export(_export_args(tmp_path))
+        with pytest.raises(SystemExit) as ei:
+            cmd_export(_export_args(tmp_path))
+        assert ei.value.code == 1
         assert "extraction failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.session.SessionPackager")
@@ -1109,16 +1111,20 @@ class TestCmdInjectProfile:
         mock_result.success = False
         mock_result.error = "Profile locked"
         mock_inject.return_value = mock_result
-        cmd_inject_profile(Namespace(session=str(f), browser="chrome",
-                                     profile="/tmp/profile", dry_run=False, no_backup=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_inject_profile(Namespace(session=str(f), browser="chrome",
+                                         profile="/tmp/profile", dry_run=False, no_backup=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.session.inject_session_to_profile")
     def test_inject_profile_exception(self, mock_inject, tmp_path, capsys):
         f = _make_session_file(tmp_path, "session")
         mock_inject.side_effect = RuntimeError("db locked")
-        cmd_inject_profile(Namespace(session=str(f), browser="chrome",
-                                     profile="/tmp/profile", dry_run=False, no_backup=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_inject_profile(Namespace(session=str(f), browser="chrome",
+                                         profile="/tmp/profile", dry_run=False, no_backup=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     def test_inject_profile_dry_run_empty_cookies(self, tmp_path, capsys):
@@ -1148,8 +1154,10 @@ class TestCmdInjectProfile:
         mock_result.success = False
         mock_result.error = None
         mock_inject.return_value = mock_result
-        cmd_inject_profile(Namespace(session=str(f), browser="chrome",
-                                     profile="/tmp/profile", dry_run=False, no_backup=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_inject_profile(Namespace(session=str(f), browser="chrome",
+                                         profile="/tmp/profile", dry_run=False, no_backup=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     def test_inject_profile_dry_run_displays_auth_status(self, tmp_path, capsys):

@@ -269,11 +269,19 @@ async def inject_stealth_script(proxy: "CDPProxy"):
 
 async def inject_cookies(proxy: "CDPProxy"):
     """Inject cookies into the browser context."""
-    if not proxy._context:
-        return
+    from tokenade.core.errors import InjectionError
 
     cookies = proxy.session.get("cookies", [])
+    if not proxy._context:
+        if cookies:
+            raise InjectionError(
+                "No browser context available for cookie injection",
+                operation="inject_cookies",
+            )
+        return
+
     playwright_cookies = []
+    process_failures = 0
 
     for cookie in cookies:
         try:
@@ -306,18 +314,35 @@ async def inject_cookies(proxy: "CDPProxy"):
 
             playwright_cookies.append(pc)
         except Exception as e:
-            logger.debug(f"Failed to process cookie: {e}")
+            process_failures += 1
+            logger.debug("Failed to process cookie: %s", e)
+
+    if cookies and not playwright_cookies:
+        raise InjectionError(
+            f"Failed to process any of {len(cookies)} cookies for injection "
+            f"(process_failures={process_failures})",
+            operation="inject_cookies",
+        )
 
     if playwright_cookies:
         try:
             await proxy._context.add_cookies(playwright_cookies)
-            logger.info(f"Injected {len(playwright_cookies)} cookies into browser context")
+            logger.info(
+                "Injected %s cookies into browser context",
+                len(playwright_cookies),
+            )
         except Exception as e:
-            logger.warning(f"Failed to inject cookies: {e}")
+            raise InjectionError(
+                f"Failed to inject {len(playwright_cookies)} cookies into browser context",
+                operation="inject_cookies",
+                cause=e,
+            ) from e
 
 
 async def inject_local_storage(proxy: "CDPProxy", page):
     """Inject localStorage into a page after navigation."""
+    from tokenade.core.errors import InjectionError
+
     local_storage = proxy.session.get("local_storage", {})
     if not local_storage:
         return
@@ -342,6 +367,10 @@ async def inject_local_storage(proxy: "CDPProxy", page):
         js_code += "})();"
 
         await page.evaluate(js_code)
-        logger.info(f"Injected {len(domain_ls)} localStorage items")
+        logger.info("Injected %s localStorage items", len(domain_ls))
     except Exception as e:
-        logger.debug(f"localStorage injection failed: {e}")
+        raise InjectionError(
+            f"localStorage injection failed ({len(domain_ls)} keys)",
+            operation="inject_local_storage",
+            cause=e,
+        ) from e
