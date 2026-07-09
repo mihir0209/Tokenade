@@ -45,6 +45,9 @@ class PluginExporter:
     def find_handler(self, domains: List[str]) -> Optional[Any]:
         """Find a site handler plugin for the given domains.
 
+        Prefers specific site handlers over catch-all ``generic-handler``
+        (generic always returns True from can_handle and must not win by default).
+
         Args:
             domains: List of domains to match (e.g., ["google.com", "mail.google.com"])
 
@@ -53,16 +56,62 @@ class PluginExporter:
         """
         self._load_handlers()
 
+        specific: List[Any] = []
+        generic: List[Any] = []
+
         for domain in domains:
-            url = f"https://{domain}"
+            if not domain:
+                continue
+            host = str(domain).lstrip(".")
+            url = f"https://{host}" if "://" not in host else host
             for name, handler in self._handlers.items():
                 try:
-                    if handler.can_handle(url):
-                        logger.info(f"Found handler: {name} for {domain}")
-                        return handler
+                    if not handler.can_handle(url):
+                        continue
                 except Exception:
                     continue
+                hname = (getattr(handler, "name", None) or name or "").lower()
+                if hname in ("generic-handler", "generic") or name.lower() in (
+                    "generic-handler",
+                    "generic",
+                ):
+                    generic.append(handler)
+                else:
+                    specific.append(handler)
 
+        if specific:
+            # Prefer google-handler / github-handler style names that match domains
+            domain_blob = " ".join(str(d).lower() for d in domains)
+            for handler in specific:
+                hname = (getattr(handler, "name", "") or "").lower()
+                site_key = hname.replace("-handler", "").replace("_handler", "")
+                if site_key and site_key in domain_blob:
+                    logger.info(f"Found handler: {hname} for {domains}")
+                    return handler
+            chosen = specific[0]
+            logger.info(
+                f"Found handler: {getattr(chosen, 'name', type(chosen).__name__)} for {domains}"
+            )
+            return chosen
+
+        if generic:
+            chosen = generic[0]
+            logger.info(
+                f"Found handler: {getattr(chosen, 'name', 'generic')} for {domains}"
+            )
+            return chosen
+
+        return None
+
+    def get_handler(self, name: str) -> Optional[Any]:
+        """Get a loaded site handler by plugin name (loads plugins if needed)."""
+        self._load_handlers()
+        if name in self._handlers:
+            return self._handlers[name]
+        # Also match by instance.name
+        for key, handler in self._handlers.items():
+            if getattr(handler, "name", None) == name or key == name:
+                return handler
         return None
 
     def export(

@@ -212,6 +212,22 @@ class SystemBrowserLauncher:
         ],
     }
 
+    VIVALDI_PATHS = {
+        "Linux": [
+            "/usr/bin/vivaldi",
+            "/usr/bin/vivaldi-stable",
+            "/opt/vivaldi/vivaldi",
+            "/opt/vivaldi/vivaldi-bin",
+        ],
+        "Darwin": [
+            "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+        ],
+        "Windows": [
+            r"C:\Program Files\Vivaldi\Application\vivaldi.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Vivaldi\Application\vivaldi.exe"),
+        ],
+    }
+
     def __init__(self):
         self._active_browsers: List[BrowserProcess] = []
         self._xvfb: Optional[Any] = None
@@ -264,6 +280,20 @@ class SystemBrowserLauncher:
         elif browser.lower() in ("edge", "msedge"):
             if os_type == "Linux":
                 path = os.path.expanduser("~/.config/microsoft-edge")
+                if os.path.exists(path):
+                    return path
+
+        elif browser.lower() == "vivaldi":
+            if os_type == "Linux":
+                path = os.path.expanduser("~/.config/vivaldi")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Darwin":
+                path = os.path.expanduser("~/Library/Application Support/Vivaldi")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Windows":
+                path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Vivaldi", "User Data")
                 if os.path.exists(path):
                     return path
 
@@ -330,6 +360,7 @@ class SystemBrowserLauncher:
             "brave": self.BRAVE_PATHS,
             "edge": self.EDGE_PATHS,
             "msedge": self.EDGE_PATHS,
+            "vivaldi": self.VIVALDI_PATHS,
         }
 
         paths = path_map.get(browser.lower(), self.CHROME_PATHS)
@@ -345,6 +376,7 @@ class SystemBrowserLauncher:
             "firefox": "firefox",
             "brave": "brave-browser",
             "edge": "microsoft-edge",
+            "vivaldi": "vivaldi",
         }.get(browser.lower(), browser)
 
         found = shutil.which(which_name)
@@ -491,7 +523,7 @@ class SystemBrowserLauncher:
         """Build browser command-line arguments."""
         args = [browser_path]
 
-        if browser.lower() in ("chrome", "chromium", "brave", "edge", "msedge"):
+        if browser.lower() in ("chrome", "chromium", "brave", "edge", "msedge", "vivaldi"):
             # Chromium-based browsers
             # Minimal flags — real users don't have --disable-* flags
             args.extend([

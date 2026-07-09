@@ -20,7 +20,7 @@
 
 ## Current State (2026-07-09)
 
-### Version: 6.4.0 (local / PyPI as last published — confirm before assuming)
+### Version: 1.0.0 (PyPI rebaseline)
 ### P0 honesty pass applied on main (post checkpoint-2)
 
 ## Historical note — state at 2026-06-21

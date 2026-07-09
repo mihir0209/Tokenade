@@ -4,7 +4,7 @@
 
 | Metric | Value |
 |--------|-------|
-| Version | 6.4.0 |
+| Version | 1.0.0 |
 | Tests | ~5250 collected (count is not a quality score) |
 | CI | Present |
 | Official plugins | 22 (all `verified=false` until contract review) |

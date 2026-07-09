@@ -66,3 +66,4 @@ temp_scripts/
 mutants/
 html/
 
+*.py[cod]

@@ -105,11 +105,6 @@ def cmd_launch(args):
         # Inject session if provided — session file is ALWAYS authoritative
         if args.session:
             print(f"\n📂 Loading session: {args.session}")
-            print(f"   ⚠️  This session can only be active on ONE device at a time.")
-            print(f"   Google DBSC binds cookies to hardware — Chrome-to-Chrome will fail.")
-            print(f"   ✅ Works: Brave/FF → Edge/FF/Brave (no DBSC)")
-            print(f"   ❌ Fails: Chrome → Chrome (DBSC on Windows)")
-            print(f"   For multi-device: use 'tokenade proxy --host 0.0.0.0' instead.")
 
             session_path = args.session
             decrypt_password = getattr(args, 'decrypt_password', None)
@@ -135,10 +130,72 @@ def cmd_launch(args):
             source_browser = session.get("source_device", {}).get("browser", "unknown")
             print(f"   Cookies: {len(cookies)} (from {source_browser})")
 
+            # Site-handler plugin override: domains, dashboard URL, cookie filter
+            site_handler = None
+            site_hint = ""
+            try:
+                from tokenade.core.importer.plugin_export import PluginExporter
+                exporter = PluginExporter()
+                force_plugin = getattr(args, "plugin", None)
+                cookie_domains = list({
+                    (c.get("domain") or "").lstrip(".")
+                    for c in cookies
+                    if c.get("domain")
+                })
+                site_name = str(session.get("site_name") or session.get("site") or "")
+                domain_guess = cookie_domains or ([site_name] if site_name else [])
+                if force_plugin:
+                    exporter._load_handlers()
+                    site_handler = exporter._handlers.get(force_plugin)
+                    if not site_handler:
+                        print(f"   ⚠️  Plugin not found: {force_plugin} (using default launch path)")
+                elif domain_guess:
+                    site_handler = exporter.find_handler(domain_guess)
+
+                if site_handler:
+                    hname = getattr(site_handler, "name", type(site_handler).__name__)
+                    print(f"   🔌 Site handler: {hname} (overrides default site worker)")
+                    # Prefer plugin dashboard URL when user did not pass --url
+                    if not args.url and hasattr(site_handler, "get_dashboard_url"):
+                        dash = site_handler.get_dashboard_url()
+                        if dash:
+                            args.url = dash
+                            print(f"   🔗 URL from plugin: {dash}")
+                    # Prefer plugin cookie filter when available
+                    if hasattr(site_handler, "get_critical_cookies") or hname:
+                        try:
+                            # google-handler style: filter via private helper if present
+                            if hasattr(site_handler, "_is_google_cookie"):
+                                filtered = [c for c in cookies if site_handler._is_google_cookie(c)]
+                                if filtered:
+                                    cookies = filtered
+                                    print(f"   🎯 Plugin-filtered cookies: {len(cookies)}")
+                        except Exception:
+                            pass
+                    if "google" in hname.lower() or any(
+                        "google" in (d or "") for d in cookie_domains
+                    ):
+                        site_hint = "google"
+            except Exception as e:
+                logger.debug("Site handler resolution failed: %s", e)
+
+            if not site_hint:
+                _site = str(session.get("site_name") or session.get("site") or "").lower()
+                _domains = " ".join(str(c.get("domain") or "") for c in cookies).lower()
+                fname = str(args.session).lower()
+                if "google" in _site or "google." in _domains or "youtube." in _domains or "gmail" in fname:
+                    site_hint = "google"
+
+            if site_hint == "google":
+                print(f"   💡 Google: use Firefox/Brave/Edge/Vivaldi — not Chrome/Chromium/Google browsers.")
+                print(f"   ✅ Same jar works multi-browser + multi-device on non-Chrome targets; use clean --profile-dir.")
+
+            chrome_like = args.browser.lower() in ("chrome", "chromium", "chrome-canary", "chrome-beta")
+            if site_hint == "google" and chrome_like:
+                print(f"   ⚠️  Target is {args.browser}: Google often rejects portable sessions in Chrome-family browsers.")
+
             if source_browser != "unknown" and source_browser != args.browser:
                 print(f"   ⚠️  Cross-browser: {source_browser} → {args.browser}")
-                print(f"   💡 For best results, export from same browser you'll use")
-
             # Connect via CDP and inject (use actual port from browser)
             actual_port = browser.port
 
@@ -351,12 +408,9 @@ def cmd_launch(args):
                     print(f"\n   📄 Page: {title}")
                     print(f"   🔗 URL: {url}")
 
-                # Warn about session sharing
-                print(f"\n   ⚠️  SESSION USAGE RULES:")
-                print(f"   • This session can only be active on ONE device at a time")
-                print(f"   • Google DBSC binds cookies to hardware — cross-device use will fail")
-                print(f"   • For multi-device: use 'tokenade proxy --host 0.0.0.0' instead")
-                print(f"   • To migrate: close browser here, re-export from the active device")
+                # Brief post-load tips (only when Google-ish session)
+                if site_hint == "google" or "google" in str(args.session).lower() or "gmail" in str(args.session).lower():
+                    print(f"\n   Tips: keep targets off Chrome; same jar can run on multiple non-Chrome browsers/devices.")
 
                 await tab_ws.close()
 

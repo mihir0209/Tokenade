@@ -490,27 +490,38 @@ def cmd_export(args):
                 cleaned.append(d)
         domain_filter = cleaned if cleaned else None
 
-    # Plugin-first: try site handler plugin if --plugin specified
+    # Plugin-first: site handler overrides default domain set / critical cookie metadata
     plugin_name = getattr(args, 'plugin', None)
     use_plugin = not getattr(args, 'no_plugin', False)
+    site_handler = None
 
     if plugin_name or use_plugin:
         from tokenade.core.importer.plugin_export import PluginExporter
         exporter = PluginExporter()
+        exporter._load_handlers()
 
         if plugin_name:
-            handler = exporter._handlers.get(plugin_name)
-            if handler:
-                print(f"   🔌 Using plugin: {plugin_name}")
+            site_handler = exporter.get_handler(plugin_name)
+            if site_handler:
+                print(f"   🔌 Using plugin: {plugin_name} (overrides default export worker)")
             else:
-                print(f"   ⚠️  Plugin not found: {plugin_name}")
+                print(f"   ⚠️  Plugin not found: {plugin_name} — falling back to default extraction")
         elif domain_filter:
-            handler = exporter.find_handler(domain_filter)
-            if handler:
-                print(f"   🔌 Auto-discovered handler: {handler.name}")
+            site_handler = exporter.find_handler(domain_filter)
+            if site_handler:
+                print(f"   🔌 Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
             else:
                 print(f"   ℹ️  No handler found for domains, using default extraction")
 
+        # Plugin domains win when user did not pass --domains
+        if site_handler and not domain_filter and hasattr(site_handler, "get_export_domains"):
+            try:
+                plugin_domains = site_handler.get_export_domains() or []
+                if plugin_domains:
+                    domain_filter = list(plugin_domains)
+                    print(f"   🎯 Plugin export domains: {', '.join(domain_filter)}")
+            except Exception as e:
+                logger.debug(f"get_export_domains failed: {e}")
     site_config = None
     if args.site_config:
         with open(args.site_config) as f:

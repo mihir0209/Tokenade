@@ -1521,6 +1521,10 @@ Commands:
     launch_parser.add_argument("--no-cloak", action="store_true", help="Force Playwright + JS patches (skip CloakBrowser)")
     launch_parser.add_argument("--profile", help="Persistent profile directory (CloakBrowser)")
     launch_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
+    launch_parser.add_argument(
+        "--plugin",
+        help="Force site handler plugin for launch (e.g. google-handler); auto-discovers when omitted",
+    )
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
