@@ -263,7 +263,29 @@ class WindowsCookieCrypto(CookieCrypto):
 
 
 class LinuxCookieCrypto(CookieCrypto):
-    """Linux cookie handling - uses plain text or system keyring."""
+    """Linux Chromium-family cookie crypto (Chrome / Brave / Edge / Chromium).
+
+    On Linux, Chromium OSCrypt uses:
+    - Prefix ``v10`` / ``v11``: AES-128-CBC, IV = 16 spaces (0x20)
+    - PBKDF2-HMAC-SHA1(password, b"saltysalt", iterations=1, dkLen=16)
+    - Password from libsecret or KWallet ("{Browser} Safe Storage")
+    - Fallback password ``peanuts`` (and empty password for some legacy cookies)
+    - Cookie DB v24+ prepends 32-byte domain integrity hash to plaintext
+    """
+
+    _SALT = b"saltysalt"
+    _IV = b" " * 16
+    _PBKDF2_ITERS = 1
+    _KEY_LEN = 16
+
+    # Map browser name → OSCrypt / KWallet folder names
+    _BROWSER_CRYPT_NAMES = {
+        "chrome": "Chrome",
+        "brave": "Brave",
+        "chromium": "Chromium",
+        "edge": "Chromium",  # Edge Linux often uses Chromium store
+        "msedge": "Chromium",
+    }
 
     def __init__(self):
         self._keyring_available = self._check_keyring()
@@ -275,125 +297,365 @@ class LinuxCookieCrypto(CookieCrypto):
         except ImportError:
             return False
 
-    def get_encryption_key(self, browser_data_dir: str) -> Optional[bytes]:
-        """Get Linux Chrome encryption key."""
-        if self._keyring_available:
-            try:
-                import secretstorage
-                bus = secretstorage.dbus_init()
-                collection = secretstorage.get_default_collection(bus)
-                for item in collection.get_all_items():
-                    if item.get_label() == "Chrome Safe Storage":
-                        return item.get_secret()
-            except Exception as e:
-                logger.debug(f"Keyring access failed: {e}")
+    def _browser_crypt_name(self, browser: Optional[str] = None) -> str:
+        b = (browser or "chrome").lower().strip()
+        return self._BROWSER_CRYPT_NAMES.get(b, "Chrome")
 
-        # Fallback to "peanuts" key
+    def _passwords_from_secretstorage(self, crypt_name: str) -> List[bytes]:
+        out: List[bytes] = []
+        if not self._keyring_available:
+            return out
+        try:
+            import secretstorage
+
+            bus = secretstorage.dbus_init()
+            # Prefer attribute search (Chromium schema), then label scan
+            labels_wanted = {
+                f"{crypt_name} Safe Storage",
+                f"{crypt_name} Keys/{crypt_name} Safe Storage",
+                "Chrome Safe Storage",
+                "Chrome Keys/Chrome Safe Storage",
+                "Brave Safe Storage",
+                "Chromium Safe Storage",
+            }
+            try:
+                for schema in (
+                    "chrome_libsecret_os_crypt_password_v2",
+                    "chrome_libsecret_os_crypt_password_v1",
+                ):
+                    for item in secretstorage.search_items(
+                        bus, {"xdg:schema": schema, "application": crypt_name.lower()}
+                    ):
+                        try:
+                            sec = item.get_secret()
+                            if isinstance(sec, (bytes, bytearray)) and sec:
+                                out.append(bytes(sec))
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.debug(f"secretstorage schema search failed: {e}")
+
+            for collection in secretstorage.get_all_collections(bus):
+                try:
+                    if collection.is_locked():
+                        collection.unlock()
+                except Exception:
+                    pass
+                try:
+                    for item in collection.get_all_items():
+                        try:
+                            label = item.get_label() or ""
+                            if label not in labels_wanted and "Safe Storage" not in label:
+                                continue
+                            # Prefer matching browser name when present
+                            if crypt_name.lower() not in label.lower() and "chrome" not in label.lower():
+                                # still accept any Safe Storage as candidate
+                                if "Safe Storage" not in label:
+                                    continue
+                            sec = item.get_secret()
+                            if isinstance(sec, (bytes, bytearray)) and sec:
+                                out.append(bytes(sec))
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f"secretstorage access failed: {e}")
+        return out
+
+    def _passwords_from_kwallet(self, crypt_name: str) -> List[bytes]:
+        """Read OSCrypt password from KDE KWallet (Brave/Chrome on KDE).
+
+        Uses jeepney when available (no dbus-python required), matching
+        Chromium's folder layout: ``{Browser} Keys`` / ``{Browser} Safe Storage``.
+        """
+        out: List[bytes] = []
+        folder = f"{crypt_name} Keys"
+        entry = f"{crypt_name} Safe Storage"
+        # 1) jeepney (preferred — same approach as browser-cookie3)
+        try:
+            import jeepney
+            from jeepney.io.blocking import open_dbus_connection
+
+            def _call(conn, addr, method, signature=None, *args):
+                msg = jeepney.new_method_call(addr, method, signature, args)
+                response = conn.send_and_get_reply(msg)
+                if response.header.message_type == jeepney.MessageType.error:
+                    raise RuntimeError(response.body[0] if response.body else "dbus error")
+                return response.body[0] if len(response.body) == 1 else response.body
+
+            for service, path in (
+                ("org.kde.kwalletd6", "/modules/kwalletd6"),
+                ("org.kde.kwalletd5", "/modules/kwalletd5"),
+            ):
+                try:
+                    addr = jeepney.DBusAddress(
+                        path, bus_name=service, interface="org.kde.KWallet"
+                    )
+                    with open_dbus_connection() as connection:
+                        wallet_name = _call(connection, addr, "networkWallet")
+                        handle = _call(
+                            connection, addr, "open", "sxs", wallet_name, 0, "tokenade"
+                        )
+                        if int(handle) < 0:
+                            continue
+                        try:
+                            has_folder = _call(
+                                connection, addr, "hasFolder", "iss", handle, folder, "tokenade"
+                            )
+                            if not has_folder:
+                                continue
+                            password = _call(
+                                connection,
+                                addr,
+                                "readPassword",
+                                "isss",
+                                handle,
+                                folder,
+                                entry,
+                                "tokenade",
+                            )
+                            if password:
+                                out.append(str(password).encode("utf-8"))
+                        finally:
+                            try:
+                                _call(
+                                    connection, addr, "close", "ibs", handle, False, "tokenade"
+                                )
+                            except Exception:
+                                pass
+                    if out:
+                        return out
+                except Exception as e:
+                    logger.debug(f"KWallet jeepney via {service} failed: {e}")
+        except Exception as e:
+            logger.debug(f"KWallet jeepney unavailable: {e}")
+
+        # 2) Optional dbus-python
+        try:
+            import dbus
+
+            bus = dbus.SessionBus()
+            proxy = bus.get_object("org.kde.kwalletd5", "/modules/kwalletd5")
+            iface = dbus.Interface(proxy, "org.kde.KWallet")
+            wid = iface.open("kdewallet", 0, "tokenade")
+            if wid >= 0:
+                try:
+                    if iface.hasFolder(wid, folder, "tokenade"):
+                        pw = iface.readPassword(wid, folder, entry, "tokenade")
+                        if pw:
+                            out.append(str(pw).encode("utf-8"))
+                finally:
+                    iface.close(wid, False, "tokenade")
+        except Exception as e:
+            logger.debug(f"KWallet dbus-python failed: {e}")
+        return out
+
+    def get_password_candidates(self, browser: Optional[str] = None) -> List[bytes]:
+        """Return ordered OSCrypt password candidates for the browser."""
+        crypt_name = self._browser_crypt_name(browser)
+        candidates: List[bytes] = []
+        seen = set()
+
+        def add(pw: Optional[bytes]):
+            if not pw:
+                return
+            if pw in seen:
+                return
+            seen.add(pw)
+            candidates.append(pw)
+
+        # Browser-specific first (Brave key is not Chrome's)
+        try:
+            for pw in self._passwords_from_kwallet(crypt_name):
+                add(pw)
+        except Exception as e:
+            logger.debug(f"kwallet candidates failed: {e}")
+        try:
+            for pw in self._passwords_from_secretstorage(crypt_name):
+                add(pw)
+        except Exception as e:
+            logger.debug(f"secretstorage candidates failed: {e}")
+        # Cross-browser fallbacks (profile may be Chrome-derived)
+        if crypt_name != "Chrome":
+            try:
+                for pw in self._passwords_from_kwallet("Chrome"):
+                    add(pw)
+            except Exception:
+                pass
+            try:
+                for pw in self._passwords_from_secretstorage("Chrome"):
+                    add(pw)
+            except Exception:
+                pass
+        # Legacy defaults
+        add(b"peanuts")
+        add(b"")  # empty key — some older Linux cookies
+        return candidates
+
+    def get_encryption_key(
+        self, browser_data_dir: str = "", browser: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Get primary OSCrypt password for the browser (not the derived AES key)."""
+        candidates = self.get_password_candidates(browser)
+        # Prefer non-default passwords
+        for pw in candidates:
+            if pw not in (b"peanuts", b""):
+                logger.debug(
+                    "Using keyring/KWallet password for %s (%d bytes)",
+                    self._browser_crypt_name(browser),
+                    len(pw),
+                )
+                return pw
         logger.debug("Using fallback 'peanuts' key")
         return b"peanuts"
 
-    def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
-        """Decrypt Linux Chrome cookie.
+    def _derive_aes_key(self, password: bytes) -> bytes:
+        import hashlib
 
-        Linux Chrome uses:
-        - v10: AES-128-CBC with 16-byte IV (all 0x20 spaces)
-        - v11: AES-256-GCM with 12-byte random nonce
-        Both use PBKDF2 key derivation with password and "saltysalt" salt.
+        return hashlib.pbkdf2_hmac(
+            "sha1", password, self._SALT, self._PBKDF2_ITERS, dklen=self._KEY_LEN
+        )
+
+    @staticmethod
+    def _looks_like_text(s: str) -> bool:
+        if not s:
+            return True
+        # Reject U+FFFD / control-heavy garbage from wrong-key decrypt
+        if "\ufffd" in s:
+            return False
+        ctrl = sum(1 for ch in s if ord(ch) < 32 and ch not in "\t\n\r")
+        return (ctrl / max(1, len(s))) < 0.1
+
+    def _cbc_decrypt(self, ciphertext: bytes, aes_key: bytes) -> Optional[bytes]:
+        try:
+            from Crypto.Cipher import AES
+            from Crypto.Util.Padding import unpad
+
+            cipher = AES.new(aes_key, AES.MODE_CBC, self._IV)
+            return unpad(cipher.decrypt(ciphertext), 16)
+        except Exception:
+            return None
+
+    def _plaintext_to_value(self, decrypted: bytes) -> Optional[str]:
+        """Strip optional 32-byte domain integrity prefix; return UTF-8 value.
+
+        Modern Chromium cookie DBs (v24+) store a 32-byte domain hash before the
+        value. The hash is high-entropy binary; if the first 32 bytes already look
+        like plain text, treat the whole blob as the value (no strip).
+        """
+        if len(decrypted) > 32:
+            head = decrypted[:32]
+            # Domain integrity hash is not valid UTF-8 text
+            try:
+                head.decode("utf-8")
+                head_is_text = self._looks_like_text(head.decode("utf-8"))
+            except UnicodeDecodeError:
+                head_is_text = False
+            if not head_is_text:
+                try:
+                    stripped = decrypted[32:].decode("utf-8")
+                    if self._looks_like_text(stripped) and stripped:
+                        return stripped
+                except UnicodeDecodeError:
+                    pass
+        try:
+            text = decrypted.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        return text if self._looks_like_text(text) else None
+
+    def decrypt_cookie(self, encrypted_value: bytes, key: Optional[bytes] = None) -> Optional[str]:
+        """Decrypt Linux Chromium cookie (v10/v11 AES-128-CBC).
+
+        ``key`` is the OSCrypt *password* from keyring/KWallet (or peanuts),
+        not the raw AES key.
         """
         if not encrypted_value:
             return ""
 
         try:
-            from Crypto.Cipher import AES
-            import hashlib
-
             version = encrypted_value[:3]
-            if version == b"v10":
-                # v10: AES-128-CBC with 16-byte IV (all spaces)
-                iv = encrypted_value[3:19]
-                ciphertext = encrypted_value[19:]
+            if version in (b"v10", b"v11"):
+                # Payload after version tag is pure CBC ciphertext (IV is fixed spaces)
+                ciphertext = encrypted_value[3:]
+                passwords: List[bytes] = []
+                if key is not None:
+                    passwords.append(key if isinstance(key, (bytes, bytearray)) else str(key).encode())
+                # Always also try empty + peanuts when primary fails
+                for extra in (b"", b"peanuts"):
+                    if extra not in passwords:
+                        passwords.append(extra)
 
-                key_material = hashlib.pbkdf2_hmac(
-                    "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
-                )
+                for pw in passwords:
+                    aes_key = self._derive_aes_key(pw)
+                    raw = self._cbc_decrypt(ciphertext, aes_key)
+                    if raw is None:
+                        continue
+                    text = self._plaintext_to_value(raw)
+                    if text is not None:
+                        return text
+                return None
 
-                cipher = AES.new(key_material, AES.MODE_CBC, iv)
-                decrypted = cipher.decrypt(ciphertext)
-
-                # Remove PKCS7 padding
-                if decrypted:
-                    pad_len = decrypted[-1]
-                    if 1 <= pad_len <= 16:
-                        decrypted = decrypted[:-pad_len]
-
-                return decrypted.decode("utf-8", errors="replace")
-
-            elif version == b"v11":
-                # v11: AES-256-GCM with 12-byte nonce
-                nonce = encrypted_value[3:15]
-                # Ciphertext includes 16-byte GCM auth tag at the end
-                ciphertext_with_tag = encrypted_value[15:]
-                ciphertext = ciphertext_with_tag[:-16]
-                tag = ciphertext_with_tag[-16:]
-
-                key_material = hashlib.pbkdf2_hmac(
-                    "sha1", key or b"peanuts", b"saltysalt", 1, dklen=32
-                )
-
-                cipher = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
-                try:
-                    # Verify and decrypt in one step (correct GCM usage)
-                    decrypted = cipher.decrypt_and_verify(ciphertext, tag)
-                except ValueError:
-                    # Fallback: decrypt without tag verification
-                    # (some implementations skip tag verification)
-                    logger.debug("GCM tag verification failed, decrypting without verification")
-                    cipher2 = AES.new(key_material, AES.MODE_GCM, nonce=nonce)
-                    decrypted = cipher2.decrypt(ciphertext)
-
-                return decrypted.decode("utf-8", errors="replace")
-            else:
-                return encrypted_value.decode("utf-8", errors="ignore")
+            # Unencrypted / legacy plain blob
+            try:
+                text = encrypted_value.decode("utf-8")
+                return text if self._looks_like_text(text) else None
+            except UnicodeDecodeError:
+                return None
 
         except Exception as e:
             logger.warning(f"Linux decryption failed: {e}")
             return None
 
+    def decrypt_cookie_multi(
+        self,
+        encrypted_value: bytes,
+        passwords: Optional[List[bytes]] = None,
+        browser: Optional[str] = None,
+    ) -> Optional[str]:
+        """Try multiple OSCrypt passwords until one yields valid text."""
+        if not encrypted_value:
+            return ""
+        if passwords is None:
+            passwords = self.get_password_candidates(browser)
+        for pw in passwords:
+            result = self.decrypt_cookie(encrypted_value, pw)
+            if result is not None:
+                return result
+        return None
+
     def encrypt_cookie(self, plaintext: str, key: Optional[bytes] = None) -> bytes:
-        """Encrypt cookie for Linux Chrome (AES-128-CBC)."""
+        """Encrypt cookie for Linux Chrome (AES-128-CBC, v10 prefix).
+
+        Format matches Chromium OSCrypt: ``v10`` + CBC(ciphertext) with fixed IV.
+        """
         try:
             from Crypto.Cipher import AES
-            import hashlib
+            from Crypto.Util.Padding import pad
 
-            key_material = hashlib.pbkdf2_hmac(
-                "sha1", key or b"peanuts", b"saltysalt", 1, dklen=16
-            )
-
-            # 16-byte IV (all 0x20 spaces, matching Chrome's format)
-            iv = b" " * 16
-
-            # PKCS7 padding
-            plaintext_bytes = plaintext.encode("utf-8")
-            pad_len = 16 - (len(plaintext_bytes) % 16)
-            plaintext_bytes += bytes([pad_len] * pad_len)
-
-            cipher = AES.new(key_material, AES.MODE_CBC, iv)
+            key_material = self._derive_aes_key(key or b"peanuts")
+            plaintext_bytes = pad(plaintext.encode("utf-8"), 16)
+            cipher = AES.new(key_material, AES.MODE_CBC, self._IV)
             ciphertext = cipher.encrypt(plaintext_bytes)
-
-            return b"v10" + iv + ciphertext
+            return b"v10" + ciphertext
 
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
             raise
 
-    def extract_cookies(self, cookies_db_path: str, browser_data_dir: Optional[str] = None) -> List[DecryptedCookie]:
-        """Extract cookies from Linux Chrome database."""
+    def extract_cookies(
+        self,
+        cookies_db_path: str,
+        browser_data_dir: Optional[str] = None,
+        browser: Optional[str] = None,
+    ) -> List[DecryptedCookie]:
+        """Extract cookies from Linux Chrome/Brave database."""
         if not os.path.exists(cookies_db_path):
             logger.error(f"Cookie database not found: {cookies_db_path}")
             return []
 
-        key = self.get_encryption_key(browser_data_dir) if browser_data_dir else None
-
+        passwords = self.get_password_candidates(browser)
         cookies = []
         try:
             conn = sqlite3.connect(cookies_db_path)
@@ -415,8 +677,8 @@ class LinuxCookieCrypto(CookieCrypto):
                  samesite, source_scheme) = row
 
                 decrypted_value = None
-                if encrypted_value and key:
-                    decrypted_value = self.decrypt_cookie(encrypted_value, key)
+                if encrypted_value:
+                    decrypted_value = self.decrypt_cookie_multi(encrypted_value, passwords, browser)
 
                 if decrypted_value is None:
                     decrypted_value = value or ""

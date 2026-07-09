@@ -146,3 +146,27 @@ tokenade proxy -s export-ff-github.tokenade --fingerprint --port 9388 --no-open-
 - **GitHub session portability via launch inject: battle-confirmed on this machine.**
 - **Proxy (CDP + forward + fingerprint flag): operational.**
 - **Google via Brave export: blocked on cookie decryption, not launch.**
+
+---
+
+## Pass 3 — Brave/Chromium cookie decryption fix (2026-07-09)
+
+### Root cause
+1. Linux OSCrypt uses **AES-128-CBC** for both `v10` and `v11` (not GCM for v11).
+2. Brave stores password in **KWallet** (`Brave Keys` / `Brave Safe Storage`), not only libsecret.
+3. Modern cookie DB (v24+) prepends a **32-byte domain integrity hash** to plaintext.
+4. Wrong algorithm + wrong key + `errors="replace"` exported **binary garbage** that still looked “successful”.
+
+### Fix
+- `LinuxCookieCrypto`: CBC decrypt, KWallet via jeepney, multi-password candidates (Brave→Chrome→peanuts→empty), integrity strip, reject non-text.
+- `CookieExtractor`: browser-specific passwords; never store ciphertext as value.
+
+### Verification
+| Check | Result |
+|-------|--------|
+| Brave extract google cookies | **90/90 clean** (SID readable) |
+| Re-export `.tokenade` | 80 cookies, 0 control chars |
+| Launch inject Chrome headless | **80/80 cookies injected** via CDP |
+| Unit tests | 189 passed |
+
+Note: Google may still redirect away from myaccount (risk/DBSC) — that is **site policy**, not decrypt/inject.

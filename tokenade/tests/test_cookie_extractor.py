@@ -246,7 +246,9 @@ class TestCookieExtractorChrome:
         conn.close()
 
         mock_crypto = MagicMock()
-        mock_crypto.decrypt_cookie.side_effect = ["decrypted_val", None]
+        # Prefer multi-path used by extractor
+        mock_crypto.get_password_candidates.return_value = [b"fakekey"]
+        mock_crypto.decrypt_cookie_multi.side_effect = ["decrypted_val", None]
 
         extractor = CookieExtractor(chrome_db, browser="chrome")
         extractor._crypto = mock_crypto
@@ -260,7 +262,7 @@ class TestCookieExtractorChrome:
         assert len(cookies) == 2
         vals = {c['name']: c['value'] for c in cookies}
         assert vals['enc_cookie'] == 'decrypted_val'
-        assert vals['enc_cookie2'] == ''  # decryption returned None, falls back to value ''
+        assert vals['enc_cookie2'] == ''  # decryption returned None → empty (no garbage)
 
     def test_extract_chrome_encrypted_value_no_key(self, chrome_db):
         """Lines 334-335: encrypted_value present but no key."""
@@ -277,6 +279,9 @@ class TestCookieExtractorChrome:
 
         mock_crypto = MagicMock()
         mock_crypto.get_encryption_key.side_effect = Exception("no key")
+        mock_crypto.get_password_candidates.return_value = []
+        mock_crypto.decrypt_cookie_multi.return_value = None
+        mock_crypto.decrypt_cookie.return_value = None
 
         extractor = CookieExtractor(chrome_db, browser="chrome")
         with patch.object(extractor, '_get_crypto', return_value=mock_crypto):
@@ -374,6 +379,8 @@ class TestCookieExtractorChrome:
         conn.close()
 
         mock_crypto = MagicMock()
+        mock_crypto.get_password_candidates.return_value = [b"k"]
+        mock_crypto.decrypt_cookie_multi.return_value = None
         mock_crypto.decrypt_cookie.return_value = None
 
         extractor = CookieExtractor(chrome_db, browser="chrome")

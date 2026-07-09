@@ -362,7 +362,9 @@ class TestLinuxCookieCrypto:
 
     def test_get_encryption_key_fallback(self):
         crypto = LinuxCookieCrypto()
-        key = crypto.get_encryption_key("/nonexistent")
+        # Force no keyring/KWallet so we get the peanuts default
+        with patch.object(crypto, "get_password_candidates", return_value=[b"peanuts", b""]):
+            key = crypto.get_encryption_key("/nonexistent")
         assert key == b"peanuts"
 
     def test_extract_cookies_nonexistent_db(self):
@@ -409,51 +411,39 @@ class TestLinuxCookieCrypto:
     # -- get_encryption_key with keyring (lines 285-300) --
 
     def test_get_encryption_key_keyring_success(self):
-        mock_secretstorage = MagicMock()
-        mock_bus = MagicMock()
-        mock_secretstorage.dbus_init.return_value = mock_bus
-
-        mock_collection = MagicMock()
-        mock_secretstorage.get_default_collection.return_value = mock_collection
-
-        mock_item = MagicMock()
-        mock_item.get_label.return_value = "Chrome Safe Storage"
-        mock_item.get_secret.return_value = b"keyring_password"
-        mock_collection.get_all_items.return_value = [mock_item]
-
-        with patch.dict("sys.modules", {"secretstorage": mock_secretstorage}):
-            crypto = LinuxCookieCrypto()
-            crypto._keyring_available = True
-            result = crypto.get_encryption_key("/tmp/test")
-            assert result == b"keyring_password"
+        crypto = LinuxCookieCrypto()
+        with patch.object(crypto, "_passwords_from_kwallet", return_value=[]):
+            with patch.object(
+                crypto, "_passwords_from_secretstorage", return_value=[b"keyring_password"]
+            ):
+                result = crypto.get_encryption_key("/tmp/test", browser="chrome")
+        assert result == b"keyring_password"
 
     def test_get_encryption_key_keyring_no_chrome_item(self):
-        mock_secretstorage = MagicMock()
-        mock_bus = MagicMock()
-        mock_secretstorage.dbus_init.return_value = mock_bus
-
-        mock_collection = MagicMock()
-        mock_secretstorage.get_default_collection.return_value = mock_collection
-
-        mock_item = MagicMock()
-        mock_item.get_label.return_value = "Other Service"
-        mock_collection.get_all_items.return_value = [mock_item]
-
-        with patch.dict("sys.modules", {"secretstorage": mock_secretstorage}):
-            crypto = LinuxCookieCrypto()
-            crypto._keyring_available = True
-            result = crypto.get_encryption_key("/tmp/test")
-            assert result == b"peanuts"
+        crypto = LinuxCookieCrypto()
+        with patch.object(crypto, "_passwords_from_kwallet", return_value=[]):
+            with patch.object(crypto, "_passwords_from_secretstorage", return_value=[]):
+                result = crypto.get_encryption_key("/tmp/test", browser="chrome")
+        assert result == b"peanuts"
 
     def test_get_encryption_key_keyring_exception(self):
-        mock_secretstorage = MagicMock()
-        mock_secretstorage.dbus_init.side_effect = Exception("dbus error")
+        crypto = LinuxCookieCrypto()
+        with patch.object(crypto, "_passwords_from_kwallet", return_value=[]):
+            with patch.object(
+                crypto, "_passwords_from_secretstorage", side_effect=Exception("dbus error")
+            ):
+                # get_password_candidates catches and continues to peanuts
+                result = crypto.get_encryption_key("/tmp/test", browser="chrome")
+        assert result == b"peanuts"
 
-        with patch.dict("sys.modules", {"secretstorage": mock_secretstorage}):
-            crypto = LinuxCookieCrypto()
-            crypto._keyring_available = True
-            result = crypto.get_encryption_key("/tmp/test")
-            assert result == b"peanuts"
+    def test_brave_kwallet_password_preferred(self):
+        crypto = LinuxCookieCrypto()
+        with patch.object(
+            crypto, "_passwords_from_kwallet", side_effect=lambda n: [b"brave-secret"] if n == "Brave" else []
+        ):
+            with patch.object(crypto, "_passwords_from_secretstorage", return_value=[b"chrome-secret"]):
+                cands = crypto.get_password_candidates("brave")
+        assert cands[0] == b"brave-secret"
 
     # -- decrypt_cookie edge cases (lines 302-343) --
 
@@ -462,10 +452,10 @@ class TestLinuxCookieCrypto:
         result = crypto.decrypt_cookie(b"raw_cookie_value", b"peanuts")
         assert result == "raw_cookie_value"
 
-    def test_decrypt_non_utf8_raw_returns_empty_string(self):
+    def test_decrypt_non_utf8_raw_returns_none(self):
         crypto = LinuxCookieCrypto()
         result = crypto.decrypt_cookie(b"\xff\xfe", b"peanuts")
-        assert result == ""
+        assert result is None
 
     def test_decrypt_v10_with_custom_key(self):
         crypto = LinuxCookieCrypto()

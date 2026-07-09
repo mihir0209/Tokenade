@@ -291,13 +291,23 @@ class CookieExtractor:
                 progress_callback(0, total, "extracting_cookies")
 
             crypto = self._get_crypto()
-            key = None
-
-            # Try to get encryption key from parent directory
             browser_data_dir = os.path.dirname(self.profile_path)
+            # Browser-specific OSCrypt passwords (Brave ≠ Chrome on KWallet)
+            passwords = None
+            if hasattr(crypto, "get_password_candidates"):
+                try:
+                    passwords = crypto.get_password_candidates(self.browser)
+                except Exception as e:
+                    logger.debug(f"Could not list encryption passwords: {e}")
+            key = None
             if hasattr(crypto, "get_encryption_key"):
                 try:
-                    key = crypto.get_encryption_key(browser_data_dir)
+                    key = crypto.get_encryption_key(browser_data_dir, browser=self.browser)
+                except TypeError:
+                    try:
+                        key = crypto.get_encryption_key(browser_data_dir)
+                    except Exception as e:
+                        logger.debug(f"Could not get encryption key: {e}")
                 except Exception as e:
                     logger.debug(f"Could not get encryption key: {e}")
 
@@ -311,26 +321,35 @@ class CookieExtractor:
                 if progress_callback and i % 50 == 0:
                     progress_callback(i, total, "extracting_cookies")
 
-                # Decrypt if needed
+                # Decrypt if needed — never keep ciphertext as "value"
                 decrypted_value = value or ""
-                if encrypted_value and key:
+                if encrypted_value:
+                    decrypted = None
                     try:
-                        decrypted = crypto.decrypt_cookie(encrypted_value, key)
-                        if decrypted is not None:
-                            decrypted_value = decrypted
-                            decrypt_success += 1
-                        else:
-                            decrypt_failed += 1
-                            logger.warning(
-                                f"Decryption failed for cookie '{name}' on {host_key} "
-                                "(encrypted_value present but decryption returned None)"
+                        if hasattr(crypto, "decrypt_cookie_multi") and passwords:
+                            decrypted = crypto.decrypt_cookie_multi(
+                                encrypted_value, passwords, browser=self.browser
                             )
+                        elif key is not None:
+                            decrypted = crypto.decrypt_cookie(encrypted_value, key)
+                        else:
+                            decrypted = crypto.decrypt_cookie(encrypted_value, b"peanuts")
                     except Exception as e:
                         decrypt_failed += 1
                         logger.warning(f"Decryption error for cookie '{name}' on {host_key}: {e}")
-                elif encrypted_value and not key:
-                    decrypt_failed += 1
-                    logger.debug(f"Skipping encrypted cookie '{name}' (no decryption key)")
+                        decrypted = None
+
+                    if decrypted is not None:
+                        decrypted_value = decrypted
+                        decrypt_success += 1
+                    else:
+                        decrypt_failed += 1
+                        decrypted_value = ""  # do not export binary garbage
+                        if decrypt_failed <= 5:
+                            logger.warning(
+                                f"Decryption failed for cookie '{name}' on {host_key} "
+                                f"(browser={self.browser}; check KWallet/libsecret Safe Storage)"
+                            )
 
                 # Convert Chrome time to Unix timestamp
                 expires = None
