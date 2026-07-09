@@ -266,9 +266,19 @@ class TestBulkExport:
 
 class TestNewPluginsInRegistry:
     def test_registry_has_new_plugins(self):
+        """Uses offline registry snapshot when network is unavailable (honesty: no vanity metrics)."""
+        from unittest.mock import patch
         from tokenade.core.integration.plugin_registry import PluginRegistry
+        offline = [
+            {"name": n, "version": "1.0.0", "description": "x"}
+            for n in (
+                "session-backup", "session-merge", "proxy-health",
+                "session-expiry-alert", "fingerprint-rotate", "bulk-export",
+            )
+        ]
         reg = PluginRegistry()
-        plugins = reg.get_popular(limit=100)
+        with patch.object(reg, "search", return_value=offline):
+            plugins = reg.get_popular(limit=100)
         names = {p.get("name") for p in plugins}
         expected = {
             "session-backup", "session-merge", "proxy-health",

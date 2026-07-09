@@ -234,9 +234,12 @@ def cmd_proxy(args):
     except KeyboardInterrupt:
         print("\n\n⚠️  Proxy stopped by user")
     except Exception as e:
-        logger.error(f"Proxy failed: {e}", exc_info=True)
+        from tokenade.core.errors import DependencyError, ProxyError, TokenadeError
+        logger.error("Proxy failed: %s", e, exc_info=True)
         error_str = str(e).lower()
-        if "address already in use" in error_str or "eaddrinuse" in error_str:
+        if isinstance(e, DependencyError):
+            print(f"❌ {e}")
+        elif "address already in use" in error_str or "eaddrinuse" in error_str:
             print(f"❌ Port {args.port} is already in use.")
             print(f"   Try: tokenade proxy -s {args.session} --port {args.port + 1}")
             print(f"   Or kill the existing process: lsof -ti:{args.port} | xargs kill")
@@ -248,6 +251,9 @@ def cmd_proxy(args):
             print("   Install: playwright install chromium")
         elif "permission" in error_str or "access" in error_str:
             print("❌ Permission denied — check file and directory permissions")
+        elif isinstance(e, (ProxyError, TokenadeError)):
+            print(f"❌ {e}")
         else:
             print(f"❌ Proxy failed: {e}")
             print("   Check logs for details: ~/.tokenade/logs/")
+        raise SystemExit(1) from e

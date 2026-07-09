@@ -1,6 +1,7 @@
 """Tests for CLI proxy commands."""
 
 import json
+import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from argparse import Namespace
 
@@ -717,7 +718,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = OSError("Address already in use")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f), port=8080)
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "8080" in output
         assert "already in use" in output
@@ -734,7 +737,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = OSError("EADDRINUSE")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f), port=3000)
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "3000" in output
 
@@ -750,7 +755,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = FileNotFoundError("Session not found")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Session file not found" in output
 
@@ -766,7 +773,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = RuntimeError("playwright not installed")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Chromium" in output or "playwright install" in output
 
@@ -782,7 +791,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = RuntimeError("chromium executable not found")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Chromium" in output or "playwright install" in output
 
@@ -798,7 +809,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = PermissionError("Permission denied")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Permission denied" in output
 
@@ -814,7 +827,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = RuntimeError("something unexpected")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Proxy failed" in output
         assert "Check logs" in output
@@ -831,7 +846,9 @@ class TestErrorHandling:
         proxy_instance.run.side_effect = PermissionError("Access denied to session")
         mock_proxy_cls.from_session_file.return_value = proxy_instance
         args = _make_args(session=str(f))
-        cmd_proxy(args)
+        with pytest.raises(SystemExit) as ei:
+            cmd_proxy(args)
+        assert ei.value.code == 1
         output = capsys.readouterr().out
         assert "Permission denied" in output
 

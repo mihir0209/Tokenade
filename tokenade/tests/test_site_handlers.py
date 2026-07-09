@@ -298,9 +298,19 @@ class TestPluginDiscovery:
             assert hasattr(handler, "validate")
 
     def test_registry_has_all_handlers(self):
+        """Offline snapshot — avoid flaky live GitHub registry (429 / vanity metrics)."""
+        from unittest.mock import patch
         from tokenade.core.integration.plugin_registry import PluginRegistry
+        offline = [
+            {"name": n, "version": "1.0.0", "description": "x"}
+            for n in (
+                "google-handler", "github-handler",
+                "discord-handler", "generic-handler",
+            )
+        ]
         reg = PluginRegistry()
-        plugins = reg.get_popular(limit=100)
+        with patch.object(reg, "search", return_value=offline):
+            plugins = reg.get_popular(limit=100)
         names = {p.get("name") for p in plugins}
         assert "google-handler" in names
         assert "github-handler" in names

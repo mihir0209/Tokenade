@@ -126,12 +126,20 @@ async def handle_route(proxy: "CDPProxy", route):
         )
 
     except Exception as e:
-        logger.error(f"Route error for {url}: {e}")
+        from tokenade.core.errors import DependencyError, ProxyError
+        if isinstance(e, DependencyError):
+            raise
+        logger.error("Route error for %s: %s", url[:120], e)
         proxy.stats["errors"] += 1
         try:
             await route.abort()
-        except Exception:
-            pass
+        except Exception as abort_err:
+            logger.debug("route.abort failed: %s", abort_err)
+            raise ProxyError(
+                f"Request route failed and abort failed: {e}",
+                operation="cdp_route",
+                cause=abort_err,
+            ) from e
 
 
 async def forward_via_curl_cffi(

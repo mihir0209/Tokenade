@@ -955,6 +955,15 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 - `inject_via_cdp` raises `InjectionError` when CDP missing or zero cookies injected
 **Verify:** full suite 5251 passed, 7 skipped
 
+### Phase P4 — Core-duplicate plugins as wrappers + proxy fail-closed (2026-07-09) ✅
+**Status:** Complete (2026-07-09)
+**What was done:**
+- browser-stealth / session-health / multi-account → thin core wrappers (v1.3.0)
+- proxy CLI SystemExit(1) on failure; DependencyError surfaced
+- cdp_routing re-raises DependencyError; clearer route abort errors
+- Network registry tests offline-mocked (no 429 flakiness)
+**Verify:** full suite 5251 passed, 7 skipped; 22/22 plugin contracts PASS
+
 ### Phase 71 — Code Audit & Dead Code Removal (next)
 **Goal**: Remove dead code, consolidate overlapping modules
 **Output**: ~3,000 lines removed
