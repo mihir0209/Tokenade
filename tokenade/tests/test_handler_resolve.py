@@ -18,3 +18,15 @@ def test_resolve_github_aliases():
 
 def test_resolve_unknown_falls_back_to_google():
     assert resolve_legacy_handler_class("not-a-real-site") is GoogleHandler
+
+
+def test_resolve_youtube_and_openai_aliases():
+    # Without registry overrides these still land on GoogleHandler fallback,
+    # but keys must normalize (youtube→google, openai→chatgpt→miss→google).
+    assert resolve_legacy_handler_class("youtube") is GoogleHandler
+    assert resolve_legacy_handler_class("openai") is GoogleHandler
+
+
+def test_resolve_strips_and_lowercases():
+    assert resolve_legacy_handler_class("  GitHub  ") is GitHubHandler
+    assert resolve_legacy_handler_class("GH") is GitHubHandler

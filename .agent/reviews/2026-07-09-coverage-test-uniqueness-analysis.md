@@ -108,18 +108,35 @@ Same `test_*` name ≠ same test. Normalized-source SHA of overlapping methods:
 
 ## Mutmut baseline (2026-07-09, mutmut 2.5.1)
 
-Partial run (timed ~4 min) on high-value slice:
+### Pass 1 (partial, pre-killers)
+| Metric | Value |
+|--------|------:|
+| Scope | resolve + errors + encryptor + site_configs |
+| Checked | ~23 / 433 |
+| 🎉 Killed | 10 |
+| 🙁 Survived | 13 |
+
+### Pass 2 (P8 killers — complete high-value slice)
 
 | Metric | Value |
 |--------|------:|
-| Mutants generated | 433 |
-| Checked (partial) | ~23 |
-| 🎉 Killed | 10 |
-| 🙁 Survived | 13 |
-| Untested (timeout) | ~410 |
+| Scope | `resolve.py` + `errors.py` + `encryptor.py` |
+| Mutants | **127** |
+| 🎉 Killed | **127** |
+| 🙁 Survived | **0** |
+| Kill rate | **100%** |
 
-**Interpretation:** Baseline exists; many survivors expected on first pass. Improve kill rate by adding targeted tests for survivors (`mutmut show <id>`), not by adding more coverage-named files.
+**What killed the first survivors:**
+- Alias/default mutations that still returned `GoogleHandler` via fallback → registry isolation + unique handler classes
+- `TokenadeError` attribute nulling → `test_errors.py` exact attribute asserts
+- Exact `MAGIC` / constants / error strings (`XX...XX` wrappers) → exact equality asserts
+- `hasattr(self, 'config')` → encrypt/decrypt with non-default `EncryptionConfig.iterations`
+- File umask `0o177`, log messages, `decrypt_session` path defaults → permission + path + caplog tests
+
+**Not in 100% gate:** `site_configs.py` static tables (hundreds of string mutants; keep behavioral tests only).
 
 **Config notes:**
-- Pin `mutmut>=2.4.0,<3` — mutmut 3 expects top-level `tests/` and copies into `mutants/`
-- Use `make test-mut` for local baseline expansion
+- Pin `mutmut>=2.4.0,<3` — mutmut 3 expects top-level `tests/`
+- `backup = false` — never leave source dirty
+- `make test-mut` / `make test-mut-ci`
+- Killers live in `test_mutmut_killers.py`, `test_errors.py`, strengthened encryptor/resolve/site_configs

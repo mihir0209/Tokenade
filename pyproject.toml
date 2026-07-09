@@ -100,11 +100,11 @@ exclude = [".git", "__pycache__", "build", "dist", "*.egg-info"]
 # See .agent/reviews/2026-07-09-coverage-test-uniqueness-analysis.md
 # Pin mutmut 2.x — 3.x copies into mutants/ and expects top-level tests/.
 [tool.mutmut]
-paths_to_mutate = "tokenade/handlers/resolve.py,tokenade/core/errors.py,tokenade/core/crypto/encryptor.py,tokenade/core/importer/site_configs.py"
+# High-value slice (site_configs is mostly static tables — optional second pass).
+paths_to_mutate = "tokenade/handlers/resolve.py,tokenade/core/errors.py,tokenade/core/crypto/encryptor.py"
 backup = false
-runner = "python -m pytest tokenade/tests/test_handler_resolve.py tokenade/tests/test_site_configs.py tokenade/tests/test_encryptor.py tokenade/tests/test_encryptor_edge.py -q --tb=line -o addopts= -m 'not network'"
+runner = "python -m pytest tokenade/tests/test_handler_resolve.py tokenade/tests/test_encryptor.py tokenade/tests/test_encryptor_edge.py tokenade/tests/test_errors.py tokenade/tests/test_mutmut_killers.py -q --tb=line -o addopts= -m 'not network'"
 tests_dir = "tokenade/tests/"
-dict_synonyms = "Struct, NamedStruct"
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = true

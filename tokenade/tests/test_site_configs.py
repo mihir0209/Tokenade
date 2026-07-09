@@ -65,3 +65,28 @@ def test_json_overlay_merges_preferred_plugin(tmp_path, monkeypatch):
     assert cfg.get("preferred_plugin") == "github-handler"
     domains = cfg.get("domains") or []
     assert "gist.github.com" in domains
+
+
+def test_site_configs_required_fields_and_wait_seconds():
+    for name, cfg in SITE_CONFIGS.items():
+        assert isinstance(name, str) and name
+        assert "name" in cfg
+        assert isinstance(cfg.get("domains"), list)
+        assert isinstance(cfg.get("critical_cookies"), list)
+        assert "wait_seconds" in cfg
+        assert isinstance(cfg["wait_seconds"], int)
+        assert cfg["wait_seconds"] > 0
+
+
+def test_invalid_json_overlay_skipped(tmp_path, monkeypatch):
+    overlay_dir = tmp_path / "site_configs"
+    overlay_dir.mkdir()
+    (overlay_dir / "broken.json").write_text("{not valid json")
+    (overlay_dir / "custom.json").write_text(
+        json.dumps({"name": "custom_overlay_site", "domains": ["example.com"]})
+    )
+    monkeypatch.chdir(tmp_path)
+    assert get_site_config("broken") == {}
+    cfg = get_site_config("custom_overlay_site")
+    assert cfg.get("domains") == ["example.com"]
+    assert "custom_overlay_site" in list_sites()
