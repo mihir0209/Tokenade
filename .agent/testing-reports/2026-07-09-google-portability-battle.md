@@ -179,3 +179,51 @@ Likely remaining causes: server-side risk binding (device/fingerprint/TLS), inco
 - Prefer **`tokenade proxy` on the donor machine** (cookies never leave / same TLS egress) for multi-device Google.
 - Do **not** claim “Google migrate works” from cookie export alone.
 - GitHub-class sites remain the stronger portability story.
+
+---
+
+## Correction: agent flow was wrong (user call-out 2026-07-10)
+
+User correctly noted prior success with:
+
+```bash
+tokenade export --browser-name brave \
+  --domains "google.com,accounts.google.com,mail.google.com,drive.google.com,docs.google.com" \
+  -o gmail.tokenade
+
+tokenade launch -s gmail.tokenade -u https://mail.google.com
+```
+
+### How agent tests diverged
+
+| Aspect | Agent (wrong) | User (known-good historically) |
+|--------|---------------|--------------------------------|
+| Launch browser | often `-b brave` or headless | **default chrome**, headed |
+| Extra flags | `--no-cloak`, `--profile-dir`, temp profiles | **none** |
+| Post-nav | bounced via `accounts.google.com` | straight to mail |
+| Export domains | sometimes shorter list | full list incl. drive/docs |
+| CloakBrowser | assumed relevant | **`tokenade launch` never calls CloakBrowser** (flags are dead on this path) |
+
+Also: repo `gmail.tokenade` from Jun 12 was **Firefox**-sourced (130 cookies), not Brave — closer to a “richer jar” than our 80-cookie Brave exports.
+
+### Fixes applied after call-out
+
+1. Removed post-inject **accounts.google.com detour** in `cmd_launch` (can poison session with Signed out chooser).
+2. Re-ran **exact** user commands (export domains + `launch -s gmail.tokenade -u https://mail.google.com`).
+3. Also tried **Firefox export** (174 cookies) + same launch.
+
+### Re-test results (exact user flow)
+
+| Source | Target | Inject | Gmail outcome |
+|--------|--------|--------|---------------|
+| Brave 80 cookies | default Chrome headed | 80/80 | accountchooser **Signed out** |
+| Firefox 174 cookies | default Chrome headed | 174/174 | marketing `workspace.google.com/gmail` (not inbox) |
+
+So: **flow correction was valid; outcome still not logged-in Gmail** under current automation on this machine. User’s past Linux→Windows success is not contradicted (different time, jar, target OS/browser, possibly `proxy`/`load`, fresher cookies). CloakBrowser is **not** in the current `launch` codepath — if Cloak ever mattered, it was a different command (`tokenade cloak` / load) or an older branch.
+
+### Open hypothesis for “why it worked before for you”
+
+- Target was **Edge/Windows** (non-Chrome DBSC) not Canary Chrome headless/headed temp profile  
+- Session used **immediately** after login/export (less risk aging)  
+- Different command: `proxy` / `load` / profile inject rather than CDP `launch`  
+- Older launcher without accounts.google.com bounce (now removed)

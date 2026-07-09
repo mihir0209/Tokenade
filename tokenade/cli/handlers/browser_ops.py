@@ -330,19 +330,10 @@ def cmd_launch(args):
                         await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
                         await asyncio.sleep(5)
 
-                    # Step 8: If Google, also try accounts.google.com for auth state
-                    if args.url and "google.com" in args.url:
-                        print(f"   Injecting Google auth state on accounts.google.com...", flush=True)
-                        await cdp_cmd(tab_ws, "Page.navigate", {"url": "https://accounts.google.com"})
-                        await asyncio.sleep(3)
-                        if local_data:
-                            await cdp_cmd(tab_ws, "Runtime.evaluate", {
-                                "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
-                                "returnByValue": True,
-                            })
-                        # Navigate back to target
-                        await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
-                        await asyncio.sleep(5)
+                    # NOTE: Do NOT bounce through accounts.google.com after inject.
+                    # That page often shows "Signed out" / accountchooser and can
+                    # poison a portable Google session that would otherwise work
+                    # when navigating straight to mail.google.com / myaccount.
 
                     # Get page info
                     title_result = await cdp_cmd(
