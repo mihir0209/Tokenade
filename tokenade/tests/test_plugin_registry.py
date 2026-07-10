@@ -319,6 +319,54 @@ class TestPluginRegistryDownload:
         assert (tmp_path / "myplug" / "plugin.json").exists()
         assert (tmp_path / "myplug" / "handler.py").exists()
 
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_includes_site_config_when_available(self, mock_urlopen, tmp_path):
+        contents = {
+            "plugin.json": b'{"name":"github-handler","type":"handler"}',
+            "plugin.py": b"# plugin",
+            "site_config.json": b'{"name":"github","domains":["github.com"]}',
+        }
+
+        def fake_urlopen(req, timeout=30):
+            filename = req.full_url.rsplit("/", 1)[-1]
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = contents[filename]
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+
+        mock_urlopen.side_effect = fake_urlopen
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "github-handler"})
+
+        assert result is True
+        assert (tmp_path / "github-handler" / "plugin.json").exists()
+        assert (tmp_path / "github-handler" / "plugin.py").exists()
+        assert (tmp_path / "github-handler" / "site_config.json").exists()
+
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_download_missing_site_config_does_not_fail_plugin_install(self, mock_urlopen, tmp_path):
+        def fake_urlopen(req, timeout=30):
+            filename = req.full_url.rsplit("/", 1)[-1]
+            if filename == "site_config.json":
+                raise urllib.error.URLError("not found")
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b"content"
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+
+        mock_urlopen.side_effect = fake_urlopen
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "utility-plugin"})
+
+        assert result is True
+        assert (tmp_path / "utility-plugin" / "plugin.json").exists()
+        assert (tmp_path / "utility-plugin" / "plugin.py").exists()
+        assert not (tmp_path / "utility-plugin" / "site_config.json").exists()
+
 
 class TestPluginRegistryExtra:
     def test_list_bad_json_manifest(self, tmp_path):

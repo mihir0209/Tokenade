@@ -1,91 +1,89 @@
-# Site Configurations
+# Site Configurations (plugin-owned)
 
-Tokenade includes preset site configurations for popular websites. These configs define:
+**Sprint 0:** Site configs are **not** a directory in the Tokenade core repo.
+They live **inside each site-handler plugin** as `site_config.json`.
 
-- **Domains** — Which cookie domains belong to the site
-- **Critical Cookies** — Cookies that must be present for session validity
-- **Validation URL** — URL to navigate to when validating the session
-- **Login Indicator CSS** — CSS selector for the "Sign In" button (presence = logged out)
-- **Wait Seconds** — How long to wait for page load during validation
+## Layout
 
-## Built-in Configs
-
-| Site | Domains | Critical Cookies | Validate URL |
-|------|---------|-----------------|--------------|
-| **GitHub** | `github.com`, `.github.com` | `user_session`, `_gh_sess`, `logged_in` | `https://github.com` |
-| **Discord** | `discord.com`, `discordapp.com` | `authorization`, `discord_session` | `https://discord.com/channels/@me` |
-| **Reddit** | `reddit.com`, `www.reddit.com` | `reddit_session`, `token` | `https://www.reddit.com/notifications` |
-| **Google** | `google.com`, `accounts.google.com` | `SID`, `SSID`, `SAPISID`, `HSID` + 8 more | `https://myaccount.google.com` |
-| **OpenAI** | `openai.com`, `chatgpt.com` | `session-token`, `oai-did` | `https://chatgpt.com` |
-
-## Using Site Configs
-
-Site configs are automatically applied when exporting or loading sessions:
-
-```bash
-# Export — auto-detects site from cookies
-tokenade export --browser-name brave -o session.tokenade
-
-# Load — uses preset config for validation
-tokenade load -s session.tokenade
+```
+~/.tokenade/plugins/google-handler/
+├── plugin.json
+├── plugin.py
+└── site_config.json    ← domains, critical cookies, URLs
 ```
 
-## Creating Custom Site Configs
-
-Create a JSON file with the following structure:
-
-```json
-{
-  "name": "My Site",
-  "domains": ["mysite.com", ".mysite.com"],
-  "critical_cookies": ["session_id", "auth_token"],
-  "validate_url": "https://mysite.com/dashboard",
-  "login_indicator_css": "a[href='/login']",
-  "wait_seconds": 5
-}
-```
-
-### Using Custom Configs
-
-```bash
-# Export with custom site config
-tokenade export --browser-name chrome --site-config mysite.json
-
-# Or pass it to the packager in Python
-from tokenade.core.importer.session_packager import SessionPackager
-packager = SessionPackager()
-```
-
-## Config Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Display name for the site |
-| `domains` | list | Yes | Cookie domains to match |
-| `critical_cookies` | list | Yes | Cookies required for valid session |
-| `validate_url` | string | No | URL to navigate to for validation |
-| `login_indicator_css` | string | No | CSS selector for logged-out indicator |
-| `wait_seconds` | int | No | Page load wait time (default: 10) |
-
-## Login Indicator CSS
-
-The `login_indicator_css` field should select an element that is **only visible when logged OUT**. When the validator finds this element, it marks the session as invalid.
-
-Examples:
-- GitHub: `a[href='/login']` — the Sign In link
-- Google: `a[href*='accounts.google.com/ServiceLogin']` — the Sign In link
-- Discord: `a[href='/login']` — the Login button
-- Reddit: `a[href='/login']` — the Log In link
-
-## Python API
+The `SiteHandlerPlugin` base class loads `site_config.json` when the plugin
+directory is bound (via `PluginLoader`). Core APIs resolve sites through plugins:
 
 ```python
 from tokenade.core.importer.site_configs import get_site_config, list_sites
 
-# List available sites
-print(list_sites())  # ['github', 'discord', 'reddit', 'google', 'openai']
-
-# Get a specific config
-config = get_site_config("github")
-print(config["domains"])  # ['github.com', '.github.com']
+list_sites()                 # e.g. ['chatgpt', 'github', 'google', ...]
+get_site_config("google")    # dict from google-handler/site_config.json
 ```
+
+## site_config.json schema
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Site key (e.g. `google`, `github`) |
+| `domains` | string[] | Yes | Cookie domains to export / match |
+| `critical_cookies` | string[] | Yes | Names used for health / validation |
+| `login_url` | string | No | Sign-in URL |
+| `dashboard_url` | string | No | Logged-in landing URL |
+| `validate_url` | string | No | Defaults to `dashboard_url` |
+| `session_check_url` | string | No | Fast API session probe |
+| `logged_in_selectors` | string[] | No | CSS: logged-in UI |
+| `logged_out_selectors` | string[] | No | CSS: logged-out UI |
+| `login_indicator_css` | string | No | Legacy single selector (maps to logged_out) |
+| `wait_seconds` | int | No | Validation wait (default 5) |
+| `critical_storage` | object | No | `{ "local": { origin: [keys] }, "session": {} }` |
+| `preferred_plugin` | string | No | Plugin name (default: owning plugin) |
+
+### Example
+
+```json
+{
+  "name": "example-site",
+  "domains": ["example.com", "www.example.com"],
+  "critical_cookies": ["session_id", "auth_token"],
+  "login_url": "https://example.com/login",
+  "dashboard_url": "https://example.com/dashboard",
+  "wait_seconds": 5,
+  "preferred_plugin": "my-site-handler"
+}
+```
+
+## Using with the CLI
+
+```bash
+# Domain list comes from the plugin's site_config.json
+tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade
+
+tokenade launch -s gmail.tokenade --plugin google-handler --browser brave \
+  --profile-dir /tmp/tokenade-brave-clean --visible
+```
+
+Optional **ad-hoc** filter file (batch / one-off) still exists as CLI
+`--site-config path/to.json` for multi-site batch export. That is a **file path
+argument**, not a growing catalog in the core repository.
+
+## Authoring a new site
+
+1. Create a handler plugin under `~/.tokenade/plugins/<name>-handler/`.
+2. Add `plugin.json` + `plugin.py` (subclass `SiteHandlerPlugin`).
+3. Add **`site_config.json`** with domains and critical cookies.
+4. Implement `extract_session` / `inject_session`; getters default from JSON.
+
+See [PLUGIN_DEVELOPMENT.md](PLUGIN_DEVELOPMENT.md) and
+`examples/plugins/my_site_handler/`.
+
+## What was removed
+
+| Removed | Replacement |
+|---------|-------------|
+| Repo-root `site_configs/*.json` | Per-plugin `site_config.json` |
+| Built-in Python `SITE_CONFIGS` table | Plugin discovery |
+| `~/.tokenade/site_configs/` catalog | Handlers only |
+
+Do **not** add site JSON dumps back into the Tokenade monorepo.

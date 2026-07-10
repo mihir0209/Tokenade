@@ -1,92 +1,148 @@
-"""Behavioral tests for site_configs (mutation-oriented).
-
-Replaces weak test_site_configs_coverage.py smoke asserts.
-"""
+"""Behavioral tests for plugin-backed site configs (Sprint 0)."""
 
 import json
 from pathlib import Path
 
 from tokenade.core.importer.site_configs import (
+    discover_plugin_site_configs,
     get_site_config,
     list_sites,
-    SITE_CONFIGS,
+    load_site_config_file,
+    normalize_site_config,
+    config_from_plugin_instance,
 )
+from tokenade.plugin.base import SiteHandlerPlugin
+from tokenade.plugin.api import PluginResult
 
 
-def test_list_sites_includes_builtins_and_is_sorted():
-    sites = list_sites()
-    assert isinstance(sites, list)
-    assert sites == sorted(sites)
-    assert "github" in sites
-    assert "google" in sites
-    # built-in table is subset of list (JSON overlays may add more)
-    for name in SITE_CONFIGS:
-        assert name in sites
+class _StubHandler(SiteHandlerPlugin):
+    name = "stub-handler"
+    version = "0.0.1"
+    description = "test"
+
+    def extract_session(self, _browser_context, url: str) -> PluginResult:
+        return PluginResult(success=True, data={})
+
+    def inject_session(self, _browser_context, session: dict) -> PluginResult:
+        return PluginResult(success=True, data={})
+
+
+def test_normalize_site_config_aliases_and_defaults():
+    cfg = normalize_site_config(
+        {
+            "name": "Acme",
+            "domains": ["acme.com"],
+            "critical_cookies": ["sid"],
+            "dashboard_url": "https://acme.com/app",
+            "login_indicator_css": "a[href='/login']",
+        },
+        plugin_name="acme-handler",
+    )
+    assert cfg["name"] == "Acme"
+    assert cfg["domains"] == ["acme.com"]
+    assert cfg["validate_url"] == "https://acme.com/app"
+    assert cfg["logged_out_selectors"] == ["a[href='/login']"]
+    assert cfg["preferred_plugin"] == "acme-handler"
+    assert cfg["wait_seconds"] == 5
 
 
 def test_get_site_config_unknown_returns_empty_dict():
-    cfg = get_site_config("nonexistent_site_xyz_12345")
+    cfg = get_site_config("nonexistent_site_xyz_12345", plugins_dir=Path("/tmp/no-plugins-xyz"))
     assert cfg == {}
-    # must not return None (callers use .get)
     assert isinstance(cfg, dict)
 
 
-def test_get_site_config_github_has_critical_cookies_and_domains():
-    cfg = get_site_config("github")
-    assert cfg.get("name") or cfg.get("domains")
-    domains = cfg.get("domains") or []
-    assert any("github" in d for d in domains)
-    critical = cfg.get("critical_cookies") or []
-    assert "user_session" in critical or "logged_in" in critical
-
-
-def test_get_site_config_case_insensitive():
-    a = get_site_config("GitHub")
-    b = get_site_config("github")
-    assert a == b
-
-
-def test_json_overlay_merges_preferred_plugin(tmp_path, monkeypatch):
-    """JSON under CWD site_configs/ overlays built-in keys (P1 honesty path)."""
-    overlay_dir = tmp_path / "site_configs"
-    overlay_dir.mkdir()
-    (overlay_dir / "github.json").write_text(
+def test_discover_from_plugin_site_config_json(tmp_path):
+    plugin = tmp_path / "acme-handler"
+    plugin.mkdir()
+    (plugin / "plugin.json").write_text(
         json.dumps(
             {
-                "name": "github",
-                "preferred_plugin": "github-handler",
-                "domains": ["github.com", ".github.com", "gist.github.com"],
+                "name": "acme-handler",
+                "type": "handler",
+                "entry_point": "plugin.py",
+                "entry_class": "X",
             }
         )
     )
-    monkeypatch.chdir(tmp_path)
-    # Clear any cached state if added later — get_site_config reloads each call today
-    cfg = get_site_config("github")
-    assert cfg.get("preferred_plugin") == "github-handler"
-    domains = cfg.get("domains") or []
-    assert "gist.github.com" in domains
-
-
-def test_site_configs_required_fields_and_wait_seconds():
-    for name, cfg in SITE_CONFIGS.items():
-        assert isinstance(name, str) and name
-        assert "name" in cfg
-        assert isinstance(cfg.get("domains"), list)
-        assert isinstance(cfg.get("critical_cookies"), list)
-        assert "wait_seconds" in cfg
-        assert isinstance(cfg["wait_seconds"], int)
-        assert cfg["wait_seconds"] > 0
-
-
-def test_invalid_json_overlay_skipped(tmp_path, monkeypatch):
-    overlay_dir = tmp_path / "site_configs"
-    overlay_dir.mkdir()
-    (overlay_dir / "broken.json").write_text("{not valid json")
-    (overlay_dir / "custom.json").write_text(
-        json.dumps({"name": "custom_overlay_site", "domains": ["example.com"]})
+    (plugin / "site_config.json").write_text(
+        json.dumps(
+            {
+                "name": "acme",
+                "domains": ["acme.com", ".acme.com"],
+                "critical_cookies": ["session"],
+                "dashboard_url": "https://acme.com",
+            }
+        )
     )
-    monkeypatch.chdir(tmp_path)
-    assert get_site_config("broken") == {}
-    cfg = get_site_config("custom_overlay_site")
-    assert cfg.get("domains") == ["example.com"]
-    assert "custom_overlay_site" in list_sites()
+    found = discover_plugin_site_configs(tmp_path)
+    assert "acme" in found
+    assert "acme-handler" in found
+    assert found["acme"]["domains"] == ["acme.com", ".acme.com"]
+    assert get_site_config("acme", plugins_dir=tmp_path)["critical_cookies"] == ["session"]
+    assert "acme" in list_sites(plugins_dir=tmp_path)
+
+
+def test_site_handler_loads_site_config_json(tmp_path):
+    plugin = tmp_path / "acme-handler"
+    plugin.mkdir()
+    (plugin / "site_config.json").write_text(
+        json.dumps(
+            {
+                "name": "acme",
+                "domains": ["acme.com"],
+                "critical_cookies": ["sid", "token"],
+                "login_url": "https://acme.com/login",
+                "dashboard_url": "https://acme.com/home",
+            }
+        )
+    )
+    h = _StubHandler()
+    h.set_plugin_dir(plugin)
+    assert h.get_export_domains() == ["acme.com"]
+    assert h.get_critical_cookies() == ["sid", "token"]
+    assert h.get_login_url() == "https://acme.com/login"
+    assert h.get_dashboard_url() == "https://acme.com/home"
+    assert h.can_handle("https://www.acme.com/path")
+    assert not h.can_handle("https://other.example/")
+    cfg = config_from_plugin_instance(h)
+    assert cfg.get("name") == "acme"
+    assert "sid" in cfg.get("critical_cookies", [])
+
+
+def test_non_handler_plugin_site_config_ignored(tmp_path):
+    plugin = tmp_path / "webhook-notify"
+    plugin.mkdir()
+    (plugin / "plugin.json").write_text(
+        json.dumps({"name": "webhook-notify", "type": "notification", "entry_point": "plugin.py"})
+    )
+    (plugin / "site_config.json").write_text(
+        json.dumps({"name": "should-not-load", "domains": ["x.com"]})
+    )
+    found = discover_plugin_site_configs(tmp_path)
+    assert "should-not-load" not in found
+
+
+def test_invalid_site_config_json_skipped(tmp_path):
+    plugin = tmp_path / "broken-handler"
+    plugin.mkdir()
+    (plugin / "plugin.json").write_text(
+        json.dumps({"name": "broken-handler", "type": "handler", "entry_point": "plugin.py"})
+    )
+    (plugin / "site_config.json").write_text("{not valid")
+    assert load_site_config_file(plugin / "site_config.json") == {}
+    assert discover_plugin_site_configs(tmp_path) == {}
+
+
+def test_list_sites_sorted_unique_primary_names(tmp_path):
+    plugin = tmp_path / "foo-handler"
+    plugin.mkdir()
+    (plugin / "plugin.json").write_text(
+        json.dumps({"name": "foo-handler", "type": "handler", "entry_point": "p.py"})
+    )
+    (plugin / "site_config.json").write_text(
+        json.dumps({"name": "foo", "domains": ["foo.com"], "critical_cookies": []})
+    )
+    sites = list_sites(plugins_dir=tmp_path)
+    assert sites == sorted(sites)
+    assert "foo" in sites

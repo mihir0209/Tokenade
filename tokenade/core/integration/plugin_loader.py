@@ -16,6 +16,32 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
 
+# Optional process-wide loader for site_config discovery (set by CLI on first use).
+_shared_loader: Optional["PluginLoader"] = None
+
+
+def get_shared_loader() -> Optional["PluginLoader"]:
+    """Return the process-wide PluginLoader if one was registered."""
+    return _shared_loader
+
+
+def set_shared_loader(loader: Optional["PluginLoader"]) -> None:
+    """Register a process-wide PluginLoader (CLI / daemon)."""
+    global _shared_loader
+    _shared_loader = loader
+
+
+def get_or_create_shared_loader(plugins_dir: Path = DEFAULT_PLUGINS_DIR) -> "PluginLoader":
+    """Return shared loader, creating and loading plugins if needed."""
+    global _shared_loader
+    if _shared_loader is None:
+        _shared_loader = PluginLoader(plugins_dir)
+        try:
+            _shared_loader.load_all()
+        except Exception as e:
+            logger.debug("Shared plugin load failed: %s", e)
+    return _shared_loader
+
 
 @dataclass
 class LoadedPlugin:
@@ -172,6 +198,13 @@ class PluginLoader:
             logger.error(f"Plugin {name}: failed to instantiate: {e}", exc_info=True)
             return None
 
+        # Bind plugin directory so SiteHandlerPlugin can load site_config.json
+        try:
+            if hasattr(instance, "set_plugin_dir"):
+                instance.set_plugin_dir(plugin_dir)
+        except Exception as e:
+            logger.debug(f"Plugin {name}: set_plugin_dir failed: {e}")
+
         # Check API version
         from tokenade.plugin.api import API_VERSION
         plugin_api_version = getattr(instance, "API_VERSION", None)
@@ -204,8 +237,19 @@ class PluginLoader:
 
         # Register by type
         if plugin_type == "handler":
-            site_name = meta.get("site_name", name)
+            # Prefer site_config.json "name", then manifest site_name, then plugin name
+            site_name = meta.get("site_name") or name
+            if hasattr(instance, "get_site_config"):
+                try:
+                    sc = instance.get_site_config() or {}
+                    if sc.get("name"):
+                        site_name = sc["name"]
+                except Exception:
+                    pass
             self._handlers[site_name] = instance
+            # Also index by plugin name for --plugin google-handler lookups
+            if name and name not in self._handlers:
+                self._handlers[name] = instance
         elif plugin_type == "export_format":
             format_name = meta.get("format_name", name)
             self._exporters[format_name] = instance

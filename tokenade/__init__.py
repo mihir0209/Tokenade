@@ -9,7 +9,7 @@ Modules:
     core.crypto: Cross-platform cookie encryption/decryption
     core.fingerprint: Browser fingerprint collection and matching
     core.importer: Cookie extraction, packaging, session lifecycle
-    handlers: Legacy site handlers (prefer plugins + site_configs)
+    handlers: Legacy site handlers (prefer plugins + site_config.json)
     plugin: Plugin API base classes
     tests: Portability testing framework
 
@@ -19,7 +19,7 @@ Usage:
 """
 
 __version__ = "1.0.0"
-__author__ = "Tokenade Team"
+__author__ = "MiHiR"
 __license__ = "MIT"
 
 from tokenade.core.browser.manager import BrowserManager, BrowserConfig, BrowserFactory

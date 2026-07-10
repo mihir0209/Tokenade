@@ -1,8 +1,14 @@
 """
-Abstract base classes for Tokenade plugins (API v1.0).
+Abstract base classes for Tokenade plugins (API v1.0 / v1.1).
 
 All plugins must subclass PluginBase and implement the required methods.
 Plugin types add specific capabilities on top of the base.
+
+Plugin layout (site handlers):
+    my-handler/
+    ├── plugin.json       # manifest (required)
+    ├── plugin.py         # entry class (required)
+    └── site_config.json  # domains, critical cookies, URLs (site handlers)
 
 Plugin Manifest (plugin.json):
 {
@@ -19,7 +25,8 @@ Plugin Manifest (plugin.json):
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 from tokenade.plugin.api import API_VERSION, PluginResult, PluginConfig
 
@@ -49,6 +56,16 @@ class PluginBase(ABC):
 
     def __init__(self):
         self._config: Optional[PluginConfig] = None
+        self._plugin_dir: Optional[Path] = None
+
+    def set_plugin_dir(self, path: Union[str, Path]) -> None:
+        """Bind plugin install directory (called by PluginLoader)."""
+        self._plugin_dir = Path(path)
+
+    @property
+    def plugin_dir(self) -> Optional[Path]:
+        """Directory containing plugin.json (if set by loader)."""
+        return self._plugin_dir
 
     def on_load(self) -> None:
         """Called when the plugin is loaded. Override for initialization."""
@@ -144,46 +161,93 @@ class SessionRefreshPlugin(PluginBase):
 class SiteHandlerPlugin(PluginBase):
     """Plugin that handles a specific website's extraction/injection.
 
-    Implement can_handle() to declare which URLs this plugin handles,
-    extract_session() to extract session data, and inject_session() to inject.
+    **Site config (Sprint 0):** place ``site_config.json`` next to ``plugin.json``.
+    The base class loads it on ``set_plugin_dir()`` / ``on_load()`` and uses it as
+    the default source for domains, critical cookies, and URLs.
 
-    NEW in API v1.1:
-    - get_export_domains() — domains to export cookies for
-    - get_critical_cookies() — critical cookie names
-    - get_critical_storage() — critical localStorage/sessionStorage keys
-    - get_login_url() — URL to check login
-    - get_dashboard_url() — logged-in dashboard URL
-    - get_session_check_url() — API endpoint for fast login check
-    - get_logged_in_selectors() — CSS selectors for logged-in state
-    - get_logged_out_selectors() — CSS selectors for logged-out state
-    - verify_login(context) — verify if actually logged in
+    Plugin layout::
 
-    Example:
-        class GoogleSiteHandler(SiteHandlerPlugin):
-            API_VERSION = "1.1.0"
-            name = "google-handler"
+        google-handler/
+        ├── plugin.json
+        ├── plugin.py
+        └── site_config.json   # required for product sites
 
-            def get_export_domains(self):
-                return ["google.com", "accounts.google.com", "mail.google.com"]
+    Implement extract_session() / inject_session(). Override getters only when
+    you need logic beyond the JSON file. can_handle() defaults to domain match
+    against get_export_domains().
 
-            def get_critical_cookies(self):
-                return ["SID", "HSID", "__Secure-1PSID"]
+    Example site_config.json::
 
-            def verify_login(self, browser_context):
-                # Navigate to dashboard, check selectors
-                ...
+        {
+          "name": "google",
+          "domains": ["google.com", "accounts.google.com", "mail.google.com"],
+          "critical_cookies": ["SID", "HSID", "__Secure-1PSID"],
+          "login_url": "https://accounts.google.com/signin",
+          "dashboard_url": "https://mail.google.com",
+          "wait_seconds": 5
+        }
     """
 
-    @abstractmethod
-    def can_handle(self, url: str) -> bool:
-        """Check if this plugin handles the given URL.
+    def __init__(self):
+        super().__init__()
+        self._site_config: Dict[str, Any] = {}
 
-        Args:
-            url: The target URL
+    def set_plugin_dir(self, path: Union[str, Path]) -> None:
+        """Bind plugin directory and load site_config.json if present."""
+        super().set_plugin_dir(path)
+        self._load_site_config_file()
 
-        Returns:
-            True if this plugin can handle the site
+    def on_load(self) -> None:
+        """Ensure site_config.json is loaded when the plugin is activated."""
+        if not self._site_config and self._plugin_dir:
+            self._load_site_config_file()
+
+    def _load_site_config_file(self) -> None:
+        """Load site_config.json from the plugin root into ``_site_config``."""
+        if not self._plugin_dir:
+            return
+        path = self._plugin_dir / "site_config.json"
+        if not path.is_file():
+            return
+        try:
+            from tokenade.core.importer.site_configs import load_site_config_file
+
+            self._site_config = load_site_config_file(
+                path, plugin_name=self.name or ""
+            )
+        except Exception:
+            import json
+
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    self._site_config = raw
+            except (OSError, json.JSONDecodeError):
+                self._site_config = {}
+
+    def get_site_config(self) -> Dict[str, Any]:
+        """Return the loaded site config (from site_config.json + overrides).
+
+        Core and CLI call this (via site_configs.get_site_config) to resolve
+        domains, health cookies, and URLs for a site.
         """
+        if not self._site_config and self._plugin_dir:
+            self._load_site_config_file()
+        return dict(self._site_config)
+
+    def can_handle(self, url: str) -> bool:
+        """True if URL matches any export domain from site_config.json.
+
+        Override for non-domain matching (path prefixes, multi-tenant hosts).
+        """
+        url_lower = (url or "").lower()
+        if not url_lower:
+            return False
+        for domain in self.get_export_domains():
+            clean = str(domain).lstrip(".").lower()
+            if clean and clean in url_lower:
+                return True
+        return False
 
     @abstractmethod
     def extract_session(self, _browser_context: Any, url: str) -> PluginResult:
@@ -223,82 +287,58 @@ class SiteHandlerPlugin(PluginBase):
             data={"valid": True, "score": 100.0, "issues": []},
         )
 
-    # ── Export Specification (API v1.1) ──
+    # ── Export Specification (API v1.1) — defaults from site_config.json ──
 
     def get_export_domains(self) -> List[str]:
-        """Return domains to export cookies for.
-
-        Example: ["google.com", "accounts.google.com", "mail.google.com"]
-        Used by: tokenade export --plugin google-handler
-
-        Returns:
-            List of domain strings
-        """
-        return []
+        """Domains to export cookies for (from site_config.json ``domains``)."""
+        cfg = self.get_site_config()
+        domains = cfg.get("domains") or []
+        return list(domains) if isinstance(domains, list) else []
 
     def get_critical_cookies(self) -> List[str]:
-        """Return critical cookie names for this site.
-
-        Example: ["SID", "HSID", "__Secure-1PSID"]
-        Used by: session validation, health scoring
-
-        Returns:
-            List of cookie name strings
-        """
-        return []
+        """Critical cookie names (from site_config.json ``critical_cookies``)."""
+        cfg = self.get_site_config()
+        cookies = cfg.get("critical_cookies") or []
+        return list(cookies) if isinstance(cookies, list) else []
 
     def get_critical_storage(self) -> Dict[str, Dict[str, List[str]]]:
-        """Return critical localStorage/sessionStorage keys.
-
-        Returns:
-            Dict with "local" and "session" keys, each mapping
-            origin → list of key names.
-
-        Example:
-            {"local": {"https://mail.google.com": ["inbox_count"]}, "session": {}}
-        """
+        """Critical localStorage/sessionStorage keys from site_config.json."""
+        cfg = self.get_site_config()
+        storage = cfg.get("critical_storage")
+        if isinstance(storage, dict):
+            return storage
         return {"local": {}, "session": {}}
 
-    # ── Login Verification (API v1.1) ──
+    # ── Login Verification (API v1.1) — defaults from site_config.json ──
 
     def get_login_url(self) -> str:
-        """Return URL to navigate to for login check.
-
-        Example: "https://github.com/login"
-        Used by: verify_login()
-        """
-        return ""
+        """Login URL from site_config.json ``login_url``."""
+        return str(self.get_site_config().get("login_url") or "")
 
     def get_dashboard_url(self) -> str:
-        """Return URL of the logged-in dashboard.
-
-        Example: "https://github.com"
-        Used by: verify_login()
-        """
-        return ""
+        """Dashboard URL from site_config.json ``dashboard_url`` or ``validate_url``."""
+        cfg = self.get_site_config()
+        return str(cfg.get("dashboard_url") or cfg.get("validate_url") or "")
 
     def get_session_check_url(self) -> str:
-        """Return API URL to check session validity (faster than page navigation).
-
-        Example: "https://labs.google/fx/api/auth/session"
-        Used by: verify_login()
-        """
-        return ""
+        """Fast session-check API URL from site_config.json."""
+        return str(self.get_site_config().get("session_check_url") or "")
 
     def get_logged_in_selectors(self) -> List[str]:
-        """Return CSS selectors that indicate logged-in state.
-
-        Example: ["img.avatar", "[data-testid='header-avatar']"]
-        Used by: verify_login()
-        """
-        return []
+        """CSS selectors for logged-in state from site_config.json."""
+        cfg = self.get_site_config()
+        sels = cfg.get("logged_in_selectors") or []
+        return list(sels) if isinstance(sels, list) else []
 
     def get_logged_out_selectors(self) -> List[str]:
-        """Return CSS selectors that indicate logged-out state.
-
-        Example: ["a[href='/login']", "form#login"]
-        Used by: verify_login()
-        """
+        """CSS selectors for logged-out state from site_config.json."""
+        cfg = self.get_site_config()
+        sels = cfg.get("logged_out_selectors") or []
+        if isinstance(sels, list) and sels:
+            return list(sels)
+        indicator = cfg.get("login_indicator_css")
+        if isinstance(indicator, str) and indicator:
+            return [indicator]
         return []
 
     def verify_login(self, browser_context: Any) -> PluginResult:
@@ -653,7 +693,7 @@ class NotificationPlugin(PluginBase):
             name = "slack-notify"
             version = "1.0.0"
             description = "Slack notifications"
-            author = "Tokenade Team"
+            author = "MiHiR"
 
             def send(self, event, data):
                 # Send Slack message

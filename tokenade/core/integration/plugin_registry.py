@@ -480,8 +480,9 @@ class PluginRegistry:
         plugin_dir = self.plugins_dir / name
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        # Core files to always download
-        core_files = ["plugin.json", "plugin.py"]
+        # Core plugin files plus site metadata when present. site_config.json is
+        # optional for plugins in general, but must travel with site handlers.
+        core_files = ["plugin.json", "plugin.py", "site_config.json"]
         extra_files = [f for f in plugin.get("files", []) if f not in core_files]
         all_files = core_files + extra_files
 
@@ -496,7 +497,7 @@ class PluginRegistry:
                 with open(target_path, "wb") as f:
                     f.write(content)
             except (urllib.error.URLError, OSError) as e:
-                # Skip non-critical files (like README.md)
+                # Skip non-critical files (site_config.json, README.md, helpers)
                 if filename in ("plugin.json", "plugin.py"):
                     logger.error(f"Failed to download {file_url}: {e}")
                     return False

@@ -65,8 +65,28 @@ Tokenade = portable browser sessions (export/inject/proxy) with stealth, plugins
 | `phase7-plan.md` | Tokenade — Phase 7: Coverage Push to 90%+ | No releases or tags per feature. Development on `main`. Only after battle-tested positive results. |
 | `v4.1-plan.md` | Tokenade v4.1 Plan | - Improve test coverage to 80%+ |
 
+## Active plan (2026-07-10)
+
+See **`2026-07-10-next-natural-plan.md`** — post README/1.0.0 sequencing.
+
+### Sprint 0 — DONE
+Plugin-owned **`site_config.json`** only. Root `site_configs/` removed.
+
+### Sprint A — DONE
+Google recipe productized: launch clean-profile default for session inject,
+Chrome-family warning, export locked-DB messaging, plugin tips; getting-started
+tutorial rewritten (Gmail→Brave + Windows).
+
+### Remaining
+1. **Sprint B (P1):** ChatGPT / GitHub handler depth
+2. **Sprint C (P1b):** Vivaldi CDP + macOS matrix (Vivaldi = browser-side flake)
+3. **Sprint D (P3):** Behavioral regression tests
+4. **Sprint E (P2):** Secondary docs honesty/sweep
+
+Done: README; LICENSE + **MiHiR**; PyPI 1.0.0; Sprint 0–A.
+
 ## Still relevant open work (from plans + 2026-07-10 results)
-1. Google portability productization (non-Chrome recipe, messaging) — **proven**
+1. Google portability productization (non-Chrome recipe, messaging) — **proven in battle; productize next**
 2. Plugin override correctness (specific > generic) — **fixed 2026-07-10**
 3. More base classes for non-site plugins (features, not only sites)
 4. Broader site handlers (ChatGPT, etc.)

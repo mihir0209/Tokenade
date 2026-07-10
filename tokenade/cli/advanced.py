@@ -358,7 +358,7 @@ def cmd_test(args):
     hname = getattr(handler_class, "__name__", str(handler_class))
     print(
         f"\n⚠️  Using legacy handler {hname} "
-        f"(prefer site plugins / site_configs for new work)"
+        f"(prefer site plugins + site_config.json for new work)"
     )
 
     fp_manager = FingerprintManager()

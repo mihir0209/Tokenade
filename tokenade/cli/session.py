@@ -504,14 +504,34 @@ def cmd_export(args):
             site_handler = exporter.get_handler(plugin_name)
             if site_handler:
                 print(f"   🔌 Using plugin: {plugin_name} (overrides default export worker)")
+                # Confirm site_config.json is driving domains (Sprint 0)
+                if hasattr(site_handler, "get_site_config"):
+                    try:
+                        sc = site_handler.get_site_config() or {}
+                        if sc.get("domains"):
+                            print(f"   📄 site_config.json: {sc.get('name', '?')} ({len(sc.get('domains') or [])} domains)")
+                    except Exception:
+                        pass
             else:
                 print(f"   ⚠️  Plugin not found: {plugin_name} — falling back to default extraction")
+                print(f"   ➡️  Install: tokenade plugin install {plugin_name}")
         elif domain_filter:
             site_handler = exporter.find_handler(domain_filter)
             if site_handler:
                 print(f"   🔌 Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
             else:
                 print(f"   ℹ️  No handler found for domains, using default extraction")
+                joined = ",".join(domain_filter).lower()
+                if "google" in joined or "gmail" in joined:
+                    print("   💡 Google tip: tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade")
+                elif "github" in joined:
+                    print("   💡 GitHub tip: tokenade export --browser-name firefox --plugin github-handler -o github.tokenade")
+        else:
+            # No domains / no plugin — point at list-handlers
+            print("   ℹ️  No --domains / --plugin: exporting unfiltered cookies from the profile.")
+            print("   💡 Prefer a site plugin (domains from site_config.json):")
+            print("      tokenade export --list-handlers")
+            print("      tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade")
 
         # Plugin domains win when user did not pass --domains
         if site_handler and not domain_filter and hasattr(site_handler, "get_export_domains"):
@@ -537,6 +557,38 @@ def cmd_export(args):
         elif stage == "complete":
             print("\r   ✅ Cookie extraction complete                    ", flush=True)
 
+    # SQLite export: warn if donor browser looks running (locks cookie DB)
+    if not cdp_port and not args.file_path and browser_name and browser_name != "unknown":
+        try:
+            import platform
+            import subprocess as _sp
+            _name = browser_name.lower()
+            if platform.system() != "Windows":
+                # Match common process names without self-killing the shell
+                _patterns = {
+                    "firefox": "firefox",
+                    "chrome": "chrome",
+                    "brave": "brave",
+                    "edge": "msedge",
+                }
+                _pat = _patterns.get(_name, _name)
+                _r = _sp.run(["pgrep", "-x", _pat], capture_output=True, text=True, timeout=3)
+                if _r.returncode != 0 and _pat == "brave":
+                    _r = _sp.run(["pgrep", "-x", "brave-browser"], capture_output=True, text=True, timeout=3)
+                if _r.returncode == 0 and (_r.stdout or "").strip():
+                    print(f"   ⚠️  {browser_name} appears to be running — cookie DB may be locked.")
+                    print(f"   ➡️  Fully quit {browser_name} (check system tray / process list), then re-run export.")
+            else:
+                _r = _sp.run(
+                    ["tasklist", "/fi", f"imagename eq {browser_name}.exe"],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if browser_name.lower() in (_r.stdout or "").lower():
+                    print(f"   ⚠️  {browser_name} appears to be running — cookie DB may be locked.")
+                    print(f"   ➡️  Fully quit {browser_name} (Task Manager), then re-run export.")
+        except Exception:
+            pass
+
     try:
         if cdp_port:
             pass  # cookies already obtained via CDP above
@@ -546,7 +598,15 @@ def cmd_export(args):
             cookies = extractor.extract(site_filter=None, progress_callback=_progress)
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)
-        print("❌ Extraction failed — check browser profile is accessible")
+        err = str(e).lower()
+        print("❌ Extraction failed")
+        if "locked" in err or "busy" in err or "sqlite" in err:
+            print("   Cookie database is locked (browser still open or crashed with lock held).")
+            print(f"   ➡️  Fully quit {browser_name}, wait a few seconds, then retry export.")
+            print("   ➡️  On Linux/macOS: ensure no leftover browser processes remain.")
+        else:
+            print("   Check browser profile is accessible and you have read permission.")
+            print(f"   Detail: {e}")
         raise SystemExit(1) from e
 
     print(f"   📊 Total cookies: {len(cookies)}")

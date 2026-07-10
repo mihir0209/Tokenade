@@ -447,7 +447,7 @@ RUN pip install --no-cache-dir --user .
 # Stage 2: Runtime image
 FROM python:3.12-slim
 
-LABEL maintainer="Tokenade Team"
+LABEL maintainer="MiHiR"
 LABEL description="Production-grade session portability tool"
 
 WORKDIR /app

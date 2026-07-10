@@ -76,9 +76,14 @@ def cmd_launch(args):
                 pass  # If we can't check, just try to launch
 
         # Copy real profile only when NO session file (cookies come from profile)
-        # When session file IS provided, use fresh profile (session cookies are authoritative)
+        # When session file IS provided, use a clean isolated profile (session is authoritative)
         profile_dir = args.profile_dir
-        if not profile_dir and not args.session:
+        if args.session and not profile_dir:
+            import tempfile
+            profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{args.browser}_clean_")
+            print(f"   📁 Clean profile (session inject): {profile_dir}")
+            print(f"   💡 Pass --profile-dir PATH to reuse or pin a profile directory.")
+        elif not profile_dir and not args.session:
             real_dir = launcher._get_default_profile_dir(args.browser)
             if real_dir:
                 import tempfile
@@ -186,13 +191,16 @@ def cmd_launch(args):
                 if "google" in _site or "google." in _domains or "youtube." in _domains or "gmail" in fname:
                     site_hint = "google"
 
+            chrome_like = args.browser.lower() in (
+                "chrome", "chromium", "chrome-canary", "chrome-beta", "google-chrome",
+            )
             if site_hint == "google":
-                print(f"   💡 Google: use Firefox/Brave/Edge/Vivaldi — not Chrome/Chromium/Google browsers.")
-                print(f"   ✅ Same jar works multi-browser + multi-device on non-Chrome targets; use clean --profile-dir.")
-
-            chrome_like = args.browser.lower() in ("chrome", "chromium", "chrome-canary", "chrome-beta")
+                print(f"   💡 Google recipe: donor + target should be Firefox/Brave/Edge/Vivaldi (not Chrome).")
+                print(f"   ✅ Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
+                print(f"   🧭 Open the product URL (mail.google.com) — avoid bouncing through accounts.google.com after inject.")
             if site_hint == "google" and chrome_like:
-                print(f"   ⚠️  Target is {args.browser}: Google often rejects portable sessions in Chrome-family browsers.")
+                print(f"   ⚠️  Target is {args.browser}: Google usually rejects portable sessions in Chrome-family browsers.")
+                print(f"   ➡️  Prefer: tokenade launch --browser brave --session {args.session} --profile-dir /tmp/tokenade-brave-clean --visible")
 
             if source_browser != "unknown" and source_browser != args.browser:
                 print(f"   ⚠️  Cross-browser: {source_browser} → {args.browser}")
@@ -260,11 +268,18 @@ def cmd_launch(args):
                 print("   Connected.")
 
                 # Step 3: Inject stealth FIRST (before page load)
+                # Vivaldi/some forks can hang on Page.enable — do not abort cookie inject.
                 print("   Injecting stealth script...", flush=True)
                 stealth_script = get_undetectable_stealth_script()
-
-                await cdp_cmd(tab_ws, "Page.enable")
-                await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+                try:
+                    await cdp_cmd(tab_ws, "Page.enable")
+                    await cdp_cmd(
+                        tab_ws,
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {"source": stealth_script},
+                    )
+                except Exception as _stealth_err:
+                    print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
 
                 # Step 4: Inject cookies (per-cookie — batch setCookies fails hard on one bad field)
                 print(f"   Injecting {len(cookies)} cookies...", flush=True)
@@ -408,9 +423,18 @@ def cmd_launch(args):
                     print(f"\n   📄 Page: {title}")
                     print(f"   🔗 URL: {url}")
 
-                # Brief post-load tips (only when Google-ish session)
+                # Post-load tips + failure heuristics for Google
                 if site_hint == "google" or "google" in str(args.session).lower() or "gmail" in str(args.session).lower():
-                    print(f"\n   Tips: keep targets off Chrome; same jar can run on multiple non-Chrome browsers/devices.")
+                    print(
+                        "\n   Tips: non-Chrome targets; clean --profile-dir; "
+                        "product URL (inbox), not accounts.google.com."
+                    )
+                    # url/title set above when navigation ran
+                    page_url = locals().get("url") or ""
+                    page_url_l = str(page_url).lower()
+                    if any(x in page_url_l for x in ("accountchooser", "servicelogin", "/signin")):
+                        print("   ⚠️  Looks signed-out / account chooser — Chrome-family targets often fail.")
+                        print("   ➡️  Retry with Brave/Edge/Firefox + a fresh --profile-dir.")
 
                 await tab_ws.close()
 
@@ -465,10 +489,17 @@ def cmd_launch(args):
                     ping_interval=30, ping_timeout=10,
                 )
 
-                # Inject stealth
+                # Inject stealth (best-effort — some browsers hang on Page.enable)
                 stealth_script = get_undetectable_stealth_script()
-                await cdp_cmd(tab_ws, "Page.enable")
-                await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+                try:
+                    await cdp_cmd(tab_ws, "Page.enable")
+                    await cdp_cmd(
+                        tab_ws,
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {"source": stealth_script},
+                    )
+                except Exception as _stealth_err:
+                    print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing")
 
                 # Navigate
                 print(f"\n   Navigating to: {args.url}")
@@ -720,11 +751,18 @@ def cmd_refresh_browser(args):
                 ping_timeout=10,
             )
 
-            # Inject stealth
+            # Inject stealth (best-effort — some browsers hang on Page.enable)
             from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
             stealth_script = get_undetectable_stealth_script()
-            await cdp_cmd(tab_ws, "Page.enable")
-            await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+            try:
+                await cdp_cmd(tab_ws, "Page.enable")
+                await cdp_cmd(
+                    tab_ws,
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {"source": stealth_script},
+                )
+            except Exception as _stealth_err:
+                print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
 
             # Inject cookies
             print(f"\n🍪 Injecting {len(cookies)} cookies...")
@@ -1253,11 +1291,18 @@ def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time)
             ping_timeout=10,
         )
 
-        # Inject stealth
+        # Inject stealth (best-effort — some browsers hang on Page.enable)
         from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
         stealth_script = get_undetectable_stealth_script()
-        await cdp_cmd(tab_ws, "Page.enable")
-        await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+        try:
+            await cdp_cmd(tab_ws, "Page.enable")
+            await cdp_cmd(
+                tab_ws,
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": stealth_script},
+            )
+        except Exception as _stealth_err:
+            print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
 
         # Inject cookies
         cdp_cookies = []

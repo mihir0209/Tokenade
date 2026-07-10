@@ -12,6 +12,7 @@ examples/plugins/
 │   └── plugin.py                # Plugin implementation
 ├── my_site_handler/             # Example 2: Custom site handler plugin
 │   ├── plugin.json
+│   ├── site_config.json         # domains / critical cookies / URLs
 │   └── plugin.py
 ├── my_export_format/            # Example 3: Custom export format plugin
 │   ├── plugin.json
@@ -54,8 +55,9 @@ See `my_custom_refresh/plugin.py` for a complete example.
 
 ```
 my-plugin/
-├── plugin.json    # Required: metadata manifest
-└── plugin.py      # Required: plugin code
+├── plugin.json       # Required: metadata manifest
+├── plugin.py         # Required: plugin code
+└── site_config.json  # Site handlers: domains, cookies, URLs (Sprint 0)
 ```
 
 ### plugin.json
@@ -65,7 +67,7 @@ my-plugin/
     "name": "my-plugin",
     "version": "1.0.0",
     "description": "What my plugin does",
-    "author": "Your Name",
+    "author": "MiHiR",
     "type": "session_refresh",
     "entry_point": "plugin.py",
     "entry_class": "MyPlugin",

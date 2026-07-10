@@ -141,7 +141,7 @@ class TestRichComponents:
             "name": "oauth2",
             "version": "1.0.0",
             "description": "OAuth2 token refresh",
-            "author": "Tokenade Team",
+            "author": "MiHiR",
             "rating": 4.2,
             "downloads": 142,
             "verified": True,

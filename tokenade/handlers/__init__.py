@@ -13,12 +13,11 @@ There are **two** site-handler systems in Tokenade:
 
 Do **not** add new site logic here. Prefer:
 
-- JSON under `site_configs/` for domains + critical cookies + selectors
-- `SiteHandlerPlugin` in plugins for non-trivial extract/inject/verify
+- `SiteHandlerPlugin` + **`site_config.json`** in the plugin root
+  (domains, critical cookies, URLs — loaded by the base class)
 
 Legacy classes remain for backward compatibility and may emit
-DeprecationWarning when instantiated. They will be thin adapters or
-removed once CLI call sites migrate to plugins/site_configs.
+DeprecationWarning when instantiated.
 """
 
 from tokenade.handlers.base import (  # noqa: F401

@@ -103,7 +103,7 @@ class SessionData:
 class SiteHandler(ABC):
     """Legacy site-specific handler base.
 
-    Prefer ``tokenade.plugin.SiteHandlerPlugin`` and ``site_configs/*.json``
+    Prefer ``tokenade.plugin.SiteHandlerPlugin`` + plugin ``site_config.json``
     for new sites. This ABC remains for backward-compatible CLI paths.
 
     Each handler knows how to authenticate, extract tokens/cookies, and

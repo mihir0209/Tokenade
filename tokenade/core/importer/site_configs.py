@@ -1,314 +1,310 @@
 """
-Site Configurations - Pre-built configs for popular sites.
+Site configuration resolution — plugin-backed only.
 
-Each config includes:
-- domains: Cookie domains to match
-- critical_cookies: Cookies that must be present for session validity
-- validate_url: URL to navigate to for validation
-- login_indicator_css: CSS selector for logged-OUT indicator (presence = logged out)
-- wait_seconds: Time to wait for page load during validation
+Sprint 0: site configs live in each site-handler plugin as ``site_config.json``
+at the plugin root. There is no built-in Python catalog and no repo-root
+``site_configs/`` directory.
+
+Public API (stable):
+  - get_site_config(site_name) -> dict
+  - list_sites() -> list[str]
+  - list_site_configs() -> dict[str, dict]
+  - config_from_plugin_instance(instance) -> dict
 """
 
-SITE_CONFIGS = {
-    "github": {
-        "name": "GitHub",
-        "domains": [
-            "github.com",
-            ".github.com",
-        ],
-        "critical_cookies": [
-            "user_session",
-            "__Host-user_session_same_site",
-            "__Host-device_id",
-            "has_recent_activity",
-            "logged_in",
-            "_gh_sess",
-        ],
-        "validate_url": "https://github.com",
-        "login_indicator_css": "a[href='/login']",
-        "wait_seconds": 5,
-    },
-    "discord": {
-        "name": "Discord",
-        "domains": [
-            "discord.com",
-            "discordapp.com",
-            ".discord.com",
-        ],
-        "critical_cookies": [
-            "__dcfduid",
-            "__sdcfduid",
-            "authorization",
-            "discord_session",
-        ],
-        "validate_url": "https://discord.com/channels/@me",
-        "login_indicator_css": "a[href='/login']",
-        "wait_seconds": 8,
-    },
-    "reddit": {
-        "name": "Reddit",
-        "domains": [
-            "reddit.com",
-            "www.reddit.com",
-            ".reddit.com",
-            "old.reddit.com",
-        ],
-        "critical_cookies": [
-            "reddit_session",
-            "token",
-            "session",
-            "_options",
-            "recent_srs",
-        ],
-        "validate_url": "https://www.reddit.com/notifications",
-        "login_indicator_css": "a[href='/login']",
-        "wait_seconds": 5,
-    },
-    "google": {
-        "name": "Google",
-        "domains": [
-            "google.com",
-            "accounts.google.com",
-            "mail.google.com",
-            "labs.google.com",
-            "myaccount.google.com",
-            ".google.com",
-        ],
-        "critical_cookies": [
-            "SID", "SSID", "APISID", "SAPISID", "HSID",
-            "__Secure-1PSID", "__Secure-3PSID",
-            "__Secure-1PAPISID", "__Secure-3PAPISID",
-            "OSID", "__Secure-OSID",
-            "__Host-GAPS", "COMPASS",
-        ],
-        "validate_url": "https://myaccount.google.com",
-        "login_indicator_css": "a[href*='accounts.google.com/ServiceLogin']",
-        "wait_seconds": 5,
-    },
-    "openai": {
-        "name": "OpenAI",
-        "domains": [
-            "openai.com",
-            ".openai.com",
-            "chatgpt.com",
-            ".chatgpt.com",
-        ],
-        "critical_cookies": [
-            "__Secure-next-auth.session-token.0",
-            "__Secure-next-auth.session-token.1",
-            "__Secure-next-auth.session-token.2",
-            "__Secure-oai-is",
-            "oai-did",
-            "oai-client-auth-info",
-            "cf_clearance",
-        ],
-        "validate_url": "https://chatgpt.com",
-        "login_indicator_css": "a[href='/auth/login']",
-        "wait_seconds": 8,
-    },
-    "twitter": {
-        "name": "Twitter/X",
-        "domains": [
-            "x.com",
-            "twitter.com",
-            ".x.com",
-            ".twitter.com",
-            "api.x.com",
-            "api.twitter.com",
-        ],
-        "critical_cookies": [
-            "auth_token",
-            "ct0",
-            "twid",
-            "__cf_bm",
-        ],
-        "validate_url": "https://x.com/home",
-        "login_indicator_css": "a[href='/login']",
-        "wait_seconds": 5,
-    },
-    "linkedin": {
-        "name": "LinkedIn",
-        "domains": [
-            "linkedin.com",
-            "www.linkedin.com",
-            ".linkedin.com",
-            "linkedin.com",
-            "edge.linkedin.com",
-        ],
-        "critical_cookies": [
-            "li_at",
-            "JSESSIONID",
-            "UserMatchHistory",
-            "AnalyticsSyncHistory",
-            "li_srsr",
-            "li_fat_id",
-        ],
-        "validate_url": "https://www.linkedin.com/feed/",
-        "login_indicator_css": "a[href*='linkedin.com/login']",
-        "wait_seconds": 5,
-    },
-    "netflix": {
-        "name": "Netflix",
-        "domains": [
-            "netflix.com",
-            ".netflix.com",
-            "www.netflix.com",
-            ".netflix.com",
-        ],
-        "critical_cookies": [
-            "SecureNetflixId",
-            "NetflixId",
-            "netflix-session",
-            "nflxSession",
-        ],
-        "validate_url": "https://www.netflix.com/browse",
-        "login_indicator_css": "a[href*='/Login']",
-        "wait_seconds": 8,
-    },
-    "youtube": {
-        "name": "YouTube",
-        "domains": [
-            "youtube.com",
-            ".youtube.com",
-            "www.youtube.com",
-            "accounts.google.com",
-        ],
-        "critical_cookies": [
-            "SID", "SSID", "HSID",
-            "__Secure-1PSID", "__Secure-3PSID",
-            "LOGIN_INFO",
-            "VISITOR_INFO1_LIVE",
-            "YSC",
-            "PREF",
-        ],
-        "validate_url": "https://www.youtube.com",
-        "login_indicator_css": "a[href*='accounts.google.com/ServiceLogin']",
-        "wait_seconds": 5,
-    },
-    "amazon": {
-        "name": "Amazon",
-        "domains": [
-            "amazon.com",
-            ".amazon.com",
-            "www.amazon.com",
-            "smile.amazon.com",
-        ],
-        "critical_cookies": [
-            "session-id",
-            "session-id-time",
-            "i18n-prefs",
-            "lc-main",
-            "x-main",
-            "at-main",
-            "ubid-main",
-            "sess-at-main",
-        ],
-        "validate_url": "https://www.amazon.com/gp/your-account/order-history",
-        "login_indicator_css": "a[href*='signin']",
-        "wait_seconds": 5,
-    },
-    "spotify": {
-        "name": "Spotify",
-        "domains": [
-            "spotify.com",
-            ".spotify.com",
-            "open.spotify.com",
-            "accounts.spotify.com",
-        ],
-        "critical_cookies": [
-            "sp_dc",
-            "sp_key",
-            "sp_t",
-            "sp_landing",
-            "__Secure-3P3PSID",
-        ],
-        "validate_url": "https://open.spotify.com",
-        "login_indicator_css": "a[href*='accounts.spotify.com/login']",
-        "wait_seconds": 5,
-    },
-    "microsoft": {
-        "name": "Microsoft",
-        "domains": [
-            "microsoft.com",
-            ".microsoft.com",
-            "login.microsoftonline.com",
-            "outlook.live.com",
-            "onedrive.live.com",
-        ],
-        "critical_cookies": [
-            "ESTSAUTH",
-            "ESTSAUTHPERSISTENT",
-            "SignIn5Info",
-            "ai_session",
-            "ANON",
-            "MUID",
-        ],
-        "validate_url": "https://outlook.live.com/mail/",
-        "login_indicator_css": "a[href*='login.microsoftonline.com']",
-        "wait_seconds": 5,
-    },
-    "generic_oauth2": {
-        "name": "Generic OAuth2",
-        "domains": [],  # User must specify via --domains
-        "critical_cookies": [
-            "session",
-            "session_id",
-            "access_token",
-            "refresh_token",
-            "token",
-            "auth",
-            "jwt",
-        ],
-        "validate_url": "",
-        "login_indicator_css": "a[href*='login'], a[href*='signin'], button[data-action='login']",
-        "wait_seconds": 5,
-    },
-}
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
+
+# Canonical field names expected by core (export, health, proxy, loader).
+_SITE_CONFIG_KEYS = (
+    "name",
+    "domains",
+    "critical_cookies",
+    "login_url",
+    "dashboard_url",
+    "validate_url",
+    "session_check_url",
+    "login_indicator_css",
+    "logged_in_selectors",
+    "logged_out_selectors",
+    "wait_seconds",
+    "critical_storage",
+    "localStorage_keys",
+    "preferred_plugin",
+)
 
 
-def _load_json_site_configs() -> dict:
-    """Load optional JSON site configs from package site_configs/ and CWD.
+def normalize_site_config(raw: Dict[str, Any], *, plugin_name: str = "") -> Dict[str, Any]:
+    """Normalize a site_config.json dict into the core shape."""
+    if not isinstance(raw, dict):
+        return {}
 
-    JSON files extend/override the built-in SITE_CONFIGS table. This is the
-    preferred place for domain/critical-cookie lists (P1/P2 honesty).
-    """
-    import json
-    from pathlib import Path
+    cfg: Dict[str, Any] = {}
+    name = (raw.get("name") or "").strip()
+    if name:
+        cfg["name"] = name
 
-    merged = {}
-    candidates = []
-    # Repo / install layout: <root>/site_configs/*.json
-    pkg_root = Path(__file__).resolve().parents[3]
-    candidates.append(pkg_root / "site_configs")
-    candidates.append(Path.cwd() / "site_configs")
-    home = Path.home() / ".tokenade" / "site_configs"
-    candidates.append(home)
+    domains = raw.get("domains")
+    if isinstance(domains, list):
+        cfg["domains"] = [str(d) for d in domains if d]
+    else:
+        cfg["domains"] = []
 
-    for directory in candidates:
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.glob("*.json")):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            name = (data.get("name") or path.stem).lower()
-            merged[name] = data
-    return merged
+    critical = raw.get("critical_cookies")
+    if isinstance(critical, list):
+        cfg["critical_cookies"] = [str(c) for c in critical if c]
+    else:
+        cfg["critical_cookies"] = []
 
+    for key in (
+        "login_url",
+        "dashboard_url",
+        "validate_url",
+        "session_check_url",
+        "login_indicator_css",
+    ):
+        val = raw.get(key)
+        if isinstance(val, str) and val.strip():
+            cfg[key] = val.strip()
 
-def get_site_config(site_name: str) -> dict:
-    """Get config for a specific site (built-in + JSON overlays)."""
-    key = site_name.lower()
-    cfg = dict(SITE_CONFIGS.get(key, {}))
-    overlay = _load_json_site_configs().get(key, {})
-    if overlay:
-        cfg.update(overlay)
+    # Aliases: validate_url defaults to dashboard_url
+    if "validate_url" not in cfg and cfg.get("dashboard_url"):
+        cfg["validate_url"] = cfg["dashboard_url"]
+
+    for key in ("logged_in_selectors", "logged_out_selectors"):
+        val = raw.get(key)
+        if isinstance(val, list):
+            cfg[key] = [str(s) for s in val if s]
+        else:
+            cfg[key] = []
+
+    # login_indicator_css (legacy single selector) → logged_out_selectors
+    if cfg.get("login_indicator_css") and not cfg.get("logged_out_selectors"):
+        cfg["logged_out_selectors"] = [cfg["login_indicator_css"]]
+
+    wait = raw.get("wait_seconds", 5)
+    try:
+        wait_i = int(wait)
+        cfg["wait_seconds"] = wait_i if wait_i > 0 else 5
+    except (TypeError, ValueError):
+        cfg["wait_seconds"] = 5
+
+    storage = raw.get("critical_storage")
+    if isinstance(storage, dict):
+        cfg["critical_storage"] = storage
+    else:
+        cfg["critical_storage"] = {"local": {}, "session": {}}
+
+    ls_keys = raw.get("localStorage_keys")
+    if isinstance(ls_keys, list):
+        cfg["localStorage_keys"] = [str(k) for k in ls_keys if k]
+
+    preferred = raw.get("preferred_plugin") or plugin_name
+    if preferred:
+        cfg["preferred_plugin"] = preferred
+
+    # Preserve unknown keys for plugin-specific extensions
+    for key, val in raw.items():
+        if key not in cfg and key not in ("_path", "_plugin"):
+            cfg[key] = val
+
     return cfg
 
 
-def list_sites() -> list:
-    """List all available site configs (built-in + JSON)."""
-    names = set(SITE_CONFIGS.keys())
-    names.update(_load_json_site_configs().keys())
+def load_site_config_file(path: Path, *, plugin_name: str = "") -> Dict[str, Any]:
+    """Load and normalize a site_config.json file. Empty dict on failure."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        logger.debug("Failed to read site config %s: %s", path, e)
+        return {}
+    return normalize_site_config(data, plugin_name=plugin_name)
+
+
+def config_from_plugin_instance(instance: Any) -> Dict[str, Any]:
+    """Build a site config dict from a SiteHandlerPlugin instance."""
+    if instance is None:
+        return {}
+
+    if hasattr(instance, "get_site_config"):
+        try:
+            cfg = instance.get_site_config()
+            if isinstance(cfg, dict) and (cfg.get("domains") or cfg.get("name")):
+                plugin_name = getattr(instance, "name", "") or ""
+                return normalize_site_config(cfg, plugin_name=plugin_name)
+        except Exception as e:
+            logger.debug("get_site_config() failed on %s: %s", type(instance), e)
+
+    plugin_name = getattr(instance, "name", "") or ""
+    raw: Dict[str, Any] = {"name": "", "preferred_plugin": plugin_name}
+
+    # Infer site name from plugin name (google-handler → google)
+    if plugin_name.endswith("-handler"):
+        raw["name"] = plugin_name[: -len("-handler")]
+    elif plugin_name:
+        raw["name"] = plugin_name
+
+    for method, key in (
+        ("get_export_domains", "domains"),
+        ("get_critical_cookies", "critical_cookies"),
+        ("get_login_url", "login_url"),
+        ("get_dashboard_url", "dashboard_url"),
+        ("get_session_check_url", "session_check_url"),
+        ("get_logged_in_selectors", "logged_in_selectors"),
+        ("get_logged_out_selectors", "logged_out_selectors"),
+        ("get_critical_storage", "critical_storage"),
+    ):
+        if hasattr(instance, method):
+            try:
+                raw[key] = getattr(instance, method)()
+            except Exception:
+                pass
+
+    if raw.get("dashboard_url") and not raw.get("validate_url"):
+        raw["validate_url"] = raw["dashboard_url"]
+
+    # Prefer first logged_out selector as login_indicator_css for older callers
+    los = raw.get("logged_out_selectors") or []
+    if isinstance(los, list) and los and not raw.get("login_indicator_css"):
+        raw["login_indicator_css"] = los[0]
+
+    return normalize_site_config(raw, plugin_name=plugin_name)
+
+
+def discover_plugin_site_configs(
+    plugins_dir: Optional[Path] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Scan plugins_dir for handler plugins with site_config.json.
+
+    Returns map of site key (lowercase name) → normalized config.
+    When multiple plugins claim the same site name, the first wins (sorted by path).
+    """
+    root = Path(plugins_dir) if plugins_dir is not None else DEFAULT_PLUGINS_DIR
+    by_site: Dict[str, Dict[str, Any]] = {}
+
+    if not root.is_dir():
+        return by_site
+
+    for plugin_dir in sorted(root.iterdir()):
+        if not plugin_dir.is_dir() or plugin_dir.name.startswith("."):
+            continue
+
+        manifest_path = plugin_dir / "plugin.json"
+        if not manifest_path.is_file():
+            continue
+
+        try:
+            meta = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        plugin_type = (meta.get("type") or "").lower()
+        # Site configs only on handler-type plugins (or any with site_config.json)
+        site_path = plugin_dir / "site_config.json"
+        if not site_path.is_file():
+            continue
+        if plugin_type and plugin_type not in ("handler", "site_handler", ""):
+            # Allow site_config.json only for handlers
+            if plugin_type != "handler":
+                continue
+
+        plugin_name = meta.get("name") or plugin_dir.name
+        cfg = load_site_config_file(site_path, plugin_name=plugin_name)
+        if not cfg:
+            continue
+
+        cfg["_plugin"] = plugin_name
+        cfg["_path"] = str(site_path)
+
+        # Index keys: explicit name, site_name from manifest, plugin stem
+        keys = set()
+        if cfg.get("name"):
+            keys.add(str(cfg["name"]).lower())
+        site_name = meta.get("site_name")
+        if site_name:
+            keys.add(str(site_name).lower())
+        if plugin_name.endswith("-handler"):
+            keys.add(plugin_name[: -len("-handler")].lower())
+        keys.add(plugin_name.lower())
+
+        for key in keys:
+            if key and key not in by_site:
+                by_site[key] = dict(cfg)
+
+    return by_site
+
+
+def _configs_from_loaded_handlers() -> Dict[str, Dict[str, Any]]:
+    """Merge configs from already-loaded PluginLoader handlers (if any)."""
+    by_site: Dict[str, Dict[str, Any]] = {}
+    try:
+        from tokenade.core.integration.plugin_loader import get_shared_loader
+
+        loader = get_shared_loader()
+        if loader is None:
+            return by_site
+        for site_key, instance in loader.list_handlers().items():
+            cfg = config_from_plugin_instance(instance)
+            if not cfg:
+                continue
+            keys = {str(site_key).lower()}
+            if cfg.get("name"):
+                keys.add(str(cfg["name"]).lower())
+            preferred = cfg.get("preferred_plugin") or getattr(instance, "name", "")
+            if preferred:
+                keys.add(str(preferred).lower())
+                if str(preferred).endswith("-handler"):
+                    keys.add(str(preferred)[: -len("-handler")].lower())
+            for key in keys:
+                if key and key not in by_site:
+                    by_site[key] = cfg
+    except Exception as e:
+        logger.debug("Could not read loaded handlers for site configs: %s", e)
+    return by_site
+
+
+def list_site_configs(plugins_dir: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """All known site configs (filesystem plugins + loaded instances)."""
+    merged = discover_plugin_site_configs(plugins_dir)
+    for key, cfg in _configs_from_loaded_handlers().items():
+        if key not in merged:
+            merged[key] = cfg
+    return merged
+
+
+def get_site_config(site_name: str, plugins_dir: Optional[Path] = None) -> dict:
+    """Get config for a site by name (plugin site_config.json / handler instance).
+
+    Returns empty dict if unknown. Always a dict (callers use .get).
+    """
+    if not site_name:
+        return {}
+    key = site_name.lower().strip()
+    configs = list_site_configs(plugins_dir)
+    if key in configs:
+        return dict(configs[key])
+
+    # Fuzzy: site_name contained in config name or vice versa
+    for name, cfg in configs.items():
+        if key in name or name in key:
+            return dict(cfg)
+    return {}
+
+
+def list_sites(plugins_dir: Optional[Path] = None) -> list:
+    """List available site config names (sorted, unique primary names)."""
+    configs = list_site_configs(plugins_dir)
+    names = set()
+    for key, cfg in configs.items():
+        primary = (cfg.get("name") or key or "").lower()
+        if primary:
+            names.add(primary)
     return sorted(names)

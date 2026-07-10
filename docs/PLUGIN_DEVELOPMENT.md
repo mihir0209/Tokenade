@@ -14,10 +14,23 @@ Tokenade plugins extend the tool's capabilities. Plugins can:
 
 ```
 my-plugin/
-├── plugin.json     # Plugin manifest (required)
-├── plugin.py       # Plugin code (required)
-└── README.md       # Documentation (optional)
+├── plugin.json       # Plugin manifest (required)
+├── plugin.py         # Plugin code (required)
+├── site_config.json  # Site handlers only — domains, cookies, URLs (Sprint 0)
+└── README.md         # Documentation (optional)
 ```
+
+### Site handlers (`type: "handler"`)
+
+Place **`site_config.json`** next to `plugin.json`. The `SiteHandlerPlugin` base
+class loads it automatically and uses it for:
+
+- `get_export_domains()` / `get_critical_cookies()`
+- login / dashboard / session-check URLs
+- `can_handle(url)` domain matching
+
+Core resolves sites via `get_site_config("google")` → your plugin’s JSON.
+Do not put site catalogs in the Tokenade core repo.
 
 ## Plugin Manifest (plugin.json)
 

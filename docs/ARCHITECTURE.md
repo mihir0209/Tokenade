@@ -76,7 +76,7 @@ tokenade/
 │   │   ├── session_sharer.py           # Session sharing utilities
 │   │   ├── session_vault.py            # Encrypted session storage
 │   │   ├── session_manager.py          # Session lifecycle management
-│   │   ├── site_configs.py             # Pre-built configs for popular sites
+│   │   ├── site_configs.py             # Plugin-backed site config resolution
 │   │   ├── format_importer.py          # Import from other formats
 │   │   ├── format_exporter.py          # Export to other formats
 │   │   ├── validator.py                # Session validation
@@ -695,30 +695,24 @@ This ordering is critical for HTTP/2 SETTINGS frame fingerprinting (JA3/H2).
 
 ---
 
-## Site Configs
+## Site Configs (plugin-owned)
 
-`site_configs.py:12-276` — Pre-built configurations for popular sites:
+`site_configs.py` resolves site metadata from **handler plugins only**:
 
-```python
-SITE_CONFIGS = {
-    "github": {
-        "name": "GitHub",
-        "domains": ["github.com", ".github.com"],
-        "critical_cookies": ["user_session", "__Host-user_session_same_site", ...],
-        "validate_url": "https://github.com",
-        "login_indicator_css": "a[href='/login']",
-        "wait_seconds": 5,
-    },
-    "discord": { ... },
-    "reddit": { ... },
-    "google": { ... },
-    # + 20 more sites
-}
+```
+~/.tokenade/plugins/<name>-handler/
+├── plugin.json
+├── plugin.py
+└── site_config.json   # domains, critical_cookies, URLs
 ```
 
-Each config defines:
+- `get_site_config("google")` → loads that plugin’s `site_config.json`
+- `SiteHandlerPlugin` base class loads the same file for export/verify defaults
+- No built-in Python catalog; no repo-root `site_configs/` directory
+
+Each `site_config.json` typically defines:
 - `domains` — Cookie domains to match during extraction
 - `critical_cookies` — Cookies required for session validity
-- `validate_url` — URL to check if session is active
-- `login_indicator_css` — CSS selector that appears when logged OUT
+- `dashboard_url` / `validate_url` — Logged-in / health URLs
+- `login_indicator_css` / selectors — Logged-out UI markers
 - `wait_seconds` — Time to wait for page load during validation
