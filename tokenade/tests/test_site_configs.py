@@ -146,3 +146,75 @@ def test_list_sites_sorted_unique_primary_names(tmp_path):
     sites = list_sites(plugins_dir=tmp_path)
     assert sites == sorted(sites)
     assert "foo" in sites
+
+
+# ── Sprint D: plugin match precedence ──────────────────────────
+
+
+def test_discover_first_wins_when_two_plugins_claim_same_site(tmp_path):
+    """First handler plugin by sorted path wins when two claim the same site name."""
+    for plugin_name, critical in [("aaa-handler", ["aaa_cookie"]), ("zzz-handler", ["zzz"])]:
+        d = tmp_path / plugin_name
+        d.mkdir()
+        (d / "plugin.json").write_text(
+            json.dumps({"name": plugin_name, "type": "handler", "entry_point": "p.py"})
+        )
+        (d / "site_config.json").write_text(
+            json.dumps({
+                "name": "shared",
+                "domains": ["shared.com"],
+                "critical_cookies": critical,
+            })
+        )
+    found = discover_plugin_site_configs(tmp_path)
+    assert "shared" in found
+    assert found["shared"]["critical_cookies"] == ["aaa_cookie"]
+
+
+def test_get_site_config_fuzzy_substring_match(tmp_path):
+    """get_site_config falls back to substring containment for unknown site names."""
+    d = tmp_path / "acme-handler"
+    d.mkdir()
+    (d / "plugin.json").write_text(
+        json.dumps({"name": "acme-handler", "type": "handler", "entry_point": "p.py"})
+    )
+    (d / "site_config.json").write_text(
+        json.dumps({"name": "acme", "domains": ["acme.com"], "critical_cookies": ["sid"]})
+    )
+    assert get_site_config("acm", plugins_dir=tmp_path).get("critical_cookies") == ["sid"]
+    assert get_site_config("acmeextra", plugins_dir=tmp_path).get("critical_cookies") == ["sid"]
+
+
+def test_discover_multi_key_indexing_manifest_site_name_differs(tmp_path):
+    """Manifest site_name and config name both indexed as separate site keys."""
+    d = tmp_path / "custom"
+    d.mkdir()
+    (d / "plugin.json").write_text(
+        json.dumps({
+            "name": "custom", "type": "handler", "entry_point": "p.py",
+            "site_name": "alt",
+        })
+    )
+    (d / "site_config.json").write_text(
+        json.dumps({"name": "primary", "domains": ["example.com"], "critical_cookies": ["tok"]})
+    )
+    found = discover_plugin_site_configs(tmp_path)
+    assert "primary" in found
+    assert "alt" in found
+    assert "custom" in found
+    assert found["primary"]["critical_cookies"] == ["tok"]
+
+
+def test_discover_plugin_without_handler_suffix(tmp_path):
+    """Plugin named 'acme' (no -handler suffix) still discovered as site 'acme'."""
+    d = tmp_path / "acme"
+    d.mkdir()
+    (d / "plugin.json").write_text(
+        json.dumps({"name": "acme", "type": "handler", "entry_point": "p.py"})
+    )
+    (d / "site_config.json").write_text(
+        json.dumps({"name": "acme", "domains": ["acme.com"], "critical_cookies": ["sid"]})
+    )
+    found = discover_plugin_site_configs(tmp_path)
+    assert "acme" in found
+    assert found["acme"]["critical_cookies"] == ["sid"]

@@ -367,6 +367,36 @@ class TestPluginRegistryDownload:
         assert (tmp_path / "utility-plugin" / "plugin.py").exists()
         assert not (tmp_path / "utility-plugin" / "site_config.json").exists()
 
+    @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
+    def test_install_then_discover_resolves_site_config(self, mock_urlopen, tmp_path):
+        """After install, discover_plugin_site_configs resolves the freshly installed site."""
+        from tokenade.core.importer.site_configs import discover_plugin_site_configs, get_site_config
+
+        contents = {
+            "plugin.json": b'{"name":"acme-handler","type":"handler","entry_point":"plugin.py"}',
+            "plugin.py": b"# plugin",
+            "site_config.json": b'{"name":"acme","domains":["acme.com"],"critical_cookies":["sid"]}',
+        }
+
+        def fake_urlopen(req, timeout=30):
+            filename = req.full_url.rsplit("/", 1)[-1]
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = contents[filename]
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+
+        mock_urlopen.side_effect = fake_urlopen
+
+        registry = PluginRegistry(plugins_dir=tmp_path)
+        result = registry._download_plugin({"name": "acme-handler"})
+        assert result is True
+
+        found = discover_plugin_site_configs(tmp_path)
+        assert "acme" in found
+        assert found["acme"]["critical_cookies"] == ["sid"]
+        assert get_site_config("acme", plugins_dir=tmp_path)["domains"] == ["acme.com"]
+
 
 class TestPluginRegistryExtra:
     def test_list_bad_json_manifest(self, tmp_path):

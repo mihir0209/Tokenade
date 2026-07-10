@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tokenade is a **CLI-based, site-agnostic browser session portability tool** with TLS fingerprint matching. This document compares it with existing cookie/session management tools.
+Tokenade is a **CLI-based browser session portability tool** with TLS fingerprint matching and plugin-first site handling. This document compares it with existing cookie/session management tools.
 
 ## Competitive Landscape
 
@@ -40,13 +40,12 @@ Tokenade is a **CLI-based, site-agnostic browser session portability tool** with
 
 1. **TLS Fingerprint Matching** (via curl-cffi)
    - Only CLI tool that matches donor browser's TLS fingerprint
-   - Bypasses Cloudflare, DataDome, and other TLS-based anti-bot systems
+   - Matches Chrome/Firefox TLS fingerprints via `curl-cffi`; results vary by site and are not guaranteed
    - Supports Chrome impersonation (Firefox falls back to Chrome)
 
-2. **Site-Agnostic Design**
-   - No hardcoded site detection or site-specific code
-   - User-provided JSON site configs for validation
-   - Works with any website without modification
+2. **Plugin-First Architecture**
+   - Site configs live in handler plugins (`site_config.json`), not core
+   - Works with any website — install a handler plugin or write your own
 
 3. **Multi-Browser Support**
    - Chrome/Brave, Firefox, Edge (cookie extraction)
@@ -74,7 +73,7 @@ Tokenade is a **CLI-based, site-agnostic browser session portability tool** with
 |---------|----------|----------------|---------------|-------|--------|-------|
 | **CLI Interface** | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | **TLS Fingerprint** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Site-Agnostic** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Plugin-First** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Multi-Browser** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | **localStorage** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Session Injection** | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
@@ -111,11 +110,11 @@ Tokenade is a **CLI-based, site-agnostic browser session portability tool** with
 
 - Fills gap between browser extensions (GUI-only, no CLI) and simple CLI tools (no TLS matching)
 - Targets developers, security researchers, and automation engineers
-- Unique value: TLS fingerprint matching + site-agnostic + multi-browser
+- Unique value: TLS fingerprint matching + plugin-first + multi-browser
 
 ### Competitive Moat
 1. **Technical complexity** - curl-cffi integration + TLS fingerprint matching is non-trivial
-2. **Site-agnostic architecture** - Requires significant design foresight
+2. **Plugin-first architecture** - Site configs in plugins, not core
 3. **Multi-browser support** - Chrome/Firefox/Edge extraction + injection
 4. **localStorage support** - Critical for modern web apps (Telegram, WhatsApp)
 5. **Security focus** - AES-256-GCM, SSRF protection, credential management
@@ -136,11 +135,11 @@ Tokenade is a **CLI-based, site-agnostic browser session portability tool** with
 
 ## Conclusion
 
-Tokenade occupies a unique position in the market as the **only CLI tool with TLS fingerprint matching for cross-browser session portability**. While browser extensions dominate the cookie editing space, they cannot match Tokenade's automation capabilities, TLS bypass, or multi-browser support. Simple CLI tools lack TLS matching and localStorage support.
+Tokenade occupies a unique position in the market as the **only CLI tool with TLS fingerprint matching for cross-browser session portability**. While browser extensions dominate the cookie editing space, they cannot match Tokenade's automation capabilities, TLS matching, or multi-browser support. Simple CLI tools lack TLS matching and localStorage support.
 
 **Key differentiators:**
 - TLS fingerprint matching (unique among CLI tools)
-- Site-agnostic architecture (no hardcoded site detection)
+- Plugin-first architecture (site configs in handler plugins)
 - Multi-browser support (Chrome/Firefox/Edge)
 - localStorage injection (critical for modern web apps)
 - CLI-first design (scriptable, automatable)

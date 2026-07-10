@@ -62,7 +62,7 @@ tokenade proxy -s linkedin.tokenade
 - Extract `cf_clearance` cookie from real browser → inject into proxy
 - CDP artifact removal removes automation signatures
 
-**Key stat:** Cloudflare blocks 87% of headless browsers. Tokenade's TLS matching bypasses this.
+**Note:** TLS fingerprint matching via `curl-cffi` helps with some anti-bot stacks; results vary by site and are not guaranteed.
 
 #### 1.3 Multi-Domain Authenticated Scraping
 **Scenario:** Scrape across multiple authenticated domains simultaneously (e.g., Google Workspace + GitHub + Jira).
@@ -126,7 +126,7 @@ tokenade export --browser-name firefox --domains "instagram.com" -o ig_account2.
 tokenade proxy -s ig_account1.tokenade --port 9222
 ```
 
-**Why Tokenade beats extensions:** Extensions share browser fingerprint — accounts get linked. Tokenade isolates sessions with separate fingerprints.
+**Why Tokenade beats extensions:** Extensions share browser fingerprint — accounts get linked. Tokenade isolates sessions into separate `.tokenade` files.
 
 #### 3.2 Content Scheduling & Posting
 **Scenario:** Schedule posts across Instagram, TikTok, LinkedIn, Twitter.
@@ -136,7 +136,7 @@ tokenade proxy -s ig_account1.tokenade --port 9222
 #### 3.3 LinkedIn Lead Generation
 **Scenario:** Generate 50+ leads/day from LinkedIn.
 
-**How Tokenade helps:** Session persistence across multi-step workflows. Anti-detection prevents account restrictions.
+**How Tokenade helps:** Session persistence across multi-step workflows. Use real browser sessions — no fake profiles needed.
 
 **Competitor:** GoLogin ($24/mo) offers this but requires cloud sync. Tokenade is free and local.
 
@@ -499,7 +499,7 @@ session = client.load("agent_session.tokenade")
 | **Encryption** | ❌ | ✅ Basic | ✅ | **✅ AES-256-GCM** |
 | **TLS matching** | ❌ | ❌ | ❌ | **✅ JA3/JA4** |
 | **Session sharing** | ❌ | ✅ Basic | ❌ | **✅ Email, Webhook, QR, HMAC** |
-| **Anti-detection** | ❌ | ❌ | ❌ | **✅ CDP cleanup, behavioral** |
+| **Stealth** | ❌ | ❌ | ❌ | **Best-effort (CDP cleanup, not undetectable)** |
 | **CLI/Scriptable** | ❌ | ❌ | ❌ | **✅ Full CLI** |
 | **Self-hosted** | N/A | N/A | N/A | **✅ No servers** |
 | **Price** | Free | Free / Premium | Free | **Free** |
@@ -544,7 +544,7 @@ session = client.load("agent_session.tokenade")
 
 | Feature | Camoufox | Nodriver | Patchright | **Tokenade** |
 |---------|---------|----------|------------|-------------|
-| **Detection score** | 0% | 67% | 67% | **~0% (with stealth)** |
+| **Detection score** | 0% | 67% | 67% | **Best-effort (measured, not undetectable)** |
 | **Engine** | Firefox (C++) | Chromium | Chromium | **Any browser** |
 | **Session extraction** | ❌ | ❌ | ❌ | **✅ From real browser** |
 | **CLI/Scriptable** | ❌ Python API | ❌ Python API | ❌ Python API | **✅ Full CLI** |
@@ -585,16 +585,15 @@ session = client.load("agent_session.tokenade")
 | **Security** | AES-256-GCM encryption | ✅ | Multilogin (paid) |
 | | HMAC-SHA256 signatures | ✅ | — |
 | | Password-protected shares | ✅ | Sendwin (paid) |
-| | RBAC | ✅ | — |
-| | LDAP/SSO | ✅ | — |
-| | Audit logging | ✅ | Browserbase (paid) |
+| | RBAC | Code present | — |
+| | LDAP/SSO | Code present | — |
+| | Audit logging | Code present | Browserbase (paid) |
 | **Performance** | TLS fingerprint matching | ✅ | Multilogin (€29/mo) |
 | | Connection pooling | ✅ | — |
 | | LRU session caching | ✅ | — |
 | | Parallel extraction | ✅ | — |
-| **Anti-Detection** | CDP artifact removal | ✅ | Camoufox (C++ fork) |
-| | Behavioral injection | ✅ | GoLogin (ML-based) |
-| | Canvas/WebGL noise | ✅ | Multilogin (paid) |
+| **Stealth** | CDP artifact removal | Best-effort | Camoufox (C++ fork) |
+| | Canvas/WebGL patches | Best-effort | Multilogin (paid) |
 | **Session Lifecycle** | Health scoring (OWASP) | ✅ | — |
 | | Auto-refresh | ✅ | — |
 | | Login/logout detection | ✅ | — |
@@ -621,7 +620,7 @@ session = client.load("agent_session.tokenade")
 |----------|--------|
 | **What does Tokenade do?** | Extract, package, share, and proxy browser sessions with TLS fingerprint matching |
 | **Who is it for?** | Security testers, QA engineers, developers, researchers, automation engineers |
-| **What makes it unique?** | Only free tool combining cross-browser extraction + TLS matching + multi-format export + anti-detection |
-| **What replaces with Tokenade?** | Antidetect browsers ($24-329/mo), cloud browsers ($20-99/mo), cookie extensions (limited) |
+| **What makes it unique?** | Only free tool combining cross-browser extraction + TLS matching + multi-format export + session portability |
+| **What replaces with Tokenade?** | Paid session sharing tools, cloud browsers ($20-99/mo), cookie extensions (limited) |
 | **Is it safe?** | Self-hosted, AES-256-GCM encryption, audit logging, RBAC |
 | **What's the cost?** | Free forever. No accounts, no servers, no limits |

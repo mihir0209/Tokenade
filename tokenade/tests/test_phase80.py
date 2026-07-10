@@ -86,6 +86,7 @@ class TestPluginExporter:
         exporter = PluginExporter()
         mock_handler = MagicMock()
         mock_handler.can_handle = MagicMock(return_value=True)
+        mock_handler.name = "google-handler"
         exporter._handlers = {"google-handler": mock_handler}
         handler = exporter.find_handler(["google.com"])
         assert handler is not None
@@ -97,6 +98,45 @@ class TestPluginExporter:
         exporter._handlers = {"google-handler": mock_handler}
         handler = exporter.find_handler(["example.com"])
         assert handler is None
+
+    def test_find_handler_prefers_specific_over_generic(self):
+        """Specific handler wins over generic-handler when both can_handle the domain."""
+        exporter = PluginExporter()
+        specific = MagicMock()
+        specific.can_handle = MagicMock(return_value=True)
+        specific.name = "google-handler"
+        generic = MagicMock()
+        generic.can_handle = MagicMock(return_value=True)
+        generic.name = "generic-handler"
+        exporter._handlers = {"google-handler": specific, "generic-handler": generic}
+        exporter._load_handlers = lambda: None
+        handler = exporter.find_handler(["google.com"])
+        assert handler is specific
+
+    def test_find_handler_generic_fallback_when_no_specific(self):
+        """Generic handler used when no specific handler matches."""
+        exporter = PluginExporter()
+        generic = MagicMock()
+        generic.can_handle = MagicMock(return_value=True)
+        generic.name = "generic-handler"
+        exporter._handlers = {"generic-handler": generic}
+        exporter._load_handlers = lambda: None
+        handler = exporter.find_handler(["unknown.com"])
+        assert handler is generic
+
+    def test_find_handler_specific_name_tiebreak(self):
+        """When two specific handlers match, the one whose name appears in domains wins."""
+        exporter = PluginExporter()
+        google = MagicMock()
+        google.can_handle = MagicMock(return_value=True)
+        google.name = "google-handler"
+        github = MagicMock()
+        github.can_handle = MagicMock(return_value=True)
+        github.name = "github-handler"
+        exporter._handlers = {"google-handler": google, "github-handler": github}
+        exporter._load_handlers = lambda: None
+        handler = exporter.find_handler(["google.com", "mail.google.com"])
+        assert handler is google
 
 
 # ─── v3.0 Format Tests ────────────────────────────────────

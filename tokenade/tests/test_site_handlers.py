@@ -151,10 +151,9 @@ class TestGitHubHandler:
             {"name": "logged_in", "value": "yes", "domain": ".github.com"},
             {"name": "other", "value": "xyz", "domain": ".example.com"},
         ]
-        session = h.extract_session(ctx, "https://github.com")
-        assert session["site_name"] == "github"
-        assert session["auth_status"] == "logged_in"
-        assert len(session["cookies"]) == 2
+        result = h.extract_session(ctx, "https://github.com")
+        assert result.success is True
+        assert len(result.data["cookies"]) == 2
 
     def test_validate_healthy(self):
         h = self._get_handler()
@@ -168,8 +167,9 @@ class TestGitHubHandler:
             ]
         }
         result = h.validate(session)
-        assert result["valid"] is True
-        assert result["score"] == 100
+        assert result.success is True
+        assert result.data["valid"] is True
+        assert result.data["score"] == 100
 
 
 # ─── Discord Handler Tests ──────────────────────────────────

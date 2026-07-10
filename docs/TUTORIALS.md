@@ -21,7 +21,7 @@ Comprehensive, step-by-step tutorials covering every feature of Tokenade.
 
 **Prerequisites**
 
-- Python 3.9+
+- Python 3.10+
 - A browser with active sessions (Firefox, Chrome, Brave, or Edge)
 - Git (for cloning)
 
@@ -34,11 +34,7 @@ pip install -e ".[dev]"
 playwright install chromium --with-deps
 ```
 
-Install optional TLS fingerprinting support:
-
-```bash
-pip install -e ".[runtime]"
-```
+`curl-cffi` is a core dependency (TLS fingerprint matching is built-in).
 
 ### Step 2: Discover Browser Profiles
 
@@ -218,7 +214,7 @@ tokenade proxy -s my_session.tokenade --target-url "https://chatgpt.com"
 
 ### TLS Fingerprint Matching
 
-Enable curl-cffi TLS fingerprint matching to bypass Cloudflare/DataDome:
+Enable curl-cffi TLS fingerprint matching (results vary by site; not guaranteed):
 
 ```bash
 tokenade proxy -s my_session.tokenade --fingerprint
@@ -908,7 +904,7 @@ TLS fingerprinting matches the donor browser's TLS handshake (JA3 hash) so anti-
 
 **Prerequisites**
 
-- Tokenade installed with `pip install -e ".[runtime]"` (curl-cffi)
+- Tokenade installed (`pip install tokenade` — curl-cffi is a core dependency)
 - A `.tokenade` session file with a `tls_profile`
 
 ### When to Use
@@ -1006,7 +1002,7 @@ asyncio.run(proxy.start())
 
 | Issue | Solution |
 |-------|----------|
-| `curl-cffi not installed` | Run `pip install -e ".[runtime]"` |
+| `curl-cffi not installed` | Reinstall: `pip install tokenade` (it is a core dependency) |
 | `cf_clearance` blocked | Try without `--fingerprint` or use a different impersonation target |
 | TLS mismatch errors | Ensure the session has a valid `tls_profile` |
 

@@ -46,7 +46,7 @@ Do not put site catalogs in the Tokenade core repo.
     "entry_point": "plugin.py",
     "entry_class": "MyPlugin",
     "dependencies": [],
-    "min_version": "6.0.0",
+    "min_version": "1.0.0",
     "verified": false,
     "icon": "🔐"
 }
