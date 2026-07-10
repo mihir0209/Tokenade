@@ -77,22 +77,52 @@ Google recipe productized: launch clean-profile default for session inject,
 Chrome-family warning, export locked-DB messaging, plugin tips; getting-started
 tutorial rewritten (Gmail→Brave + Windows).
 
+### Sprint B — DONE (2026-07-11)
+- Installer (`PluginRegistry._download_plugin`) now always fetches
+  `site_config.json` alongside `plugin.json` + `plugin.py`; optional,
+  not required (so utility plugins install cleanly).
+- `chatgpt-handler` / `github-handler` deepened in `tokenade-plugins`:
+  validate(), _matches_domain(), critical_present extraction,
+  config-driven verify_login fallback.
+- Focus: site configs travel with plugins; the ecosystem stays
+  dirt-free.
+
+### Sprint D — DONE (2026-07-11)
+Behavioral regression tests, not coverage padding:
+- Plugin-match precedence: first-wins by sorted path, fuzzy
+  substring fallback (forward + backward), multi-key indexing
+  (`site_name` + `name` + plugin stem), no-suffix inference.
+- `PluginExporter.find_handler`: specific beats generic; name
+  tiebreak when two specific handlers match.
+- Install→discover round-trip: `_download_plugin` →
+  `discover_plugin_site_configs` → `get_site_config`.
+- Fix: pre-existing test bugs (MagicMock().name TypeError in
+  tie-break loop; tests subscripts `PluginResult` correctly).
+
+### Sprint E — DONE (2026-07-11)
+Secondary docs honesty sweep:
+- USE-CASES.md: anti-detection → best-effort; RBAC/LDAP/audit
+  → "code present"; antidetect replacement framing removed;
+  "bypass Cloudflare" → "results vary by site".
+- competitor-comparison.md: "site-agnostic" → "plugin-first";
+  "TLS bypass" → "TLS matching".
+- TUTORIALS.md: Python 3.9 → 3.10; `.runtime` extra removed
+  (curl-cffi is core); "bypass Cloudflare/DataDome" softened.
+- PLUGIN_DEVELOPMENT.md: `min_version: 6.0.0 → 1.0.0`.
+
 ### Remaining
-1. **Sprint B (P1):** ChatGPT / GitHub handler depth
-2. **Sprint C (P1b):** Vivaldi CDP + macOS matrix (Vivaldi = browser-side flake)
-3. **Sprint D (P3):** Behavioral regression tests
-4. **Sprint E (P2):** Secondary docs honesty/sweep
+1. **Sprint C (P1b):** Vivaldi CDP + macOS matrix (deprioritized in plan; browser-side flake, stock launch mostly OK).
 
-Done: README; LICENSE + **MiHiR**; PyPI 1.0.0; Sprint 0–A.
+Done: README; LICENSE + **MiHiR**; PyPI 1.0.0; Sprint 0, A, B, D, E.
 
-## Still relevant open work (from plans + 2026-07-10 results)
-1. Google portability productization (non-Chrome recipe, messaging) — **proven in battle; productize next**
-2. Plugin override correctness (specific > generic) — **fixed 2026-07-10**
-3. More base classes for non-site plugins (features, not only sites)
-4. Broader site handlers (ChatGPT, etc.)
-5. Stealth/CF claims: keep evidence-based; avoid marketing language
-6. macOS Google matrix (expected OK, not verified)
-7. Vivaldi CDP harden in stock `launch` path
+## Still relevant open work (from plans + 2026-07-10 + 2026-07-11)
+1. Google portability productization (non-Chrome recipe, messaging) — **proven in battle; productized (Sprint A)**
+2. Plugin override correctness (specific > generic) — **fixed 2026-07-10**, behavioral tests added (Sprint D)
+3. More base classes for non-site plugins — **deferred (YAGNI until needed)**
+4. Broader site handlers — **ChatGPT/GitHub deepened (Sprint B)**
+5. Stealth/CF claims: keep evidence-based — **honesty sweep done (Sprint E)**
+6. macOS Google matrix — **not verified (deprioritized)**
+7. Vivaldi CDP harden — **not done (deprioritized; browser-side flake, stock launch mostly OK)**
 
 ## Explicitly deprecated plan noise
 - Duplicate JA3 plans (2026-06-01 + 2026-06-05) → one TLS/proxy story
