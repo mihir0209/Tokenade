@@ -211,9 +211,9 @@ class TestRichComponents:
         results = []
         for p in plugins:
             searchable = (
-                p.get("name", "") + " " +
-                p.get("description", "") + " " +
-                " ".join(p.get("tags", []))
+                p.get("name", "") + " "
+                + p.get("description", "") + " "
+                + " ".join(p.get("tags", []))
             ).lower()
             if query in searchable:
                 results.append(p["name"])
@@ -231,9 +231,9 @@ class TestRichComponents:
         results = []
         for p in plugins:
             searchable = (
-                p.get("name", "") + " " +
-                p.get("description", "") + " " +
-                " ".join(p.get("tags", []))
+                p.get("name", "") + " "
+                + p.get("description", "") + " "
+                + " ".join(p.get("tags", []))
             ).lower()
             if query in searchable:
                 results.append(p["name"])
@@ -250,9 +250,9 @@ class TestRichComponents:
         results = []
         for p in plugins:
             searchable = (
-                p.get("name", "") + " " +
-                p.get("description", "") + " " +
-                " ".join(p.get("tags", []))
+                p.get("name", "") + " "
+                + p.get("description", "") + " "
+                + " ".join(p.get("tags", []))
             ).lower()
             if not query or query in searchable:
                 results.append(p["name"])

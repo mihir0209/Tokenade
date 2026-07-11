@@ -18,9 +18,9 @@ class TestSiteHandlerPluginV11:
         class MyHandler(SiteHandlerPlugin):
             API_VERSION = "1.1.0"
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert hasattr(h, "get_export_domains")
         assert hasattr(h, "get_critical_cookies")
@@ -30,9 +30,9 @@ class TestSiteHandlerPluginV11:
         class MyHandler(SiteHandlerPlugin):
             API_VERSION = "1.1.0"
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert hasattr(h, "get_login_url")
         assert hasattr(h, "get_dashboard_url")
@@ -44,27 +44,27 @@ class TestSiteHandlerPluginV11:
     def test_default_export_domains(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert h.get_export_domains() == []
 
     def test_default_critical_cookies(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert h.get_critical_cookies() == []
 
     def test_default_critical_storage(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         storage = h.get_critical_storage()
         assert storage == {"local": {}, "session": {}}
@@ -72,18 +72,18 @@ class TestSiteHandlerPluginV11:
     def test_default_login_url(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert h.get_login_url() == ""
 
     def test_default_selectors(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         assert h.get_logged_in_selectors() == []
         assert h.get_logged_out_selectors() == []
@@ -91,9 +91,9 @@ class TestSiteHandlerPluginV11:
     def test_verify_login_no_dashboard(self):
         class MyHandler(SiteHandlerPlugin):
             name = "test"
-            def can_handle(self, url): return True
-            def extract_session(self, ctx, url): return PluginResult(success=True)
-            def inject_session(self, ctx, session): return PluginResult(success=True)
+            def can_handle(self, url): return True  # noqa: E704
+            def extract_session(self, ctx, url): return PluginResult(success=True)  # noqa: E704
+            def inject_session(self, ctx, session): return PluginResult(success=True)  # noqa: E704
         h = MyHandler()
         result = h.verify_login(None)
         assert result.success is True

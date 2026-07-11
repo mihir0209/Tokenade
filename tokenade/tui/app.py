@@ -810,9 +810,9 @@ def run_tui(mode: str = "full"):
                 installed_names = {p["name"] for p in self._installed}
                 for p in self._plugins:
                     searchable = (
-                        p.get("name", "") + " " +
-                        p.get("description", "") + " " +
-                        " ".join(p.get("tags", []))
+                        p.get("name", "") + " "
+                        + p.get("description", "") + " "
+                        + " ".join(p.get("tags", []))
                     ).lower()
                     if query in searchable:
                         is_installed = p.get("name", "") in installed_names

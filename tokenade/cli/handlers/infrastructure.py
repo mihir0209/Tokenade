@@ -54,6 +54,7 @@ def cmd_fleet(args):
     else:
         print("Usage: tokenade fleet {status|health|refresh|logs}")
 
+
 def cmd_container(args):
     """Docker container management."""
     action = getattr(args, "container_action", None)

@@ -512,9 +512,6 @@ def cmd_sync(args):
             print("\n⏹️  Daemon stopped")
 
 
-
-
-
 def cmd_validate_session(args):
     """Validate session files for CI/CD health gates."""
     from tokenade.core.refresh.session_validator import SessionValidator, create_ci_validation_rules
@@ -755,20 +752,6 @@ def cmd_batch_refresh(args):
     report = batch.refresh_all(force=args.force)
 
     print("\n" + report.summary())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _run_post_refresh_plugins(loader, session):

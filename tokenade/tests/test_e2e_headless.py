@@ -105,7 +105,7 @@ async def run_site_check(browser, context, site_name, cookie_domains, nav_url, l
                     logged_in = True
                     print(f"  ✅ LOGGED IN (selector: {sel})")
                     break
-            except:
+            except Exception:
                 pass
 
         if not logged_in:
@@ -121,7 +121,7 @@ async def run_site_check(browser, context, site_name, cookie_domains, nav_url, l
                     if el:
                         print(f"  ❌ NOT LOGGED IN (login form: {sel})")
                         break
-                except:
+                except Exception:
                     pass
             else:
                 print(f"  ❓ Status unknown (no selectors matched)")
@@ -179,7 +179,7 @@ async def main():
                 val_json = json.dumps(val)
                 try:
                     await page.evaluate(f'() => {{ localStorage.setItem("{key}", {val_json}); }}')
-                except:
+                except Exception:
                     pass
 
             await page.reload(timeout=30000, wait_until="domcontentloaded")

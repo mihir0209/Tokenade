@@ -16,6 +16,7 @@ from tokenade.cli.handlers.session_ops import (  # noqa: F401
     _run_post_refresh_plugins,
 )
 
+
 def cmd_launch(args):
     """Launch undetectable system browser with CDP."""
     import asyncio
@@ -543,7 +544,6 @@ def cmd_launch(args):
     except Exception as e:
         logger.error(f"Launch failed: {e}", exc_info=True)
         print(f"\n❌ Launch failed: {e}")
-
 
 
 def cmd_refresh_browser(args):
@@ -1414,5 +1414,3 @@ def cmd_patch_chrome(args):
 
 
 # ── Daemon Commands ─────────────────────────────────────────────
-
-
