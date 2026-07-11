@@ -286,6 +286,7 @@ class TestNewPluginsInRegistry:
         }
         assert expected.issubset(names)
 
+    @pytest.mark.skipif(not _plugin_available("session-backup"), reason="not installed")
     def test_new_plugins_loadable(self):
         for name in ["session-backup", "session-merge", "proxy-health",
                       "session-expiry-alert", "fingerprint-rotate", "bulk-export"]:

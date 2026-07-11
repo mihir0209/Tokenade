@@ -1,9 +1,13 @@
 """Tests for Phase 61 — Site Handler Plugins."""
 
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+
+_plugins_installed = (Path.home() / ".tokenade" / "plugins").exists()
 
 
 def _load_plugin(name):
@@ -271,6 +275,7 @@ class TestGenericHandler:
 
 # ─── Plugin Discovery Tests ────────────────────────────────
 
+@pytest.mark.skipif(not _plugins_installed, reason="~/.tokenade/plugins/ not present (CI)")
 class TestPluginDiscovery:
     def test_google_handler_installed(self):
         from pathlib import Path

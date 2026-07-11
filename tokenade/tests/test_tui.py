@@ -8,10 +8,13 @@ import pytest
 
 from tokenade.tui import run_tui, _check_textual
 
+_textual_available = _check_textual()
+
 
 # ─── Module Tests ──────────────────────────────────────────
 
 class TestTUIModule:
+    @pytest.mark.skipif(not _textual_available, reason="textual not installed")
     def test_check_textual_available(self):
         """Textual should be installed in test env."""
         assert _check_textual() is True
