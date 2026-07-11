@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tokenade.core.importer.session_rotator import (
+from tokenade.core.refresh.session_rotator import (
     SessionEntry,
     RotatorMetrics,
     SessionRotator,

@@ -81,7 +81,7 @@ def _setup_raw_cdp(proxy, messages):
     return mock_ws_module, resp, ws_ctx
 
 
-async def _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx, timeout=3):
+async def _arun_raw_cdp(proxy, mock_ws, resp, ws_ctx, timeout=0.1):
     """Run inject_via_raw_cdp with mocks, returning after timeout or completion."""
     with patch.dict("sys.modules", {"websockets": mock_ws}):
         with patch("urllib.request.urlopen", return_value=resp):

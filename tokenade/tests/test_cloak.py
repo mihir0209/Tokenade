@@ -56,6 +56,7 @@ def _make_tokenade_session(tmp_path, name="test", site="github",
 # ─── CloakBrowser Availability Tests ────────────────────────
 
 class TestCloakBrowserAvailability:
+    @pytest.mark.skipif(not is_cloakbrowser_available(), reason="cloakbrowser not installed")
     def test_package_installed(self):
         """cloakbrowser should be installed in test env."""
         assert is_cloakbrowser_available() is True

@@ -5,7 +5,7 @@ SessionValidator auto-detection, weighted voting, error handling.
 
 import time
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tokenade.core.importer.validator import (
     ValidationResult,

@@ -5,7 +5,13 @@ import json
 import sys
 sys.path.insert(0, "/home/ghostrider/Projects/tokenade")
 
-from cloakbrowser import launch_async
+import pytest
+
+try:
+    from cloakbrowser import launch_async
+except ImportError:
+    pytestmark = pytest.mark.skip(reason="cloakbrowser not installed")
+
 from tokenade.core.importer.cookie_extractor import CookieExtractor
 from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery

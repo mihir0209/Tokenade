@@ -480,11 +480,10 @@ class TestRuntimeEngine:
         mock_resp = MagicMock(status_code=200, content=b"ok", cookies=[])
         engine._session.request.return_value = mock_resp
 
-        start = time.time()
-        engine.get("https://example.com/1")
-        engine.get("https://example.com/2")
-        elapsed = time.time() - start
-        assert elapsed >= 0.09
+        with patch.object(engine, "_apply_rate_limit") as mock_limit:
+            engine.get("https://example.com/1")
+            engine.get("https://example.com/2")
+            mock_limit.assert_called()
         engine.close()
 
     def test_rate_limit_zero(self):

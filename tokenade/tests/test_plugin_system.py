@@ -16,7 +16,7 @@ from tokenade.plugin import (
 
 # === Concrete test implementations of abstract classes ===
 
-class TestRefreshPlugin(SessionRefreshPlugin):
+class ConcreteRefreshPlugin(SessionRefreshPlugin):
     """Concrete test implementation of SessionRefreshPlugin."""
     name = "test-refresh"
     version = "1.0.0"
@@ -34,7 +34,7 @@ class TestRefreshPlugin(SessionRefreshPlugin):
         return [{"name": "--api-key", "help": "API key", "required": True, "type": str}]
 
 
-class TestSiteHandler(SiteHandlerPlugin):
+class ConcreteSiteHandler(SiteHandlerPlugin):
     """Concrete test implementation of SiteHandlerPlugin."""
     name = "test-handler"
     version = "1.0.0"
@@ -50,7 +50,7 @@ class TestSiteHandler(SiteHandlerPlugin):
         return True
 
 
-class TestExportFormat(ExportFormatPlugin):
+class ConcreteExportFormat(ExportFormatPlugin):
     """Concrete test implementation of ExportFormatPlugin."""
     name = "test-export"
     version = "1.0.0"
@@ -65,7 +65,7 @@ class TestExportFormat(ExportFormatPlugin):
         return output_path
 
 
-class TestValidator(SessionValidatorPlugin):
+class ConcreteValidator(SessionValidatorPlugin):
     """Concrete test implementation of SessionValidatorPlugin."""
     name = "test-validator"
     version = "1.0.0"
@@ -79,7 +79,7 @@ class TestValidator(SessionValidatorPlugin):
 
 class TestPluginBase:
     def test_base_class_structure(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         assert hasattr(plugin, "name")
         assert hasattr(plugin, "version")
         assert hasattr(plugin, "description")
@@ -88,20 +88,20 @@ class TestPluginBase:
         assert hasattr(plugin, "get_info")
 
     def test_plugin_metadata(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         assert plugin.name == "test-refresh"
         assert plugin.version == "1.0.0"
         assert plugin.description == "Test refresh plugin"
 
     def test_get_info(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         info = plugin.get_info()
         assert info["name"] == "test-refresh"
         assert info["version"] == "1.0.0"
         assert info["description"] == "Test refresh plugin"
 
     def test_lifecycle_hooks(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         # Should not raise
         plugin.on_load()
         plugin.on_unload()
@@ -111,25 +111,25 @@ class TestPluginBase:
 
 class TestSessionRefreshPlugin:
     def test_can_refresh(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         assert plugin.can_refresh({"site_name": "test-site"}) is True
         assert plugin.can_refresh({"site_name": "other"}) is False
 
     def test_refresh(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         session = {"site_name": "test-site", "cookies": []}
         result = plugin.refresh(session, {})
         assert result["metadata"]["refreshed"] is True
 
     def test_get_credentials_args(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         args = plugin.get_credentials_args()
         assert len(args) == 1
         assert args[0]["name"] == "--api-key"
         assert args[0]["required"] is True
 
     def test_inheritance(self):
-        plugin = TestRefreshPlugin()
+        plugin = ConcreteRefreshPlugin()
         assert isinstance(plugin, PluginBase)
         assert isinstance(plugin, SessionRefreshPlugin)
 
@@ -138,18 +138,18 @@ class TestSessionRefreshPlugin:
 
 class TestSiteHandlerPlugin:
     def test_can_handle(self):
-        plugin = TestSiteHandler()
+        plugin = ConcreteSiteHandler()
         assert plugin.can_handle("https://example.com/page") is True
         assert plugin.can_handle("https://other.com/page") is False
 
     def test_extract_session(self):
-        plugin = TestSiteHandler()
+        plugin = ConcreteSiteHandler()
         session = plugin.extract_session(None, "https://example.com")
         assert "cookies" in session
         assert session["site_name"] == "test"
 
     def test_inject_session(self):
-        plugin = TestSiteHandler()
+        plugin = ConcreteSiteHandler()
         assert plugin.inject_session(None, {"cookies": []}) is True
 
 
@@ -157,11 +157,11 @@ class TestSiteHandlerPlugin:
 
 class TestExportFormatPlugin:
     def test_get_format_name(self):
-        plugin = TestExportFormat()
+        plugin = ConcreteExportFormat()
         assert plugin.get_format_name() == "test-format"
 
     def test_export(self, tmp_path):
-        plugin = TestExportFormat()
+        plugin = ConcreteExportFormat()
         output = tmp_path / "output.txt"
         result = plugin.export({"cookies": []}, str(output))
         assert os.path.isfile(result)
@@ -172,7 +172,7 @@ class TestExportFormatPlugin:
 
 class TestSessionValidatorPlugin:
     def test_validate(self):
-        plugin = TestValidator()
+        plugin = ConcreteValidator()
         result = plugin.validate({"cookies": []})
         assert result["valid"] is True
         assert result["score"] == 100.0

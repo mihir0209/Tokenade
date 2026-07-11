@@ -333,7 +333,7 @@ class TestSessionHealthE2E:
 
 class TestSessionRotationE2E:
     def test_rotation_with_real_sessions(self, browser, tmp_path):
-        from tokenade.core.importer.session_rotator import SessionRotator
+        from tokenade.core.refresh.session_rotator import SessionRotator
 
         now = time.time()
         for i in range(5):
@@ -361,7 +361,7 @@ class TestSessionRotationE2E:
         assert selections[1] == selections[6]
 
     def test_health_weighted_prefers_healthy(self, tmp_path):
-        from tokenade.core.importer.session_rotator import SessionRotator
+        from tokenade.core.refresh.session_rotator import SessionRotator
 
         now = time.time()
         # Healthy session
@@ -399,7 +399,7 @@ class TestSessionRotationE2E:
         assert healthy_count >= 15  # Strong preference
 
     def test_cooldown_prevents_reuse(self, tmp_path):
-        from tokenade.core.importer.session_rotator import SessionRotator
+        from tokenade.core.refresh.session_rotator import SessionRotator
 
         for i in range(3):
             session = {"cookies": [], "site_name": f"s{i}.com"}

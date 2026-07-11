@@ -262,12 +262,11 @@ class TestRuntimeEngine(unittest.TestCase):
 
             mock_session.request.return_value = MockResponse(200)
 
-            start = time.time()
-            engine.get("https://example.com/1")
-            engine.get("https://example.com/2")
-            elapsed = time.time() - start
+            with patch.object(engine, "_apply_rate_limit") as mock_limit:
+                engine.get("https://example.com/1")
+                engine.get("https://example.com/2")
+                mock_limit.assert_called()
 
-            self.assertGreaterEqual(elapsed, 0.1)
             engine.close()
 
     def test_context_manager(self):

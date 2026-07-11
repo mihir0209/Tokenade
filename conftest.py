@@ -1,11 +1,70 @@
 """Shared test fixtures for Tokenade."""
 import json
+import sys
 import tempfile
+import types
 from pathlib import Path
 from typing import Dict, List
 from unittest.mock import MagicMock
 
 import pytest
+
+import time as _real_time
+
+
+class _NoSleepTimeModule(types.ModuleType):
+    """Wrapper around the real time module with a no-op sleep."""
+
+    def __init__(self):
+        super().__init__("time")
+        self._real = _real_time
+
+    def __getattr__(self, name):
+        if name == "sleep":
+            return lambda *a, **kw: None
+        return getattr(self._real, name)
+
+
+_NO_SLEEP_TIME = _NoSleepTimeModule()
+
+_MODULES_WITH_SLEEP = [
+    "tokenade.core.importer.validator",
+    "tokenade.core.importer.session_loader",
+    "tokenade.core.browser.stealth.cloak",
+    "tokenade.core.browser.xvfb",
+    "tokenade.core.browser.stealth.launcher",
+    "tokenade.core.daemon.session_daemon",
+    "tokenade.core.monitoring.session_monitor",
+    "tokenade.core.refresh.batch_refresh",
+    "tokenade.core.proxy.cdp_proxy",
+    "tokenade.core.proxy.server",
+    "tokenade.core.proxy.extension_bridge",
+    "tokenade.core.proxy.multi_site_proxy",
+    "tokenade.core.runtime.engine",
+    "tokenade.handlers.google",
+]
+
+
+@pytest.fixture(autouse=True)
+def _fast_sleep():
+    """Replace the time module reference in slow production modules so sleep() is a no-op.
+
+    This only affects the time reference *inside* each module, not the global
+    time module, so tests that call time.sleep() directly still actually sleep.
+    """
+    saved = {}
+    for mod_name in _MODULES_WITH_SLEEP:
+        mod = sys.modules.get(mod_name)
+        if mod is not None and hasattr(mod, "time"):
+            saved[mod_name] = mod.time
+            mod.time = _NO_SLEEP_TIME
+
+    yield
+
+    for mod_name, original in saved.items():
+        mod = sys.modules.get(mod_name)
+        if mod is not None:
+            mod.time = original
 
 
 @pytest.fixture
