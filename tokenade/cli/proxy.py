@@ -46,7 +46,7 @@ def cmd_proxy(args):
 
         # Session rotation mode
         if args.rotate:
-            from tokenade.core.importer.session_rotator import SessionRotator
+            from tokenade.core.refresh.rotator import SessionRotator
 
             print(f"\n{'=' * 60}")
             print(f"TOKENADE - Session Rotation ({len(sessions)} sessions)")

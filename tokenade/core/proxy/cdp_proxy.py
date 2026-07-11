@@ -23,7 +23,7 @@ except ImportError:
 
 from tokenade.core.runtime.engine import CookieJar, FingerprintMatcher
 from tokenade.core.runtime.tls_matcher import create_tls_matcher
-from tokenade.core.importer.session_refresher import SessionRefresher, RefreshConfig
+from tokenade.core.refresh.session_refresher import SessionRefresher, RefreshConfig
 
 from tokenade.core.proxy.cdp_stealth import (
     is_safe_url,

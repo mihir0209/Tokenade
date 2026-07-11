@@ -4,7 +4,7 @@ import asyncio
 import time
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
-from tokenade.core.importer.session_refresher import (
+from tokenade.core.refresh.session_refresher import (
     SessionRefresher,
     RefreshConfig,
     CookieExpiryInfo,
