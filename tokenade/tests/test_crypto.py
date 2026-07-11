@@ -169,8 +169,10 @@ class TestLinuxCookieCrypto(unittest.TestCase):
         key = crypto.get_encryption_key("/tmp/test")
         self.assertEqual(key, b"password")
 
+    @patch.object(LinuxCookieCrypto, "_passwords_from_secretstorage", return_value=[])
+    @patch.object(LinuxCookieCrypto, "_passwords_from_kwallet", return_value=[])
     @patch.object(LinuxCookieCrypto, "_check_keyring", return_value=False)
-    def test_decrypt_with_peanuts_fallback(self, mock_check):
+    def test_decrypt_with_peanuts_fallback(self, mock_check, mock_kwallet, mock_secret):
         """Test fallback to 'peanuts' password."""
         crypto = LinuxCookieCrypto()
         key = crypto.get_encryption_key("/tmp/test")

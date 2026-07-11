@@ -3,6 +3,7 @@
 import json
 from unittest.mock import patch, MagicMock
 from argparse import Namespace
+import pytest
 
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
@@ -11,7 +12,9 @@ from tokenade.cli.proxy import cmd_proxy
 class TestCmdEncrypt:
     def test_input_not_found(self, capsys):
         args = Namespace(input="/nonexistent/session.tokenade", output=None, key_file=None, password="test")
-        cmd_encrypt(args)
+        with pytest.raises(SystemExit) as exc:
+            cmd_encrypt(args)
+        assert exc.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.encrypt_session")
@@ -44,7 +47,9 @@ class TestCmdEncrypt:
         mock_encrypt.side_effect = Exception("Encryption error")
 
         args = Namespace(input=str(f), output=None, key_file=None, password="test")
-        cmd_encrypt(args)
+        with pytest.raises(SystemExit) as exc:
+            cmd_encrypt(args)
+        assert exc.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.load_key_from_file")
@@ -66,14 +71,18 @@ class TestCmdEncrypt:
 class TestCmdDecrypt:
     def test_input_not_found(self, capsys):
         args = Namespace(input="/nonexistent/encrypted.tokenade", output=None, key_file=None, password="test")
-        cmd_decrypt(args)
+        with pytest.raises(SystemExit) as exc:
+            cmd_decrypt(args)
+        assert exc.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.decrypt_session")
     def test_decrypt_success(self, mock_decrypt, tmp_path, capsys):
         f = tmp_path / "session.tokenade.encrypted"
         f.write_bytes(b"encrypted data")
-        mock_decrypt.return_value = str(tmp_path / "session.tokenade")
+        dec_path = tmp_path / "session.tokenade"
+        mock_decrypt.return_value = str(dec_path)
+        dec_path.write_text('{"cookies": []}')
 
         args = Namespace(input=str(f), output=None, key_file=None, password="test")
         cmd_decrypt(args)
@@ -86,7 +95,9 @@ class TestCmdDecrypt:
         mock_decrypt.side_effect = ValueError("Wrong password")
 
         args = Namespace(input=str(f), output=None, key_file=None, password="wrong")
-        cmd_decrypt(args)
+        with pytest.raises(SystemExit) as exc:
+            cmd_decrypt(args)
+        assert exc.value.code == 1
         assert "wrong password" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.decrypt_session")
@@ -96,7 +107,9 @@ class TestCmdDecrypt:
         mock_decrypt.side_effect = Exception("Corrupted")
 
         args = Namespace(input=str(f), output=None, key_file=None, password="test")
-        cmd_decrypt(args)
+        with pytest.raises(SystemExit) as exc:
+            cmd_decrypt(args)
+        assert exc.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.decrypt_session")
@@ -105,6 +118,7 @@ class TestCmdDecrypt:
         f.write_bytes(b"data")
         out = tmp_path / "decrypted.tokenade"
         mock_decrypt.return_value = str(out)
+        out.write_text('{"cookies": []}')
 
         args = Namespace(input=str(f), output=str(out), key_file=None, password="test")
         cmd_decrypt(args)
@@ -114,9 +128,11 @@ class TestCmdDecrypt:
 class TestCmdRekey:
     def test_input_not_found(self, capsys):
         args = Namespace(input="/nonexistent/file", output=None,
-                         old_key_file=None, old_password="old",
-                         new_key_file=None, new_password="new")
-        cmd_rekey(args)
+                          old_key_file=None, old_password="old",
+                          new_key_file=None, new_password="new")
+        with pytest.raises(SystemExit) as exc:
+            cmd_rekey(args)
+        assert exc.value.code == 1
         assert "not found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.TokenadeEncryptor")
@@ -129,8 +145,8 @@ class TestCmdRekey:
         mock_enc_cls.return_value = mock_enc
 
         args = Namespace(input=str(f), output=str(out),
-                         old_key_file=None, old_password="old",
-                         new_key_file=None, new_password="new")
+                          old_key_file=None, old_password="old",
+                          new_key_file=None, new_password="new")
         cmd_rekey(args)
         assert "success" in capsys.readouterr().out.lower()
         assert out.exists()
@@ -144,9 +160,11 @@ class TestCmdRekey:
         mock_enc_cls.return_value = mock_enc
 
         args = Namespace(input=str(f), output=None,
-                         old_key_file=None, old_password="wrong",
-                         new_key_file=None, new_password="new")
-        cmd_rekey(args)
+                          old_key_file=None, old_password="wrong",
+                          new_key_file=None, new_password="new")
+        with pytest.raises(SystemExit) as exc:
+            cmd_rekey(args)
+        assert exc.value.code == 1
         assert "wrong" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.security.TokenadeEncryptor")
@@ -158,9 +176,11 @@ class TestCmdRekey:
         mock_enc_cls.return_value = mock_enc
 
         args = Namespace(input=str(f), output=None,
-                         old_key_file=None, old_password="old",
-                         new_key_file=None, new_password="new")
-        cmd_rekey(args)
+                          old_key_file=None, old_password="old",
+                          new_key_file=None, new_password="new")
+        with pytest.raises(SystemExit) as exc:
+            cmd_rekey(args)
+        assert exc.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
 

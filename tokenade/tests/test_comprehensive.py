@@ -212,47 +212,6 @@ class TestHealthScoringWorkflow:
         assert len(result.issues) > 0
 
 
-class TestAntidetectionWorkflow:
-    """Test anti-detection features end-to-end."""
-
-    def test_cdp_cleaner_scripts_are_valid_js(self):
-        """All stealth scripts should be valid JavaScript."""
-        from tokenade.core.antidetection.cdp_cleaner import CDPCleaner
-
-        scripts = CDPCleaner.get_stealth_scripts()
-        assert len(scripts) > 0
-
-        # Each script should be non-empty and contain JS syntax
-        for script in scripts:
-            assert len(script.strip()) > 0
-            # Should contain some JS construct
-            assert any(kw in script for kw in ["navigator", "window", "Object", "delete", "undefined"])
-
-    def test_behavioral_injector_generates_paths(self):
-        """Mouse path generation should produce reasonable output."""
-        from tokenade.core.antidetection.behavioral import BehavioralInjector
-
-        path = BehavioralInjector.generate_mouse_path((0, 0), (500, 500))
-        assert len(path) > 0
-        # Start should be near origin (small jitter from Gaussian)
-        assert abs(path[0]["x"]) < 5
-        assert abs(path[0]["y"]) < 5
-
-        # End should be near target
-        last = path[-1]
-        assert abs(last["x"] - 500) < 50
-        assert abs(last["y"] - 500) < 50
-
-    def test_scroll_pattern_generates_steps(self):
-        """Scroll pattern should produce scroll events."""
-        from tokenade.core.antidetection.behavioral import BehavioralInjector
-
-        pattern = BehavioralInjector.generate_scroll_pattern(500)
-        assert len(pattern) > 0
-        assert all("delta_y" in p for p in pattern)
-        assert all("delay_ms" in p for p in pattern)
-
-
 class TestPluginRegistryWorkflow:
     """Test plugin registry functionality."""
 

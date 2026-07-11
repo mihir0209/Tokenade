@@ -35,6 +35,7 @@ class TestExportLoadRoundtrip:
                 {"name": "__Secure-OSID", "value": "efg123", "domain": ".google.com", "path": "/", "secure": True},
                 {"name": "__Host-GAPS", "value": "hij456", "domain": ".google.com", "path": "/", "secure": True},
                 {"name": "COMPASS", "value": "klm789", "domain": ".google.com", "path": "/", "secure": True},
+                {"name": "NID", "value": "nop012", "domain": ".google.com", "path": "/", "secure": True},
             ]
 
             # Step 2: Package (export)
@@ -64,8 +65,8 @@ class TestExportLoadRoundtrip:
 
             # Step 4: Verify
             assert result["success"] is True
-            assert result["cookies_total"] == 13
-            assert result["cookies_injected"] == 13
+            assert result["cookies_total"] == 14
+            assert result["cookies_injected"] == 14
             assert result["validation"]["valid"] is True
             assert result["validation"]["auth_status"] == "logged_in"
             assert result["site_name"] == "google"

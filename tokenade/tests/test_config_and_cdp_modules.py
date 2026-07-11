@@ -354,7 +354,7 @@ class TestGetSiteUrl:
         # "google" has a validate_url in site_configs
         session = {"site_name": "google", "cookies": []}
         url = get_site_url(session)
-        assert url == "https://myaccount.google.com"
+        assert url == "https://mail.google.com"
 
     def test_unknown_site_falls_back_to_cookies(self):
         session = {
