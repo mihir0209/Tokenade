@@ -1,6 +1,6 @@
 # Tokenade Agent Rules
 
-**Last updated:** 2026-07-04
+**Last updated:** 2026-07-12
 
 ## Project Structure
 
@@ -10,8 +10,8 @@
   ├── phases.md          # All phases tracked (status, dates, outputs)
   ├── plans/             # Drafted plans (date-stamped markdown)
   ├── reviews/           # Code reviews and quality inspections
-  ├── tests/             # Test documentation and summaries
-  └── testing-checklist.md  # E2E tests to run manually
+  ├── results/           # Battle-verified evidence
+  └── working.md         # Current state and release policy
 ```
 
 ## Plan Drafting Workflow
@@ -94,7 +94,7 @@ Cross-platform:
 - **New CLI commands** get parser in `cli/__init__.py`, handler in `cli/management.py`
 - **New modules** get `__init__.py` with `__all__`
 - **Tests** go in `tokenade/tests/test_<module>.py`
-- **Lint before commit** — `flake8 --max-line-length=120`
+- **Lint before commit** — `ruff check`
 - **Full test suite must pass** before commit
 - **No comments in code** unless asked
 
@@ -102,6 +102,7 @@ Cross-platform:
 
 | File | Purpose |
 |------|---------|
+| `tokenade/core/refresh/` | Session rotation, refresh, health scoring |
 | `tokenade/core/browser/cloak.py` | CloakBrowser integration |
 | `tokenade/core/browser/session_state.py` | .tokenade ↔ storage_state |
 | `tokenade/core/browser/battle.py` | Battle test suite |
@@ -111,3 +112,5 @@ Cross-platform:
 | `tokenade/core/cicd/runner.py` | CI runner |
 | `tokenade/tui/app.py` | TUI application |
 | `tokenade/plugin/base.py` | Plugin base classes |
+| `tokenade/core/crypto/encryptor.py` | AES-256-GCM encryption |
+| `tokenade/core/proxy/cdp_proxy.py` | CDP proxy |

@@ -18,10 +18,11 @@
 - PyPI publishes only happen when user explicitly requests it
 - This keeps the repo clean and avoids premature versioning
 
-## Current State (2026-07-09)
+## Current State (2026-07-12)
 
 ### Version: 1.0.0 (PyPI rebaseline)
-### P0 honesty pass applied on main (post checkpoint-2)
+### Phases 71-72 complete: dead code removed, test suite optimized
+### 5218 tests passing, 0 failures, ~71s (was 302 failures / 124s)
 
 ## Historical note — state at 2026-06-21
 
