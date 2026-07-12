@@ -69,7 +69,6 @@ tokenade/
 │   │   ├── cookie_extractor.py         # Browser cookie extraction
 │   │   ├── session_packager.py         # .tokenade file format packaging
 │   │   ├── session_loader.py           # Session file loading
-│   │   ├── session_refresher.py        # Auto-refresh from source browser
 │   │   ├── session_sync.py             # Daemon: mtime-based browser sync
 │   │   ├── session_comparator.py       # Session diff/comparison
 │   │   ├── session_sharer.py           # Session sharing utilities

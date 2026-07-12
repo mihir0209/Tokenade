@@ -5,7 +5,7 @@
 | Metric | Value |
 |--------|-------|
 | Version | 1.0.0 |
-| Tests | 5218 passed, 0 failed, 8 skipped (~71s) |
+| Tests | 5216 passed, 0 failed, 9 skipped (~109s) |
 | CI | GitHub Actions (passes) |
 | Official plugins | 22 (all `verified=false` until contract review) |
 | Core Lines | ~51k |
@@ -115,7 +115,25 @@
 
 ## In Progress
 
-(None — all phases 28-51 complete)
+(None — all phases complete)
+
+---
+
+## Completed (recent)
+
+### Phase 65 — Documentation Overhaul ✅
+**Status:** Complete (2026-07-12)
+**Goal:** Fix stale docs, create CHANGELOG, rename misleading module, split oversized file
+**What was done:**
+- ARCHITECTURE.md: removed phantom dirs (`antidetection/`, `extractor/`, `sdk/`), added missing (`cicd/`, `daemon/`, `forensics/`, `logging/`, `storage/`, `refresh/`, `stealth/`, expanded `browser/`)
+- CONTRIBUTING.md: removed stale `antidetection/` reference, updated module tree
+- TUTORIALS.md: corrected extension paths (`extension/` not `tokenade/extension/chrome/`)
+- CHANGELOG.md: created release history
+- `stealth_test.py` → `stealth_validation.py` (production module, not test; updated 3 import sites)
+- `session.py` split: extracted 408-line `cmd_export` → `session_export.py` (945→532 lines)
+- Fixed all flake8 errors in new/renamed files
+**Verify:** 5216 passed, 0 failed, 9 skipped, lint clean
+**Dependencies:** Phases 71-72 ✅
 **Status**: Complete (2026-06-21)
 **Goal**: Patch Chrome binary to remove `cdc_` prefix detection
 **Why**: Even with JS-level cleanup, binary-level artifacts can be detected
@@ -840,12 +858,13 @@ Expected:
 **Dependencies**: Phase 62 ✅
 **Plan**: `.agent/plans/2026-07-04-polish-docs-ecosystem.md`
 
-### Phase 65 — Documentation Overhaul
-**Goal**: README overhaul, CLI reference, plugin development guide, API docs
-**Output**: Complete documentation for users and developers
-**Verify**: README is accurate, plugin dev guide is complete
-**Dependencies**: Phase 64
-**Plan**: `.agent/plans/2026-07-04-polish-docs-ecosystem.md`
+### Phase 65 — Documentation Overhaul ✅
+**Status:** Complete (2026-07-12)
+**Goal:** README overhaul, CLI reference, plugin development guide, API docs
+**Output:** Complete documentation for users and developers
+**Verify:** README is accurate, plugin dev guide is complete
+**Dependencies:** Phase 64 ✅
+**Plan:** `.agent/plans/2026-07-04-polish-docs-ecosystem.md`
 
 ### Phase 66 — Battle Test Expansion ✅
 **Status:** Complete (2026-07-04)
@@ -985,7 +1004,7 @@ Expected: 8/10 pass, bot.incolumitas.com and nowsecure.nl fail (expected)
 - Fixed test class naming (`TestX` → `ConcreteX` in `test_plugin_system.py`)
 - Added skip markers for missing deps (`cloakbrowser`, `curl-cffi`)
 - Fixed rate-limiting tests (wall-clock → behavioral assertions)  
-**Verify:** 5218 passed, 0 failed, 71s total
+**Verify:** 5216 passed, 0 failed, 109s total
 
 
 ### Phase P5 — Injection fail-closed + fingerprint wrapper + coverage rename (2026-07-09) ✅

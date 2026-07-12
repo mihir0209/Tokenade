@@ -49,7 +49,7 @@ You should see something like:
 - `Plugin export domains: google.com, accounts.google.com, ...`
 - `Auth: logged_in`
 
-**Donor browsers for Google:** Firefox, Brave, Edge, Vivaldi
+**Donor browsers for Google:** Firefox, Brave, Edge (Vivaldi: code exists, not battle-tested)
 **Avoid as donor/target:** Google Chrome / Chromium / Canary
 
 ### 3. Launch into a clean Brave profile

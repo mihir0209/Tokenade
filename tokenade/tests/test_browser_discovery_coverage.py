@@ -481,6 +481,7 @@ class TestDiscoverAll:
             assert "firefox" in result
             assert "edge" in result
             assert "brave" in result
+            assert "vivaldi" in result
 
     def test_all_values_are_lists(self):
         d = BrowserProfileDiscovery()
@@ -511,6 +512,12 @@ class TestBrowserPaths:
 
     def test_brave_paths_has_all_platforms(self):
         paths = BrowserProfileDiscovery.BROWSER_PATHS["brave"]
+        assert "Windows" in paths
+        assert "Linux" in paths
+        assert "Darwin" in paths
+
+    def test_vivaldi_paths_has_all_platforms(self):
+        paths = BrowserProfileDiscovery.BROWSER_PATHS["vivaldi"]
         assert "Windows" in paths
         assert "Linux" in paths
         assert "Darwin" in paths

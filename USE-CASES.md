@@ -608,7 +608,7 @@ session = client.load("agent_session.tokenade")
 | | Firefox | ✅ | Camoufox, Multilogin |
 | | Safari | ✅ | — |
 | | Tor Browser | ✅ | — |
-| | Arc/Opera/Vivaldi | ✅ | — |
+| | Arc/Opera/Vivaldi | ⚠️ Code exists | Not battle-tested |
 | | Android (ADB) | ✅ | GoLogin (paid) |
 | | iOS | Partial | — |
 

@@ -196,7 +196,7 @@ def cmd_launch(args):
                 "chrome", "chromium", "chrome-canary", "chrome-beta", "google-chrome",
             )
             if site_hint == "google":
-                print(f"   💡 Google recipe: donor + target should be Firefox/Brave/Edge/Vivaldi (not Chrome).")
+                print(f"   💡 Google recipe: donor + target should be Firefox/Brave/Edge (not Chrome).")
                 print(f"   ✅ Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
                 print(f"   🧭 Open the product URL (mail.google.com) — avoid bouncing through accounts.google.com after inject.")
             if site_hint == "google" and chrome_like:

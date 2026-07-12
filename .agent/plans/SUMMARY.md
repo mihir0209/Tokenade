@@ -15,6 +15,8 @@ Tokenade = portable browser sessions (export/inject/proxy) with stealth, plugins
 | Infra 55–63 | Forensics, TUI, plugin integration, CloakBrowser | Shipped |
 | Honesty P0-P6 | Docs, deferred claims, code audit, plugin API, handler resolution | Shipped |
 | Slimming 71-72 | Dead code removal, session consolidation, test optimization | Shipped (2026-07-12) |
+| Docs 65 | Documentation overhaul, module tree fixes, session.py split | Shipped (2026-07-12) |
+| Sprint C | Vivaldi profile discovery, macOS CI matrix, honesty sweep | Shipped (2026-07-12) |
 
 ## Sprint status (current)
 | Sprint | Focus | Status |
@@ -27,6 +29,8 @@ Tokenade = portable browser sessions (export/inject/proxy) with stealth, plugins
 | **E** | Secondary docs honesty sweep | **DONE** |
 | **71** | Code audit & dead code removal | **DONE** |
 | **72** | Test suite optimization for CI speed | **DONE** |
+| **65** | Documentation overhaul + structural cleanup | **DONE** |
+| **C** | Vivaldi profile discovery + macOS CI matrix | **DONE** |
 
 ## Individual plan index (selected — see `plans/` for full list)
 | File | Title | Status |
@@ -36,9 +40,8 @@ Tokenade = portable browser sessions (export/inject/proxy) with stealth, plugins
 | `2026-07-09-p0-honesty-deferred-claims.md` | P0 Honesty deferred claims | **DONE** |
 
 ## Still relevant open work
-1. **Sprint C:** Vivaldi CDP + macOS matrix (deprioritized; browser-side flake)
-2. More site handlers beyond Google/GitHub/ChatGPT
-3. Non-site plugin bases (refresh, export-format, health) — deferred YAGNI
+1. More site handlers beyond Google/GitHub/ChatGPT
+2. Non-site plugin bases (refresh, export-format, health) — deferred YAGNI
 
 ## Explicitly deprecated plan noise
 - Duplicate JA3 plans (2026-06-01 + 2026-06-05) → one TLS/proxy story

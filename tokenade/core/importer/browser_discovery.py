@@ -1,7 +1,7 @@
 """
 Browser Profile Discovery - Auto-detect browser profiles across platforms.
 
-Supports Chrome, Firefox, Edge on Windows, Linux, and macOS.
+Supports Chrome, Firefox, Edge, Brave, Vivaldi on Windows, Linux, and macOS.
 """
 
 import os
@@ -90,6 +90,17 @@ class BrowserProfileDiscovery:
             ],
             "Darwin": [
                 "~/Library/Application Support/BraveSoftware/Brave-Browser",
+            ],
+        },
+        "vivaldi": {
+            "Windows": [
+                r"%LOCALAPPDATA%\Vivaldi\User Data",
+            ],
+            "Linux": [
+                "~/.config/vivaldi",
+            ],
+            "Darwin": [
+                "~/Library/Application Support/Vivaldi",
             ],
         },
     }
@@ -259,6 +270,37 @@ class BrowserProfileDiscovery:
         logger.info(f"Discovered {len(profiles)} Brave profiles")
         return profiles
 
+    def discover_vivaldi_profiles(self) -> List[BrowserProfile]:
+        """Discover Vivaldi profiles (same structure as Chrome)."""
+        profiles = []
+        paths = self.BROWSER_PATHS.get("vivaldi", {}).get(self.os_type, [])
+
+        for base_path in paths:
+            expanded = self._expand_path(base_path)
+            if not os.path.exists(expanded):
+                continue
+
+            default_path = os.path.join(expanded, "Default")
+            if os.path.exists(default_path):
+                profiles.append(BrowserProfile(
+                    name="Default",
+                    path=default_path,
+                    browser="vivaldi",
+                    is_default=True,
+                ))
+
+            for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
+                name = os.path.basename(profile_dir)
+                profiles.append(BrowserProfile(
+                    name=name,
+                    path=profile_dir,
+                    browser="vivaldi",
+                    is_default=False,
+                ))
+
+        logger.info(f"Discovered {len(profiles)} Vivaldi profiles")
+        return profiles
+
     def discover_all(self) -> Dict[str, List[BrowserProfile]]:
         """Discover all browser profiles."""
         return {
@@ -266,6 +308,7 @@ class BrowserProfileDiscovery:
             "firefox": self.discover_firefox_profiles(),
             "edge": self.discover_edge_profiles(),
             "brave": self.discover_brave_profiles(),
+            "vivaldi": self.discover_vivaldi_profiles(),
         }
 
     def get_profile(self, browser: str, name: str) -> Optional[BrowserProfile]:

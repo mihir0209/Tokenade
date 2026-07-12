@@ -125,7 +125,7 @@ GitHub/Discord/Reddit from **session-only** cookies often fail when the donor ne
 2. **Transfer** — copy the file (optionally encrypted) to another machine or process.
 3. **Replay** — `launch` (system browser + inject) or `proxy` (TLS-matched reverse proxy).
 
-**Google recipe (verified):** donor **not** Chrome → target **Brave / Edge / Vivaldi / Firefox** → **clean** `--profile-dir` → open the **product URL** (e.g. `mail.google.com`), not `accounts.google.com` after inject. Same jar can run on multiple non-Chrome browsers/devices concurrently.
+**Google recipe (verified):** donor **not** Chrome → target **Brave / Edge / Firefox** → **clean** `--profile-dir` → open the **product URL** (e.g. `mail.google.com`), not `accounts.google.com` after inject. Same jar can run on multiple non-Chrome browsers/devices concurrently. Vivaldi is code-supported but not battle-tested.
 
 ---
 

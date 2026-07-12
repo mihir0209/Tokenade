@@ -22,7 +22,7 @@
 
 ### Version: 1.0.0 (PyPI rebaseline)
 ### Phases 71-72 complete: dead code removed, test suite optimized
-### 5218 tests passing, 0 failures, ~71s (was 302 failures / 124s)
+### 5216 tests passing, 0 failures, ~109s (was 302 failures / 124s)
 
 ## Historical note — state at 2026-06-21
 
