@@ -23,6 +23,9 @@ import urllib.parse
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from tokenade.plugin.api import API_VERSION
+from tokenade.plugin.base import SessionRefreshPlugin
+
 logger = logging.getLogger(__name__)
 
 # Provider configurations
@@ -46,16 +49,26 @@ PROVIDERS = {
 }
 
 
-class OAuth2Plugin:
+class OAuth2Plugin(SessionRefreshPlugin):
     """OAuth2 session refresh plugin.
 
     Refreshes OAuth2 tokens and updates session cookies/tokens.
+    Inherits from SessionRefreshPlugin for plugin lifecycle integration.
     """
 
     name = "oauth2"
     version = "1.0.0"
     description = "OAuth2 session refresh for Google, GitHub, and custom providers"
-    author = "Tokenade"
+    author = "MiHiR"
+    API_VERSION = API_VERSION
+
+    def on_load(self) -> None:
+        """Called when plugin is loaded."""
+        pass
+
+    def on_unload(self) -> None:
+        """Called when plugin is unloaded."""
+        pass
 
     def can_refresh(self, session: dict) -> bool:
         """Check if this session has OAuth2 tokens that can be refreshed.

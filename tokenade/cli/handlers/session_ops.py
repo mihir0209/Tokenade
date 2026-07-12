@@ -756,13 +756,17 @@ def cmd_batch_refresh(args):
 
 def _run_post_refresh_plugins(loader, session):
     """Run post-refresh plugins (webhooks, notifications, etc.)."""
+    from tokenade.plugin.base import NotificationPlugin
+
     refreshers = loader.list_refreshers()
     for name, refresher in refreshers.items():
         try:
-            if hasattr(refresher, "_send_webhook") or (hasattr(refresher, "can_refresh") and refresher.can_refresh(session)):
-                # Only run plugins that are pass-through notifiers (not the main refresher)
-                if hasattr(refresher, "_send_webhook"):
-                    refresher.refresh(session, {})
+            # Notification plugins: call send() for post-refresh events
+            if isinstance(refresher, NotificationPlugin):
+                refresher.send("refresh_completed", {"session": session})
+            # Session refresh plugins: only run if they can handle this session
+            elif hasattr(refresher, "can_refresh") and refresher.can_refresh(session):
+                pass  # Already handled by the main refresh flow
         except Exception as e:
             logger.warning(f"Post-refresh plugin {name} failed: {e}")
 

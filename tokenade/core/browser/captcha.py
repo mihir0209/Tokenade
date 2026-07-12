@@ -242,3 +242,93 @@ class CaptchaManager:
             "solver": self.solver.get_info(),
             "detector": "CaptchaDetector",
         }
+
+
+class PluginCaptchaSolver(CaptchaSolver):
+    """Adapter that wraps a CaptchaPlugin for use as a core CaptchaSolver.
+
+    Bridges the plugin interface (plain dicts) to the core interface
+    (CaptchaChallenge/CaptchaSolution dataclasses).
+
+    Created by PluginLoader when a CaptchaPlugin is loaded, then
+    registered in CaptchaManager via set_solver().
+    """
+
+    def __init__(self, plugin):
+        """Initialize with a CaptchaPlugin instance.
+
+        Args:
+            plugin: A CaptchaPlugin instance (from tokenade.plugin.base)
+        """
+        self._plugin = plugin
+
+    @property
+    def name(self) -> str:
+        """Name of the solver (from plugin)."""
+        return getattr(self._plugin, "name", "plugin-captcha")
+
+    @property
+    def supported_types(self) -> list:
+        """List of supported CAPTCHA types (from plugin)."""
+        try:
+            raw_types = self._plugin.get_supported_types()
+        except Exception:
+            return []
+
+        types = []
+        for t in raw_types:
+            if isinstance(t, CaptchaType):
+                types.append(t)
+            elif isinstance(t, str):
+                try:
+                    types.append(CaptchaType(t))
+                except ValueError:
+                    pass
+        return types
+
+    def solve(self, challenge: CaptchaChallenge) -> CaptchaSolution:
+        """Solve a CAPTCHA challenge by delegating to the plugin.
+
+        Args:
+            challenge: Core CaptchaChallenge dataclass
+
+        Returns:
+            Core CaptchaSolution dataclass
+        """
+        try:
+            result = self._plugin.solve(
+                captcha_type=challenge.captcha_type.value,
+                site_key=challenge.site_key,
+                page_url=challenge.page_url,
+            )
+
+            if isinstance(result, dict):
+                return CaptchaSolution(
+                    success=result.get("success", False),
+                    token=result.get("token"),
+                    error=result.get("error"),
+                    captcha_type=challenge.captcha_type,
+                )
+
+            from tokenade.plugin.api import PluginResult
+            if isinstance(result, PluginResult):
+                return CaptchaSolution(
+                    success=result.success,
+                    token=result.data.get("token") if result.data else None,
+                    error=result.error,
+                    captcha_type=challenge.captcha_type,
+                )
+
+            return CaptchaSolution(
+                success=False,
+                error=f"Unexpected return type: {type(result)}",
+                captcha_type=challenge.captcha_type,
+            )
+
+        except Exception as e:
+            logger.warning(f"PluginCaptchaSolver solve failed: {e}")
+            return CaptchaSolution(
+                success=False,
+                error=str(e),
+                captcha_type=challenge.captcha_type,
+            )

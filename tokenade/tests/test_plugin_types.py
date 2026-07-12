@@ -14,7 +14,7 @@ from tokenade.plugin.base import (
     ExportFormatPlugin,
     SessionValidatorPlugin,
     StealthPlugin,
-    ProxyPlugin,
+    ProxyProviderPlugin,
     CaptchaPlugin,
 )
 from tokenade.core.integration.plugin_loader import PluginLoader
@@ -53,22 +53,26 @@ class TestStealthPlugin:
 class TestProxyPlugin:
     def test_is_abstract(self):
         with pytest.raises(TypeError):
-            ProxyPlugin()
+            ProxyProviderPlugin()
 
     def test_concrete_impl(self):
-        class TestProxy(ProxyPlugin):
+        from tokenade.plugin.api import PluginResult
+
+        class TestProxy(ProxyProviderPlugin):
             name = "test-proxy"
             version = "1.0.0"
             description = "Test"
             
-            def get_proxy(self, session=None):
-                return {"host": "1.1.1.1", "port": 8080}
+            def get_proxy(self, options=None):
+                return PluginResult(success=True, data={"host": "1.1.1.1", "port": 8080})
+
+            def rotate(self, session_id=None):
+                return PluginResult(success=True, data={"host": "2.2.2.2", "port": 8080})
 
         plugin = TestProxy()
-        proxy = plugin.get_proxy()
-        assert proxy["host"] == "1.1.1.1"
-        assert plugin.check_health(proxy) is True
-        assert plugin.rotate() == proxy
+        result = plugin.get_proxy()
+        assert result.success is True
+        assert result.data["host"] == "1.1.1.1"
 
 
 class TestCaptchaPlugin:
@@ -121,6 +125,8 @@ class MyStealth(StealthPlugin):
         assert "my-stealth" in loader.list_stealths()
 
     def test_proxy_registry(self, tmp_path):
+        from tokenade.plugin.api import PluginResult
+
         loader = PluginLoader(plugins_dir=tmp_path)
         plugin_dir = tmp_path / "my-proxy"
         plugin_dir.mkdir()
@@ -129,14 +135,18 @@ class MyStealth(StealthPlugin):
             "entry_point": "plugin.py", "description": "Test proxy",
         }))
         (plugin_dir / "plugin.py").write_text("""
-from tokenade.plugin.base import ProxyPlugin
-class MyProxy(ProxyPlugin):
+from tokenade.plugin.base import ProxyProviderPlugin
+from tokenade.plugin.api import PluginResult
+class MyProxy(ProxyProviderPlugin):
     name = "my-proxy"
     version = "1.0.0"
     description = "Test proxy"
     
-    def get_proxy(self, session=None):
-        return {"host": "1.1.1.1", "port": 8080}
+    def get_proxy(self, options=None):
+        return PluginResult(success=True, data={"host": "1.1.1.1", "port": 8080})
+
+    def rotate(self, session_id=None):
+        return PluginResult(success=True, data={"host": "2.2.2.2", "port": 8080})
 """)
         loader.load_all()
         assert loader.get_proxy_plugin("my-proxy") is not None
@@ -170,7 +180,7 @@ class MyCaptcha(CaptchaPlugin):
         loader = PluginLoader(plugins_dir=tmp_path)
         for ptype, cls_name, base in [
             ("stealth", "MyStealth", "StealthPlugin"),
-            ("proxy", "MyProxy", "ProxyPlugin"),
+            ("proxy", "MyProxy", "ProxyProviderPlugin"),
             ("captcha", "MyCaptcha", "CaptchaPlugin"),
         ]:
             plugin_dir = tmp_path / f"test-{ptype}"
@@ -181,13 +191,15 @@ class MyCaptcha(CaptchaPlugin):
             }))
             (plugin_dir / "plugin.py").write_text(f"""
 from tokenade.plugin.base import {base}
+from tokenade.plugin.api import PluginResult
 class {cls_name}({base}):
     name = "test-{ptype}"
     version = "1.0.0"
     description = "Test {ptype}"
     
     def get_patches(self): return []
-    def get_proxy(self, s=None): return {{}}
+    def get_proxy(self, options=None): return PluginResult(success=True, data={{}})
+    def rotate(self, session_id=None): return PluginResult(success=True, data={{}})
     def get_supported_types(self): return []
     def solve(self, t, k=None, u=None): return {{}}
 """)
@@ -317,7 +329,7 @@ class MyPlugin(StealthPlugin):
     def test_test_all(self, tmp_path):
         for name, ptype, base, methods in [
             ("stealth-p", "stealth", "StealthPlugin", "def get_patches(self): return []"),
-            ("proxy-p", "proxy", "ProxyPlugin", "def get_proxy(self, s=None): return {}"),
+            ("proxy-p", "proxy", "ProxyProviderPlugin", "def get_proxy(self, options=None): from tokenade.plugin.api import PluginResult; return PluginResult(success=True, data={})\n    def rotate(self, session_id=None): from tokenade.plugin.api import PluginResult; return PluginResult(success=True, data={})"),
             ("captcha-p", "captcha", "CaptchaPlugin", "def get_supported_types(self): return []\n    def solve(self, t, k=None, u=None): return {}"),
         ]:
             d = tmp_path / name

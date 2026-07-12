@@ -139,51 +139,52 @@ def cmd_launch(args):
             # Site-handler plugin override: domains, dashboard URL, cookie filter
             site_handler = None
             site_hint = ""
-            try:
-                from tokenade.core.importer.plugin_export import PluginExporter
-                exporter = PluginExporter()
-                force_plugin = getattr(args, "plugin", None)
-                cookie_domains = list({
-                    (c.get("domain") or "").lstrip(".")
-                    for c in cookies
-                    if c.get("domain")
-                })
-                site_name = str(session.get("site_name") or session.get("site") or "")
-                domain_guess = cookie_domains or ([site_name] if site_name else [])
-                if force_plugin:
-                    exporter._load_handlers()
-                    site_handler = exporter._handlers.get(force_plugin)
-                    if not site_handler:
-                        print(f"   ⚠️  Plugin not found: {force_plugin} (using default launch path)")
-                elif domain_guess:
-                    site_handler = exporter.find_handler(domain_guess)
+            if not getattr(args, "no_plugin", False):
+                try:
+                    from tokenade.core.importer.plugin_export import PluginExporter
+                    exporter = PluginExporter()
+                    force_plugin = getattr(args, "plugin", None)
+                    cookie_domains = list({
+                        (c.get("domain") or "").lstrip(".")
+                        for c in cookies
+                        if c.get("domain")
+                    })
+                    site_name = str(session.get("site_name") or session.get("site") or "")
+                    domain_guess = cookie_domains or ([site_name] if site_name else [])
+                    if force_plugin:
+                        exporter._load_handlers()
+                        site_handler = exporter._handlers.get(force_plugin)
+                        if not site_handler:
+                            print(f"   ⚠️  Plugin not found: {force_plugin} (using default launch path)")
+                    elif domain_guess:
+                        site_handler = exporter.find_handler(domain_guess)
 
-                if site_handler:
-                    hname = getattr(site_handler, "name", type(site_handler).__name__)
-                    print(f"   🔌 Site handler: {hname} (overrides default site worker)")
-                    # Prefer plugin dashboard URL when user did not pass --url
-                    if not args.url and hasattr(site_handler, "get_dashboard_url"):
-                        dash = site_handler.get_dashboard_url()
-                        if dash:
-                            args.url = dash
-                            print(f"   🔗 URL from plugin: {dash}")
-                    # Prefer plugin cookie filter when available
-                    if hasattr(site_handler, "get_critical_cookies") or hname:
-                        try:
-                            # google-handler style: filter via private helper if present
-                            if hasattr(site_handler, "_is_google_cookie"):
-                                filtered = [c for c in cookies if site_handler._is_google_cookie(c)]
-                                if filtered:
-                                    cookies = filtered
-                                    print(f"   🎯 Plugin-filtered cookies: {len(cookies)}")
-                        except Exception:
-                            pass
-                    if "google" in hname.lower() or any(
-                        "google" in (d or "") for d in cookie_domains
-                    ):
-                        site_hint = "google"
-            except Exception as e:
-                logger.debug("Site handler resolution failed: %s", e)
+                    if site_handler:
+                        hname = getattr(site_handler, "name", type(site_handler).__name__)
+                        print(f"   🔌 Site handler: {hname} (overrides default site worker)")
+                        # Prefer plugin dashboard URL when user did not pass --url
+                        if not args.url and hasattr(site_handler, "get_dashboard_url"):
+                            dash = site_handler.get_dashboard_url()
+                            if dash:
+                                args.url = dash
+                                print(f"   🔗 URL from plugin: {dash}")
+                        # Prefer plugin cookie filter when available
+                        if hasattr(site_handler, "get_critical_cookies") or hname:
+                            try:
+                                # google-handler style: filter via private helper if present
+                                if hasattr(site_handler, "_is_google_cookie"):
+                                    filtered = [c for c in cookies if site_handler._is_google_cookie(c)]
+                                    if filtered:
+                                        cookies = filtered
+                                        print(f"   🎯 Plugin-filtered cookies: {len(cookies)}")
+                            except Exception:
+                                pass
+                        if "google" in hname.lower() or any(
+                            "google" in (d or "") for d in cookie_domains
+                        ):
+                            site_hint = "google"
+                except Exception as e:
+                    logger.debug("Site handler resolution failed: %s", e)
 
             if not site_hint:
                 _site = str(session.get("site_name") or session.get("site") or "").lower()
@@ -576,12 +577,29 @@ def cmd_refresh_browser(args):
         print("❌ No cookies in session file")
         return
 
-    # 2. Try plugin refresh first (if --plugin specified)
+    # 2. Try plugin refresh first (auto-discover unless --no-plugin)
     plugin_name = getattr(args, "plugin", None)
+    no_plugin = getattr(args, "no_plugin", False)
     plugin_args_list = getattr(args, "plugin_arg", [])
     output = getattr(args, "output", None)
 
-    if plugin_name:
+    # Auto-discover refresher via loader.get_refresher_for_session(session)
+    # when no explicit plugin is given and not explicitly excluded.
+    auto_refresher = None
+    if not plugin_name and not no_plugin:
+        try:
+            from tokenade.core.integration.plugin_loader import PluginLoader
+            _loader = PluginLoader()
+            _loader.load_all()
+            auto_refresher = _loader.get_refresher_for_session(session)
+            if auto_refresher:
+                plugin_name = getattr(auto_refresher, "name", None) or plugin_name
+                if plugin_name:
+                    print(f"\n🔌 Auto-discovered refresher: {plugin_name} v{getattr(auto_refresher, 'version', '?')}")
+        except Exception as e:
+            logger.debug("Auto-discovery of refresher failed: %s", e)
+
+    if plugin_name and not no_plugin:
         plugin_creds = {}
         for key, value in plugin_args_list:
             plugin_creds[key] = value
@@ -591,7 +609,11 @@ def cmd_refresh_browser(args):
             loader = PluginLoader()
             loader.load_all()
 
-            refresher = loader.get_refresher(plugin_name)
+            # Prefer auto-discovered refresher; fall back to explicit lookup by name.
+            if auto_refresher and (not args.plugin or getattr(auto_refresher, "name", None) == plugin_name):
+                refresher = auto_refresher
+            else:
+                refresher = loader.get_refresher(plugin_name)
             if not refresher:
                 print(f"⚠️  Plugin not found: {plugin_name}. Proceeding with browser refresh.")
             elif not refresher.can_refresh(session):
@@ -1074,8 +1096,9 @@ def _accounts_refresh(manager, args):
     wait = args.wait
     port = args.port
 
-    # Load plugin if specified
+    # Load plugin if specified, or auto-discover unless --no-plugin
     plugin_name = getattr(args, "plugin", None)
+    no_plugin = getattr(args, "no_plugin", False)
     plugin_args_list = getattr(args, "plugin_arg", [])
     plugin_creds = {}
     for key, value in plugin_args_list:
@@ -1083,16 +1106,29 @@ def _accounts_refresh(manager, args):
 
     plugin_loader = None
     refresher = None
-    if plugin_name:
+    if not no_plugin:
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
             plugin_loader = PluginLoader()
             plugin_loader.load_all()
-            refresher = plugin_loader.get_refresher(plugin_name)
-            if refresher:
-                print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
-            else:
-                print(f"\n⚠️  Plugin not found: {plugin_name}. Using browser refresh only.")
+            if plugin_name:
+                refresher = plugin_loader.get_refresher(plugin_name)
+                if refresher:
+                    print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
+                else:
+                    print(f"\n⚠️  Plugin not found: {plugin_name}. Will auto-discover per session.")
+            if not refresher and sessions:
+                # Auto-discover using the first session as a hint
+                try:
+                    from tokenade.core.importer.session_packager import SessionPackager
+                    _pkgr = SessionPackager()
+                    _first_session = _pkgr.load(sessions[0].path)
+                    refresher = plugin_loader.get_refresher_for_session(_first_session)
+                    if refresher:
+                        _auto_name = getattr(refresher, "name", "auto")
+                        print(f"\n🔌 Auto-discovered refresher: {_auto_name} v{getattr(refresher, 'version', '?')}")
+                except Exception as _ae:
+                    logger.debug("Auto-discovery in accounts refresh failed: %s", _ae)
         except Exception as e:
             print(f"\n⚠️  Plugin error: {e}. Using browser refresh only.")
 

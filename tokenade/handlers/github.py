@@ -345,3 +345,8 @@ class GitHubHandler(SiteHandler):
         except Exception as e:
             logger.error(f"GitHub API test failed: {e}")
             return None
+
+
+# Register handler
+from .base import HandlerRegistry  # noqa: E402
+HandlerRegistry.register(GitHubHandler)

@@ -489,52 +489,6 @@ class StealthPlugin(PluginBase):
         return []
 
 
-class ProxyPlugin(PluginBase):
-    """Plugin that provides proxy providers.
-
-    Implement get_proxy() to return a proxy for session operations.
-
-    Example:
-        class MyProxyPlugin(ProxyPlugin):
-            name = "my-proxy"
-            version = "1.0.0"
-            description = "Custom proxy provider"
-
-            def get_proxy(self, session):
-                return {"host": "proxy.example.com", "port": 8080}
-    """
-
-    @abstractmethod
-    def get_proxy(self, session: Optional[Dict] = None) -> Dict[str, Any]:
-        """Get a proxy for the given session.
-
-        Args:
-            session: Optional session data for geo-matching
-
-        Returns:
-            Dict with keys: host, port, protocol, username (opt), password (opt)
-        """
-
-    def check_health(self, proxy: Dict[str, Any]) -> bool:
-        """Check if a proxy is healthy.
-
-        Args:
-            proxy: Proxy config dict
-
-        Returns:
-            True if proxy is healthy
-        """
-        return True
-
-    def rotate(self) -> Dict[str, Any]:
-        """Get the next proxy in rotation.
-
-        Returns:
-            Next proxy config dict
-        """
-        return self.get_proxy()
-
-
 class CaptchaPlugin(PluginBase):
     """Plugin that solves CAPTCHAs.
 

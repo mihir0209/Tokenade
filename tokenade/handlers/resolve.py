@@ -2,13 +2,21 @@
 
 Prefer plugins + site_configs for new work. This module exists so CLI
 commands do not hardcode GoogleHandler everywhere (P3 dual-handler collapse).
+
+When a plugin-formatted handler (GoogleHandlerAdapter, GitHubHandlerAdapter,
+GenericOAuth2HandlerAdapter) is available in the plugin system, it is
+preferred over the legacy handler. A deprecation warning is logged when
+the legacy path is used.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Optional, Type
 
 from tokenade.handlers.base import SiteHandler
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_legacy_handler_class(site_name: Optional[str] = None) -> Type[SiteHandler]:
@@ -27,6 +35,14 @@ def resolve_legacy_handler_class(site_name: Optional[str] = None) -> Type[SiteHa
         "openai": "chatgpt",
     }
     key = aliases.get(key, key)
+
+    logger.debug(
+        f"resolve_legacy_handler_class: site_name={site_name!r} key={key!r}"
+    )
+    # Legacy path used — log deprecation hint
+    logger.debug(
+        "Legacy handler resolution used — prefer plugins for new work"
+    )
 
     from tokenade.handlers.base import HandlerRegistry
 

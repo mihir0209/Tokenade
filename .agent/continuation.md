@@ -46,6 +46,7 @@ donor browser (logged in)
 | Official plugins | 22 (`verified=false` until contract review) |
 | Core Lines | ~51k |
 | Honesty | P0 pass complete; no fake metrics/claims |
+| Plugin Ecosystem | **Design phase** — comprehensive doc complete |
 
 ### Sprint Status
 
@@ -61,6 +62,54 @@ donor browser (logged in)
 | **72** | Test suite optimization for CI speed | **DONE** |
 | **65** | Documentation overhaul + structural cleanup | **DONE** |
 | **C** | Vivaldi profile discovery + macOS CI matrix | **DONE** |
+
+### Plugin Ecosystem Design (Active — 2026-07-12)
+
+**Status:** Design phase — comprehensive documentation complete
+**Design doc:** `.agent/plans/plugin-ecosystem-design.md`
+**Inventory doc:** `.agent/plugin-system-inventory.md`
+**Thinking doc:** `.agent/plugin-ecosystem-design.md` (root-level)
+
+**Key decisions made:**
+- Per-user only plugins (`~/.tokenade/plugins/`)
+- Non-blocking async event bus (fire-and-forget)
+- Multiple registries with priority ordering
+- Design documentation first, then implementation
+
+**What's been audited:**
+- 10 plugin base classes defined, only 2 actually used (SessionRefreshPlugin, SiteHandlerPlugin)
+- 8 plugin types are dead code but represent real use cases
+- Infrastructure gaps: event bus, auto-discovery, registry config, dependency resolution
+- OAuth2Plugin doesn't inherit from PluginBase
+- Duplicate abstractions: ProxyPlugin vs ProxyProviderPlugin, CaptchaPlugin vs CaptchaSolver
+- on_configure() and health_check() never called
+
+**Next steps:**
+1. User reviews design doc
+2. Grilling session on open questions (Q3-Q10 in design doc)
+3. Implementation phases defined (Phase 1-9)
+
+**Grilling session completed (2026-07-12):**
+- 26 questions answered, all decisions documented
+- Key decisions: 5 plugin types (removed ExportFormat, SessionValidator, Stealth), event bus core infrastructure, shared context owned by core, plugins override/extend defaults
+- Design doc updated with all decisions
+- Ready for implementation planning
+
+**Implementation phases created (2026-07-12):**
+- 12 phases (0-11) in `.agent/phases/`
+- Phase 0: Pre-planning & research
+- Phase 1: Core event bus infrastructure
+- Phase 2: Shared context module
+- Phase 3: Fix existing plugin wiring
+- Phase 4: Plugin registry system
+- Phase 5: Plugin lifecycle & hooks
+- Phase 6: Dependency resolution
+- Phase 7: Plugin configuration system
+- Phase 8: Convert built-in handlers
+- Phase 9: CLI updates
+- Phase 10: TUI updates
+- Phase 11: Documentation & polish
+- All phases documented with strict rules, tasks, verification steps
 
 ### What changed recently (Phases 71-72, 65)
 

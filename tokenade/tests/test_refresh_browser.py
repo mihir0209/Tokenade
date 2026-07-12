@@ -485,13 +485,14 @@ class TestPluginIntegration:
         mock_refresher.can_refresh.assert_called_once()
 
     def test_no_plugin_falls_through_to_browser(self, sample_session, tmp_path):
-        """Test that without --plugin, browser refresh is used directly."""
+        """Test that with --no-plugin, browser refresh is used directly."""
         session, _ = sample_session
         session_path = tmp_path / "test.tokenade"
         session_path.write_text(json.dumps(session))
 
         args = Namespace(session=str(session_path), plugin=None, plugin_arg=[],
-                         output=None, headless=True, wait=2, browser="chrome", port=9222, url=None)
+                         output=None, headless=True, wait=2, browser="chrome", port=9222, url=None,
+                         no_plugin=True)
 
         mock_proc = MagicMock()
         mock_proc.returncode = 1

@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
@@ -377,3 +377,53 @@ class HealthReporter:
         except Exception as e:
             logger.error(f"Webhook error: {e}")
             return False
+
+    def check_plugin_health(
+        self,
+        loader: Any = None,
+    ) -> Dict[str, bool]:
+        """Run health_check() on all loaded plugins.
+
+        Args:
+            loader: PluginLoader with loaded plugins.
+                    If None, uses shared loader if available.
+
+        Returns:
+            Dict mapping plugin name to health status (True=healthy).
+        """
+        if loader is None:
+            try:
+                from tokenade.core.integration.plugin_loader import get_shared_loader
+                loader = get_shared_loader()
+            except ImportError:
+                return {}
+
+        if loader is None:
+            return {}
+
+        results = {}
+        for plugin in loader.list_all():
+            try:
+                if hasattr(plugin.instance, "health_check"):
+                    healthy = plugin.instance.health_check()
+                    results[plugin.name] = healthy
+
+                    # Store in shared context
+                    try:
+                        from tokenade.core.context import SharedContext
+                        ctx = SharedContext()
+                        ctx.plugins.set_health(plugin.name, healthy)
+                    except Exception:
+                        pass
+
+                    if not healthy:
+                        logger.warning(
+                            f"Plugin {plugin.name} reported unhealthy"
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"Plugin {plugin.name} health_check() failed: {e}"
+                )
+                results[plugin.name] = False
+
+        return results

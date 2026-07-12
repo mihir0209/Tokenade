@@ -195,7 +195,7 @@ class PluginTestRunner:
             from tokenade.plugin.base import (
                 PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
                 ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                StealthPlugin, ProxyProviderPlugin,
                 CaptchaPlugin, NotificationPlugin,
             )
             type_bases = {
@@ -204,7 +204,7 @@ class PluginTestRunner:
                 "validator": SessionValidatorPlugin,
                 "session_refresh": SessionRefreshPlugin,
                 "stealth": StealthPlugin,
-                "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                "proxy": ProxyProviderPlugin,
                 "notification": NotificationPlugin,
                 "captcha": CaptchaPlugin,
             }
@@ -273,7 +273,7 @@ class PluginTestRunner:
             from tokenade.plugin.base import (
                 PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
                 ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                StealthPlugin, ProxyProviderPlugin,
                 CaptchaPlugin, NotificationPlugin,
             )
             type_methods = {
@@ -304,7 +304,7 @@ class PluginTestRunner:
                     "validator": SessionValidatorPlugin,
                     "session_refresh": SessionRefreshPlugin,
                     "stealth": StealthPlugin,
-                    "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                    "proxy": ProxyProviderPlugin,
                     "notification": NotificationPlugin,
                     "captcha": CaptchaPlugin,
                 }
@@ -376,7 +376,7 @@ class PluginTestRunner:
             from tokenade.plugin.base import (
                 SessionRefreshPlugin, SiteHandlerPlugin,
                 ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyPlugin, ProxyProviderPlugin,
+                StealthPlugin, ProxyProviderPlugin,
                 CaptchaPlugin, NotificationPlugin,
             )
             expected = {
@@ -385,7 +385,7 @@ class PluginTestRunner:
                 "validator": (SessionValidatorPlugin,),
                 "session_refresh": (SessionRefreshPlugin,),
                 "stealth": (StealthPlugin,),
-                "proxy": (ProxyProviderPlugin, ProxyPlugin),
+                "proxy": (ProxyProviderPlugin,),
                 "notification": (NotificationPlugin,),
                 "captcha": (CaptchaPlugin,),
             }.get(meta.get("type", ""), ())

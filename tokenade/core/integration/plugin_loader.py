@@ -3,16 +3,89 @@ Plugin loader for Tokenade.
 
 Discovers, loads, and executes plugins from ~/.tokenade/plugins/.
 Plugins can be site handlers, export formats, or validation rules.
+
+Emits events through the core event bus:
+- PLUGIN_LOADED: When a plugin is successfully loaded
+- PLUGIN_UNLOADED: When a plugin is unloaded
+- PLUGIN_ERROR: When a plugin fails to load
+
+Integrates with shared context for plugin registration and health.
+
+Plugin lifecycle states:
+  DISCOVERED → LOADED → CONFIGURED → ACTIVE → DISABLED → UNLOADED
+                     ↓
+                   FAILED
 """
+import enum
 import importlib.util
 import json
 import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+class PluginState(enum.Enum):
+    """Lifecycle states for a plugin."""
+
+    DISCOVERED = "discovered"
+    LOADED = "loaded"
+    CONFIGURED = "configured"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    UNLOADED = "unloaded"
+    FAILED = "failed"
+
+
+# Module-level event bus instance for plugin loader events.
+# Initialized lazily to avoid import issues.
+_event_bus = None
+
+
+def _get_event_bus():
+    """Get or create the module-level event bus.
+
+    Returns None if the event bus module is not available (graceful degradation).
+    """
+    global _event_bus
+    if _event_bus is None:
+        try:
+            from tokenade.core.events.bus import EventBus
+            _event_bus = EventBus()
+        except ImportError:
+            logger.debug("Event bus not available — plugin events disabled")
+            return None
+    return _event_bus
+
+
+def _get_shared_context():
+    """Get the shared context singleton.
+
+    Returns None if the context module is not available (graceful degradation).
+    """
+    try:
+        from tokenade.core.context import SharedContext
+        return SharedContext()
+    except ImportError:
+        logger.debug("Shared context not available — context integration disabled")
+        return None
+
+
+def _emit_event(event_type_name: str, data: dict, source: str = "plugin_loader") -> None:
+    """Emit an event through the event bus (graceful, no-op if unavailable)."""
+    bus = _get_event_bus()
+    if bus is None:
+        return
+    try:
+        from tokenade.core.events.types import EventType
+        event_type = getattr(EventType, event_type_name, None)
+        if event_type is not None:
+            bus.emit(event_type, data=data, source=source)
+    except Exception as e:
+        logger.debug(f"Failed to emit {event_type_name} event: {e}")
 
 DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
 
@@ -54,6 +127,9 @@ class LoadedPlugin:
     entry_class: Any
     instance: Any = None
     enabled: bool = True
+    state: PluginState = PluginState.DISCOVERED
+    config: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
 
 
 class PluginLoader:
@@ -163,8 +239,7 @@ class PluginLoader:
                 "validator": ("SessionValidatorPlugin",),
                 "session_refresh": ("SessionRefreshPlugin",),
                 "stealth": ("StealthPlugin",),
-                # Prefer Provider; fall back to legacy ProxyPlugin
-                "proxy": ("ProxyProviderPlugin", "ProxyPlugin"),
+                "proxy": ("ProxyProviderPlugin",),
                 "notification": ("NotificationPlugin",),
                 "captcha": ("CaptchaPlugin",),
             }
@@ -221,7 +296,24 @@ class PluginLoader:
             if hasattr(instance, 'on_load'):
                 instance.on_load()
         except Exception as e:
-            logger.debug(f"Plugin {name}: on_load failed: {e}")
+            logger.error(f"Plugin {name}: on_load() failed: {e}", exc_info=True)
+            _emit_event(
+                "PLUGIN_ERROR",
+                {"plugin_name": name, "error": str(e), "hook": "on_load"},
+            )
+            loaded = LoadedPlugin(
+                name=name,
+                version=meta.get("version", "0.0.0"),
+                description=meta.get("description", ""),
+                plugin_type=plugin_type,
+                module=module,
+                entry_class=entry_class,
+                instance=instance,
+                state=PluginState.FAILED,
+                error=str(e),
+            )
+            self._loaded[name] = loaded
+            return loaded
 
         loaded = LoadedPlugin(
             name=name,
@@ -231,6 +323,7 @@ class PluginLoader:
             module=module,
             entry_class=entry_class,
             instance=instance,
+            state=PluginState.LOADED,
         )
 
         self._loaded[name] = loaded
@@ -272,6 +365,116 @@ class PluginLoader:
             )
 
         logger.info(f"Loaded plugin: {name} v{loaded.version} ({plugin_type})")
+
+        # Emit event through event bus
+        bus = _get_event_bus()
+        if bus:
+            try:
+                from tokenade.core.events.types import EventType
+                bus.emit(
+                    EventType.PLUGIN_LOADED,
+                    data={
+                        "plugin_name": name,
+                        "plugin_type": plugin_type,
+                        "version": loaded.version,
+                    },
+                    source="plugin_loader",
+                )
+            except Exception as e:
+                logger.debug(f"Failed to emit PLUGIN_LOADED event: {e}")
+
+        # Register in shared context
+        ctx = _get_shared_context()
+        if ctx:
+            try:
+                ctx.plugins.register(
+                    name,
+                    {
+                        "version": loaded.version,
+                        "type": plugin_type,
+                        "enabled": True,
+                    },
+                )
+            except Exception as e:
+                logger.debug(f"Failed to register plugin in shared context: {e}")
+
+        # T3.1/T5.2/T7.4: Wire on_configure() with PluginConfigManager
+        try:
+            from tokenade.core.integration.plugin_config import PluginConfigManager
+            from tokenade.plugin.api import PluginConfig
+
+            config_mgr = PluginConfigManager(plugins_dir=self.plugins_dir)
+            schema = config_mgr.get_schema(name) or meta.get("config", {}).get("schema", {})
+            full_config = config_mgr.get_full_config(name)
+
+            # If neither schema nor config exists, skip on_configure
+            if not schema and not full_config:
+                pass
+            elif hasattr(instance, "on_configure"):
+                plugin_config = PluginConfig(schema=schema, values=full_config)
+                errors = plugin_config.validate()
+                if errors:
+                    logger.warning(
+                        f"Plugin {name}: config validation errors: {errors}"
+                    )
+                instance.on_configure(plugin_config)
+                loaded.config = full_config
+                loaded.state = PluginState.CONFIGURED
+                logger.debug(f"Plugin {name}: on_configure() called")
+                if ctx:
+                    ctx.plugins.set_config(name, full_config)
+            else:
+                loaded.config = full_config
+        except Exception as e:
+            logger.error(f"Plugin {name}: on_configure() failed: {e}", exc_info=True)
+            _emit_event(
+                "PLUGIN_ERROR",
+                {"plugin_name": name, "error": str(e), "hook": "on_configure"},
+            )
+            loaded.state = PluginState.FAILED
+            loaded.error = str(e)
+
+        # Transition to ACTIVE after all wiring succeeds
+        if loaded.state != PluginState.FAILED:
+            loaded.state = PluginState.ACTIVE
+
+        # T3.5b: Wire proxy plugins to ProxyManager (if available)
+        if plugin_type == "proxy":
+            try:
+                from tokenade.core.proxy.manager import ProxyManager
+                # Get or create a shared ProxyManager
+                from tokenade.core.proxy.manager import ProxyManager as PM
+                # The ProxyManager is typically created by the CLI/daemon.
+                # We emit an event so any ProxyManager listening can register this plugin.
+                bus = _get_event_bus()
+                if bus:
+                    from tokenade.core.events.types import EventType
+                    bus.emit(
+                        EventType.PLUGIN_LOADED,
+                        data={
+                            "plugin_name": name,
+                            "plugin_type": plugin_type,
+                            "version": loaded.version,
+                            "instance": instance,
+                        },
+                        source="plugin_loader",
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to wire proxy plugin to ProxyManager: {e}")
+
+        # T3.5: Wire captcha plugins to CaptchaManager via adapter
+        if plugin_type == "captcha":
+            try:
+                from tokenade.core.browser.captcha import PluginCaptchaSolver
+                # Create adapter and store it for later registration by CaptchaManager
+                adapter = PluginCaptchaSolver(instance)
+                if not hasattr(self, "_captcha_adapters"):
+                    self._captcha_adapters = {}
+                self._captcha_adapters[name] = adapter
+                logger.debug(f"Plugin {name}: CaptchaPlugin adapter created")
+            except Exception as e:
+                logger.debug(f"Failed to create CaptchaPlugin adapter: {e}")
+
         return loaded
 
     def unload(self, name: str) -> bool:
@@ -280,6 +483,19 @@ class PluginLoader:
             return False
 
         plugin = self._loaded.pop(name)
+
+        # Call on_unload lifecycle hook before removal
+        try:
+            if hasattr(plugin.instance, "on_unload"):
+                plugin.instance.on_unload()
+        except Exception as e:
+            logger.error(f"Plugin {name}: on_unload() failed: {e}", exc_info=True)
+            _emit_event(
+                "PLUGIN_ERROR",
+                {"plugin_name": name, "error": str(e), "hook": "on_unload"},
+            )
+
+        plugin.state = PluginState.UNLOADED
 
         # Remove from type registries
         if plugin.plugin_type == "handler":
@@ -302,6 +518,31 @@ class PluginLoader:
             self._captchas = {k: v for k, v in self._captchas.items() if v is not plugin.instance}
 
         logger.info(f"Unloaded plugin: {name}")
+
+        # Emit event through event bus
+        bus = _get_event_bus()
+        if bus:
+            try:
+                from tokenade.core.events.types import EventType
+                bus.emit(
+                    EventType.PLUGIN_UNLOADED,
+                    data={
+                        "plugin_name": name,
+                        "plugin_type": plugin.plugin_type,
+                    },
+                    source="plugin_loader",
+                )
+            except Exception as e:
+                logger.debug(f"Failed to emit PLUGIN_UNLOADED event: {e}")
+
+        # Unregister from shared context
+        ctx = _get_shared_context()
+        if ctx:
+            try:
+                ctx.plugins.unregister(name)
+            except Exception as e:
+                logger.debug(f"Failed to unregister plugin from shared context: {e}")
+
         return True
 
     def get_handler(self, site_name: str) -> Optional[Any]:
@@ -374,8 +615,56 @@ class PluginLoader:
         """List all loaded plugins."""
         return list(self._loaded.values())
 
+    def get_state(self, name: str) -> Optional[PluginState]:
+        """Get the lifecycle state of a plugin.
+
+        Returns None if plugin not found.
+        """
+        plugin = self._loaded.get(name)
+        return plugin.state if plugin else None
+
+    def get_plugin(self, name: str) -> Optional[LoadedPlugin]:
+        """Get a LoadedPlugin by name.
+
+        Returns None if not found.
+        """
+        return self._loaded.get(name)
+
+    def get_captcha_adapter(self, name: str):
+        """Get a CaptchaPlugin adapter (PluginCaptchaSolver) by name.
+
+        Returns None if no adapter exists.
+        """
+        return getattr(self, "_captcha_adapters", {}).get(name)
+
+    def list_captcha_adapters(self) -> Dict[str, Any]:
+        """List all captcha adapters."""
+        return dict(getattr(self, "_captcha_adapters", {}))
+
+    def wire_proxy_manager(self, manager: Any) -> int:
+        """Wire all loaded proxy plugins to a ProxyManager.
+
+        Args:
+            manager: ProxyManager instance (must have register_plugin method)
+
+        Returns:
+            Number of plugins registered
+        """
+        count = 0
+        for name, plugin in self._proxies.items():
+            try:
+                manager.register_plugin(plugin)
+                count += 1
+            except Exception as e:
+                logger.warning(f"Failed to wire proxy plugin {name}: {e}")
+        return count
+
     def reload(self, name: str) -> Optional[LoadedPlugin]:
-        """Reload a plugin."""
+        """Reload a plugin. Preserves config across reload."""
+        preserved_config = {}
+        if name in self._loaded:
+            preserved_config = self._loaded[name].config or {}
+
         self.unload(name)
 
         manifest_path = self.plugins_dir / name / "plugin.json"
@@ -386,7 +675,14 @@ class PluginLoader:
             meta = json.load(f)
         meta["_path"] = str(self.plugins_dir / name)
 
-        return self.load_plugin(meta)
+        # Inject preserved config so on_configure() uses it
+        if preserved_config and "config" not in meta:
+            meta["config"] = {"values": preserved_config}
+
+        loaded = self.load_plugin(meta)
+        if loaded and not loaded.config:
+            loaded.config = preserved_config
+        return loaded
 
     def _load_disabled_list(self):
         """Load the list of disabled plugins."""
@@ -415,6 +711,7 @@ class PluginLoader:
         # Reload if already loaded
         if name in self._loaded:
             self._loaded[name].enabled = True
+            self._loaded[name].state = PluginState.ACTIVE
         logger.info(f"Plugin enabled: {name}")
         return True
 
@@ -427,6 +724,7 @@ class PluginLoader:
         # Unload if currently loaded
         if name in self._loaded:
             self._loaded[name].enabled = False
+            self._loaded[name].state = PluginState.DISABLED
             self.unload(name)
         logger.info(f"Plugin disabled: {name}")
         return True

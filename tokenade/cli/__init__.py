@@ -1,6 +1,7 @@
 """Tokenade CLI - Main entry point and argument parser."""
 import argparse
 import asyncio
+import json
 import logging
 import sys
 import time
@@ -157,13 +158,32 @@ def cmd_plugin(args):
                 status = " ✓ installed" if p["name"] in installed_names else ""
                 print(f"   • {p['name']} v{p.get('version', '?')} — {p.get('description', '')}{status}")
         else:
+            # Load plugins so we can show lifecycle state; graceful if load fails
+            try:
+                loader.load_all()
+            except Exception:
+                pass
             print("\n📦 Installed plugins:")
             installed = loader.discover()
             if not installed:
                 print("   No plugins installed. Use 'tokenade plugin install <name>' to install.")
             for p in installed:
+                name = p["name"]
+                loaded = loader.get_plugin(name)
+                state_str = loaded.state.value if loaded else "not loaded"
                 enabled = " ✓" if p.get("enabled", True) else " (disabled)"
-                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}){enabled} — {p.get('description', '')}")
+                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}) [{state_str}]{enabled} — {p.get('description', '')}")
+                # Show health from shared context when available
+                if loaded:
+                    try:
+                        from tokenade.core.context import SharedContext
+                        ctx = SharedContext()
+                        plugin_health = ctx.plugins.get_health(name)
+                        if plugin_health is not None:
+                            health_str = "healthy" if plugin_health else "unhealthy"
+                            print(f"      health: {health_str}")
+                    except Exception:
+                        pass
 
     elif args.plugin_command == "install":
         print(f"\n📥 Installing plugin: {args.name}")
@@ -215,6 +235,29 @@ def cmd_plugin(args):
         print(f"   Author: {plugin.get('author', '?')}")
         print(f"   Description: {plugin.get('description', '')}")
         print(f"   Status: {'enabled' if enabled else 'disabled'}")
+        # Lifecycle state, config, and health from the loader / shared context
+        try:
+            loader.load_all()
+        except Exception:
+            pass
+        loaded = loader.get_plugin(args.name)
+        if loaded:
+            print(f"   Lifecycle: {loaded.state.value}")
+            if loaded.error:
+                print(f"   Error: {loaded.error}")
+            if loaded.config:
+                try:
+                    print(f"   Config: {json.dumps(loaded.config)}")
+                except (TypeError, ValueError):
+                    print(f"   Config: {loaded.config}")
+            try:
+                from tokenade.core.context import SharedContext
+                ctx = SharedContext()
+                plugin_health = ctx.plugins.get_health(args.name)
+                if plugin_health is not None:
+                    print(f"   Health: {'healthy' if plugin_health else 'unhealthy'}")
+            except Exception:
+                pass
         if plugin.get("dependencies"):
             print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
         registry_details = registry.get_plugin_details(args.name)
@@ -282,9 +325,13 @@ def cmd_plugin(args):
             print(f"\n   Done. {len(loader.list_all())} plugins installed.")
 
     elif args.plugin_command == "reload":
+        try:
+            loader.load_all()
+        except Exception:
+            pass
         loaded = loader.reload(args.name)
         if loaded:
-            print(f"✅ Plugin reloaded: {args.name} v{loaded.version}")
+            print(f"✅ Plugin reloaded: {args.name} v{loaded.version} ({loaded.state.value})")
         else:
             print(f"❌ Failed to reload: {args.name}")
 
@@ -318,8 +365,60 @@ def cmd_plugin(args):
     elif args.plugin_command == "test":
         _plugin_test(args)
 
+    elif args.plugin_command == "deps":
+        from tokenade.core.integration.dependency_graph import DependencyGraph
+        from tokenade.core.integration.dependency_resolver import DependencyResolver
+        graph = DependencyGraph()
+        for plugin in loader.discover():
+            graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
+        resolver = DependencyResolver(graph)
+        if args.name not in graph.get_all_plugins():
+            print(f"❌ Plugin not found: {args.name}")
+            return
+        print(f"\n   📦 Dependency tree for {args.name}:")
+        print("   " + resolver.get_dependency_tree(args.name).replace("\n", "\n   "))
+
+    elif args.plugin_command == "check-deps":
+        from tokenade.core.integration.dependency_graph import DependencyGraph
+        from tokenade.core.integration.dependency_resolver import DependencyResolver
+        graph = DependencyGraph()
+        for plugin in loader.discover():
+            graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
+        resolver = DependencyResolver(graph)
+        if args.name:
+            if args.name not in graph.get_all_plugins():
+                print(f"❌ Plugin not found: {args.name}")
+                return
+            missing = [d for d in graph.get_dependencies(args.name) if d not in graph.get_all_plugins()]
+            if missing:
+                print(f"\n   ⚠️  Missing dependencies for {args.name}: {', '.join(missing)}")
+            else:
+                print(f"\n   ✅ No missing dependencies for {args.name}")
+        else:
+            missing = resolver.check_missing()
+            circular = resolver.check_circular()
+            depth = resolver.check_depth()
+            print("\n   Dependency check (all plugins):")
+            if missing:
+                print(f"   ⚠️  Missing dependencies: {', '.join(missing)}")
+            else:
+                print("   ✅ No missing dependencies")
+            if circular:
+                print(f"   🔄 Circular dependencies: {', '.join(circular)}")
+            else:
+                print("   ✅ No circular dependencies")
+            if depth:
+                print(f"   ⚠️  Depth violations:")
+                for e in depth:
+                    print(f"      {e}")
+            else:
+                print("   ✅ No depth violations")
+
+    elif args.plugin_command == "configure":
+        _plugin_configure(args)
+
     else:
-        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse|test}")
+        print("Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse|test|deps|check-deps|configure}")
 
 
 def _plugin_search(registry, args):
@@ -574,6 +673,7 @@ def _plugin_test(args):
     from tokenade.core.integration.plugin_testing import PluginTestRunner
 
     runner = PluginTestRunner()
+    verbose = getattr(args, "verbose", False)
 
     if args.name:
         suites = [runner.test_plugin(args.name)]
@@ -596,14 +696,74 @@ def _plugin_test(args):
         print(f"\n{status} {suite.summary()}")
         for result in suite.results:
             icon = "  ✓" if result.passed else "  ✗"
-            msg = f" — {result.message}" if result.message and not result.passed else ""
-            print(f"{icon} {result.test_name}{msg}")
+            msg = f" — {result.message}" if result.message and (not result.passed or verbose) else ""
+            dur = f" ({result.duration:.2f}s)" if verbose and result.duration else ""
+            print(f"{icon} {result.test_name}{dur}{msg}")
         total_passed += suite.passed_count
         total_failed += suite.failed_count
 
     print(f"\n{'=' * 60}")
     print(f"Results: {total_passed} passed, {total_failed} failed")
     print(f"{'=' * 60}\n")
+
+
+def _plugin_configure(args):
+    """Configure plugin settings: --show/--reset/--validate/--set KEY=VALUE."""
+    from tokenade.core.integration.plugin_config import PluginConfigManager
+
+    mgr = PluginConfigManager()
+
+    if getattr(args, "show", False):
+        config = mgr.get_full_config(args.name)
+        if config:
+            print(f"\n   📋 Config for {args.name}:")
+            for k, v in sorted(config.items()):
+                print(f"      {k} = {v}")
+        else:
+            print(f"\n   {args.name}: no config")
+
+    elif getattr(args, "reset", False):
+        if mgr.delete_config(args.name):
+            print(f"\n   ✅ Config reset to defaults: {args.name}")
+        else:
+            print(f"\n   No config file to reset: {args.name}")
+
+    elif getattr(args, "validate", False):
+        config = mgr.load_config(args.name)
+        errors = mgr.validate_config(args.name, config)
+        if errors:
+            print(f"\n   ❌ Config validation errors:")
+            for e in errors:
+                print(f"      {e}")
+        else:
+            print(f"\n   ✅ Config valid: {args.name}")
+
+    elif getattr(args, "set", None):
+        config = mgr.load_config(args.name)
+        for pair in args.set:
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                # Type coercion
+                if v.lower() == "true":
+                    v = True
+                elif v.lower() == "false":
+                    v = False
+                else:
+                    try:
+                        v = int(v)
+                    except ValueError:
+                        try:
+                            v = float(v)
+                        except ValueError:
+                            pass
+                config[k] = v
+        if mgr.save_config(args.name, config):
+            print(f"\n   ✅ Config saved: {args.name}")
+        else:
+            print(f"\n   ❌ Failed to save config: {args.name}")
+
+    else:
+        print("Usage: tokenade plugin configure <name> [--show|--reset|--validate|--set KEY=VALUE ...]")
 
 
 def cmd_profile(args):
@@ -1324,6 +1484,24 @@ Commands:
     # plugin test
     plugin_test_parser = plugin_sub.add_parser("test", help="Run tests on installed plugins")
     plugin_test_parser.add_argument("name", nargs="?", help="Plugin name (all if omitted)")
+    plugin_test_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed test output")
+
+    # plugin deps
+    plugin_deps_parser = plugin_sub.add_parser("deps", help="Show plugin dependency tree")
+    plugin_deps_parser.add_argument("name", help="Plugin name")
+
+    # plugin check-deps
+    plugin_checkdeps_parser = plugin_sub.add_parser("check-deps", help="Check for missing/circular dependencies")
+    plugin_checkdeps_parser.add_argument("name", nargs="?", help="Plugin name (optional — checks all if omitted)")
+
+    # plugin configure
+    plugin_configure_parser = plugin_sub.add_parser("configure", help="Configure plugin settings")
+    plugin_configure_parser.add_argument("name", help="Plugin name")
+    plugin_configure_parser.add_argument("--set", nargs="*", metavar="KEY=VALUE",
+                                        help="Set config values (e.g. --set timeout=60 retries=3)")
+    plugin_configure_parser.add_argument("--show", action="store_true", help="Show current config")
+    plugin_configure_parser.add_argument("--reset", action="store_true", help="Reset to defaults")
+    plugin_configure_parser.add_argument("--validate", action="store_true", help="Validate config against schema")
 
     # Sync
     sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")
@@ -1526,6 +1704,10 @@ Commands:
         "--plugin",
         help="Force site handler plugin for launch (e.g. google-handler); auto-discovers when omitted",
     )
+    launch_parser.add_argument(
+        "--no-plugin", action="store_true",
+        help="Skip plugin handlers; use default launch",
+    )
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
@@ -1537,6 +1719,10 @@ Commands:
     refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
     refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
     refresh_browser_parser.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
+    refresh_browser_parser.add_argument(
+        "--no-plugin", action="store_true",
+        help="Skip plugin refresh; use browser-based refresh only",
+    )
     refresh_browser_parser.add_argument(
         "--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
         help="Plugin credential (repeatable): --plugin-arg client_id XXX"
@@ -1576,6 +1762,10 @@ Commands:
     accounts_refresh.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait per session")
     accounts_refresh.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
     accounts_refresh.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
+    accounts_refresh.add_argument(
+        "--no-plugin", action="store_true",
+        help="Skip plugin refresh; use browser-based refresh only",
+    )
     accounts_refresh.add_argument("--plugin-arg", action="append", default=[], nargs=2, metavar=("KEY", "VALUE"),
                                   help="Plugin credential (repeatable): --plugin-arg client_id XXX")
     accounts_refresh.add_argument("--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)")
