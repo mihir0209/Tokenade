@@ -72,7 +72,6 @@ tokenade/
 │   │   ├── session_refresher.py        # Auto-refresh from source browser
 │   │   ├── session_sync.py             # Daemon: mtime-based browser sync
 │   │   ├── session_comparator.py       # Session diff/comparison
-│   │   ├── session_rotation.py         # Session rotation strategies
 │   │   ├── session_sharer.py           # Session sharing utilities
 │   │   ├── session_vault.py            # Encrypted session storage
 │   │   ├── session_manager.py          # Session lifecycle management
@@ -89,6 +88,11 @@ tokenade/
 │   │   ├── adb_extractor.py            # Android ADB extraction
 │   │   ├── local_storage_extractor.py  # localStorage extraction
 │   │   └── db_utils.py                 # SQLite database utilities
+│   │
+│   ├── refresh/                        # Session rotation and health-weighted refresh
+│   │   ├── rotator.py                  # SessionRotationMonitor (login event tracking)
+│   │   ├── session_rotator.py          # Health-weighted SessionRotator class
+│   │   └── session_refresher.py        # Auto-refresh from source browser
 │   │
 │   ├── fingerprint/                    # Browser fingerprint collection
 │   │   ├── manager.py                  # FingerprintCollector orchestrator
@@ -108,8 +112,35 @@ tokenade/
 │   │       └── webrtc.py               # WebRTC fingerprint
 │   │
 │   ├── crypto/                         # Cryptography modules
-│   │   ├── encryptor.py                # AES-256-GCM file encryption
-│   │   └── cookie_crypto.py            # Platform-specific cookie decryption
+│   │   ├── encryptor.py                # AES-256-GCM file encryption (PBKDF2 600k)
+│   │   ├── cookie_crypto.py            # Platform-specific cookie decryption
+│   │   └── at_rest.py                  # At-rest encryption utilities
+│   │
+│   ├── browser/                        # Browser management
+│   │   ├── cloak.py                    # CloakBrowser integration
+│   │   ├── stealth.py                  # JS stealth patches (fallback)
+│   │   ├── stealth/                    # Stealth subsystem
+│   │   │   ├── backend.py              # Stealth backend abstraction
+│   │   │   ├── cloak.py                # CloakBrowser stealth layer
+│   │   │   ├── launcher.py             # Stealth browser launcher
+│   │   │   └── manager.py              # Stealth manager
+│   │   ├── session_state.py            # .tokenade ↔ storage_state conversion
+│   │   ├── battle.py                   # Battle test suite
+│   │   ├── undetectable.py             # System browser launcher
+│   │   ├── cdp_connection.py           # CDP WebSocket connection
+│   │   ├── fingerprint.py              # Browser fingerprint detection
+│   │   ├── tls_fingerprint.py          # TLS fingerprint extraction
+│   │   ├── patcher.py                  # Chrome binary patcher
+│   │   ├── profiles.py                 # Browser profile discovery
+│   │   ├── profile_cloner.py           # Profile cloning
+│   │   ├── storage_extractor.py        # Storage extraction
+│   │   ├── synchronizer.py             # Browser sync
+│   │   ├── manager.py                  # Browser manager
+│   │   ├── dashboard.py                # Dashboard
+│   │   ├── captcha.py                  # Captcha handling
+│   │   ├── cloudflare.py               # Cloudflare bypass
+│   │   ├── dependencies.py             # Dependency checking
+│   │   └── xvfb.py                     # Virtual display (Linux)
 │   │
 │   ├── runtime/                        # Runtime engine
 │   │   ├── engine.py                   # CookieJar, FingerprintMatcher, RuntimeEngine
@@ -117,7 +148,26 @@ tokenade/
 │   │
 │   ├── integration/                    # External integrations
 │   │   ├── plugin_registry.py          # GitHub-hosted plugin registry
-│   │   └── plugin_loader.py            # Plugin discovery and loading
+│   │   ├── plugin_loader.py            # Plugin discovery and loading
+│   │   ├── plugin_browser.py           # Plugin browser
+│   │   ├── plugin_search.py            # Plugin search
+│   │   ├── plugin_testing.py           # Plugin testing
+│   │   ├── plugin_verifier.py          # Plugin verification
+│   │   ├── rating_sync.py              # Rating sync
+│   │   ├── fleet.py                    # Fleet management
+│   │   ├── docker_manager.py           # Docker management
+│   │   ├── kubernetes.py               # Kubernetes orchestration
+│   │   └── container_orchestrator.py   # Container orchestration
+│   │
+│   ├── cicd/                           # CI/CD integration
+│   │   ├── runner.py                   # CI runner
+│   │   └── workflow_generator.py       # Workflow generation
+│   │
+│   ├── daemon/                         # Background daemon
+│   │   └── session_daemon.py           # Session daemon
+│   │
+│   ├── forensics/                      # Session forensics
+│   │   └── autopsy.py                  # Session autopsy
 │   │
 │   ├── monitoring/                     # Session health monitoring
 │   │   └── session_monitor.py          # Real-time cookie health tracking
@@ -126,19 +176,17 @@ tokenade/
 │   │   ├── audit.py                    # Audit logging
 │   │   └── credentials.py             # Credential management
 │   │
-│   ├── extractor/                      # Data extraction
-│   ├── browser/                        # Browser management
-│   ├── antidetection/                  # Anti-detection utilities
-│   ├── api/                            # API server
-│   ├── batch/                          # Batch operations
+│   ├── logging/                        # Structured logging
+│   ├── storage/                        # Storage utilities
 │   ├── injector/                       # Data injection
-│   ├── refresh/                        # Session refresh
+│   ├── batch/                          # Batch operations
+│   ├── api/                            # API server
 │   ├── utils/                          # Shared utilities
 │   ├── config.py                       # Global configuration
 │   └── errors.py                       # Error definitions
 │
 ├── handlers/                           # Site-specific handlers
-│   └── base.py                         # AuthStatus, base handler
+│   └── resolve.py                      # Handler resolution
 │
 └── tests/                              # Test suite
 ```
@@ -598,7 +646,7 @@ SessionStatus:
 
 ### Session Refresher
 
-`session_refresher.py:49-354` — Automatic cookie expiry handling:
+`session_refresher.py` (`core/refresh/session_refresher.py:49-354`) — Automatic cookie expiry handling:
 
 ```
 SessionRefresher

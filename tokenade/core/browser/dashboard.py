@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from tokenade.core.browser.stealth_test import (
+from tokenade.core.browser.stealth_validation import (
     StealthTestReport,
     DetectionTestResult,
 )

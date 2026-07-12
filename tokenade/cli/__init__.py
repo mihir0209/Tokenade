@@ -5,7 +5,8 @@ import logging
 import sys
 import time
 
-from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
+from tokenade.cli.session import cmd_extract, cmd_load, cmd_transfer, cmd_inject_profile
+from tokenade.cli.session_export import cmd_export
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
 from tokenade.cli.management import (
@@ -736,7 +737,7 @@ def cmd_stealth(args):
     from tokenade.core.browser.dependencies import DependencyChecker
 
     if args.stealth_action == "test":
-        from tokenade.core.browser.stealth_test import StealthTestSuite
+        from tokenade.core.browser.stealth_validation import StealthTestSuite
         from tokenade.core.browser.dashboard import generate_html_report, generate_json_report
 
         browser = args.browser

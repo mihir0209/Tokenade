@@ -13,7 +13,8 @@ class TestCommandImports:
     """All 22 command functions must be importable from their submodules."""
 
     def test_session_commands(self):
-        from tokenade.cli.session import cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile
+        from tokenade.cli.session import cmd_extract, cmd_load, cmd_transfer, cmd_inject_profile
+        from tokenade.cli.session_export import cmd_export
         for fn in (cmd_extract, cmd_export, cmd_load, cmd_transfer, cmd_inject_profile):
             assert callable(fn)
 

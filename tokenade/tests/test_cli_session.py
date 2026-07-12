@@ -7,11 +7,11 @@ from argparse import Namespace
 
 from tokenade.cli.session import (
     cmd_extract,
-    cmd_export,
     cmd_load,
     cmd_transfer,
     cmd_inject_profile,
 )
+from tokenade.cli.session_export import cmd_export
 
 
 def _make_session_file(tmp_path, name="test", cookies=None, auth_status="logged_in",
@@ -255,7 +255,7 @@ class TestCmdExtract:
 # ── cmd_export ───────────────────────────────────────────────────────────────
 
 class TestCmdExport:
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_list_profiles(self, mock_disc_cls, capsys):
         mock_disc = MagicMock()
         profile = MagicMock()
@@ -272,7 +272,7 @@ class TestCmdExport:
         output = capsys.readouterr().out
         assert "chrome" in output.lower() or "profile" in output.lower()
 
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_list_profiles_empty(self, mock_disc_cls, capsys):
         mock_disc = MagicMock()
         mock_disc.discover_all.return_value = {}
@@ -284,7 +284,7 @@ class TestCmdExport:
         assert "no browser profiles" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_no_browser_path(self, mock_disc_cls, mock_config_cls, capsys):
         mock_disc = MagicMock()
         mock_disc.discover_all.return_value = {}
@@ -297,7 +297,7 @@ class TestCmdExport:
         assert "no browser path" in output.lower() or "no profile found" in output.lower()
 
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_profile_not_found(self, mock_disc_cls, mock_config_cls, capsys):
         mock_disc = MagicMock()
         p = MagicMock()
@@ -311,10 +311,10 @@ class TestCmdExport:
         cmd_export(_export_args(None, browser_path=None, browser_name="safari"))
         assert "no profile found" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_success(self, mock_disc_cls, mock_config_cls, mock_ce_cls,
                             mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -324,10 +324,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_with_domain_filter(self, mock_disc_cls, mock_config_cls,
                                        mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -347,10 +347,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, domains="google.com"))
         assert "filtered" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_with_site_config(self, mock_disc_cls, mock_config_cls,
                                      mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         config_file = tmp_path / "site.json"
@@ -372,10 +372,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, site_config=str(config_file)))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_extraction_exception(self, mock_disc_cls, mock_config_cls,
                                          mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -387,10 +387,10 @@ class TestCmdExport:
         assert ei.value.code == 1
         assert "extraction failed" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_no_cookies(self, mock_disc_cls, mock_config_cls,
                                mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -400,10 +400,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path))
         assert "no cookies" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_file_path_mode(self, mock_disc_cls, mock_config_cls,
                                    mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         cookie_file = tmp_path / "cookies.txt"
@@ -424,11 +424,11 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, file_path=str(cookie_file), format="netscape"))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_with_local_storage(self, mock_disc_cls, mock_config_cls,
                                        mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                        tmp_path, capsys):
@@ -451,11 +451,11 @@ class TestCmdExport:
         output = capsys.readouterr().out
         assert "exported" in output.lower() or "localstorage" in output.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_local_storage_list_origins(self, mock_disc_cls, mock_config_cls,
                                                mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                                tmp_path, capsys):
@@ -479,11 +479,11 @@ class TestCmdExport:
         output = capsys.readouterr().out
         assert "origins" in output.lower() or "exported" in output.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_local_storage_no_origins(self, mock_disc_cls, mock_config_cls,
                                              mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                              tmp_path, capsys):
@@ -504,11 +504,11 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, extract_local_storage=True))
         assert "no localstorage" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_local_storage_exception(self, mock_disc_cls, mock_config_cls,
                                             mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                             tmp_path, capsys):
@@ -531,11 +531,11 @@ class TestCmdExport:
         output = capsys.readouterr().out
         assert "skipped" in output.lower() or "exported" in output.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_no_ls_extract_matching_origins(self, mock_disc_cls, mock_config_cls,
                                                    mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                                    tmp_path, capsys):
@@ -557,11 +557,11 @@ class TestCmdExport:
         output = capsys.readouterr().out
         assert "localstorage" in output.lower() or "exported" in output.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_no_ls_no_matching_origins(self, mock_disc_cls, mock_config_cls,
                                               mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                               tmp_path, capsys):
@@ -582,11 +582,11 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.LocalStorageExtractor")
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.LocalStorageExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_ls_exception_list_origins(self, mock_disc_cls, mock_config_cls,
                                               mock_ce_cls, mock_sp_cls, mock_ls_cls,
                                               tmp_path, capsys):
@@ -607,10 +607,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_domain_filter_with_dot_prefix(self, mock_disc_cls, mock_config_cls,
                                                   mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -634,10 +634,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, domains=".google.com"))
         assert "filtered" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_site_config_list(self, mock_disc_cls, mock_config_cls,
                                      mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         config_file = tmp_path / "sites.json"
@@ -661,10 +661,10 @@ class TestCmdExport:
         cmd_export(_export_args(tmp_path, site_config=str(config_file)))
         assert "exported" in capsys.readouterr().out.lower()
 
-    @patch("tokenade.cli.session.SessionPackager")
-    @patch("tokenade.cli.session.CookieExtractor")
+    @patch("tokenade.cli.session_export.SessionPackager")
+    @patch("tokenade.cli.session_export.CookieExtractor")
     @patch("tokenade.core.config.load_config")
-    @patch("tokenade.cli.session.BrowserProfileDiscovery")
+    @patch("tokenade.cli.session_export.BrowserProfileDiscovery")
     def test_export_with_local_storage_count(self, mock_disc_cls, mock_config_cls,
                                              mock_ce_cls, mock_sp_cls, tmp_path, capsys):
         mock_config_cls.return_value = MagicMock()
@@ -680,7 +680,7 @@ class TestCmdExport:
         }
         mock_sp_cls.return_value.save.return_value = str(tmp_path / "session.tokenade")
         mock_sp_cls.return_value.get_summary.return_value = "Summary"
-        with patch("tokenade.cli.session.LocalStorageExtractor") as mock_ls_cls:
+        with patch("tokenade.cli.session_export.LocalStorageExtractor") as mock_ls_cls:
             mock_ls = MagicMock()
             mock_ls.extract.return_value = {"k": "v"}
             mock_ls_cls.return_value = mock_ls

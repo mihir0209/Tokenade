@@ -45,26 +45,29 @@ make typecheck # Type check
 ```
 tokenade/
 ├── core/
-│   ├── antidetection/     # CDP cleanup, behavioral injection
 │   ├── api/               # REST API server
 │   ├── batch/             # Batch export/load operations
-│   ├── browser/           # Browser manager
+│   ├── browser/           # Browser manager, stealth, CloakBrowser
+│   ├── cicd/              # CI runner, workflow generation
 │   ├── crypto/            # Encryption, cookie crypto
+│   ├── daemon/            # Background session daemon
 │   ├── errors.py          # Custom exception hierarchy
 │   ├── fingerprint/       # Fingerprint management
+│   ├── forensics/         # Session autopsy
 │   ├── importer/          # Session extraction, loading, sharing
 │   ├── injector/          # Profile injection
-│   ├── integration/       # Docker, K8s, plugins, webhooks
+│   ├── integration/       # Docker, K8s, plugins, fleet
+│   ├── logging/           # Structured logging
 │   ├── monitoring/        # Session health monitoring
 │   ├── proxy/             # CDP proxy, forward proxy, multi-site
-│   ├── refresh/           # Health scoring, auto-refresh
+│   ├── refresh/           # Health scoring, rotation, auto-refresh
 │   ├── runtime/           # TLS matcher, runtime engine
-│   ├── security/          # Audit, RBAC, LDAP, credentials
-│   └── utils/             # Performance utilities
-├── cli/                   # CLI modules (9 files)
+│   ├── security/          # Audit, credentials
+│   ├── storage/           # Storage utilities
+│   └── utils/             # Shared utilities
+├── cli/                   # CLI (modular handlers/)
 ├── handlers/              # Site-specific handlers
-├── sdk/                   # Python SDK
-└── tests/                 # 1042+ tests
+└── tests/                 # 5200+ tests
 ```
 
 ## Adding a Plugin

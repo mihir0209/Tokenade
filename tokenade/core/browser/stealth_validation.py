@@ -105,22 +105,41 @@ JS_CHECKS = {
     "permissions_query": {
         "name": "navigator.permissions.query works",
         "weight": 3,
-        "test_js": "async () => { try { const r = await navigator.permissions.query({name:'notifications'}); return r.state !== 'denied'; } catch { return false; } }",
+        "test_js": (
+            "async () => { try { const r = await navigator.permissions.query("
+            "{name:'notifications'}); return r.state !== 'denied'; } catch {"
+            " return false; } }"
+        ),
     },
     "webgl_vendor": {
         "name": "WebGL vendor is set",
         "weight": 3,
-        "test_js": "() => { const c = document.createElement('canvas'); const gl = c.getContext('webgl'); if (!gl) return false; const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL).length > 0 : false; }",
+        "test_js": (
+            "() => { const c = document.createElement('canvas'); const gl ="
+            " c.getContext('webgl'); if (!gl) return false; const ext ="
+            " gl.getExtension('WEBGL_debug_renderer_info'); return ext ?"
+            " gl.getParameter(ext.UNMASKED_VENDOR_WEBGL).length > 0 : false; }"
+        ),
     },
     "webgl_renderer": {
         "name": "WebGL renderer is set",
         "weight": 3,
-        "test_js": "() => { const c = document.createElement('canvas'); const gl = c.getContext('webgl'); if (!gl) return false; const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL).length > 0 : false; }",
+        "test_js": (
+            "() => { const c = document.createElement('canvas'); const gl ="
+            " c.getContext('webgl'); if (!gl) return false; const ext ="
+            " gl.getExtension('WEBGL_debug_renderer_info'); return ext ?"
+            " gl.getParameter(ext.UNMASKED_RENDERER_WEBGL).length > 0 : false; }"
+        ),
     },
     "no_cdc_artifacts": {
         "name": "No automation artifacts (cdc_, __webdriver_)",
         "weight": 5,
-        "test_js": "() => { const keys = Object.keys(window); return !keys.some(k => k.startsWith('cdc_') || k.startsWith('__webdriver_') || k.startsWith('__selenium_') || k.startsWith('webdriver') || k === 'domAutomation' || k === 'domAutomationController'); }",
+        "test_js": (
+            "() => { const keys = Object.keys(window); return !keys.some("
+            "k => k.startsWith('cdc_') || k.startsWith('__webdriver_') ||"
+            " k.startsWith('__selenium_') || k.startsWith('webdriver') ||"
+            " k === 'domAutomation' || k === 'domAutomationController'); }"
+        ),
     },
     "screen_dimensions": {
         "name": "Screen dimensions are realistic",
@@ -145,7 +164,12 @@ JS_CHECKS = {
     "iframe_consistency": {
         "name": "iframe contentWindow consistency",
         "weight": 3,
-        "test_js": "() => { const iframe = document.createElement('iframe'); iframe.style.display = 'none'; document.body.appendChild(iframe); const same = iframe.contentWindow === iframe.contentWindow; document.body.removeChild(iframe); return same; }",
+        "test_js": (
+            "() => { const iframe = document.createElement('iframe');"
+            " iframe.style.display = 'none'; document.body.appendChild(iframe);"
+            " const same = iframe.contentWindow === iframe.contentWindow;"
+            " document.body.removeChild(iframe); return same; }"
+        ),
     },
     "toString_hidden": {
         "name": "Function.toString shows no modifications",

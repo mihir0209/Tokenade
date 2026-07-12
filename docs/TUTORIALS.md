@@ -1024,13 +1024,13 @@ The Tokenade browser extension provides one-click session export and proxy statu
 1. Open `chrome://extensions/`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select the `tokenade/extension/chrome/` directory
+4. Select the `extension/` directory
 
 #### Firefox
 
 1. Open `about:debugging#/runtime/this-firefox`
 2. Click **Load Temporary Add-on**
-3. Select `tokenade/extension/firefox/manifest.json`
+3. Select `extension/manifest.json`
 
 ### Proxy Status Indicator
 

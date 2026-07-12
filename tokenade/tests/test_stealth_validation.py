@@ -1,11 +1,8 @@
 """Tests for Phase 50 — Stealth Testing & Validation framework."""
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
 
-import pytest
-
-from tokenade.core.browser.stealth_test import (
+from tokenade.core.browser.stealth_validation import (
     StealthTestSuite,
     StealthTestReport,
     DetectionTestResult,
