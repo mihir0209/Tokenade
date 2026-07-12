@@ -19,6 +19,51 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# ── Module-level textual imports (for Phase 10 new classes) ────────────────
+# These are optional; if textual is not installed, the classes still exist
+# but cannot be instantiated. Tests can import them and skip when not available.
+try:
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Container, Horizontal, Vertical
+    from textual.screen import Screen
+    from textual.widgets import (
+        Button, Header, Footer, Input, Rule, Static, TabbedContent, TabPane,
+        Label, LoadingIndicator, DataTable, ListView, ListItem,
+    )
+    from textual.widget import Widget
+    from textual.reactive import reactive
+    from textual import on
+    _TEXTUAL_AVAILABLE = True
+except ImportError:
+    _TEXTUAL_AVAILABLE = False
+    # Stub classes so the module still imports without textual
+    class App: pass
+    class ComposeResult: pass
+    class Binding: pass
+    class Container: pass
+    class Horizontal: pass
+    class Vertical: pass
+    class Screen: pass
+    class Button: pass
+    class Header: pass
+    class Footer: pass
+    class Input: pass
+    class Rule: pass
+    class Static: pass
+    class TabbedContent: pass
+    class TabPane: pass
+    class Label: pass
+    class LoadingIndicator: pass
+    class DataTable: pass
+    class ListView: pass
+    class ListItem: pass
+    class Widget: pass
+    class reactive: pass
+    def on(*a, **k):
+        def decorator(f):
+            return f
+        return decorator
 
 def _check_textual():
     """Check if textual is available."""
@@ -27,6 +72,230 @@ def _check_textual():
         return True
     except ImportError:
         return False
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 10 — Module-level classes (importable by tests)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class PluginHealthWidget(Widget if _TEXTUAL_AVAILABLE else object):
+    """Visualizes plugin health scores for all installed plugins."""
+
+    def __init__(self, installed: List[Dict[str, Any]], **kwargs):
+        super().__init__(**kwargs) if _TEXTUAL_AVAILABLE else None
+        self.installed = installed
+
+    def render(self):
+        lines = ["Plugin Health"]
+        if not self.installed:
+            return "  No plugins installed."
+        for p in self.installed:
+            name = p.get("name", "?")
+            health = p.get("health")
+            if health is True:
+                status = "💚 Healthy"
+            elif health is False:
+                status = "💔 Unhealthy"
+            else:
+                status = "⚪ unknown"
+            err = p.get("error") if health is False else ""
+            line = f"  • {name}: {status}"
+            if err:
+                line += f"  ({err[:40]}{'...' if len(err) > 40 else ''})"
+            lines.append(line)
+        return "\n".join(lines)
+
+    @property
+    def lines_count(self) -> int:
+        return max(1, len(self.installed) + 1)
+
+
+class PluginConfigWidget(Widget if _TEXTUAL_AVAILABLE else object):
+    """Visualizes plugin config (sensitive values redacted)."""
+
+    SENSITIVE_KEYS = {"password", "secret", "token", "api_key", "client_secret"}
+
+    def __init__(self, installed: List[Dict[str, Any]], **kwargs):
+        super().__init__(**kwargs) if _TEXTUAL_AVAILABLE else None
+        self.installed = installed
+
+    def render(self):
+        lines = ["Plugin Configuration"]
+        if not self.installed:
+            return "  No plugins installed."
+        for p in self.installed:
+            name = p.get("name", "?")
+            cfg = p.get("config") or {}
+            if not cfg:
+                lines.append(f"  • {name}: [no configuration]")
+                continue
+            lines.append(f"  • {name}:")
+            for k, v in sorted(cfg.items()):
+                if any(s in k.lower() for s in self.SENSITIVE_KEYS):
+                    lines.append(f"      {k}: [redacted]")
+                else:
+                    lines.append(f"      {k}: {v}")
+        return "\n".join(lines)
+
+
+class PluginTaskWidget(Widget if _TEXTUAL_AVAILABLE else object):
+    """Visualizes active + recent plugin tasks from the TaskTracker."""
+
+    def __init__(self, installed: List[Dict[str, Any]], **kwargs):
+        super().__init__(**kwargs) if _TEXTUAL_AVAILABLE else None
+        self.installed = installed
+
+    def render(self):
+        lines = ["Plugin Tasks"]
+        try:
+            from tokenade.core.context import SharedContext
+            ctx = SharedContext()
+            tasks = ctx.tasks.list_all() if hasattr(ctx.tasks, "list_all") else []
+            active = [t for t in tasks if t.get("status") == "running"]
+            recent = [t for t in tasks if t.get("status") != "running"]
+            if active:
+                lines.append("  Active:")
+                for t in active[:10]:
+                    lines.append(
+                        f"    • {t.get('plugin', '?')}: {t.get('name', '?')} "
+                        f"(started: {t.get('started', '?')})"
+                    )
+            if recent:
+                lines.append("  Recent:")
+                for t in recent[:10]:
+                    status_icon = "✅" if t.get("status") == "completed" else "❌"
+                    lines.append(
+                        f"    • {status_icon} {t.get('plugin', '?')}: {t.get('name', '?')} "
+                        f"({t.get('status', '?')})"
+                    )
+            if not active and not recent:
+                lines.append("  No tasks recorded.")
+        except Exception:
+            lines.append("  Task tracker unavailable.")
+        return "\n".join(lines)
+
+
+class RegistriesView(Vertical if _TEXTUAL_AVAILABLE else object):
+    """Registry management view — primary surface for registry ops."""
+
+    def compose(self):
+        if not _TEXTUAL_AVAILABLE:
+            return
+        yield Static("🗄  Registries", classes="card-title")
+        yield Rule()
+        yield Container(id="registries-list")
+        yield Rule()
+        yield Static("Add Registry:")
+        yield Horizontal(
+            Input(placeholder="https://github.com/org/plugins", id="registry-add-url"),
+            Input(placeholder="priority (int)", id="registry-add-priority", type="integer"),
+            Button("Add", variant="primary", compact=True, id="registry-add-btn"),
+        )
+
+
+class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
+    """Configuration editor for a specific plugin."""
+
+    DEFAULT_CSS = """
+    PluginConfigScreen {
+        align: center middle;
+    }
+    PluginConfigScreen Container {
+        width: 70;
+        height: auto;
+        max-height: 40;
+        background: $surface;
+        border: tall $primary;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, plugin_name: str, **kwargs):
+        super().__init__(**kwargs) if _TEXTUAL_AVAILABLE else None
+        self.plugin_name = plugin_name
+        self._config = {}
+
+    def compose(self):
+        if not _TEXTUAL_AVAILABLE:
+            return
+        from tokenade.core.integration.plugin_config import PluginConfigManager
+        mgr = PluginConfigManager()
+        self._config = mgr.get_full_config(self.plugin_name) or {}
+        schema = mgr.get_schema(self.plugin_name) or {}
+
+        yield Container(
+            Static(f"Configure: {self.plugin_name}", classes="card-title"),
+            Rule(),
+        )
+        if not schema:
+            yield Container(
+                Static("  No configurable schema for this plugin."),
+                Static("  Use CLI: tokenade plugin configure", classes="card-meta"),
+            )
+        for key, spec in sorted(schema.items()):
+            default = spec.get("default", "")
+            current = self._config.get(key, default)
+            label = spec.get("description", spec.get("type", ""))
+            yield Container(
+                Static(f"  {key} ({label}):"),
+                Input(value=str(current), id=f"cfg-{key}"),
+            )
+        yield Container(
+            Horizontal(
+                Button("Save", variant="success", id="cfg-save"),
+                Button("Reset to Defaults", variant="warning", id="cfg-reset"),
+                Button("Cancel", variant="default", id="cfg-cancel"),
+            ),
+        )
+
+    @on(Button.Pressed, "#cfg-save")
+    def save_config(self):
+        from tokenade.core.integration.plugin_config import PluginConfigManager
+        mgr = PluginConfigManager()
+        schema = mgr.get_schema(self.plugin_name) or {}
+        new_cfg = {}
+        for key, spec in schema.items():
+            try:
+                inp = self.query_one(f"#cfg-{key}", Input)
+                raw = inp.value
+                t = spec.get("type", "string")
+                if t == "integer":
+                    new_cfg[key] = int(raw)
+                elif t == "number":
+                    new_cfg[key] = float(raw)
+                elif t == "boolean":
+                    new_cfg[key] = raw.lower() in ("true", "1", "yes", "on")
+                else:
+                    new_cfg[key] = raw
+            except Exception:
+                pass
+        ok = mgr.save_config(self.plugin_name, new_cfg)
+        if ok:
+            self.app.notify(f"✅ Config saved: {self.plugin_name}")
+            self.app.pop_screen()
+        else:
+            self.app.notify("❌ Failed to save config", severity="error")
+
+    @on(Button.Pressed, "#cfg-reset")
+    def reset_config(self):
+        from tokenade.core.integration.plugin_config import PluginConfigManager
+        mgr = PluginConfigManager()
+        if mgr.delete_config(self.plugin_name):
+            self.app.notify(f"✅ Reset to defaults: {self.plugin_name}")
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#cfg-cancel")
+    def cancel_config(self):
+        self.app.pop_screen()
+
+    def action_cancel(self):
+        self.app.pop_screen()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 
 
 def run_tui(mode: str = "full"):
@@ -301,6 +570,10 @@ def run_tui(mode: str = "full"):
             ptype = p.get("type", "")
             min_ver = p.get("min_version", "")
             deps = p.get("dependencies", [])
+            state = p.get("state", "unknown")
+            health = p.get("health")
+            error = p.get("error")
+            cfg = p.get("config") or {}
 
             verified_str = "✓ verified" if verified else "✗ unverified (default for all until review)"
             if p.get("rating") is not None:
@@ -313,6 +586,13 @@ def run_tui(mode: str = "full"):
             else:
                 social += "  •  downloads: n/a (not tracked)"
             tag_str = "  ".join(f"[{t}]" for t in tags)
+
+            if health is True:
+                health_str = "💚 Healthy"
+            elif health is False:
+                health_str = "💔 Unhealthy"
+            else:
+                health_str = "⚪ unknown"
 
             yield Header(show_clock=False)
             yield Container(
@@ -328,11 +608,16 @@ def run_tui(mode: str = "full"):
                 Static(social, classes="detail-meta"),
                 Static(f"Compatible: tokenade >= {min_ver}", classes="detail-meta"),
                 Static(f"Dependencies: {', '.join(deps) if deps else 'none'}", classes="detail-meta"),
+                Static("", classes="detail-meta"),
+                Static(f"Lifecycle: {state}", classes="detail-meta"),
+                Static(f"Health:    {health_str}", classes="detail-meta"),
                 Static("", classes="detail-tags"),
                 Static(f"Tags: {tag_str}", classes="detail-tags"),
                 Rule(),
                 Horizontal(
                     Button("Install", variant="success", id="detail-install"),
+                    Button("Reload", variant="warning", id="detail-reload"),
+                    Button("Configure", variant="primary", id="detail-configure"),
                     Button("Rate", variant="default", id="detail-rate"),
                     Button("Back [b]", variant="default", id="detail-back"),
                     classes="detail-actions",
@@ -353,6 +638,14 @@ def run_tui(mode: str = "full"):
         @on(Button.Pressed, "#detail-install")
         def on_install(self):
             self.app.install_plugin(self.plugin.get("name", ""))
+
+        @on(Button.Pressed, "#detail-reload")
+        def on_reload(self):
+            self.app._reload_plugin(self.plugin.get("name", ""))
+
+        @on(Button.Pressed, "#detail-configure")
+        def on_configure(self):
+            self.app._configure_plugin(self.plugin.get("name", ""))
 
         @on(Button.Pressed, "#detail-rate")
         def on_rate(self):
@@ -422,36 +715,6 @@ def run_tui(mode: str = "full"):
 
         def action_cancel(self):
             self.app.pop_screen()
-
-    # ── Marketplace View ──────────────────────────────────────
-
-    class MarketplaceView(Vertical):
-        """Plugin marketplace with cards and sidebar."""
-
-        def compose(self) -> ComposeResult:
-            yield Horizontal(
-                CategorySidebar(id="sidebar"),
-                Vertical(
-                    Input(
-                        placeholder="Search plugins...",
-                        id="search-input",
-                    ),
-                    Container(id="plugin-list"),
-                    StatusBar(id="marketplace-status"),
-                    id="marketplace-content",
-                ),
-                id="marketplace-layout",
-            )
-
-    # ── Installed View ────────────────────────────────────────
-
-    class InstalledView(Vertical):
-        """Installed plugins management."""
-
-        def compose(self) -> ComposeResult:
-            yield Static("📦 Installed Plugins", classes="card-title")
-            yield Rule()
-            yield Container(id="installed-list")
 
     # ── Sessions View ─────────────────────────────────────────
 
@@ -588,15 +851,31 @@ def run_tui(mode: str = "full"):
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
-            with TabbedContent("Marketplace", "Installed", "Sessions", "Settings", id="main-tabs"):
+            with TabbedContent("Marketplace", "Installed", "Registries", "Sessions", "Settings", id="main-tabs"):
                 yield TabPane("Marketplace", MarketplaceView(), id="tab-marketplace")
                 yield TabPane("Installed", InstalledView(), id="tab-installed")
+                yield TabPane("Registries", RegistriesView(), id="tab-registries")
                 yield TabPane("Sessions", SessionsView(), id="tab-sessions")
                 yield TabPane("Settings", SettingsView(), id="tab-settings")
             yield Footer()
 
         def on_mount(self):
             self._load_data()
+
+        def _collect_deps(self, name: str) -> List[str]:
+            """Read dependencies from a plugin's manifest (best-effort)."""
+            try:
+                from pathlib import Path as _P
+                from tokenade.core.integration.plugin_loader import DEFAULT_PLUGINS_DIR
+                mp = _P(DEFAULT_PLUGINS_DIR) / name / "plugin.json"
+                if mp.exists():
+                    import json as _j
+                    with open(mp) as fh:
+                        m = _j.load(fh)
+                    return m.get("dependencies", []) or []
+            except Exception:
+                pass
+            return []
 
         def _load_data(self):
             """Load plugin registry and session data."""
@@ -622,8 +901,30 @@ def run_tui(mode: str = "full"):
                 loader = PluginLoader()
                 loader.load_all()
                 installed_plugins = loader.list_all()
+
+                # Pull plugin-health snapshot from the shared context (best-effort).
+                plugin_health = {}
+                try:
+                    from tokenade.core.context import SharedContext
+                    ctx = SharedContext()
+                    for lp in installed_plugins:
+                        h = ctx.plugins.get_health(lp.name)
+                        if h is not None:
+                            plugin_health[lp.name] = h
+                except Exception:
+                    pass
+
                 self._installed = [
-                    {"name": p.name, "enabled": p.enabled, "version": p.version}
+                    {
+                        "name": p.name,
+                        "enabled": p.enabled,
+                        "version": p.version,
+                        "state": p.state.value if p.state else "unknown",
+                        "error": p.error,
+                        "config": p.config or {},
+                        "dependencies": self._collect_deps(p.name),
+                        "health": plugin_health.get(p.name),
+                    }
                     for p in installed_plugins
                 ]
             except Exception as e:
@@ -671,6 +972,7 @@ def run_tui(mode: str = "full"):
             try:
                 self._update_marketplace()
                 self._update_installed()
+                self._update_registries()
                 self._update_sessions()
                 self._update_settings()
             except Exception:
@@ -703,7 +1005,7 @@ def run_tui(mode: str = "full"):
                 pass
 
         def _update_installed(self):
-            """Update installed plugins list."""
+            """Update installed plugins list — shows lifecycle state + health."""
             try:
                 container = self.query_one("#installed-list", Container)
                 container.remove_children()
@@ -714,8 +1016,15 @@ def run_tui(mode: str = "full"):
                     for p in self._installed:
                         name = p.get("name", "unknown")
                         enabled = p.get("enabled", True)
-                        status = "✅ enabled" if enabled else "⏸️ disabled"
-                        # Check if update available
+                        state = p.get("state", "unknown")
+                        health = p.get("health")
+                        enabled_str = "✅ enabled" if enabled else "⏸️ disabled"
+                        health_str = ""
+                        if health is True:
+                            health_str = "  •  💚 healthy"
+                        elif health is False:
+                            health_str = "  •  💔 unhealthy"
+                        update_hint = ""
                         registry_ver = None
                         for rp in self._plugins:
                             if rp.get("name") == name:
@@ -726,9 +1035,14 @@ def run_tui(mode: str = "full"):
                             registry_ver and registry_ver != installed_ver
                         )
                         container.mount(Static(
-                            f"  {name} v{installed_ver}  •  {status}",
+                            f"  {name} v{installed_ver}  •  [{state}] {enabled_str}{health_str}{update_hint}",
                             classes="installed-card",
                         ))
+                        if p.get("error"):
+                            container.mount(Static(
+                                f"  ⚠️  Error: {p['error']}",
+                                classes="installed-card",
+                            ))
                         container.mount(Horizontal(
                             Button(
                                 "Uninstall", variant="error", compact=True,
@@ -741,7 +1055,58 @@ def run_tui(mode: str = "full"):
                                 id=f"update-{name}",
                                 disabled=not update_available,
                             ),
+                            Button(
+                                "Reload", variant="default", compact=True,
+                                id=f"reload-{name}",
+                            ),
+                            Button(
+                                "Configure", variant="default", compact=True,
+                                id=f"configure-{name}",
+                            ),
                         ))
+            except Exception:
+                pass
+
+        def _update_registries(self):
+            """Update registries tab — lists configured registries with actions."""
+            try:
+                container = self.query_one("#registries-list", Container)
+                container.remove_children()
+                try:
+                    from tokenade.core.integration.plugin_registry import PluginRegistry
+                    reg = PluginRegistry()
+                    registries = getattr(reg, "registries", []) or []
+                    if not registries:
+                        container.mount(Static(
+                            "  No registries configured. Add one below.",
+                            classes="installed-card",
+                        ))
+                    for r in registries:
+                        url = r.get("url", "?")
+                        priority = r.get("priority", 0)
+                        enabled = r.get("enabled", True)
+                        en_str = "✅ enabled" if enabled else "⏸️ disabled"
+                        container.mount(Static(
+                            f"  • [{url}]  priority {priority}  •  {en_str}",
+                            classes="installed-card",
+                        ))
+                        container.mount(Horizontal(
+                            Button("Disable" if enabled else "Enable", variant="warning",
+                                   compact=True, id=f"registry-toggle-{priority}"),
+                            Button("Up", variant="default", compact=True,
+                                   id=f"registry-up-{priority}"),
+                            Button("Down", variant="default", compact=True,
+                                   id=f"registry-down-{priority}"),
+                            Button("Remove", variant="error", compact=True,
+                                   id=f"registry-remove-{priority}"),
+                            Button("Refresh Cache", variant="primary", compact=True,
+                                   id=f"registry-refresh-{priority}"),
+                        ))
+                except Exception as e:
+                    container.mount(Static(
+                        f"  Registry system unavailable: {e}",
+                        classes="installed-card",
+                    ))
             except Exception:
                 pass
 
@@ -839,18 +1204,131 @@ def run_tui(mode: str = "full"):
                 self._update_all_plugins()
             elif btn_id.startswith("details-"):
                 name = btn_id.removeprefix("details-")
-                plugin = next(
-                    (p for p in self._plugins if p.get("name") == name),
-                    None,
+                # Prefer installed dict (which has state/health/config) over registry entry
+                installed = next(
+                    (p for p in self._installed if p.get("name") == name), None
+                )
+                plugin = installed or next(
+                    (p for p in self._plugins if p.get("name") == name), None
                 )
                 if plugin:
                     self.push_screen(PluginDetailScreen(plugin))
+            elif btn_id.startswith("reload-"):
+                name = btn_id.removeprefix("reload-")
+                self._reload_plugin(name)
+            elif btn_id.startswith("configure-"):
+                name = btn_id.removeprefix("configure-")
+                self._configure_plugin(name)
+            elif btn_id.startswith("registry-toggle-"):
+                prio = btn_id.removeprefix("registry-toggle-")
+                self._toggle_registry(prio)
+            elif btn_id.startswith("registry-up-"):
+                prio = btn_id.removeprefix("registry-up-")
+                self._shift_registry(prio, up=True)
+            elif btn_id.startswith("registry-down-"):
+                prio = btn_id.removeprefix("registry-down-")
+                self._shift_registry(prio, up=False)
+            elif btn_id.startswith("registry-remove-"):
+                prio = btn_id.removeprefix("registry-remove-")
+                self._remove_registry(prio)
+            elif btn_id.startswith("registry-refresh-"):
+                prio = btn_id.removeprefix("registry-refresh-")
+                self._refresh_registry_cache(prio)
+            elif btn_id == "registry-add-btn":
+                self._add_registry_from_input()
             elif btn_id.startswith("autopsy-"):
                 name = btn_id.removeprefix("autopsy-")
                 self._run_autopsy(name)
             elif btn_id.startswith("delete-session-"):
                 name = btn_id.removeprefix("delete-session-")
                 self._delete_session(name)
+
+        # ── Plugin action handlers (Phase 10) ──────────────────
+
+        def _reload_plugin(self, name: str):
+            """Reload a plugin via PluginLoader (preserves config)."""
+            try:
+                from tokenade.core.integration.plugin_loader import PluginLoader
+                loader = PluginLoader()
+                loader.load_all()
+                loaded = loader.reload(name)
+                if loaded:
+                    self.notify(f"✅ {name} reloaded ({loaded.state.value})")
+                else:
+                    self.notify(f"❌ Failed to reload {name}", severity="error")
+            except Exception as e:
+                self.notify(f"❌ Reload error: {e}", severity="error")
+            self._load_data()
+
+        def _configure_plugin(self, name: str):
+            """Push a config editor screen for the plugin."""
+            try:
+                self.push_screen(PluginConfigScreen(name))
+            except Exception as e:
+                self.notify(f"❌ Configure error: {e}", severity="error")
+
+        # ── Registry management handlers (Phase 10) ─────────────
+
+        def _add_registry_from_input(self):
+            try:
+                url_input = self.query_one("#registry-add-url", Input)
+                prio_input = self.query_one("#registry-add-priority", Input)
+                url = url_input.value.strip()
+                prio = int(prio_input.value or "10")
+                if not url:
+                    self.notify("Enter a registry URL", severity="warning")
+                    return
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                reg = PluginRegistry()
+                if hasattr(reg, "add_registry"):
+                    reg.add_registry(url, priority=prio)
+                else:
+                    reg.config.set_registry_url(url)
+                self.notify(f"✅ Registry added: {url}")
+                self._load_data()
+            except Exception as e:
+                self.notify(f"❌ Add registry error: {e}", severity="error")
+
+        def _toggle_registry(self, prio: str):
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                reg = PluginRegistry()
+                if hasattr(reg, "toggle_registry"):
+                    reg.toggle_registry(int(prio))
+                self._load_data()
+            except Exception as e:
+                logger.debug("toggle_registry failed: %s", e)
+
+        def _shift_registry(self, prio: str, up: bool):
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                reg = PluginRegistry()
+                if hasattr(reg, "set_priority"):
+                    delta = -1 if up else 1
+                    reg.set_priority(int(prio), int(prio) + delta)
+                self._load_data()
+            except Exception as e:
+                logger.debug("shift_registry failed: %s", e)
+
+        def _remove_registry(self, prio: str):
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                reg = PluginRegistry()
+                if hasattr(reg, "remove_registry"):
+                    reg.remove_registry(int(prio))
+                self._load_data()
+            except Exception as e:
+                logger.debug("remove_registry failed: %s", e)
+
+        def _refresh_registry_cache(self, prio: str):
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+                reg = PluginRegistry()
+                if hasattr(reg, "refresh_cache"):
+                    reg.refresh_cache(int(prio))
+                self.notify("✅ Cache refreshed")
+            except Exception as e:
+                self.notify(f"❌ Refresh failed: {e}", severity="error")
 
         @on(Button.Pressed, "#add-registry")
         def add_registry(self):

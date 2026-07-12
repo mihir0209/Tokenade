@@ -4,6 +4,69 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added — Plugin Ecosystem (Phases 0-10)
+
+**Core infrastructure:**
+- Event bus (sync/async, priority, thread-safe) -- core/events/
+- Shared context (4 namespaces: sessions, plugins, config, runtime + TaskTracker) -- core/context/
+- Plugin registry system (GitHub-hosted, multi-registry, priority ordering) -- core/integration/plugin_registry.py
+- Plugin loader (DISCOVERED -> LOADED -> CONFIGURED -> ACTIVE -> FAILED lifecycle, hooks, reload w/ config preservation) -- core/integration/plugin_loader.py
+- Dependency resolution (topological sort, DFS cycle detection, depth limit 5, semver) -- core/integration/dependency_graph.py, dependency_resolver.py
+- Plugin config system (schema validation, env_var constraints, global config merging) -- core/integration/plugin_config.py
+- Plugin testing framework (8 contract tests) -- core/integration/plugin_testing.py
+- Plugin verifier (checksum-based integrity) -- core/integration/plugin_verifier.py
+
+**5 plugin types:**
+- SiteHandlerPlugin -- Override site-specific cookie extraction/injection
+- SessionRefreshPlugin -- Refresh sessions via OAuth/browser
+- ProxyProviderPlugin -- Provide rotating proxies
+- CaptchaPlugin -- Solve CAPTCHAs (image/reCAPTCHA/hCaptcha)
+- NotificationPlugin -- Webhook/email alerts for events
+
+**CLI updates:**
+- --no-plugin flag on launch, refresh-browser, accounts refresh (opt-out)
+- Auto-discovery of handlers/refreshers by default (no flag needed)
+- tokenade plugin deps <name> -- Show dependency tree
+- tokenade plugin check-deps [name] -- Check missing/circular/depth violations
+- tokenade plugin configure <name> -- --show/--set/--reset/--validate
+- tokenade plugin test [--verbose] [name] -- Run contract tests
+- tokenade plugin list now shows lifecycle state + health
+- tokenade plugin info <name> now shows lifecycle, config, health, error
+
+**TUI updates:**
+- Registries tab -- Add/remove/enable/disable/prioritize registries
+- Plugin health visualization (healthy / unhealthy)
+- Plugin config visualization (sensitive values redacted)
+- Plugin task visualization (active/recent tasks)
+- Reload/Configure buttons on installed plugins
+- Plugin detail screen shows lifecycle state + health
+
+**Handler conversions:**
+- Google/GitHub/GenericOAuth2 adapters -> SiteHandlerPlugin
+- site_config.json files for domain/cookie filtering
+- GitHub handler registered with HandlerRegistry
+- OAuth2Plugin converted to SessionRefreshPlugin
+- PluginCaptchaSolver adapter bridges CaptchaPlugin -> CaptchaSolver
+
+**Documentation:**
+- docs/plugin-api.md -- Full API reference (base classes, events, context, types)
+- docs/plugin-user-guide.md -- Install, manage, configure, troubleshoot
+- 5 example plugins in examples/plugins/ (site-handler, proxy-provider, captcha-solver, notifier, refresh)
+
+### Changed
+- System works WITHOUT plugins -- plugins override/extend defaults
+- Plugins run by default -- --no-plugin flag to exclude (was opt-in)
+- --plugin flag still works for explicit selection (backward compatible)
+- Latest version wins for dependency version conflicts (major mismatch = rejected)
+- No plugin sandboxing (full trust model)
+- Registry management primarily through TUI
+
+### Removed
+- ProxyPlugin (replaced by ProxyProviderPlugin)
+
+
 ## [1.0.0] - 2026-07-12
 
 ### Added
