@@ -87,6 +87,7 @@ def _emit_event(event_type_name: str, data: dict, source: str = "plugin_loader")
     except Exception as e:
         logger.debug(f"Failed to emit {event_type_name} event: {e}")
 
+
 DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
 
 # Optional process-wide loader for site_config discovery (set by CLI on first use).
@@ -135,8 +136,10 @@ class LoadedPlugin:
 class PluginLoader:
     """Discover, load, and manage plugins."""
 
-    def __init__(self, plugins_dir: Path = DEFAULT_PLUGINS_DIR) -> None:
+    def __init__(self, plugins_dir: Path = DEFAULT_PLUGINS_DIR, sandbox: Any = None, lazy: bool = False) -> None:
         self.plugins_dir = plugins_dir
+        self.sandbox = sandbox
+        self.lazy = lazy
         self._loaded: Dict[str, LoadedPlugin] = {}
         self._handlers: Dict[str, Any] = {}
         self._exporters: Dict[str, Any] = {}
@@ -147,10 +150,26 @@ class PluginLoader:
         self._captchas: Dict[str, Any] = {}
         self._notifications: Dict[str, Any] = {}
         self._disabled: set = set()
+        self._discovery_cache: Optional[List[Dict]] = None
+        self._discovery_cache_time: float = 0.0
+        self._cache_ttl: float = 60.0  # Cache discovery for 60s
         self._load_disabled_list()
 
-    def discover(self) -> List[Dict]:
-        """Discover all installed plugins."""
+    def discover(self, use_cache: bool = True) -> List[Dict]:
+        """Discover all installed plugins.
+        
+        Args:
+            use_cache: If True, return cached results if available and fresh.
+        """
+        import time as _time
+        
+        # Return cache if fresh
+        if use_cache and self._discovery_cache is not None:
+            age = _time.time() - self._discovery_cache_time
+            if age < self._cache_ttl:
+                logger.debug("Using cached plugin discovery (age: %.1fs)", age)
+                return self._discovery_cache
+        
         plugins = []
         if not self.plugins_dir.exists():
             return plugins
@@ -171,6 +190,10 @@ class PluginLoader:
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to read plugin manifest {manifest_path}: {e}")
 
+        # Update cache
+        self._discovery_cache = plugins
+        self._discovery_cache_time = _time.time()
+        
         return plugins
 
     def load_all(self) -> int:
@@ -198,6 +221,11 @@ class PluginLoader:
         name = meta.get("name", "")
         if name in self._loaded:
             return self._loaded[name]
+
+        # Check sandbox status
+        if self.sandbox and self.sandbox.is_disabled(name):
+            logger.warning("Plugin %s is sandbox-disabled", name)
+            return None
 
         plugin_dir = Path(meta.get("_path", self.plugins_dir / name))
         entry_point = meta.get("entry_point", "")
@@ -297,6 +325,8 @@ class PluginLoader:
                 instance.on_load()
         except Exception as e:
             logger.error(f"Plugin {name}: on_load() failed: {e}", exc_info=True)
+            if self.sandbox:
+                self.sandbox._on_failure(name, str(e))
             _emit_event(
                 "PLUGIN_ERROR",
                 {"plugin_name": name, "error": str(e), "hook": "on_load"},

@@ -38,58 +38,84 @@ try:
 except ImportError:
     _TEXTUAL_AVAILABLE = False
     # Stub classes so the module still imports without textual
+
     class App:
         pass
+
     class ComposeResult:
         pass
+
     class Binding:
         pass
+
     class Container:
         pass
+
     class Horizontal:
         pass
+
     class Vertical:
         pass
+
     class Screen:
         pass
+
     class Button:
         pass
+
     class Header:
         pass
+
     class Footer:
         pass
+
     class Input:
         pass
+
     class Rule:
         pass
+
     class Static:
         pass
+
     class TabbedContent:
         pass
+
     class TabPane:
         pass
+
     class Label:
         pass
+
     class LoadingIndicator:
         pass
+
     class DataTable:
         pass
+
     class ListView:
         pass
+
     class ListItem:
         pass
+
     class MarketplaceView:
         pass
+
     class InstalledView:
         pass
+
     class Widget:
         pass
+
     class reactive:
         pass
+
     def on(*a, **k):
         def decorator(f):
             return f
         return decorator
+
 
 def _check_textual():
     """Check if textual is available."""
