@@ -77,7 +77,7 @@ def make_refresher_plugin(plugins_dir, name):
     manifest = {
         "name": name,
         "version": "1.2.0",
-        "type": "refresher",
+        "type": "session_refresh",
         "entry_point": "plugin.py",
         "description": "Test refresher",
     }
@@ -624,8 +624,15 @@ class TestRefresherAutoDiscovery:
             proxy=None,
         )
 
+        from tokenade.core.integration.plugin_loader import PluginLoader as RealLoader
+
+        class FakeLoader(RealLoader):
+            def __init__(self, *a, **kw):
+                super().__init__(plugins_dir=fake_plugins, *a, **kw)
+
         mock_pgrep = MagicMock(returncode=1, stdout="0", stderr="")
         with patch("tokenade.core.integration.plugin_loader.DEFAULT_PLUGINS_DIR", fake_plugins), \
+             patch("tokenade.core.integration.plugin_loader.PluginLoader", FakeLoader), \
              patch("tokenade.core.importer.session_packager.SessionPackager.load", return_value={
                  "cookies": [{"name": "x", "value": "y", "domain": "google.com"}],
                  "site_name": "demo",
