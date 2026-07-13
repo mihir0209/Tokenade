@@ -1161,6 +1161,8 @@ def _accounts_refresh(manager, args):
             # Try plugin refresh first
             if refresher:
                 try:
+                    from tokenade.core.importer.session_packager import SessionPackager as _SP
+                    packager = _SP()
                     session = packager.load(s.path)
                     if refresher.can_refresh(session):
                         print(f"   🔌 Trying plugin {plugin_name}...")

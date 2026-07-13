@@ -58,6 +58,8 @@ except ImportError:
     class DataTable: pass
     class ListView: pass
     class ListItem: pass
+    class MarketplaceView: pass
+    class InstalledView: pass
     class Widget: pass
     class reactive: pass
     def on(*a, **k):
@@ -174,6 +176,28 @@ class PluginTaskWidget(Widget if _TEXTUAL_AVAILABLE else object):
         except Exception:
             lines.append("  Task tracker unavailable.")
         return "\n".join(lines)
+
+
+class MarketplaceView(Vertical if _TEXTUAL_AVAILABLE else object):
+    """Plugin marketplace browse view."""
+
+    def compose(self):
+        if not _TEXTUAL_AVAILABLE:
+            return
+        yield Static("🔌  Plugin Marketplace", classes="card-title")
+        yield Rule()
+        yield Container(id="marketplace-content")
+
+
+class InstalledView(Vertical if _TEXTUAL_AVAILABLE else object):
+    """Installed plugins management view."""
+
+    def compose(self):
+        if not _TEXTUAL_AVAILABLE:
+            return
+        yield Static("📦  Installed Plugins", classes="card-title")
+        yield Rule()
+        yield Container(id="installed-content")
 
 
 class RegistriesView(Vertical if _TEXTUAL_AVAILABLE else object):
