@@ -62,7 +62,8 @@ except ImportError:
         pass
 
     class Button:
-        pass
+        class Pressed:
+            pass
 
     class Header:
         pass
