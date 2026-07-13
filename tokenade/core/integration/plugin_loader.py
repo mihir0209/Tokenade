@@ -228,6 +228,20 @@ class PluginLoader:
             return None
 
         plugin_dir = Path(meta.get("_path", self.plugins_dir / name))
+        
+        # Security validation
+        try:
+            from tokenade.core.integration.plugin_security import validate_plugin_security
+            is_safe, msg = validate_plugin_security(plugin_dir)
+            if not is_safe:
+                logger.error(f"Plugin {name} failed security validation: {msg}")
+                return None
+            if msg:
+                logger.warning(f"Plugin {name} security warning: {msg}")
+        except Exception as e:
+            logger.error(f"Plugin {name} security check failed: {e}")
+            return None
+        
         entry_point = meta.get("entry_point", "")
         plugin_type = meta.get("type", "handler")
 
