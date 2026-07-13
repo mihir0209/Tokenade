@@ -1,4 +1,5 @@
 """Tests for P7 browser support improvements."""
+import platform
 import pytest
 import sys
 import tempfile
@@ -7,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+@pytest.mark.skipif(platform.system() == "Linux", reason="Safari tests require macOS")
 class TestSafariExtractor:
     """Tests for SafariExtractor."""
 
