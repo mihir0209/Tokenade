@@ -199,7 +199,7 @@ class SiteHandlerPlugin(PluginBase):
 
     def on_load(self) -> None:
         """Ensure site_config.json is loaded when the plugin is activated."""
-        if not self._site_config and self._plugin_dir:
+        if not getattr(self, "_site_config", None) and self._plugin_dir:
             self._load_site_config_file()
 
     def _load_site_config_file(self) -> None:
