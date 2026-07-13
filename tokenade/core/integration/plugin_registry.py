@@ -62,7 +62,7 @@ class Plugin:
     icon: str = ""
     min_version: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.dependencies is None:
             self.dependencies = []
 
@@ -74,7 +74,7 @@ class PluginRegistry:
         self,
         registry_url: str = DEFAULT_REGISTRY_URL,
         plugins_dir: Path = DEFAULT_PLUGINS_DIR,
-    ):
+    ) -> None:
         self.registry_url = self._normalize_registry_url(registry_url)
         self.plugins_dir = plugins_dir
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -594,7 +594,7 @@ class PluginRegistry:
                 pass
         return {}
 
-    def _save_local_ratings(self):
+    def _save_local_ratings(self) -> None:
         """Save local ratings to disk."""
         try:
             with open(self._ratings_file, "w") as f:
@@ -612,7 +612,7 @@ class PluginRegistry:
                 pass
         return {}
 
-    def _save_local_downloads(self):
+    def _save_local_downloads(self) -> None:
         """Save local download counts to disk."""
         try:
             with open(self._downloads_file, "w") as f:

@@ -37,7 +37,7 @@ class TestStealthPlugin:
             name = "test-stealth"
             version = "1.0.0"
             description = "Test"
-            
+
             def get_patches(self):
                 return ["navigator.webdriver = undefined"]
 
@@ -62,7 +62,7 @@ class TestProxyPlugin:
             name = "test-proxy"
             version = "1.0.0"
             description = "Test"
-            
+
             def get_proxy(self, options=None):
                 return PluginResult(success=True, data={"host": "1.1.1.1", "port": 8080})
 
@@ -85,7 +85,7 @@ class TestCaptchaPlugin:
             name = "test-captcha"
             version = "1.0.0"
             description = "Test"
-            
+
             def get_supported_types(self):
                 return ["recaptcha_v2"]
             def solve(self, captcha_type, site_key=None, page_url=None):
@@ -116,7 +116,7 @@ class MyStealth(StealthPlugin):
     name = "my-stealth"
     version = "1.0.0"
     description = "Test stealth"
-    
+
     def get_patches(self):
         return ["test"]
 """)
@@ -141,7 +141,7 @@ class MyProxy(ProxyProviderPlugin):
     name = "my-proxy"
     version = "1.0.0"
     description = "Test proxy"
-    
+
     def get_proxy(self, options=None):
         return PluginResult(success=True, data={"host": "1.1.1.1", "port": 8080})
 
@@ -166,7 +166,7 @@ class MyCaptcha(CaptchaPlugin):
     name = "my-captcha"
     version = "1.0.0"
     description = "Test captcha"
-    
+
     def get_supported_types(self):
         return ["recaptcha_v2"]
     def solve(self, captcha_type, site_key=None, page_url=None):
@@ -196,7 +196,7 @@ class {cls_name}({base}):
     name = "test-{ptype}"
     version = "1.0.0"
     description = "Test {ptype}"
-    
+
     def get_patches(self): return []
     def get_proxy(self, options=None): return PluginResult(success=True, data={{}})
     def rotate(self, session_id=None): return PluginResult(success=True, data={{}})
@@ -228,7 +228,7 @@ class MyPlugin(StealthPlugin):
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
-    
+
     def get_patches(self):
         return ["test"]
 """)
@@ -294,7 +294,7 @@ class MyPlugin(StealthPlugin):
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
-    
+
     def get_patches(self):
         return ["test"]
 """)
@@ -315,7 +315,7 @@ class MyPlugin(StealthPlugin):
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
-    
+
     def get_patches(self):
         return ["test"]
 """)

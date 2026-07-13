@@ -32,7 +32,7 @@ class DependencyGraph:
         load_order = graph.topological_sort()  # ["b", "c", "a"]
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # name → list of dependency names
         self._deps: Dict[str, List[str]] = {}
         # name → list of plugins that depend on it (reverse edges)

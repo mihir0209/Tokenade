@@ -38,30 +38,54 @@ try:
 except ImportError:
     _TEXTUAL_AVAILABLE = False
     # Stub classes so the module still imports without textual
-    class App: pass
-    class ComposeResult: pass
-    class Binding: pass
-    class Container: pass
-    class Horizontal: pass
-    class Vertical: pass
-    class Screen: pass
-    class Button: pass
-    class Header: pass
-    class Footer: pass
-    class Input: pass
-    class Rule: pass
-    class Static: pass
-    class TabbedContent: pass
-    class TabPane: pass
-    class Label: pass
-    class LoadingIndicator: pass
-    class DataTable: pass
-    class ListView: pass
-    class ListItem: pass
-    class MarketplaceView: pass
-    class InstalledView: pass
-    class Widget: pass
-    class reactive: pass
+    class App:
+        pass
+    class ComposeResult:
+        pass
+    class Binding:
+        pass
+    class Container:
+        pass
+    class Horizontal:
+        pass
+    class Vertical:
+        pass
+    class Screen:
+        pass
+    class Button:
+        pass
+    class Header:
+        pass
+    class Footer:
+        pass
+    class Input:
+        pass
+    class Rule:
+        pass
+    class Static:
+        pass
+    class TabbedContent:
+        pass
+    class TabPane:
+        pass
+    class Label:
+        pass
+    class LoadingIndicator:
+        pass
+    class DataTable:
+        pass
+    class ListView:
+        pass
+    class ListItem:
+        pass
+    class MarketplaceView:
+        pass
+    class InstalledView:
+        pass
+    class Widget:
+        pass
+    class reactive:
+        pass
     def on(*a, **k):
         def decorator(f):
             return f
@@ -1443,17 +1467,17 @@ def run_tui(mode: str = "full"):
                 plugins = registry.get_popular(limit=100)
                 installed = {p["name"] for p in self._installed}
                 to_install = [p for p in plugins if p.get("name") not in installed]
-                
+
                 if not to_install:
                     self.notify("✅ All plugins already installed", timeout=3)
                     return
-                
+
                 count = 0
                 for p in to_install:
                     name = p.get("name", "")
                     if registry.install(name):
                         count += 1
-                
+
                 self.notify(f"✅ Synced {count} plugins", timeout=3)
                 self._load_data()
                 self._update_installed()
@@ -1467,16 +1491,16 @@ def run_tui(mode: str = "full"):
                 from tokenade.core.integration.plugin_registry import PluginRegistry
                 registry = PluginRegistry()
                 outdated = registry.get_outdated()
-                
+
                 if not outdated:
                     self.notify("✅ All plugins up to date", timeout=3)
                     return
-                
+
                 count = 0
                 for name in outdated:
                     if registry.update(name):
                         count += 1
-                
+
                 self.notify(f"🔄 Updated {count} plugins", timeout=3)
                 self._load_data()
                 self._update_installed()

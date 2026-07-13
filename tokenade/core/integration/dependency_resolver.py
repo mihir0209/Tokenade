@@ -89,7 +89,7 @@ class DependencyResolver:
         self,
         graph: DependencyGraph,
         registry_manager: Any = None,
-    ):
+    ) -> None:
         """Initialize the resolver.
 
         Args:

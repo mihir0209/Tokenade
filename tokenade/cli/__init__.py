@@ -309,7 +309,7 @@ def cmd_plugin(args):
         plugins = registry.get_popular(limit=100)
         installed = {p.name for p in loader.list_all()}
         to_install = [p for p in plugins if p.get("name") not in installed]
-        
+
         if not to_install:
             print("✅ All available plugins already installed.")
         else:

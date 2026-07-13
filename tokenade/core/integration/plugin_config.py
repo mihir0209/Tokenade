@@ -37,7 +37,7 @@ class PluginConfigManager:
         self,
         plugins_dir: Path = DEFAULT_PLUGINS_DIR,
         global_config_path: Path = GLOBAL_CONFIG_PATH,
-    ):
+    ) -> None:
         self._plugins_dir = Path(plugins_dir)
         self._global_config_path = Path(global_config_path)
 

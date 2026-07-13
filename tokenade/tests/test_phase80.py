@@ -177,10 +177,10 @@ class TestV3Format:
         pkg = packager.package(cookies=cookies, storage=storage)
         path = str(tmp_path / "test.tokenade")
         packager.save(pkg, path)
-        
+
         with open(path) as f:
             loaded = json.load(f)
-        
+
         assert loaded["version"] == "3.0"
         assert loaded["storage"]["local"]["https://example.com"]["k"] == "v"
         assert len(loaded["cookies"]) == 1
@@ -205,7 +205,7 @@ class TestSessionStateV3:
         }
         path = tmp_path / "test.tokenade"
         path.write_text(json.dumps(session))
-        
+
         state = tokenade_to_storage_state(str(path))
         assert len(state["cookies"]) == 1
         assert len(state["origins"]) == 1
@@ -224,7 +224,7 @@ class TestSessionStateV3:
         }
         path = tmp_path / "test.tokenade"
         path.write_text(json.dumps(session))
-        
+
         state = tokenade_to_storage_state(str(path))
         assert len(state["cookies"]) == 1
         assert len(state["origins"]) == 1
@@ -236,24 +236,24 @@ class TestEncryptionExport:
     def test_encrypt_decrypt_roundtrip(self, tmp_path):
         from tokenade.core.crypto.encryptor import TokenadeEncryptor
         encryptor = TokenadeEncryptor()
-        
+
         # Create test data
         data = {"version": "3.0", "cookies": [{"name": "c1", "value": "v1"}]}
         input_path = str(tmp_path / "test.tokenade")
         enc_path = str(tmp_path / "test.tokenade.enc")
         dec_path = str(tmp_path / "test.tokenade.dec")
-        
+
         with open(input_path, 'w') as f:
             json.dump(data, f)
-        
+
         # Encrypt
         encryptor.encrypt_file(input_path, enc_path, "testpass123")
         assert os.path.exists(enc_path)
-        
+
         # Decrypt
         encryptor.decrypt_file(enc_path, dec_path, "testpass123")
         assert os.path.exists(dec_path)
-        
+
         # Verify
         with open(dec_path) as f:
             loaded = json.load(f)

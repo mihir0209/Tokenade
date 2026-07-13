@@ -169,7 +169,10 @@ class TestCDPConnection:
 
     def test_event_handlers(self):
         cdp = CDPConnection(port=9222)
-        handler = lambda params: None
+
+        def handler(params):
+            pass
+
         cdp.on("test.event", handler)
         assert "test.event" in cdp._event_handlers
         cdp.off("test.event", handler)

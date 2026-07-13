@@ -45,7 +45,7 @@ class PluginState(enum.Enum):
 _event_bus = None
 
 
-def _get_event_bus():
+def _get_event_bus() -> Any:
     """Get or create the module-level event bus.
 
     Returns None if the event bus module is not available (graceful degradation).
@@ -61,7 +61,7 @@ def _get_event_bus():
     return _event_bus
 
 
-def _get_shared_context():
+def _get_shared_context() -> Any:
     """Get the shared context singleton.
 
     Returns None if the context module is not available (graceful degradation).
@@ -135,7 +135,7 @@ class LoadedPlugin:
 class PluginLoader:
     """Discover, load, and manage plugins."""
 
-    def __init__(self, plugins_dir: Path = DEFAULT_PLUGINS_DIR):
+    def __init__(self, plugins_dir: Path = DEFAULT_PLUGINS_DIR) -> None:
         self.plugins_dir = plugins_dir
         self._loaded: Dict[str, LoadedPlugin] = {}
         self._handlers: Dict[str, Any] = {}
@@ -630,7 +630,7 @@ class PluginLoader:
         """
         return self._loaded.get(name)
 
-    def get_captcha_adapter(self, name: str):
+    def get_captcha_adapter(self, name: str) -> Any:
         """Get a CaptchaPlugin adapter (PluginCaptchaSolver) by name.
 
         Returns None if no adapter exists.
@@ -684,7 +684,7 @@ class PluginLoader:
             loaded.config = preserved_config
         return loaded
 
-    def _load_disabled_list(self):
+    def _load_disabled_list(self) -> None:
         """Load the list of disabled plugins."""
         disabled_file = self.plugins_dir / ".disabled"
         if disabled_file.exists():
@@ -694,7 +694,7 @@ class PluginLoader:
             except Exception:
                 self._disabled = set()
 
-    def _save_disabled_list(self):
+    def _save_disabled_list(self) -> None:
         """Save the list of disabled plugins."""
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
         disabled_file = self.plugins_dir / ".disabled"
