@@ -1,6 +1,7 @@
 # Service Account Keys - DO NOT COMMIT!
 *.json
 temp-acc-*.json
+!tokenade/handlers/site_configs/*.json
 
 # Generated Access Tokens - DO NOT COMMIT!
 access_token.txt

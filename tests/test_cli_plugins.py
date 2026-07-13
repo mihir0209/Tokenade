@@ -624,13 +624,14 @@ class TestRefresherAutoDiscovery:
             proxy=None,
         )
 
+        mock_pgrep = MagicMock(returncode=1, stdout="0", stderr="")
         with patch("tokenade.core.integration.plugin_loader.DEFAULT_PLUGINS_DIR", fake_plugins), \
              patch("tokenade.core.importer.session_packager.SessionPackager.load", return_value={
                  "cookies": [{"name": "x", "value": "y", "domain": "google.com"}],
                  "site_name": "demo",
              }), \
+             patch("subprocess.run", return_value=mock_pgrep), \
              patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as mock_launcher_cls:
-            # Make launcher launch() raise to short-circuit the body
             mock_launcher = MagicMock()
             mock_launcher.find_browser.return_value = "/usr/bin/chrome"
             mock_launcher.launch.side_effect = RuntimeError("no browser in test")
@@ -639,8 +640,6 @@ class TestRefresherAutoDiscovery:
             with capture_stdout() as buf:
                 cmd_refresh_browser(args)
             output = buf.getvalue()
-        # Even if launcher fails, auto-discovery should still print refresher name
-        # (auto-discovery happens before launch).
         assert "demo-refresh" in output or "Auto-discovered" in output or "refresher" in output.lower()
 
     def test_refresh_browser_no_plugin_skips_discovery(self, tmp_path):
