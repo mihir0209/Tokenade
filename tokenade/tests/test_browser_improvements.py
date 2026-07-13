@@ -51,7 +51,7 @@ class TestSafariExtractor:
         assert extractor._read_cstring(data, 11) == ""
 
     def test_parse_binary_cookies_invalid_header(self):
-        """Should raise on invalid file header."""
+        """Should return empty list on invalid file header."""
         if sys.platform != "darwin":
             pytest.skip("macOS only")
 
@@ -62,8 +62,8 @@ class TestSafariExtractor:
             f.flush()
 
             extractor = SafariExtractor.__new__(SafariExtractor)
-            with pytest.raises(ValueError, match="Invalid"):
-                extractor._parse_binary_cookies(f.name)
+            result = extractor._parse_binary_cookies(f.name)
+            assert result == []
 
     def test_parse_binary_cookies_empty(self):
         """Should handle empty valid header with 0 pages."""

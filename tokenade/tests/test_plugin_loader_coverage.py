@@ -61,6 +61,10 @@ class TestPluginLoaderDisabled:
     def test_load_plugin_auto_discover_handler(self, tmp_path):
         plugin_dir = tmp_path / "auto_handler"
         plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({
+            "name": "auto_handler", "version": "1.0.0", "type": "handler",
+            "entry_point": "handler.py",
+        }))
         (plugin_dir / "handler.py").write_text(
             "from tokenade.plugin.base import SiteHandlerPlugin\n"
             "class MyHandler(SiteHandlerPlugin):\n"
@@ -82,6 +86,10 @@ class TestPluginLoaderDisabled:
     def test_load_plugin_auto_discover_export_format(self, tmp_path):
         plugin_dir = tmp_path / "auto_export"
         plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({
+            "name": "auto_export", "version": "1.0.0", "type": "export_format",
+            "entry_point": "exporter.py",
+        }))
         (plugin_dir / "exporter.py").write_text(
             "from tokenade.plugin.base import ExportFormatPlugin\n"
             "class MyExport(ExportFormatPlugin):\n"
@@ -99,6 +107,10 @@ class TestPluginLoaderDisabled:
     def test_load_plugin_auto_discover_validator(self, tmp_path):
         plugin_dir = tmp_path / "auto_valid"
         plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(json.dumps({
+            "name": "auto_valid", "version": "1.0.0", "type": "validator",
+            "entry_point": "validator.py",
+        }))
         (plugin_dir / "validator.py").write_text(
             "from tokenade.plugin.base import SessionValidatorPlugin\n"
             "class MyValidator(SessionValidatorPlugin):\n"
