@@ -30,7 +30,9 @@ jobs:
         run: pip install flake8
 
       - name: Run flake8
-        run: flake8 tokenade --max-line-length=120 --ignore=E501,W503,W293,E203,F541,F841,E306,E402,E226,E128,E127,E731,F821,F401,F811,E401
+        run: |
+          flake8 tokenade --max-line-length=120 --ignore=E501,W503,W293,E203,F541,F841,E306,E402,E226,E128,E127,E731,F821,F401,F811,E401
+          flake8 tests --max-line-length=120 --ignore=E501,W503,W293,E203,F541,F841,E306,E402,E226,E128,E127,E731,F821,F401,F811,E401,E704
 
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})

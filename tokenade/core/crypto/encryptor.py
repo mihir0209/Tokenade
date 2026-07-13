@@ -11,6 +11,7 @@ import logging
 import os
 import secrets
 import struct
+import sys
 from dataclasses import dataclass
 from typing import Optional
 
@@ -191,12 +192,16 @@ class TokenadeEncryptor:
 
         encrypted = self.encrypt(data, password)
 
-        umask = os.umask(0o177)
-        try:
+        if sys.platform != 'win32':
+            umask = os.umask(0o177)
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(encrypted)
+            finally:
+                os.umask(umask)
+        else:
             with open(output_path, 'wb') as f:
                 f.write(encrypted)
-        finally:
-            os.umask(umask)
 
         logger.info(f"File encrypted: {input_path} -> {output_path}")
         return output_path
@@ -218,12 +223,16 @@ class TokenadeEncryptor:
 
         decrypted = self.decrypt(encrypted, password)
 
-        umask = os.umask(0o177)
-        try:
+        if sys.platform != 'win32':
+            umask = os.umask(0o177)
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(decrypted)
+            finally:
+                os.umask(umask)
+        else:
             with open(output_path, 'wb') as f:
                 f.write(decrypted)
-        finally:
-            os.umask(umask)
 
         logger.info(f"File decrypted: {input_path} -> {output_path}")
         return output_path

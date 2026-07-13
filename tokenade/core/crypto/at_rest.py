@@ -8,6 +8,7 @@ when encryption is configured. Uses TokenadeEncryptor (AES-256-GCM).
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -131,12 +132,16 @@ def save_encrypted(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    umask = os.umask(0o177)
-    try:
+    if sys.platform != 'win32':
+        umask = os.umask(0o177)
+        try:
+            with open(path, "wb") as f:
+                f.write(encrypted)
+        finally:
+            os.umask(umask)
+    else:
         with open(path, "wb") as f:
             f.write(encrypted)
-    finally:
-        os.umask(umask)
 
     logger.info(f"Session saved (encrypted): {path}")
     return str(path.absolute())

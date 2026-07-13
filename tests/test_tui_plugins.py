@@ -185,7 +185,7 @@ class TestPluginActionHandlers:
     """Test _reload_plugin / _configure_plugin helpers.
 
     These are exercised via the TokenadeTUI class which lives inside run_tui().
-    We test the underlying logic (PluginLoader.reload, PluginConfigManager) 
+    We test the underlying logic (PluginLoader.reload, PluginConfigManager)
     directly rather than the app-level dispatch.
     """
 
