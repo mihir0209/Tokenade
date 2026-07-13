@@ -46,7 +46,8 @@ except ImportError:
         pass
 
     class Binding:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class Container:
         pass
