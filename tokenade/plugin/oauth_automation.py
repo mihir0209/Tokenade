@@ -55,32 +55,31 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
 
     def ensure_browser(self) -> bool:
         """
-        Ensure CloakBrowser is available; try install if missing.
+        Ensure browser is available; try CloakBrowser first, fall back to standard Playwright.
 
         Returns:
             True if browser is available
         """
         try:
-            from tokenade.core.browser.stealth.cloak import CloakBrowser
-            cloak = CloakBrowser()
+            from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
+            cloak = CloakBrowserBackend()
             if cloak.is_available():
                 logger.info("CloakBrowser is available")
                 return True
-            logger.info("CloakBrowser not found, attempting install...")
-            return cloak.install()
+            logger.info("CloakBrowser not available, will use standard Playwright")
+            return True
         except ImportError:
-            logger.error(
-                "CloakBrowser not available. Install with: "
-                "pip install tokenade-cloakbrowser"
-            )
-            return False
+            logger.info("CloakBrowser not installed, will use standard Playwright")
+            return True
         except Exception as e:
-            logger.error(f"Failed to check/install CloakBrowser: {e}")
-            return False
+            logger.warning(f"Failed to check CloakBrowser: {e}, will use standard Playwright")
+            return True
 
     def launch_context(self, visible: bool = False) -> Any:
         """
-        Launch CloakBrowser with stealth, return Playwright BrowserContext.
+        Launch browser with stealth, return Playwright BrowserContext.
+
+        Tries CloakBrowser first, falls back to standard Playwright.
 
         Args:
             visible: Show browser window (for debugging)
@@ -89,15 +88,28 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
             Playwright BrowserContext or None on failure
         """
         try:
-            from tokenade.core.browser.stealth.cloak import CloakBrowser
+            from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
+            cloak = CloakBrowserBackend()
+            if cloak.is_available():
+                context = cloak.launch_context(headless=not visible)
+                logger.info("CloakBrowser context launched")
+                return context
+        except Exception:
+            pass
 
-            cloak = CloakBrowser()
-            browser = cloak.launch(headless=not visible)
-            context = browser.new_context()
-            logger.info("CloakBrowser context launched")
-            return context
+        try:
+            from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
+            config = BrowserConfig(
+                browser_type='chromium',
+                headless=not visible,
+                stealth_level='maximum'
+            )
+            browser = BrowserFactory.create(**config.__dict__)
+            browser.launch()
+            logger.info("Standard Playwright browser launched")
+            return browser
         except Exception as e:
-            logger.error(f"Failed to launch CloakBrowser: {e}")
+            logger.error(f"Failed to launch browser: {e}")
             return None
 
     def inject_source_session(self, context: Any, session: dict) -> bool:
@@ -117,12 +129,58 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
             return False
 
         try:
-            context.add_cookies(cookies)
-            logger.info(f"Injected {len(cookies)} source session cookies")
+            normalized_cookies = []
+            for cookie in cookies:
+                normalized = self._normalize_cookie_for_playwright(cookie)
+                if normalized:
+                    normalized_cookies.append(normalized)
+
+            if not normalized_cookies:
+                logger.warning("No valid cookies after normalization")
+                return False
+
+            context.add_cookies(normalized_cookies)
+            logger.info(f"Injected {len(normalized_cookies)} source session cookies")
             return True
         except Exception as e:
             logger.error(f"Failed to inject cookies: {e}")
             return False
+
+    def _normalize_cookie_for_playwright(self, cookie: dict) -> Optional[dict]:
+        """Normalize cookie dict to Playwright format."""
+        if "name" not in cookie or "value" not in cookie:
+            return None
+
+        normalized = {
+            "name": cookie["name"],
+            "value": cookie["value"],
+            "domain": cookie.get("domain", ""),
+            "path": cookie.get("path", "/"),
+        }
+
+        expires = cookie.get("expires")
+        if expires and int(expires) > 0:
+            expires_int = int(expires)
+            if expires_int > 1262304000000:
+                expires_int = expires_int // 1000
+            if expires_int > 0:
+                normalized["expires"] = expires_int
+
+        secure = bool(cookie.get("secure"))
+        http_only = bool(cookie.get("httpOnly"))
+        same_site = cookie.get("sameSite", "")
+
+        if same_site == "None":
+            secure = True
+
+        if secure:
+            normalized["secure"] = True
+        if http_only:
+            normalized["httpOnly"] = True
+        if same_site:
+            normalized["sameSite"] = same_site
+
+        return normalized
 
     def extract_email_from_session(self, session: dict) -> Optional[str]:
         """
@@ -186,7 +244,10 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
             Dict with session data and file path, or None on failure
         """
         try:
-            all_cookies = context.cookies()
+            if hasattr(context, 'get_cookies'):
+                all_cookies = context.get_cookies()
+            else:
+                all_cookies = context.cookies()
 
             target_cookies = []
             for cookie in all_cookies:

@@ -119,7 +119,11 @@ class TestOAuthAutomationPlugin:
 
         result = plugin.inject_source_session(context, session)
         assert result is True
-        context.add_cookies.assert_called_once_with(session["cookies"])
+        context.add_cookies.assert_called_once()
+        injected = context.add_cookies.call_args[0][0]
+        assert len(injected) == 2
+        assert injected[0]["name"] == "SID"
+        assert injected[0]["path"] == "/"
 
     def test_inject_source_session_empty(self):
         plugin = ConcreteOAuthPlugin()

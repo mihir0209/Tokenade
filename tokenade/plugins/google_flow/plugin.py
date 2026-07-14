@@ -55,7 +55,6 @@ class GoogleFlowPlugin(OAuthAutomationPlugin):
     logged_in_selectors = [
         'div.flow-editor',
         'a[href*="fx/tools/flow/create"]',
-        'button:has-text("Create")',
     ]
     logged_out_selectors = [
         'a[href*="accounts.google.com"]',
@@ -124,7 +123,7 @@ class GoogleFlowPlugin(OAuthAutomationPlugin):
                         error="Failed to inject Google session cookies"
                     )
 
-                page = context.new_page()
+                page = context._page if hasattr(context, '_page') else context.new_page()
 
                 if not self.verify_provider_session(page, "https://accounts.google.com"):
                     return PluginResult(
@@ -157,12 +156,17 @@ class GoogleFlowPlugin(OAuthAutomationPlugin):
         """
         try:
             logger.info(f"Navigating to {self.target_url}")
-            page.goto(self.target_url, wait_until="domcontentloaded", timeout=30000)
+            page.goto(self.target_url, wait_until="networkidle", timeout=30000)
             time.sleep(3)
 
-            if self._check_already_logged_in(page):
-                logger.info("Already logged in on labs.google")
-                return self._export_and_return(context, "labs_google", output_dir)
+            current_url = page.url
+            logger.info(f"Current URL after navigation: {current_url}")
+
+            if "labs.google" not in current_url:
+                return PluginResult(
+                    success=False,
+                    error=f"Failed to navigate to target: {current_url}"
+                )
 
             clicked = self._click_oauth_button(page)
             if not clicked:
@@ -171,14 +175,23 @@ class GoogleFlowPlugin(OAuthAutomationPlugin):
                     error="Could not find OAuth button on page"
                 )
 
-            time.sleep(3)
+            logger.info("OAuth button clicked, waiting for flow...")
+            time.sleep(5)
 
-            self._handle_account_chooser(page, email)
+            current_url = page.url
+            logger.info(f"URL after OAuth button click: {current_url}")
+
+            if "accounts.google.com" in current_url:
+                logger.info("Redirected to Google account chooser")
+                self._handle_account_chooser(page, email)
+                time.sleep(5)
 
             self._wait_for_redirect(page)
 
-            if not self._check_already_logged_in(page):
-                logger.warning("Login status uncertain after redirect")
+            time.sleep(3)
+
+            final_url = page.url
+            logger.info(f"Final URL: {final_url}")
 
             return self._export_and_return(context, "labs_google", output_dir)
 
@@ -303,10 +316,19 @@ class GoogleFlowPlugin(OAuthAutomationPlugin):
                 jwt_data = self.decode_session_token(cookie.get("value", ""))
                 break
 
+        email = jwt_data.get("email", "")
+        if not email:
+            for cookie in cookies:
+                if cookie.get("name") in ("EMAIL", "email"):
+                    raw = cookie.get("value", "")
+                    from urllib.parse import unquote
+                    email = unquote(raw).strip('"')
+                    break
+
         result_data = {
             "session": session,
             "session_file": str(session.get("_file_path", "")),
-            "email": jwt_data.get("email", ""),
+            "email": email,
             "expires": jwt_data.get("exp", 0),
             "jwt": jwt_data,
         }
