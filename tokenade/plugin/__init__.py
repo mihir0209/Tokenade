@@ -38,6 +38,7 @@ from tokenade.plugin.base import (
     StealthPlugin,
     CaptchaPlugin,
 )
+from tokenade.plugin.oauth_automation import OAuthAutomationPlugin
 from tokenade.plugin.api import (
     API_VERSION,
     PluginResult,
@@ -55,6 +56,7 @@ __all__ = [
     "NotificationPlugin",
     "StealthPlugin",
     "CaptchaPlugin",
+    "OAuthAutomationPlugin",
     "API_VERSION",
     "PluginResult",
     "PluginConfig",
