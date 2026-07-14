@@ -17,6 +17,7 @@ import logging
 
 from tokenade.core.importer.cookie_extractor import SiteFilter, SITE_DETECTION
 from tokenade.handlers.base import AuthStatus
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,17 @@ class SessionPackager:
             logger.warning(f"Failed to collect fingerprint: {e}")
             return None
 
+    def _extract_email(self, cookies: List[Dict], site_name: Optional[str] = None) -> Optional[str]:
+        """Extract email from cookies (e.g., EMAIL cookie on Google/Labs sites)."""
+        for c in cookies:
+            name = c.get("name", "")
+            if name in ("EMAIL", "email"):
+                raw = c.get("value", "")
+                email = unquote(raw).strip('"')
+                if "@" in email:
+                    return email
+        return None
+
     def package(self,
                 cookies: List[Dict],
                 browser: str = "unknown",
@@ -134,7 +146,8 @@ class SessionPackager:
                 storage: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
                 source_browser_manager=None,
                 tls_profile: Optional[Dict] = None,
-                oauth_config: Optional[Dict] = None) -> Dict:
+                oauth_config: Optional[Dict] = None,
+                extra_cookies: Optional[List[Dict]] = None) -> Dict:
         """
         Package cookies into .tokenade format (v3.0).
 
@@ -185,6 +198,10 @@ class SessionPackager:
             if session_storage:
                 storage_data["session"][origin] = session_storage
 
+        email = self._extract_email(cookies, site_name)
+        if not email and extra_cookies:
+            email = self._extract_email(extra_cookies, site_name)
+
         package = {
             "version": self.TOKENADE_VERSION,
             "created_at": now,
@@ -208,6 +225,7 @@ class SessionPackager:
                 "critical_cookie_count": critical_count,
                 "local_storage_count": sum(len(v) for v in storage_data["local"].values()),
                 "session_storage_count": sum(len(v) for v in storage_data["session"].values()),
+                **({"email": email} if email else {}),
             },
         }
 

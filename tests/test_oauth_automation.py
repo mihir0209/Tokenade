@@ -8,7 +8,11 @@ import pytest
 
 from tokenade.plugin.api import PluginResult
 from tokenade.plugin.oauth_automation import OAuthAutomationPlugin
-from tokenade.plugins.google_flow.plugin import GoogleFlowPlugin
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / "Projects/tokenade-plugins/plugins/google-flow-handler"))
+from plugin import GoogleFlowPlugin
 
 
 class ConcreteOAuthPlugin(OAuthAutomationPlugin):

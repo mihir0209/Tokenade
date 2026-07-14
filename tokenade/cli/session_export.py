@@ -371,12 +371,21 @@ def cmd_export(args):
         return
 
     packager = SessionPackager()
+
+    extra_cookies = []
+    if cookies:
+        for c in cookies:
+            name = c.get("name", "")
+            if name in ("EMAIL", "email"):
+                extra_cookies.append(c)
+
     package = packager.package(
         cookies=cookies,
         browser=browser_name,
         profile=args.profile or "unknown",
         local_storage=local_storage if local_storage else None,
         session_storage=session_storage if session_storage else None,
+        extra_cookies=extra_cookies if extra_cookies else None,
     )
 
     site_name = package.get("site_name", "session")

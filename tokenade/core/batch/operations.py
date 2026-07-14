@@ -172,11 +172,13 @@ class BatchExporter:
                     continue
 
                 # Package session
+                extra = [c for c in site_cookies if c.get("name") in ("EMAIL", "email")]
                 package = packager.package(
                     cookies=site_cookies,
                     browser=browser,
                     profile=profile or "unknown",
-                    local_storage=None
+                    local_storage=None,
+                    extra_cookies=extra if extra else None,
                 )
 
                 # Save
