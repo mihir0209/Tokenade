@@ -26,6 +26,37 @@ from tokenade.cli.advanced import (
 )
 
 
+def cmd_run(args):
+    """Run an explicitly executable installed plugin from a JSON request."""
+    from tokenade.core.integration.plugin_runner import PluginRunner
+    from tokenade.plugin.api import PluginRunErrorCode
+
+    try:
+        with open(args.input, "r", encoding="utf-8") as handle:
+            request = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        envelope = {
+            "success": False,
+            "plugin": args.plugin_name,
+            "method": args.method or "",
+            "data": None,
+            "error": {
+                "code": PluginRunErrorCode.ARGUMENT_ERROR.value,
+                "message": f"invalid input file: {exc}",
+            },
+        }
+        print(json.dumps(envelope, ensure_ascii=False))
+        raise SystemExit(2)
+
+    result = PluginRunner().run(args.plugin_name, request, args.method)
+    print(json.dumps(result.to_dict(), ensure_ascii=False))
+    if result.success:
+        return
+    if result.error and result.error.code == PluginRunErrorCode.PLUGIN_FAILURE:
+        raise SystemExit(1)
+    raise SystemExit(2)
+
+
 def cmd_config(args):
     """Manage configuration (~/.tokenade/config.json)."""
     from tokenade.core.config import load_config, DEFAULTS
@@ -1164,6 +1195,12 @@ Commands:
     config_parser.add_argument("key", nargs="?", help="Config key")
     config_parser.add_argument("value", nargs="?", help="Config value")
 
+    # Generalized plugin execution
+    run_parser = subparsers.add_parser("run", help="Run an executable installed plugin")
+    run_parser.add_argument("plugin_name", help="Installed plugin name")
+    run_parser.add_argument("method", nargs="?", help="Plugin method (manifest default if omitted)")
+    run_parser.add_argument("--input", required=True, help="Flat JSON request file")
+
     # Extract
     extract_parser = subparsers.add_parser("extract", help="Extract tokens")
     extract_parser.add_argument("--visible", action="store_true", help="Show browser window")
@@ -2006,6 +2043,7 @@ Commands:
     stealth_test = stealth_sub.add_parser("test", help="Test stealth against detection sites")
     stealth_test.add_argument("--url", "-u", help="Custom test URL")
     stealth_test.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
+    stealth_test.add_argument("--output", "-o", help="Output file for HTML report")
 
     stealth_report = stealth_sub.add_parser("report", help="Generate stealth report")
     stealth_report.add_argument("--output", "-o", help="Output file for report")
@@ -2053,6 +2091,7 @@ def main():
     commands = {
         "setup": cmd_setup,
         "config": cmd_config,
+        "run": cmd_run,
         "extract": cmd_extract,
         "transfer": cmd_transfer,
         "test": cmd_test,
