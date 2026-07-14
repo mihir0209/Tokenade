@@ -7,8 +7,8 @@ from tokenade.plugin.base import SiteHandlerPlugin
 # ─── API Version Tests ─────────────────────────────────────
 
 class TestAPIVersion:
-    def test_api_version_is_1_1_0(self):
-        assert API_VERSION == "1.1.0"
+    def test_api_version_is_1_3_0(self):
+        assert API_VERSION == "1.3.0"
 
 
 # ─── SiteHandlerPlugin v1.1 Methods ────────────────────────

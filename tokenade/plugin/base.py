@@ -1,5 +1,5 @@
 """
-Abstract base classes for Tokenade plugins (API v1.0 / v1.1).
+Abstract base classes for Tokenade plugins (API v1.3).
 
 All plugins must subclass PluginBase and implement the required methods.
 Plugin types add specific capabilities on top of the base.
@@ -32,11 +32,11 @@ from tokenade.plugin.api import API_VERSION, PluginResult, PluginConfig
 
 
 class PluginBase(ABC):
-    """Base class for all Tokenade plugins (API v1.0).
+    """Base class for all Tokenade plugins (API v1.3).
 
     Every plugin MUST:
     - Subclass PluginBase (or a subclass of it)
-    - Set API_VERSION = "1.0.0"
+    - Set API_VERSION = "1.3.0"
     - Set name, version, description
 
     Lifecycle hooks:
@@ -47,7 +47,7 @@ class PluginBase(ABC):
     All methods should return PluginResult for consistent error handling.
     """
 
-    API_VERSION: str = "1.0.0"
+    API_VERSION: str = API_VERSION
     name: str = ""
     version: str = "0.0.0"
     description: str = ""

@@ -27,8 +27,8 @@ class TestAPIVersion:
         assert len(parts) == 3
         assert all(p.isdigit() for p in parts)
 
-    def test_api_version_is_1_0_0(self):
-        assert API_VERSION in ("1.0.0", "1.1.0")
+    def test_api_version_is_1_3_0(self):
+        assert API_VERSION == "1.3.0"
 
 
 # ─── PluginResult Tests ────────────────────────────────────
@@ -160,7 +160,7 @@ class TestPluginConfig:
 class TestPluginBase:
     def test_base_has_api_version(self):
         assert hasattr(PluginBase, "API_VERSION")
-        assert PluginBase.API_VERSION in ("1.0.0", "1.1.0")
+        assert PluginBase.API_VERSION == "1.3.0"
 
     def test_base_has_lifecycle(self):
         assert hasattr(PluginBase, "on_load")
@@ -176,7 +176,7 @@ class TestPluginBase:
         p = TestPlugin()
         info = p.get_info()
         assert info["name"] == "test"
-        assert info["api_version"] == "1.0.0"
+        assert info["api_version"] == "1.3.0"
 
     def test_base_get_metadata(self):
         class TestPlugin(PluginBase):
@@ -187,7 +187,7 @@ class TestPluginBase:
         p = TestPlugin()
         meta = p.get_metadata()
         assert meta.name == "test"
-        assert meta.api_version == "1.0.0"
+        assert meta.api_version == "1.3.0"
 
     def test_base_health_check_default(self):
         class TestPlugin(PluginBase):
@@ -321,7 +321,7 @@ class TestNotificationPlugin:
 class TestPluginLoaderAPI:
     def test_api_version_import(self):
         from tokenade.plugin import API_VERSION
-        assert API_VERSION in ("1.0.0", "1.1.0")
+        assert API_VERSION == "1.3.0"
 
     def test_plugin_result_import(self):
         from tokenade.plugin import PluginResult
