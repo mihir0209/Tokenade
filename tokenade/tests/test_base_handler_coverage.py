@@ -320,13 +320,25 @@ class TestHandlerRegistry(unittest.TestCase):
         self.assertEqual(HandlerRegistry.list_handlers(), [])
 
     def test_list_handlers_multiple(self):
+        class _SecondHandler(SiteHandler):
+            SITE_NAME = "second_site"
+            def check_auth_status(self):
+                return AuthStatus.UNKNOWN
+            def extract_tokens(self):
+                return []
+            def extract_cookies(self):
+                return []
+            def validate_session(self, cookies):
+                return True
+            def inject_session(self, session_data):
+                return True
+
         HandlerRegistry.register(ConcreteHandler)
-        from tokenade.handlers.google import GoogleHandler
-        HandlerRegistry.register(GoogleHandler)
+        HandlerRegistry.register(_SecondHandler)
         handlers = HandlerRegistry.list_handlers()
         self.assertEqual(len(handlers), 2)
         self.assertIn("test_site", handlers)
-        self.assertIn("google", handlers)
+        self.assertIn("second_site", handlers)
 
     def test_register_overwrite(self):
         HandlerRegistry.register(ConcreteHandler)

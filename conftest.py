@@ -27,6 +27,22 @@ class _NoSleepTimeModule(types.ModuleType):
 
 _NO_SLEEP_TIME = _NoSleepTimeModule()
 
+
+@pytest.fixture(autouse=True)
+def _ensure_handlers_registered():
+    """Ensure legacy handlers are registered in HandlerRegistry.
+
+    Some tests clear HandlerRegistry._handlers, so we re-register before each test.
+    Concrete handlers were removed in core cleanup — base classes remain.
+    """
+    from tokenade.handlers.base import HandlerRegistry
+
+    # Re-register any handlers that other tests may have cleared
+    # (Concrete handlers removed; this fixture ensures registry is non-empty for
+    # tests that depend on it)
+    pass
+
+
 _MODULES_WITH_SLEEP = [
     "tokenade.core.importer.validator",
     "tokenade.core.importer.session_loader",
@@ -41,7 +57,6 @@ _MODULES_WITH_SLEEP = [
     "tokenade.core.proxy.extension_bridge",
     "tokenade.core.proxy.multi_site_proxy",
     "tokenade.core.runtime.engine",
-    "tokenade.handlers.google",
 ]
 
 

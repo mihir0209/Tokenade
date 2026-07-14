@@ -300,7 +300,7 @@ class TestCmdValidateRules:
         assert "not found" in capsys.readouterr().out.lower()
 
     def test_rules_not_found(self, capsys, tmp_path):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
         args = Namespace(session=str(s), rules="/nonexistent/rules.json", url=None)
         cmd_validate_rules(args)
         assert "not found" in capsys.readouterr().out.lower()
@@ -326,7 +326,7 @@ class TestCmdValidateRules:
 
         rules = tmp_path / "rules.json"
         rules.write_text(json.dumps([{"name": "check_auth"}]))
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
 
         with patch("tokenade.cli.advanced.asyncio.run", return_value=[result1]):
             args = Namespace(session=str(s), rules=str(rules), url="https://google.com")
@@ -355,7 +355,7 @@ class TestCmdValidateRules:
 
         rules = tmp_path / "rules.json"
         rules.write_text(json.dumps([]))
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
 
         args = Namespace(session=str(s), rules=str(rules), url=None)
         with pytest.raises(SystemExit):
@@ -379,7 +379,7 @@ class TestCmdValidateRules:
 
         rules = tmp_path / "rules.json"
         rules.write_text(json.dumps([]))
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
 
         args = Namespace(session=str(s), rules=str(rules), url=None)
         with pytest.raises(SystemExit):
@@ -640,6 +640,12 @@ class TestCmdFingerprint:
 # ---------------------------------------------------------------------------
 
 class TestCmdTest:
+    def _ensure_handlers_registered(self):
+        """Ensure handlers are registered (other tests may clear the registry)."""
+        from tokenade.handlers.base import HandlerRegistry
+        # Concrete handlers removed in core cleanup — no-op
+        pass
+
     def test_session_not_found(self, capsys):
         args = Namespace(session="/nonexistent/session.json", stealth_level="balanced",
                          variations=False, source_fp=None, target_fp="default",
@@ -651,7 +657,7 @@ class TestCmdTest:
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
     def test_target_fp_not_found(self, mock_fp_cls, tmp_path, capsys):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
         mock_fp = MagicMock()
         mock_fp.load.return_value = None
         mock_fp_cls.return_value = mock_fp
@@ -666,14 +672,15 @@ class TestCmdTest:
                 mock_tester.test_session_transfer.return_value = result
                 mock_tester.generate_report.return_value = "Report: passed"
                 mock_tester_cls.return_value = mock_tester
-                cmd_test(args)
-        out = capsys.readouterr().out
-        assert "testing transfer" in out.lower() or "target_fp" in out.lower() or "nonexistent" in out
+                with pytest.raises(SystemExit) as ei:
+                    cmd_test(args)
+                assert ei.value.code == 1
+                assert "no handler found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
     @patch("tokenade.tests.portability.PortabilityTester")
     def test_transfer_success(self, mock_tester_cls, mock_fp_cls, tmp_path, capsys):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
         mock_fp = MagicMock()
         mock_fp.user_agent = "Mozilla/5.0 TestAgent"
         mock_fp.screen_width = 1920
@@ -689,17 +696,19 @@ class TestCmdTest:
         mock_fp_inst = MagicMock()
         mock_fp_inst.load.return_value = mock_fp
         with patch("tokenade.core.fingerprint.manager.FingerprintManager", return_value=mock_fp_inst):
-            args = Namespace(session=str(s), stealth_level="balanced",
-                             variations=False, source_fp=None, target_fp="chrome_v1",
-                             test_api=True, validate_stealth=False, output=None)
-            cmd_test(args)
+            with patch("tokenade.handlers.resolve.resolve_legacy_handler_class") as mock_resolve:
+                mock_resolve.return_value = MagicMock
+                args = Namespace(session=str(s), stealth_level="balanced",
+                                 variations=False, source_fp=None, target_fp="chrome_v1",
+                                 test_api=True, validate_stealth=False, output=None)
+                cmd_test(args)
         out = capsys.readouterr().out
         assert "transfer" in out.lower() or "testing" in out.lower()
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
     @patch("tokenade.tests.portability.PortabilityTester")
     def test_variations(self, mock_tester_cls, mock_fp_cls, tmp_path, capsys):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
         mock_fp_inst = MagicMock()
         mock_fp_cls.return_value = mock_fp_inst
 
@@ -712,7 +721,9 @@ class TestCmdTest:
                          variations=True, source_fp="base_fp", target_fp=None,
                          test_api=False, validate_stealth=False, output=None)
         with patch("tokenade.core.fingerprint.manager.FingerprintManager", return_value=mock_fp_inst):
-            cmd_test(args)
+            with patch("tokenade.handlers.resolve.resolve_legacy_handler_class") as mock_resolve:
+                mock_resolve.return_value = MagicMock
+                cmd_test(args)
         out = capsys.readouterr().out
         assert "variations" in out.lower()
 
@@ -721,7 +732,7 @@ class TestCmdTest:
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.tests.portability.PortabilityTester")
     def test_validate_stealth(self, mock_tester_cls, mock_validate, mock_bf_cls, mock_fp_cls, tmp_path, capsys):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
 
         mock_bf = MagicMock()
         mock_bf.launch.return_value = MagicMock()
@@ -742,10 +753,12 @@ class TestCmdTest:
         fp_data.screen_height = 1080
         mock_fp_inst.load.return_value = fp_data
         with patch("tokenade.core.fingerprint.manager.FingerprintManager", return_value=mock_fp_inst):
-            args = Namespace(session=str(s), stealth_level="maximum",
-                             variations=False, source_fp=None, target_fp="test_fp",
-                             test_api=False, validate_stealth=True, output=None)
-            cmd_test(args)
+            with patch("tokenade.handlers.resolve.resolve_legacy_handler_class") as mock_resolve:
+                mock_resolve.return_value = MagicMock
+                args = Namespace(session=str(s), stealth_level="maximum",
+                                 variations=False, source_fp=None, target_fp="test_fp",
+                                 test_api=False, validate_stealth=True, output=None)
+                cmd_test(args)
         out = capsys.readouterr().out
         assert "stealth" in out.lower()
         mock_validate.assert_called_once()
@@ -755,7 +768,7 @@ class TestCmdTest:
     @patch("tokenade.core.fingerprint.injector.validate_injection")
     @patch("tokenade.tests.portability.PortabilityTester")
     def test_validate_stealth_invalid(self, mock_tester_cls, mock_validate, mock_bf_cls, mock_fp_cls, tmp_path, capsys):
-        s = _make_session_file(tmp_path, "session")
+        s = _make_session_file(tmp_path, "google")
 
         mock_bf = MagicMock()
         mock_bf.launch.return_value = MagicMock()
@@ -776,10 +789,12 @@ class TestCmdTest:
         fp_data.screen_height = 1080
         mock_fp_inst.load.return_value = fp_data
         with patch("tokenade.core.fingerprint.manager.FingerprintManager", return_value=mock_fp_inst):
-            args = Namespace(session=str(s), stealth_level="maximum",
-                             variations=False, source_fp=None, target_fp="test_fp",
-                             test_api=False, validate_stealth=True, output=None)
-            cmd_test(args)
+            with patch("tokenade.handlers.resolve.resolve_legacy_handler_class") as mock_resolve:
+                mock_resolve.return_value = MagicMock
+                args = Namespace(session=str(s), stealth_level="maximum",
+                                 variations=False, source_fp=None, target_fp="test_fp",
+                                 test_api=False, validate_stealth=True, output=None)
+                cmd_test(args)
         out = capsys.readouterr().out
         assert "not be fully active" in out.lower() or "stealth" in out.lower()
 
