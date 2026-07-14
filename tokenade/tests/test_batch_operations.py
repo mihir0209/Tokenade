@@ -288,7 +288,6 @@ class TestBatchLoader:
         assert result.success is True
         assert result.sites_loaded == 1
         assert result.cookies_injected == 10
-        mock_loader.close.assert_called_once()
 
     @patch("tokenade.core.importer.session_loader.SessionLoader")
     def test_load_with_error(self, mock_loader_cls, tmp_path):

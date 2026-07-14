@@ -373,16 +373,17 @@ class SessionLoader:
 
             logger.error(f"Session load failed: {e}{hint}")
             result["error"] = str(e)
-            # Close browser on error to prevent process leak
+
+        finally:
+            self._last_result = result
+            # Always close browser to prevent sync/async Playwright conflicts
+            # and resource leaks in batch operations
             if self._browser:
                 try:
                     self._browser.close()
                     self._browser = None
                 except Exception:
                     pass
-
-        finally:
-            self._last_result = result
 
         return result
 

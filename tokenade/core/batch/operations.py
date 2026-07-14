@@ -321,8 +321,6 @@ class BatchLoader:
                     "error": str(e)
                 })
 
-        loader.close()
-
         return BatchLoadResult(
             success=len(errors) == 0,
             sites_loaded=sum(1 for r in results if r['status'] == 'success'),
