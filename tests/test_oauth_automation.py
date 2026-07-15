@@ -185,7 +185,7 @@ class TestGoogleFlowPlugin:
     def test_metadata(self):
         plugin = GoogleFlowPlugin()
         assert plugin.name == "google-flow-handler"
-        assert plugin.version == "1.0.0"
+        assert plugin.version == "1.0.3"
         assert plugin.author == "MiHiR"
 
     def test_target_config(self):
