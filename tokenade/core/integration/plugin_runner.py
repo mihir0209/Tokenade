@@ -32,14 +32,13 @@ class PluginRunner:
     ) -> PluginRunEnvelope:
         """Run a plugin and always return a serializable result envelope."""
         loader = PluginLoader(self.plugins_dir) if self.plugins_dir else PluginLoader()
-        try:
-            manifest = self._find_manifest(loader, plugin_name)
-        except ValueError as exc:
+        manifest = loader.get_manifest(plugin_name)
+        if manifest is None:
             return self._error(
                 plugin_name,
                 method or "",
                 PluginRunErrorCode.LOAD_ERROR,
-                str(exc),
+                f"plugin not installed: {plugin_name}",
             )
         selected_method = method or self._manifest_default_method(manifest)
 
@@ -70,7 +69,7 @@ class PluginRunner:
 
         loaded = None
         try:
-            loaded = loader.load_plugin(manifest)
+            loaded = loader.load_by_name(plugin_name)
             if loaded is None or loaded.instance is None:
                 return self._error(
                     plugin_name,
@@ -110,13 +109,6 @@ class PluginRunner:
         finally:
             if loaded is not None:
                 loader.unload(plugin_name)
-
-    @staticmethod
-    def _find_manifest(loader: PluginLoader, plugin_name: str) -> Dict[str, Any]:
-        for manifest in loader.discover(use_cache=False):
-            if manifest.get("name") == plugin_name:
-                return manifest
-        raise ValueError(f"plugin not installed: {plugin_name}")
 
     @staticmethod
     def _manifest_default_method(manifest: Dict[str, Any]) -> str:

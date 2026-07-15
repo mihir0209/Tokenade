@@ -45,6 +45,11 @@ from tokenade.plugin.api import (
     PluginConfig,
     PluginMetadata,
 )
+from tokenade.core.integration.plugin_loader import (
+    PluginLoader,
+    LoadedPlugin,
+    get_or_create_shared_loader,
+)
 
 __all__ = [
     "PluginBase",
@@ -61,4 +66,7 @@ __all__ = [
     "PluginResult",
     "PluginConfig",
     "PluginMetadata",
+    "PluginLoader",
+    "LoadedPlugin",
+    "get_or_create_shared_loader",
 ]

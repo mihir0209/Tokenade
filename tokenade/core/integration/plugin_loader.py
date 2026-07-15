@@ -196,6 +196,38 @@ class PluginLoader:
         
         return plugins
 
+    def get_manifest(self, name: str) -> Optional[Dict]:
+        """Read one installed plugin manifest without scanning all plugins.
+
+        Looks up ``~/.tokenade/plugins/<name>/plugin.json`` (or this loader's
+        plugins_dir). Returns None if the plugin is not installed.
+        """
+        plugin_dir = self.plugins_dir / name
+        manifest_path = plugin_dir / "plugin.json"
+        if not manifest_path.is_file():
+            return None
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            meta["_path"] = str(plugin_dir)
+            return meta
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to read plugin manifest %s: %s", manifest_path, e)
+            return None
+
+    def load_by_name(self, name: str) -> Optional[LoadedPlugin]:
+        """Load a single installed plugin by name (O(1) path lookup).
+
+        Prefer this over discover()+filter for programmatic use.
+        """
+        if name in self._loaded:
+            return self._loaded[name]
+        meta = self.get_manifest(name)
+        if meta is None:
+            logger.error("Plugin not installed: %s", name)
+            return None
+        return self.load_plugin(meta)
+
     def load_all(self) -> int:
         """Load all discovered plugins. Returns count loaded."""
         plugins = self.discover()

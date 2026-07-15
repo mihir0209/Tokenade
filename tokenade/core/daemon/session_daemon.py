@@ -50,7 +50,7 @@ class SessionEntry:
     """A session the daemon watches and refreshes."""
     path: str
     site_name: str = ""
-    browser: str = "chrome"
+    browser: str = "cloak"
     refresh_before_hours: float = 2.0
     target_url: str = ""
     enabled: bool = True
@@ -255,7 +255,7 @@ class SessionDaemon:
 
     # ── Config Management ──────────────────────────────────────
 
-    def add_session(self, session_path: str, browser: str = "chrome",
+    def add_session(self, session_path: str, browser: str = "cloak",
                     refresh_before_hours: float = 2.0, target_url: str = "",
                     site_name: str = "") -> bool:
         """Add a session to the watch list."""

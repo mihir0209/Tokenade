@@ -232,12 +232,13 @@ def cmd_plugin(args):
                 print(f"      • {c.get('_registry', '?')} (v{c.get('version', '?')})")
             print(f"   Use: tokenade plugin install {args.name} --registry <name>")
             return
+        before = {p["name"] for p in loader.discover()}
         if registry.install(args.name, registry_name=reg_name):
             from tokenade.core.integration.plugin_verifier import PluginVerifier
             verifier = PluginVerifier()
             verifier.register_plugin(args.name)
-            installed = loader.discover()
-            deps_installed = [p["name"] for p in installed if p["name"] != args.name]
+            after = {p["name"] for p in loader.discover()}
+            deps_installed = sorted(after - before)
             if deps_installed:
                 print(f"   📦 Dependencies installed: {', '.join(deps_installed)}")
             print("   ✅ Plugin installed successfully")
@@ -1781,7 +1782,7 @@ Commands:
 
     # Launch Undetectable Browser
     launch_parser = subparsers.add_parser("launch", help="Launch undetectable system browser with CDP")
-    launch_parser.add_argument("--browser", "-b", default="chrome", help="Browser to launch (chrome, firefox, brave, edge, vivaldi)")
+    launch_parser.add_argument("--browser", "-b", default="cloak", help="Browser to launch (cloak, firefox, brave, edge, vivaldi, chrome)")
     launch_parser.add_argument("--session", "-s", help="Session file to inject cookies from")
     launch_parser.add_argument("--url", "-u", help="URL to navigate to after injection")
     launch_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
@@ -1814,7 +1815,7 @@ Commands:
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
     refresh_browser_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
-    refresh_browser_parser.add_argument("--browser", "-b", default="chrome", help="Browser to use (chrome, firefox, brave, edge, vivaldi)")
+    refresh_browser_parser.add_argument("--browser", "-b", default="cloak", help="Browser to use (cloak, firefox, brave, edge, vivaldi, chrome)")
     refresh_browser_parser.add_argument("--url", "-u", help="Target URL (auto-detected from cookies if not specified)")
     refresh_browser_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
     refresh_browser_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
@@ -1856,7 +1857,7 @@ Commands:
     accounts_refresh = accounts_subparsers.add_parser("refresh", help="Refresh all/specific sessions")
     accounts_refresh.add_argument("--sessions-dir", "-d", default=".", help="Directory to scan (default: current)")
     accounts_refresh.add_argument("--site", "-s", help="Filter by site name")
-    accounts_refresh.add_argument("--browser", "-b", default="chrome", help="Browser to use for refresh (chrome, firefox, brave, edge, vivaldi)")
+    accounts_refresh.add_argument("--browser", "-b", default="cloak", help="Browser to use for refresh (cloak, firefox, brave, edge, vivaldi, chrome)")
     accounts_refresh.add_argument("--files", nargs="*", help="Specific session files to refresh")
     accounts_refresh.add_argument("--port", "-p", type=int, default=9222, help="Starting CDP port")
     accounts_refresh.add_argument("--visible", action="store_true", help="Show browser window")
@@ -1933,7 +1934,7 @@ Commands:
     # daemon add
     daemon_add = daemon_subparsers.add_parser("add", help="Add session to watch list")
     daemon_add.add_argument("session", help="Session file to watch")
-    daemon_add.add_argument("--browser", "-b", default="chrome", help="Browser for refresh")
+    daemon_add.add_argument("--browser", "-b", default="cloak", help="Browser for refresh (cloak default)")
     daemon_add.add_argument(
         "--refresh-before", type=float, default=2.0,
         help="Refresh this many hours before expiry (default: 2.0)"

@@ -74,8 +74,11 @@ class TestCachePerformance:
         plugins = [{"name": f"p{i}", "version": "1.0", "type": "handler",
                     "entry_point": "plugin.py", "description": f"P{i}"}
                    for i in range(50)]
+        # Registry name is "default" when constructed via registry_url, so the
+        # on-disk cache file is .cache_default.json (not .registry_cache.json).
+        cache_file = reg._cache_file
         cache = {"timestamp": _time.time(), "plugins": plugins}
-        (perf_plugins / ".registry_cache.json").write_text(json.dumps(cache))
+        cache_file.write_text(json.dumps(cache))
 
         # Cached fetch
         start = time.monotonic()

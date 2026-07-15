@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BrowserLaunchConfig:
     """Configuration for system browser launch."""
-    browser: str = "chrome"  # chrome, firefox, brave, edge
+    # Automation default is cloak (handled by CLI / BrowserManager).
+    # This launcher is for system browsers only when explicitly requested.
+    browser: str = "brave"  # brave, firefox, edge, chrome, vivaldi (chrome last choice)
     visible: bool = True  # Show browser window
     port: int = 9222  # CDP debugging port
     profile_dir: Optional[str] = None  # Custom profile directory
@@ -241,14 +243,10 @@ class SystemBrowserLauncher:
         try:
             from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
             discovery = BrowserProfileDiscovery()
-            profiles = discovery.discover_all()
-            # Filter to requested browser, prefer default profile
-            matches = [p for p in profiles if p.browser.lower() == browser.lower()]
-            if not matches:
-                return None
-            default = [p for p in matches if p.is_default]
-            profile = default[0] if default else matches[0]
-            return profile.path
+            profile = discovery.get_default_profile(browser)
+            if profile is not None:
+                return profile.path
+            return None
         except Exception as e:
             logger.warning(f"BrowserProfileDiscovery failed for {browser}: {e}, falling back to static paths")
             return self._get_default_profile_dir_static(browser)
@@ -362,17 +360,21 @@ class SystemBrowserLauncher:
             logger.warning(f"Profile copy failed: {e}")
             return False
 
-    def find_browser(self, browser: str = "chrome") -> Optional[str]:
+    def find_browser(self, browser: str = "brave") -> Optional[str]:
         """
         Find system browser executable path.
 
         Args:
-            browser: Browser name (chrome, firefox, brave, edge)
+            browser: Browser name (brave, firefox, edge, chrome, vivaldi)
 
         Returns:
             Path to browser executable or None
         """
         os_type = platform.system()
+        name = (browser or "brave").lower()
+        if name in ("cloak", "cloakbrowser"):
+            logger.info("CloakBrowser is not a system executable; use CloakBrowserBackend")
+            return None
 
         path_map = {
             "chrome": self.CHROME_PATHS,
@@ -384,7 +386,11 @@ class SystemBrowserLauncher:
             "vivaldi": self.VIVALDI_PATHS,
         }
 
-        paths = path_map.get(browser.lower(), self.CHROME_PATHS)
+        # Prefer requested browser; do not silently fall back to Chrome paths
+        paths = path_map.get(name)
+        if paths is None:
+            logger.warning("Unknown browser %s", browser)
+            return None
         for path in paths.get(os_type, []):
             if os.path.exists(path):
                 logger.info(f"Found {browser} at: {path}")
@@ -398,7 +404,7 @@ class SystemBrowserLauncher:
             "brave": "brave-browser",
             "edge": "microsoft-edge",
             "vivaldi": "vivaldi",
-        }.get(browser.lower(), browser)
+        }.get(name, name)
 
         found = shutil.which(which_name)
         if found:
@@ -410,7 +416,7 @@ class SystemBrowserLauncher:
 
     def launch(
         self,
-        browser: str = "chrome",
+        browser: str = "brave",
         visible: bool = True,
         port: int = 9222,
         profile_dir: Optional[str] = None,
@@ -424,7 +430,7 @@ class SystemBrowserLauncher:
         Launch system browser with CDP debugging enabled.
 
         Args:
-            browser: Browser name (chrome, firefox, brave, edge)
+            browser: Browser name (brave, firefox, edge, chrome, vivaldi)
             visible: Show browser window (False for headless)
             port: CDP debugging port
             profile_dir: Custom profile directory (auto-created if None)

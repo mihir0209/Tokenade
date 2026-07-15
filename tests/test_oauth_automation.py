@@ -202,7 +202,9 @@ class TestGoogleFlowPlugin:
 
     def test_dependencies(self):
         plugin = GoogleFlowPlugin()
-        assert "google-handler" in plugin.dependencies
+        # google-handler was folded into generic-handler; google-flow-handler
+        # now stands alone with no hard plugin dependency.
+        assert plugin.dependencies == []
 
     def test_process_missing_file(self):
         plugin = GoogleFlowPlugin()

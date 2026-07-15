@@ -105,8 +105,13 @@ class BrowserProfileDiscovery:
         },
     }
 
-    def __init__(self):
+    SUPPORTED_BROWSERS = ("chrome", "firefox", "edge", "brave", "vivaldi")
+
+    def __init__(self, cache_ttl: float = 60.0):
         self.os_type = platform.system()
+        self._cache_ttl = cache_ttl
+        self._browser_cache: Dict[str, List[BrowserProfile]] = {}
+        self._browser_cache_time: Dict[str, float] = {}
 
     def _expand_path(self, path: str) -> str:
         """Expand environment variables and user home."""
@@ -118,43 +123,70 @@ class BrowserProfileDiscovery:
         """Check if a path exists after expansion."""
         return os.path.exists(self._expand_path(path))
 
-    def discover_chrome_profiles(self) -> List[BrowserProfile]:
-        """Discover Chrome/Chromium profiles."""
+    def clear_cache(self) -> None:
+        """Drop cached profile discovery results."""
+        self._browser_cache.clear()
+        self._browser_cache_time.clear()
+
+    def _cache_fresh(self, browser: str) -> bool:
+        import time as _time
+        if browser not in self._browser_cache:
+            return False
+        age = _time.time() - self._browser_cache_time.get(browser, 0.0)
+        return age < self._cache_ttl
+
+    def _discover_chromium_family(self, browser: str) -> List[BrowserProfile]:
+        """Discover Chromium-family profiles (chrome, edge, brave, vivaldi)."""
         profiles = []
-        paths = self.BROWSER_PATHS["chrome"].get(self.os_type, [])
+        paths = self.BROWSER_PATHS.get(browser, {}).get(self.os_type, [])
 
         for base_path in paths:
             expanded = self._expand_path(base_path)
             if not os.path.exists(expanded):
                 continue
 
-            # Chrome stores profiles as subdirectories
-            # "Default" is the default profile
-            # "Profile 1", "Profile 2", etc. are additional profiles
             default_path = os.path.join(expanded, "Default")
             if os.path.exists(default_path):
                 profiles.append(BrowserProfile(
                     name="Default",
                     path=default_path,
-                    browser="chrome",
+                    browser=browser,
                     is_default=True,
                 ))
 
-            # Find other profiles
             for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
                 name = os.path.basename(profile_dir)
                 profiles.append(BrowserProfile(
                     name=name,
                     path=profile_dir,
-                    browser="chrome",
+                    browser=browser,
                     is_default=False,
                 ))
 
-        logger.info(f"Discovered {len(profiles)} Chrome profiles")
+        logger.info("Discovered %d %s profiles", len(profiles), browser)
         return profiles
+
+    def discover_chrome_profiles(self) -> List[BrowserProfile]:
+        """Discover Chrome/Chromium profiles."""
+        return self.discover_browser("chrome")
 
     def discover_firefox_profiles(self) -> List[BrowserProfile]:
         """Discover Firefox profiles via profiles.ini."""
+        return self.discover_browser("firefox")
+
+    def discover_edge_profiles(self) -> List[BrowserProfile]:
+        """Discover Edge profiles (same structure as Chrome)."""
+        return self.discover_browser("edge")
+
+    def discover_brave_profiles(self) -> List[BrowserProfile]:
+        """Discover Brave profiles (same structure as Chrome)."""
+        return self.discover_browser("brave")
+
+    def discover_vivaldi_profiles(self) -> List[BrowserProfile]:
+        """Discover Vivaldi profiles (same structure as Chrome)."""
+        return self.discover_browser("vivaldi")
+
+    def _scan_firefox(self) -> List[BrowserProfile]:
         profiles = []
         paths = self.BROWSER_PATHS["firefox"].get(self.os_type, [])
 
@@ -163,7 +195,6 @@ class BrowserProfileDiscovery:
             if not os.path.exists(expanded):
                 continue
 
-            # Firefox uses profiles.ini to track profiles
             profiles_ini = os.path.join(os.path.dirname(expanded), "profiles.ini")
             if not os.path.exists(profiles_ini):
                 profiles_ini = os.path.join(expanded, "profiles.ini")
@@ -195,7 +226,6 @@ class BrowserProfileDiscovery:
                 except Exception as e:
                     logger.warning(f"Failed to parse Firefox profiles.ini: {e}")
             else:
-                # Fallback: scan directories directly
                 for profile_dir in glob.glob(os.path.join(expanded, "*.default*")):
                     name = os.path.basename(profile_dir)
                     profiles.append(BrowserProfile(
@@ -205,128 +235,54 @@ class BrowserProfileDiscovery:
                         is_default="default" in name.lower(),
                     ))
 
-        logger.info(f"Discovered {len(profiles)} Firefox profiles")
+        logger.info("Discovered %d Firefox profiles", len(profiles))
         return profiles
 
-    def discover_edge_profiles(self) -> List[BrowserProfile]:
-        """Discover Edge profiles (same structure as Chrome)."""
-        profiles = []
-        paths = self.BROWSER_PATHS["edge"].get(self.os_type, [])
+    def discover_browser(self, browser: str, use_cache: bool = True) -> List[BrowserProfile]:
+        """Discover profiles for a single browser (cached).
 
-        for base_path in paths:
-            expanded = self._expand_path(base_path)
-            if not os.path.exists(expanded):
-                continue
+        Prefer this over discover_all() when only one browser is needed.
+        """
+        import time as _time
 
-            default_path = os.path.join(expanded, "Default")
-            if os.path.exists(default_path):
-                profiles.append(BrowserProfile(
-                    name="Default",
-                    path=default_path,
-                    browser="edge",
-                    is_default=True,
-                ))
+        key = (browser or "").lower()
+        if key == "chromium":
+            key = "chrome"
+        if key not in self.SUPPORTED_BROWSERS:
+            return []
 
-            for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
-                name = os.path.basename(profile_dir)
-                profiles.append(BrowserProfile(
-                    name=name,
-                    path=profile_dir,
-                    browser="edge",
-                    is_default=False,
-                ))
+        if use_cache and self._cache_fresh(key):
+            return list(self._browser_cache[key])
 
-        logger.info(f"Discovered {len(profiles)} Edge profiles")
-        return profiles
+        if key == "firefox":
+            profiles = self._scan_firefox()
+        else:
+            profiles = self._discover_chromium_family(key)
 
-    def discover_brave_profiles(self) -> List[BrowserProfile]:
-        """Discover Brave profiles (same structure as Chrome)."""
-        profiles = []
-        paths = self.BROWSER_PATHS.get("brave", {}).get(self.os_type, [])
+        self._browser_cache[key] = profiles
+        self._browser_cache_time[key] = _time.time()
+        return list(profiles)
 
-        for base_path in paths:
-            expanded = self._expand_path(base_path)
-            if not os.path.exists(expanded):
-                continue
-
-            default_path = os.path.join(expanded, "Default")
-            if os.path.exists(default_path):
-                profiles.append(BrowserProfile(
-                    name="Default",
-                    path=default_path,
-                    browser="brave",
-                    is_default=True,
-                ))
-
-            for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
-                name = os.path.basename(profile_dir)
-                profiles.append(BrowserProfile(
-                    name=name,
-                    path=profile_dir,
-                    browser="brave",
-                    is_default=False,
-                ))
-
-        logger.info(f"Discovered {len(profiles)} Brave profiles")
-        return profiles
-
-    def discover_vivaldi_profiles(self) -> List[BrowserProfile]:
-        """Discover Vivaldi profiles (same structure as Chrome)."""
-        profiles = []
-        paths = self.BROWSER_PATHS.get("vivaldi", {}).get(self.os_type, [])
-
-        for base_path in paths:
-            expanded = self._expand_path(base_path)
-            if not os.path.exists(expanded):
-                continue
-
-            default_path = os.path.join(expanded, "Default")
-            if os.path.exists(default_path):
-                profiles.append(BrowserProfile(
-                    name="Default",
-                    path=default_path,
-                    browser="vivaldi",
-                    is_default=True,
-                ))
-
-            for profile_dir in glob.glob(os.path.join(expanded, "Profile *")):
-                name = os.path.basename(profile_dir)
-                profiles.append(BrowserProfile(
-                    name=name,
-                    path=profile_dir,
-                    browser="vivaldi",
-                    is_default=False,
-                ))
-
-        logger.info(f"Discovered {len(profiles)} Vivaldi profiles")
-        return profiles
-
-    def discover_all(self) -> Dict[str, List[BrowserProfile]]:
-        """Discover all browser profiles."""
+    def discover_all(self, use_cache: bool = True) -> Dict[str, List[BrowserProfile]]:
+        """Discover all browser profiles (per-browser cache)."""
         return {
-            "chrome": self.discover_chrome_profiles(),
-            "firefox": self.discover_firefox_profiles(),
-            "edge": self.discover_edge_profiles(),
-            "brave": self.discover_brave_profiles(),
-            "vivaldi": self.discover_vivaldi_profiles(),
+            name: self.discover_browser(name, use_cache=use_cache)
+            for name in self.SUPPORTED_BROWSERS
         }
 
     def get_profile(self, browser: str, name: str) -> Optional[BrowserProfile]:
         """Get a specific profile by browser and name."""
-        all_profiles = self.discover_all()
-        for profile in all_profiles.get(browser, []):
+        for profile in self.discover_browser(browser):
             if profile.name == name:
                 return profile
         return None
 
     def get_default_profile(self, browser: str) -> Optional[BrowserProfile]:
-        """Get the default profile for a browser."""
-        all_profiles = self.discover_all()
-        for profile in all_profiles.get(browser, []):
+        """Get the default profile for a browser (single-browser scan only)."""
+        profiles = self.discover_browser(browser)
+        for profile in profiles:
             if profile.is_default:
                 return profile
-        # Fallback to first profile
-        profiles = all_profiles.get(browser, [])
         return profiles[0] if profiles else None
 
     def list_profiles_text(self) -> str:

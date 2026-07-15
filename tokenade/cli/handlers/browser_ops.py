@@ -18,10 +18,10 @@ from tokenade.cli.handlers.session_ops import (  # noqa: F401
 
 
 def cmd_launch(args):
-    """Launch undetectable system browser with CDP."""
+    """Launch undetectable browser with CDP (CloakBrowser default)."""
     import asyncio
 
-    from tokenade.core.browser.undetectable import SystemBrowserLauncher
+    from tokenade.core.browser.undetectable import SystemBrowserLauncher, BrowserProcess
     from tokenade.core.browser.cdp_connection import CDPConnection, get_undetectable_stealth_script
     from tokenade.core.importer.session_packager import SessionPackager
 
@@ -29,13 +29,10 @@ def cmd_launch(args):
     print("TOKENADE - Undetectable Browser")
     print("=" * 80)
 
-    launcher = SystemBrowserLauncher()
-
-    # Find browser
-    browser_path = launcher.find_browser(args.browser)
-    if not browser_path:
-        print(f"❌ {args.browser} not found. Install it or specify --browser-path")
-        return
+    browser_name = (getattr(args, "browser", None) or "cloak").lower()
+    if browser_name in ("cloakbrowser", "default"):
+        browser_name = "cloak"
+    args.browser = browser_name
 
     # --headless wins; otherwise default to visible UI
     visible = bool(getattr(args, "visible", False)) or not bool(getattr(args, "headless", False))
@@ -43,66 +40,102 @@ def cmd_launch(args):
         visible = False
     args.visible = visible  # normalize for rest of function
 
-    print(f"\n🌐 Browser: {args.browser} ({browser_path})")
-    print(f"🔌 CDP Port: {args.port}")
-    print(f"👁️  Visible: {args.visible}")
-
     # Resolve upstream proxy
     upstream_proxy = _resolve_upstream_proxy(args)
     if upstream_proxy:
         print(f"🔀 Upstream proxy: {upstream_proxy}")
 
     try:
-        # Profile lock only matters when reusing the *default system* profile.
-        # Custom --profile-dir or --session uses a separate user-data-dir and can
-        # run alongside an open browser (feature testing / multi-profile).
-        using_isolated_profile = bool(args.profile_dir or args.session)
-        if not using_isolated_profile:
-            import subprocess as _sp
-            _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
-            try:
-                _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
-                _is_running = False
-                if platform.system() != "Windows" and _running.returncode == 0:
-                    _is_running = int(_running.stdout.strip()) > 0
-                elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
-                    _is_running = True
-                if _is_running:
-                    print(f"   ⚠️  {args.browser} is already running. Default profile is locked.")
-                    print(f"   Close all {args.browser} windows first, then retry.")
-                    print(f"   Or use --profile-dir / --session for an isolated profile.")
-                    print(f"   Or start {args.browser} with: {args.browser} --remote-debugging-port={args.port}")
-                    return
-            except Exception:
-                pass  # If we can't check, just try to launch
-
-        # Copy real profile only when NO session file (cookies come from profile)
-        # When session file IS provided, use a clean isolated profile (session is authoritative)
-        profile_dir = args.profile_dir
-        if args.session and not profile_dir:
-            import tempfile
-            profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{args.browser}_clean_")
-            print(f"   📁 Clean profile (session inject): {profile_dir}")
-            print(f"   💡 Pass --profile-dir PATH to reuse or pin a profile directory.")
-        elif not profile_dir and not args.session:
-            real_dir = launcher._get_default_profile_dir(args.browser)
-            if real_dir:
+        # --- CloakBrowser path (project default) ---
+        if browser_name == "cloak" and not getattr(args, "no_cloak", False):
+            from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
+            backend = CloakBrowserBackend()
+            if not backend.is_available():
+                print("❌ CloakBrowser not available. Install: pip install cloakbrowser && tokenade cloak install")
+                print("   Or use: tokenade launch --browser firefox|brave|edge|chrome")
+                return
+            print(f"\n🌐 Browser: cloak (CloakBrowser)")
+            print(f"🔌 CDP Port: {args.port}")
+            print(f"👁️  Visible: {args.visible}")
+            profile_dir = args.profile_dir or ""
+            if args.session and not profile_dir:
                 import tempfile
-                profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{args.browser}_")
-                print(f"   📁 Copying profile from: {real_dir}")
-                if launcher._copy_profile(args.browser, profile_dir):
-                    print(f"   ✅ Profile copied to: {profile_dir}")
-                else:
-                    print(f"   ⚠️  Profile copy failed, using fresh profile")
+                profile_dir = tempfile.mkdtemp(prefix="tokenade_cloak_clean_")
+                print(f"   📁 Clean profile (session inject): {profile_dir}")
+            proc = backend.serve_cdp(
+                port=args.port,
+                proxy=upstream_proxy,
+                headless=not args.visible,
+            )
+            browser = BrowserProcess(
+                process=proc,
+                port=args.port,
+                profile_dir=profile_dir or "(cloak)",
+                browser_name="cloak",
+            )
+        else:
+            # --- System browser path (explicit override) ---
+            launcher = SystemBrowserLauncher()
+            system_browser = browser_name
+            if system_browser == "cloak":
+                # --no-cloak with default name: fall back to brave (not chrome)
+                system_browser = "brave"
+                args.browser = system_browser
 
-        browser = launcher.launch(
-            browser=args.browser,
-            visible=args.visible,
-            port=args.port,
-            profile_dir=profile_dir,
-            extra_args=args.extra_args.split(",") if args.extra_args else [],
-            upstream_proxy=upstream_proxy,
-        )
+            browser_path = getattr(args, "browser_path", None) or launcher.find_browser(system_browser)
+            if not browser_path:
+                print(f"❌ {system_browser} not found. Install it or specify --browser-path")
+                return
+
+            print(f"\n🌐 Browser: {system_browser} ({browser_path})")
+            print(f"🔌 CDP Port: {args.port}")
+            print(f"👁️  Visible: {args.visible}")
+
+            # Profile lock only matters when reusing the *default system* profile.
+            using_isolated_profile = bool(args.profile_dir or args.session)
+            if not using_isolated_profile:
+                import subprocess as _sp
+                _ps_cmd = ["pgrep", "-c", system_browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {system_browser}.exe"]
+                try:
+                    _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
+                    _is_running = False
+                    if platform.system() != "Windows" and _running.returncode == 0:
+                        _is_running = int(_running.stdout.strip()) > 0
+                    elif platform.system() == "Windows" and system_browser.lower() in _running.stdout.lower():
+                        _is_running = True
+                    if _is_running:
+                        print(f"   ⚠️  {system_browser} is already running. Default profile is locked.")
+                        print(f"   Close all {system_browser} windows first, then retry.")
+                        print(f"   Or use --profile-dir / --session for an isolated profile.")
+                        return
+                except Exception:
+                    pass
+
+            profile_dir = args.profile_dir
+            if args.session and not profile_dir:
+                import tempfile
+                profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_clean_")
+                print(f"   📁 Clean profile (session inject): {profile_dir}")
+                print(f"   💡 Pass --profile-dir PATH to reuse or pin a profile directory.")
+            elif not profile_dir and not args.session:
+                real_dir = launcher._get_default_profile_dir(system_browser)
+                if real_dir:
+                    import tempfile
+                    profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_")
+                    print(f"   📁 Copying profile from: {real_dir}")
+                    if launcher._copy_profile(system_browser, profile_dir):
+                        print(f"   ✅ Profile copied to: {profile_dir}")
+                    else:
+                        print(f"   ⚠️  Profile copy failed, using fresh profile")
+
+            browser = launcher.launch(
+                browser=system_browser,
+                visible=args.visible,
+                port=args.port,
+                profile_dir=profile_dir,
+                extra_args=args.extra_args.split(",") if args.extra_args else [],
+                upstream_proxy=upstream_proxy,
+            )
 
         print(f"\n✅ Browser launched (PID: {browser.pid})")
         print(f"   CDP URL: {browser.cdp_url}")
@@ -1091,7 +1124,7 @@ def _accounts_refresh(manager, args):
             return
 
     # Refresh each session
-    browser = args.browser or "chrome"
+    browser = args.browser or "cloak"
     headless = not args.visible
     wait = args.wait
     port = args.port

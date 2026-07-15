@@ -797,20 +797,40 @@ class PluginRegistry:
     def _copy_plugin_local(
         self, name: str, files: List[str], registry: Dict, target_dir: Path
     ) -> bool:
-        """Copy plugin files from a local registry directory."""
+        """Copy plugin files from a local registry directory.
+
+        Copies the full plugin tree (except caches) so nested assets like
+        ``sites/*.json`` are included. Explicit ``files`` remain a fallback
+        for partial layouts.
+        """
         src_dir = Path(registry["source"]) / "plugins" / name
         if not src_dir.exists():
             logger.error(f"Plugin source not found in local registry: {src_dir}")
             return False
 
+        if not (src_dir / "plugin.json").is_file() or not (src_dir / "plugin.py").is_file():
+            logger.error(f"Required plugin.json/plugin.py missing in {src_dir}")
+            return False
+
+        skip_names = {"__pycache__", ".pytest_cache", ".git", ".mypy_cache", "node_modules"}
+        for path in src_dir.rglob("*"):
+            if any(part in skip_names or part.endswith(".pyc") for part in path.parts):
+                continue
+            rel = path.relative_to(src_dir)
+            dst = target_dir / rel
+            if path.is_dir():
+                dst.mkdir(parents=True, exist_ok=True)
+            elif path.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dst)
+
+        # Ensure any explicitly listed files were considered (compat)
         for filename in files:
             src = src_dir / filename
-            dst = target_dir / filename
-            if src.exists():
+            if src.is_file():
+                dst = target_dir / filename
+                dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
-            elif filename in ("plugin.json", "plugin.py"):
-                logger.error(f"Required file missing in local registry: {src}")
-                return False
         return True
 
     def _download_plugin_remote(self, name: str, files: List[str], target_dir: Path) -> bool:
@@ -830,6 +850,7 @@ class PluginRegistry:
                 req = urllib.request.Request(file_url, headers={"User-Agent": "Tokenade/2.0"})
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     content = resp.read()
+                target_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(target_path, "wb") as f:
                     f.write(content)
             except (urllib.error.URLError, OSError) as e:

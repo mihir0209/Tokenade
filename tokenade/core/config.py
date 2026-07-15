@@ -6,6 +6,7 @@ Config file location: ~/.tokenade/config.json
 Supported options:
 - default_browser: Default browser to export from (e.g., "brave", "firefox")
 - default_profile: Default browser profile name
+- automation_browser: Default automation browser ("cloak" preferred; chrome last)
 - stealth_level: Default stealth level ("basic", "advanced", "maximum")
 - visible: Show browser window by default (true/false)
 - auto_validate: Auto-validate sessions after export (true/false)
@@ -29,8 +30,9 @@ DEFAULT_CONFIG_DIR = Path.home() / ".tokenade"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 
 DEFAULTS = {
-    "default_browser": None,
+    "default_browser": None,  # export/source profile browser (user's real browser)
     "default_profile": None,
+    "automation_browser": "cloak",  # launch / refresh / daemon automation
     "stealth_level": "maximum",
     "visible": False,
     "auto_validate": True,

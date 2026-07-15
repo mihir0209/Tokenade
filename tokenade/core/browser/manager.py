@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BrowserConfig:
     """Configuration for browser launch."""
-    browser_type: str = "chromium"  # chromium, firefox, webkit
+    # Default automation engine is CloakBrowser (chromium-compatible).
+    # Use browser_type="playwright"/"chromium" only as explicit override/fallback.
+    browser_type: str = "cloakbrowser"  # cloakbrowser, chromium, firefox, webkit
     headless: bool = True
     user_data_dir: Optional[str] = None
     executable_path: Optional[str] = None
@@ -28,6 +30,7 @@ class BrowserConfig:
     ignore_default_args: List[str] = field(default_factory=list)
     env: Optional[Dict[str, str]] = None
     proxy: Optional[Dict[str, str]] = None
+    force_playwright: bool = False  # skip CloakBrowser even if available
 
     # Anti-detection flags
     disable_blink_features: bool = True
@@ -119,69 +122,14 @@ class PlaywrightBrowserManager(BrowserManager):
         self._page = None
 
     def launch(self) -> Any:
-        """Launch browser using Playwright."""
+        """Launch browser: CloakBrowser first (default), Playwright fallback."""
         try:
-            from playwright.sync_api import sync_playwright
-
-            self._playwright = sync_playwright().start()
-
-            launch_options = {
-                "headless": self.config.headless,
-                "args": self.config.args,
-                "ignore_default_args": self.config.ignore_default_args,
-            }
-
-            if self.config.executable_path:
-                launch_options["executable_path"] = self.config.executable_path
-            if self.config.channel:
-                launch_options["channel"] = self.config.channel
-            if self.config.proxy:
-                launch_options["proxy"] = self.config.proxy
-
-            browser_type = getattr(self._playwright, self.config.browser_type)
-
-            if self.config.user_data_dir:
-                # Persistent context (saves session data)
-                self._context = browser_type.launch_persistent_context(
-                    user_data_dir=self.config.user_data_dir,
-                    **launch_options
-                )
-                self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
-            else:
-                # Non-persistent context
-                self._browser = browser_type.launch(**launch_options)
-                context_options = {
-                    "viewport": self.config.viewport,
-                }
-                if self.config.env:
-                    context_options["env"] = self.config.env
-                self._context = self._browser.new_context(**context_options)
-                self._page = self._context.new_page()
-
-            # Inject stealth script if fingerprint provided
-            if self.config.fingerprint:
-                try:
-                    from ..fingerprint.injector import inject_stealth_script
-                    from ..fingerprint.manager import BrowserFingerprint
-
-                    if isinstance(self.config.fingerprint, dict):
-                        fingerprint = BrowserFingerprint.from_dict(self.config.fingerprint)
-                    else:
-                        fingerprint = self.config.fingerprint
-
-                    inject_stealth_script(self, fingerprint, self.config.stealth_level)
-                    logger.info(f"Stealth script injected at level: {self.config.stealth_level}")
-                except Exception as e:
-                    logger.warning(f"Failed to inject stealth script: {e}")
-
-            logger.info(f"Browser launched: {self.config.browser_type}, headless={self.config.headless}")
-            return self._page
-
+            return self._launch_impl()
         except Exception as e:
             error_msg = str(e).lower()
             hint = ""
             if "executable path" in error_msg or "not found" in error_msg:
-                hint = " Install browser: playwright install chromium"
+                hint = " Install: tokenade cloak install  OR  playwright install chromium"
             elif "timeout" in error_msg:
                 hint = " Browser launch timed out. Try closing other browser instances."
             elif "already connected" in error_msg or "address in use" in error_msg:
@@ -190,10 +138,120 @@ class PlaywrightBrowserManager(BrowserManager):
                 hint = " Check file permissions for browser profile directory."
             elif "playwright" in error_msg and "not installed" in error_msg:
                 hint = " Run: pip install playwright && playwright install chromium"
+            elif "cloak" in error_msg:
+                hint = " Install: pip install cloakbrowser && tokenade cloak install"
 
             logger.error(f"Failed to launch browser ({self.config.browser_type}): {e}{hint}")
             self.close()
             raise
+
+    def _prefer_cloak(self) -> bool:
+        if self.config.force_playwright:
+            return False
+        if self.config.browser_type in ("firefox", "webkit"):
+            return False
+        # cloakbrowser / chromium / chrome → try Cloak first
+        return self.config.browser_type in (
+            "cloakbrowser", "cloak", "chromium", "chrome", "default", ""
+        )
+
+    def _launch_impl(self) -> Any:
+        if self._prefer_cloak():
+            try:
+                from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
+                backend = CloakBrowserBackend()
+                if backend.is_available():
+                    proxy = None
+                    if self.config.proxy:
+                        proxy = self.config.proxy.get("server") or self.config.proxy
+                    if self.config.user_data_dir:
+                        self._context = backend.launch_persistent(
+                            profile_dir=self.config.user_data_dir,
+                            headless=self.config.headless,
+                            proxy=proxy,
+                            args=self.config.args or None,
+                        )
+                        self._page = (
+                            self._context.pages[0]
+                            if self._context.pages
+                            else self._context.new_page()
+                        )
+                    else:
+                        self._browser = backend.launch(
+                            headless=self.config.headless,
+                            proxy=proxy,
+                            args=self.config.args or None,
+                        )
+                        context_options = {"viewport": self.config.viewport}
+                        self._context = self._browser.new_context(**context_options)
+                        self._page = self._context.new_page()
+                    logger.info(
+                        "Browser launched via CloakBrowser, headless=%s",
+                        self.config.headless,
+                    )
+                    return self._page
+            except Exception as e:
+                logger.warning("CloakBrowser launch failed, falling back to Playwright: %s", e)
+
+        from playwright.sync_api import sync_playwright
+
+        self._playwright = sync_playwright().start()
+
+        launch_options = {
+            "headless": self.config.headless,
+            "args": self.config.args,
+            "ignore_default_args": self.config.ignore_default_args,
+        }
+
+        if self.config.executable_path:
+            launch_options["executable_path"] = self.config.executable_path
+        if self.config.channel:
+            launch_options["channel"] = self.config.channel
+        if self.config.proxy:
+            launch_options["proxy"] = self.config.proxy
+
+        pw_type = self.config.browser_type
+        if pw_type in ("cloakbrowser", "cloak", "chrome", "default", ""):
+            pw_type = "chromium"
+        browser_type = getattr(self._playwright, pw_type)
+
+        if self.config.user_data_dir:
+            self._context = browser_type.launch_persistent_context(
+                user_data_dir=self.config.user_data_dir,
+                **launch_options
+            )
+            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+        else:
+            self._browser = browser_type.launch(**launch_options)
+            context_options = {
+                "viewport": self.config.viewport,
+            }
+            if self.config.env:
+                context_options["env"] = self.config.env
+            self._context = self._browser.new_context(**context_options)
+            self._page = self._context.new_page()
+
+        if self.config.fingerprint:
+            try:
+                from ..fingerprint.injector import inject_stealth_script
+                from ..fingerprint.manager import BrowserFingerprint
+
+                if isinstance(self.config.fingerprint, dict):
+                    fingerprint = BrowserFingerprint.from_dict(self.config.fingerprint)
+                else:
+                    fingerprint = self.config.fingerprint
+
+                inject_stealth_script(self, fingerprint, self.config.stealth_level)
+                logger.info(f"Stealth script injected at level: {self.config.stealth_level}")
+            except Exception as e:
+                logger.warning(f"Failed to inject stealth script: {e}")
+
+        logger.info(
+            "Browser launched via Playwright: %s, headless=%s",
+            pw_type,
+            self.config.headless,
+        )
+        return self._page
 
     def close(self):
         """Close browser and cleanup Playwright."""
@@ -282,7 +340,14 @@ class BrowserFactory:
 
     @classmethod
     def create(cls, backend: str = "playwright", **config_kwargs) -> BrowserManager:
-        """Create browser manager instance."""
+        """Create browser manager instance.
+
+        Default path uses PlaywrightBrowserManager which prefers CloakBrowser
+        when available (unless force_playwright=True or browser_type is firefox/webkit).
+        """
+        if backend in ("cloak", "cloakbrowser"):
+            backend = "playwright"
+            config_kwargs.setdefault("browser_type", "cloakbrowser")
         if backend not in cls._registry:
             raise ValueError(f"Unknown browser backend: {backend}. Available: {list(cls._registry.keys())}")
 

@@ -48,6 +48,19 @@ from tokenade.core.importer.cookie_extractor import (
 )
 from tokenade.core.importer.session_packager import SessionPackager
 from tokenade.core.importer.session_loader import SessionLoader
+from tokenade.core.integration.plugin_loader import (
+    PluginLoader,
+    LoadedPlugin,
+    get_or_create_shared_loader,
+    get_shared_loader,
+    set_shared_loader,
+)
+from tokenade.core.integration.plugin_runner import PluginRunner
+from tokenade.core.browser.stealth.backend import (
+    launch_stealth_browser,
+    get_stealth_backend_name,
+    is_cloakbrowser_available,
+)
 
 __all__ = [
     "BrowserManager",
@@ -81,4 +94,13 @@ __all__ = [
     "SITE_DETECTION",
     "SessionPackager",
     "SessionLoader",
+    "PluginLoader",
+    "LoadedPlugin",
+    "PluginRunner",
+    "get_or_create_shared_loader",
+    "get_shared_loader",
+    "set_shared_loader",
+    "launch_stealth_browser",
+    "get_stealth_backend_name",
+    "is_cloakbrowser_available",
 ]
