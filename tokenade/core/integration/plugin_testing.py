@@ -67,6 +67,8 @@ class PluginTestRunner:
         suite.results.append(self._test_entry_class_importable(plugin_name))
         suite.results.append(self._test_plugin_instantiable(plugin_name))
         suite.results.append(self._test_plugin_metadata(plugin_name))
+        suite.results.append(self._test_api_compatibility(plugin_name))
+        suite.results.append(self._test_run_manifest(plugin_name))
         suite.results.append(self._test_plugin_type_methods(plugin_name))
         suite.results.append(self._test_type_class_match(plugin_name))
 
@@ -254,6 +256,69 @@ class PluginTestRunner:
             return PluginTestResult(test_name="plugin_metadata", passed=True)
         except (json.JSONDecodeError, OSError) as e:
             return PluginTestResult(test_name="plugin_metadata", passed=False, message=str(e))
+
+    def _test_api_compatibility(self, plugin_name: str) -> PluginTestResult:
+        """Test manifest and entry class API version declarations."""
+        plugin_dir = self.plugins_dir / plugin_name
+        try:
+            with open(plugin_dir / "plugin.json") as f:
+                meta = json.load(f)
+            from tokenade.plugin.api import API_VERSION
+
+            if meta.get("api_version") != API_VERSION:
+                return PluginTestResult(
+                    "api_compatibility", False,
+                    f"Manifest API {meta.get('api_version')!r} != {API_VERSION!r}",
+                )
+
+            entry_file = plugin_dir / meta["entry_point"]
+            spec = importlib.util.spec_from_file_location(f"api_{plugin_name}", str(entry_file))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            entry_class = getattr(module, meta.get("entry_class", ""), None)
+            if entry_class is None:
+                from tokenade.plugin.base import (
+                    CaptchaPlugin, ExportFormatPlugin, NotificationPlugin,
+                    PluginBase, ProxyProviderPlugin, SessionRefreshPlugin,
+                    SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
+                )
+                base_map = {
+                    "handler": SiteHandlerPlugin,
+                    "export_format": ExportFormatPlugin,
+                    "validator": SessionValidatorPlugin,
+                    "session_refresh": SessionRefreshPlugin,
+                    "stealth": StealthPlugin,
+                    "proxy": ProxyProviderPlugin,
+                    "notification": NotificationPlugin,
+                    "captcha": CaptchaPlugin,
+                }
+                base = base_map.get(meta.get("type"), PluginBase)
+                for candidate in vars(module).values():
+                    if isinstance(candidate, type) and issubclass(candidate, base) and candidate is not base:
+                        entry_class = candidate
+                        break
+            if entry_class is None:
+                return PluginTestResult("api_compatibility", False, "Entry class not found")
+            class_api = getattr(entry_class, "API_VERSION", None)
+            if class_api != API_VERSION:
+                return PluginTestResult(
+                    "api_compatibility", False,
+                    f"Class API {class_api!r} != {API_VERSION!r}",
+                )
+            return PluginTestResult("api_compatibility", True)
+        except Exception as e:
+            return PluginTestResult("api_compatibility", False, str(e))
+
+    def _test_run_manifest(self, plugin_name: str) -> PluginTestResult:
+        """Test optional API 1.3 external-run manifest metadata."""
+        try:
+            with open(self.plugins_dir / plugin_name / "plugin.json") as f:
+                meta = json.load(f)
+            from tokenade.plugin.api import parse_plugin_run_spec
+            parse_plugin_run_spec(meta)
+            return PluginTestResult("run_manifest", True)
+        except Exception as e:
+            return PluginTestResult("run_manifest", False, str(e))
 
     def _test_plugin_type_methods(self, plugin_name: str) -> PluginTestResult:
         """Test that plugin implements required methods for its type."""

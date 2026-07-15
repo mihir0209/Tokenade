@@ -355,6 +355,9 @@ def cmd_test(args):
         session_data = json.load(f)
 
     handler_class = resolve_legacy_handler_class(session_data.get("site_name"))
+    if handler_class is None:
+        print(f"❌ No handler found for '{session_data.get('site_name', 'unknown')}'. Install from tokenade-plugins marketplace.")
+        raise SystemExit(1)
     hname = getattr(handler_class, "__name__", str(handler_class))
     print(
         f"\n⚠️  Using legacy handler {hname} "
@@ -460,6 +463,9 @@ def cmd_setup(args):
 
         try:
             handler_cls = resolve_legacy_handler_class(site)
+            if handler_cls is None:
+                print(f"❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")
+                continue
             handler = handler_cls(browser)
             hname = getattr(handler_cls, "__name__", str(handler_cls))
             print(f"   Handler: {hname} (legacy; prefer plugins)")

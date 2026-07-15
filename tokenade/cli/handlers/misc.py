@@ -216,7 +216,21 @@ def cmd_daemon(args):
         daemon.stop()
         print("✅ Daemon stopped")
     elif args.daemon_action == "status":
-        status = daemon.get_status()
-        print(f"Daemon status: {status}")
+        import json
+        status = daemon.status()
+        if hasattr(args, 'json') and args.json:
+            print(json.dumps(status, indent=2))
+        else:
+            print("=" * 60)
+            print("TOKENADE - Daemon Status")
+            print("=" * 60)
+            state = "Running" if status.get("running") else "Stopped"
+            print(f"  State: {state}")
+            if status.get("pid"):
+                print(f"  PID: {status['pid']}")
+            print(f"  Sessions watched: {status.get('sessions_watched', 0)}")
+            print(f"  Check interval: {status.get('check_interval', '?')}s")
+            print(f"  PID file: {status.get('pid_file', '?')}")
+            print("=" * 60)
     else:
         print("Usage: tokenade daemon {start|stop|status}")

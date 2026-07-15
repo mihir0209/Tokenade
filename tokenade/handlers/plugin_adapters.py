@@ -139,10 +139,11 @@ class GoogleHandlerAdapter(LegacyHandlerAdapter):
     API_VERSION = "1.1.0"
 
     def __init__(self):
-        # Import lazily to avoid circular imports
-        from tokenade.handlers.google import GoogleHandler
-
-        GoogleHandlerAdapter._legacy_cls = GoogleHandler
+        try:
+            from tokenade.handlers.google import GoogleHandler
+            GoogleHandlerAdapter._legacy_cls = GoogleHandler
+        except ImportError:
+            GoogleHandlerAdapter._legacy_cls = None
         super().__init__()
 
 
@@ -156,9 +157,11 @@ class GitHubHandlerAdapter(LegacyHandlerAdapter):
     API_VERSION = "1.1.0"
 
     def __init__(self):
-        from tokenade.handlers.github import GitHubHandler
-
-        GitHubHandlerAdapter._legacy_cls = GitHubHandler
+        try:
+            from tokenade.handlers.github import GitHubHandler
+            GitHubHandlerAdapter._legacy_cls = GitHubHandler
+        except ImportError:
+            GitHubHandlerAdapter._legacy_cls = None
         super().__init__()
 
 
@@ -172,7 +175,9 @@ class GenericOAuth2HandlerAdapter(LegacyHandlerAdapter):
     API_VERSION = "1.1.0"
 
     def __init__(self):
-        from tokenade.handlers.generic_oauth import GenericOAuth2Handler
-
-        GenericOAuth2HandlerAdapter._legacy_cls = GenericOAuth2Handler
+        try:
+            from tokenade.handlers.generic_oauth import GenericOAuth2Handler
+            GenericOAuth2HandlerAdapter._legacy_cls = GenericOAuth2Handler
+        except ImportError:
+            GenericOAuth2HandlerAdapter._legacy_cls = None
         super().__init__()

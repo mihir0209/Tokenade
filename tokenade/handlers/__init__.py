@@ -1,23 +1,13 @@
 """
-Legacy site handlers (tokenade.handlers).
+Site handler base classes and resolution (tokenade.handlers).
 
-P1 honesty note
----------------
-There are **two** site-handler systems in Tokenade:
+The legacy concrete handlers (GoogleHandler, GitHubHandler, GenericOAuth2Handler)
+have been moved to the tokenade-plugins marketplace. This package now contains
+only base classes and resolution infrastructure:
 
-1. **Legacy** (this package): `SiteHandler` / `GoogleHandler` / `GitHubHandler`
-   Used by older CLI paths (`tokenade transfer`, some `session.py` flows).
-
-2. **Plugin** (`tokenade.plugin.SiteHandlerPlugin` + tokenade-plugins repo):
-   Preferred extension path for new sites and marketplace installs.
-
-Do **not** add new site logic here. Prefer:
-
-- `SiteHandlerPlugin` + **`site_config.json`** in the plugin root
-  (domains, critical cookies, URLs — loaded by the base class)
-
-Legacy classes remain for backward compatibility and may emit
-DeprecationWarning when instantiated.
+- ``SiteHandler`` — abstract base for site-specific handlers
+- ``HandlerRegistry`` — registry for handler classes
+- ``resolve_legacy_handler_class`` — resolve handler by site name (via registry or plugins)
 """
 
 from tokenade.handlers.base import (  # noqa: F401

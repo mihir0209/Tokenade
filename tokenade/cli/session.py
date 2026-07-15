@@ -277,6 +277,9 @@ def cmd_extract(args):
             if not isinstance(site, str) or not site:
                 site = "google"
             handler_cls = resolve_legacy_handler_class(site)
+            if handler_cls is None:
+                print(f"   ❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")
+                continue
             handler = handler_cls(browser)
             hname = getattr(handler_cls, "__name__", handler_cls.__class__.__name__)
             print(f"   Handler: {hname} (legacy; prefer plugins)")
@@ -439,6 +442,9 @@ def cmd_transfer(args):
 
         site = session_data.get("site_name") or "google"
         handler_cls = resolve_legacy_handler_class(site)
+        if handler_cls is None:
+            print(f"❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")
+            raise SystemExit(1)
         handler = handler_cls(browser)
         hname = getattr(handler_cls, "__name__", handler_cls.__class__.__name__)
         print(f"   Handler: {hname} (legacy; prefer plugins)")

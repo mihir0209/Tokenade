@@ -15,7 +15,6 @@ from tokenade.core.crypto import encryptor as encryptor_mod
 from tokenade.core.crypto.encryptor import MAGIC, TokenadeEncryptor
 from tokenade.core.errors import TokenadeError
 from tokenade.handlers.base import HandlerRegistry, SiteHandler
-from tokenade.handlers.google import GoogleHandler
 from tokenade.handlers.resolve import resolve_legacy_handler_class
 
 
@@ -45,6 +44,19 @@ class _UniqueChatGPT(SiteHandler):
         return []
 
 
+class _UniqueGitHub(SiteHandler):
+    SITE_NAME = "github"
+
+    def check_auth_status(self):
+        raise NotImplementedError
+
+    def extract_tokens(self):
+        return []
+
+    def extract_cookies(self):
+        return []
+
+
 @pytest.fixture
 def isolated_registry():
     """Swap HandlerRegistry contents; restore after test."""
@@ -52,17 +64,7 @@ def isolated_registry():
     HandlerRegistry._handlers.clear()
     HandlerRegistry._handlers["google"] = _UniqueGoogle
     HandlerRegistry._handlers["chatgpt"] = _UniqueChatGPT
-    HandlerRegistry._handlers["github"] = prev.get("github") or HandlerRegistry._handlers.get(
-        "github"
-    )
-    # github may be None if not previously loaded — load builtins via resolve path
-    try:
-        import tokenade.handlers.github  # noqa: F401
-        from tokenade.handlers.github import GitHubHandler
-
-        HandlerRegistry._handlers["github"] = GitHubHandler
-    except ImportError:
-        pass
+    HandlerRegistry._handlers["github"] = _UniqueGitHub
     yield
     HandlerRegistry._handlers.clear()
     HandlerRegistry._handlers.update(prev)
@@ -83,10 +85,9 @@ class TestResolveAliasAndRegistryKillers:
     def test_openai_alias_to_chatgpt_registry(self, isolated_registry):
         assert resolve_legacy_handler_class("openai") is _UniqueChatGPT
 
-    def test_registry_hit_preferred_over_builtin_fallback(self, isolated_registry):
-        # Mutant: registered = None always → falls back to GoogleHandler import
+    def test_registry_hit_preferred_over_fallback(self, isolated_registry):
+        # Mutant: registered = None always → would return None
         assert resolve_legacy_handler_class("google") is _UniqueGoogle
-        assert resolve_legacy_handler_class("google") is not GoogleHandler
 
 
 class TestEncryptorConstantKillers:

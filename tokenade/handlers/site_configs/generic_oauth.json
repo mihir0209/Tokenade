@@ -1,8 +1,0 @@
-{
-  "name": "generic-oauth",
-  "domains": [],
-  "critical_cookies": [],
-  "login_url": "",
-  "dashboard_url": "",
-  "wait_seconds": 3
-}

@@ -233,7 +233,28 @@ class SystemBrowserLauncher:
         self._xvfb: Optional[Any] = None
 
     def _get_default_profile_dir(self, browser: str) -> Optional[str]:
-        """Find the user's default browser profile directory."""
+        """Find the user's default browser profile directory.
+
+        Delegates to BrowserProfileDiscovery for consistent profile resolution
+        across all code paths (export, batch-export, launch, refresh).
+        """
+        try:
+            from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
+            discovery = BrowserProfileDiscovery()
+            profiles = discovery.discover_all()
+            # Filter to requested browser, prefer default profile
+            matches = [p for p in profiles if p.browser.lower() == browser.lower()]
+            if not matches:
+                return None
+            default = [p for p in matches if p.is_default]
+            profile = default[0] if default else matches[0]
+            return profile.path
+        except Exception as e:
+            logger.warning(f"BrowserProfileDiscovery failed for {browser}: {e}, falling back to static paths")
+            return self._get_default_profile_dir_static(browser)
+
+    def _get_default_profile_dir_static(self, browser: str) -> Optional[str]:
+        """Fallback static path lookup when BrowserProfileDiscovery fails."""
         os_type = platform.system()
 
         if browser.lower() in ("chrome", "chromium"):

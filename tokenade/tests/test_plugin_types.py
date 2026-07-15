@@ -220,11 +220,13 @@ class TestPluginTestRunner:
         plugin_dir.mkdir()
         (plugin_dir / "plugin.json").write_text(json.dumps({
             "name": "my-plugin", "version": "1.0.0", "type": "stealth",
+            "api_version": "1.3.0",
             "entry_point": "plugin.py", "description": "Test",
         }))
         (plugin_dir / "plugin.py").write_text("""
 from tokenade.plugin.base import StealthPlugin
 class MyPlugin(StealthPlugin):
+    API_VERSION = "1.3.0"
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
@@ -246,6 +248,7 @@ class MyPlugin(StealthPlugin):
         plugin_dir.mkdir()
         (plugin_dir / "plugin.json").write_text(json.dumps({
             "name": "my-plugin", "version": "1.0.0", "type": "stealth",
+            "api_version": "1.3.0",
             "entry_point": "plugin.py", "description": "Test",
         }))
         runner = PluginTestRunner(plugins_dir=tmp_path)
@@ -286,11 +289,14 @@ class MyPlugin(StealthPlugin):
         plugin_dir.mkdir()
         (plugin_dir / "plugin.json").write_text(json.dumps({
             "name": "my-plugin", "version": "1.0.0", "type": "stealth",
+            "api_version": "1.3.0",
             "entry_point": "plugin.py", "description": "Test",
         }))
         (plugin_dir / "plugin.py").write_text("""
 from tokenade.plugin.base import StealthPlugin
 class MyPlugin(StealthPlugin):
+    API_VERSION = "1.3.0"
+    API_VERSION = "1.3.0"
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
@@ -307,11 +313,13 @@ class MyPlugin(StealthPlugin):
         plugin_dir.mkdir()
         (plugin_dir / "plugin.json").write_text(json.dumps({
             "name": "my-plugin", "version": "1.0.0", "type": "stealth",
+            "api_version": "1.3.0",
             "entry_point": "plugin.py", "description": "Test",
         }))
         (plugin_dir / "plugin.py").write_text("""
 from tokenade.plugin.base import StealthPlugin
 class MyPlugin(StealthPlugin):
+    API_VERSION = "1.3.0"
     name = "my-plugin"
     version = "1.0.0"
     description = "Test"
@@ -322,8 +330,8 @@ class MyPlugin(StealthPlugin):
         runner = PluginTestRunner(plugins_dir=tmp_path)
         suite = runner.test_plugin("my-plugin")
         assert suite.passed is True
-        assert suite.total == 8  # includes type_class_match (P2)
-        assert suite.passed_count == 8
+        assert suite.total == 10  # includes API/run contract checks
+        assert suite.passed_count == 10
         assert suite.failed_count == 0
 
     def test_test_all(self, tmp_path):
@@ -336,11 +344,13 @@ class MyPlugin(StealthPlugin):
             d.mkdir()
             (d / "plugin.json").write_text(json.dumps({
                 "name": name, "version": "1.0.0", "type": ptype,
+                "api_version": "1.3.0",
                 "entry_point": "plugin.py", "description": "Test",
             }))
             (d / "plugin.py").write_text(f"""
 from tokenade.plugin.base import {base}
 class Plugin({base}):
+    API_VERSION = "1.3.0"
     name = "{name}"
     version = "1.0.0"
     description = "Test"

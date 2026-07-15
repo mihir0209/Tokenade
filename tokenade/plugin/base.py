@@ -437,7 +437,7 @@ class SessionValidatorPlugin(PluginBase):
     """Plugin that validates session health with custom rules."""
 
     @abstractmethod
-    def validate(self, session: dict) -> Dict[str, Any]:
+    def validate(self, session: dict) -> PluginResult:
         """Validate a session.
 
         Args:
