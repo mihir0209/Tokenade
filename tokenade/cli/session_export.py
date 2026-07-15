@@ -44,7 +44,7 @@ def cmd_export(args):
         handlers = exporter.list_handlers()
         if not handlers:
             print("   No site handler plugins installed.")
-            print("   Install one: tokenade plugin install google-handler")
+            print("   Install one: tokenade plugin install generic-handler")
         else:
             print(f"\n🔌 Available site handlers ({len(handlers)}):\n")
             for h in handlers:
@@ -201,16 +201,19 @@ def cmd_export(args):
                 print(f"   🔌 Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
             else:
                 print("   ℹ️  No handler found for domains, using default extraction")
-                joined = ",".join(domain_filter).lower()
-                if "google" in joined or "gmail" in joined:
-                    print("   💡 Google tip: tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade")
-                elif "github" in joined:
-                    print("   💡 GitHub tip: tokenade export --browser-name firefox --plugin github-handler -o github.tokenade")
+                # Consult the unified recommend() engine for a smarter hint.
+                try:
+                    from tokenade.core.recommend import recommend
+                    rec = recommend(domains=domain_filter)
+                    if rec.plugin:
+                        print(f"   💡 Suggestion: --plugin {rec.plugin}")
+                except Exception:
+                    pass
         else:
             print("   ℹ️  No --domains / --plugin: exporting unfiltered cookies from the profile.")
             print("   💡 Prefer a site plugin (domains from site_config.json):")
             print("      tokenade export --list-handlers")
-            print("      tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade")
+            print("      tokenade recommend --url https://your-site.com   # then --plugin <suggested>")
 
         if site_handler and not domain_filter and hasattr(site_handler, "get_export_domains"):
             try:

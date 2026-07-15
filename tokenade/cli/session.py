@@ -275,7 +275,14 @@ def cmd_extract(args):
 
             site = getattr(account, "site", None)
             if not isinstance(site, str) or not site:
-                site = "google"
+                # Consult recommend() if site_name missing; fall back to "google"
+                # only as a final legacy default (per ADR-0003).
+                try:
+                    from tokenade.core.recommend import recommend_site
+                    rec_site = recommend_site(session=session)
+                    site = rec_site or "google"
+                except Exception:
+                    site = "google"
             handler_cls = resolve_legacy_handler_class(site)
             if handler_cls is None:
                 print(f"   ❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")
@@ -440,7 +447,19 @@ def cmd_transfer(args):
             else:
                 print("   ⚠️  Stealth injection may not be fully active")
 
-        site = session_data.get("site_name") or "google"
+        site = session_data.get("site_name")
+        if not site:
+            # Consult recommend if site_name is missing; only fall back to
+            # "google" as a final legacy default (per ADR-0003).
+            try:
+                from tokenade.core.recommend import recommend_site
+                site = recommend_site(
+                    cookies=session_data.get("cookies"),
+                    session=session_data,
+                )
+            except Exception:
+                pass
+            site = site or "google"
         handler_cls = resolve_legacy_handler_class(site)
         if handler_cls is None:
             print(f"❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")

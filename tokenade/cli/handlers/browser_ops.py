@@ -226,6 +226,29 @@ def cmd_launch(args):
                 if "google" in _site or "google." in _domains or "youtube." in _domains or "gmail" in fname:
                     site_hint = "google"
 
+            # Sanity-check the inline guess against the unified recommend()
+            # engine. Mismatch is logged at debug level so future contributors
+            # can see the seam (the inline block above is the historical path;
+            # recommend() is the canonical one per ADR-0003).
+            try:
+                from tokenade.core.recommend import recommend
+                rec = recommend(
+                    session=session,
+                    domains=cookie_domains if 'cookie_domains' in locals() else None,
+                )
+                if rec.site and rec.site != site_hint:
+                    logger.debug(
+                        "recommend() suggests site=%s (inline hint=%s); "
+                        "future cleanup: prefer recommend() per ADR-0003",
+                        rec.site, site_hint,
+                    )
+                    if not site_hint:
+                        site_hint = rec.site
+                if rec.plugin and not getattr(args, "plugin", None):
+                    logger.debug("recommend() suggests plugin=%s", rec.plugin)
+            except Exception as _e:
+                logger.debug("recommend() sanity-check failed: %s", _e)
+
             chrome_like = args.browser.lower() in (
                 "chrome", "chromium", "chrome-canary", "chrome-beta", "google-chrome",
             )

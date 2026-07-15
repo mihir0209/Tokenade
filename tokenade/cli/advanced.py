@@ -7,6 +7,23 @@ from pathlib import Path
 logger = logging.getLogger("tokenade")
 
 
+def _recommend_site_fallback(session_data: dict | None = None) -> str | None:
+    """Consult recommend() for site when session_data has no site_name.
+
+    Returns None if recommend can't resolve either. Caller falls back to
+    the legacy 'google' default via resolve_legacy_handler_class().
+    """
+    try:
+        from tokenade.core.recommend import recommend_site
+        return recommend_site(
+            cookies=(session_data or {}).get("cookies"),
+            session=session_data,
+        )
+    except Exception as e:
+        logger.debug("recommend site fallback failed: %s", e)
+        return None
+
+
 def cmd_batch_export(args):
     """Batch export multiple sites."""
     from tokenade.core.batch.operations import BatchExporter, load_batch_config, generate_batch_report
@@ -354,7 +371,10 @@ def cmd_test(args):
     with open(session_file) as f:
         session_data = json.load(f)
 
-    handler_class = resolve_legacy_handler_class(session_data.get("site_name"))
+    handler_class = resolve_legacy_handler_class(
+        session_data.get("site_name")
+        or _recommend_site_fallback(session_data)
+    )
     if handler_class is None:
         print(f"❌ No handler found for '{session_data.get('site_name', 'unknown')}'. Install from tokenade-plugins marketplace.")
         raise SystemExit(1)
@@ -462,9 +482,10 @@ def cmd_setup(args):
         browser.launch()
 
         try:
-            handler_cls = resolve_legacy_handler_class(site)
+            site_resolved = site or _recommend_site_fallback()
+            handler_cls = resolve_legacy_handler_class(site_resolved)
             if handler_cls is None:
-                print(f"❌ No handler found for '{site}'. Install from tokenade-plugins marketplace.")
+                print(f"❌ No handler found for '{site_resolved}'. Install from tokenade-plugins marketplace.")
                 continue
             handler = handler_cls(browser)
             hname = getattr(handler_cls, "__name__", str(handler_cls))

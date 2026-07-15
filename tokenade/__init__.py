@@ -61,6 +61,14 @@ from tokenade.core.browser.stealth.backend import (
     get_stealth_backend_name,
     is_cloakbrowser_available,
 )
+from tokenade.core.recommend import (
+    Recommendation,
+    RecommendationConfig,
+    recommend,
+    recommend_site,
+    recommend_plugin,
+    recommend_browser,
+)
 
 __all__ = [
     "BrowserManager",
@@ -103,4 +111,10 @@ __all__ = [
     "launch_stealth_browser",
     "get_stealth_backend_name",
     "is_cloakbrowser_available",
+    "Recommendation",
+    "RecommendationConfig",
+    "recommend",
+    "recommend_site",
+    "recommend_plugin",
+    "recommend_browser",
 ]

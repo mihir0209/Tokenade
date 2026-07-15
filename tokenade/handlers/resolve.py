@@ -26,6 +26,8 @@ _ALIASES = {
     "gmail": "google",
     "youtube": "google",
     "openai": "chatgpt",
+    "gpt": "chatgpt",
+    "tg": "telegram",
 }
 
 

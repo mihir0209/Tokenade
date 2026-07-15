@@ -1190,6 +1190,61 @@ def cmd_serve(args):
         print(f"\n❌ Server error: {e}")
 
 
+def cmd_recommend(args):
+    """Recommend site/plugin/browser for a session, URL, or cookie domains.
+
+    Reads a .tokenade file (--session), a URL (--url), or a domain list
+    (--domains), then prints the recommended site_name, handler plugin, and
+    automation browser with one line of reasoning per choice.
+    """
+    import json as _json
+    from pathlib import Path
+    from tokenade.core.recommend import recommend, RecommendationConfig
+
+    if not any((args.session, args.url, args.domains)):
+        print("error: pass at least one of --session / --url / --domains", file=sys.stderr)
+        sys.exit(2)
+
+    session = None
+    if args.session:
+        sess_path = Path(args.session).expanduser()
+        if not sess_path.is_file():
+            print(f"error: session file not found: {args.session}", file=sys.stderr)
+            sys.exit(2)
+        try:
+            with open(sess_path, encoding="utf-8") as f:
+                session = _json.load(f)
+        except (OSError, _json.JSONDecodeError) as e:
+            print(f"error: failed to load session: {e}", file=sys.stderr)
+            sys.exit(2)
+
+    cfg = None
+    if args.browser:
+        cfg = RecommendationConfig(automation_browser_override=args.browser)
+
+    rec = recommend(
+        session=session,
+        url=args.url,
+        domains=args.domains,
+        config=cfg,
+    )
+
+    if args.json:
+        print(_json.dumps(rec.as_dict(), indent=2, default=str))
+        return
+
+    print()
+    print(f"  site:     {rec.site or '(none)'}")
+    print(f"  plugin:   {rec.plugin or '(none)'}")
+    print(f"  browser:  {rec.browser}")
+    print(f"  confidence: {rec.confidence:.2f}")
+    print()
+    print("  reasons:")
+    for r in rec.reasons:
+        print(f"    - {r}")
+    print()
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -1305,7 +1360,7 @@ Commands:
     export_parser.add_argument("--full", action="store_true", help="Extract cookies + localStorage + sessionStorage (v3.0 format)")
     export_parser.add_argument("--no-storage", action="store_true", help="Extract only cookies (backward compat)")
     export_parser.add_argument("--encrypt-password", help="Encrypt .tokenade file with this password at export time")
-    export_parser.add_argument("--plugin", help="Force specific site handler plugin (e.g., google-handler)")
+    export_parser.add_argument("--plugin", help="Force specific site handler plugin (e.g., generic-handler)")
     export_parser.add_argument("--no-plugin", action="store_true", help="Skip plugin, use default extraction")
     export_parser.add_argument("--list-handlers", action="store_true", help="List available site handler plugins")
 
@@ -1805,7 +1860,7 @@ Commands:
     launch_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
     launch_parser.add_argument(
         "--plugin",
-        help="Force site handler plugin for launch (e.g. google-handler); auto-discovers when omitted",
+        help="Force site handler plugin for launch (e.g. generic-handler); auto-discovers when omitted",
     )
     launch_parser.add_argument(
         "--no-plugin", action="store_true",
@@ -2139,6 +2194,34 @@ Commands:
     serve_parser.add_argument("--sessions-dir", "-d", help="Sessions directory")
     serve_parser.add_argument("--cors", help="Allowed CORS origins (comma-separated)")
 
+    # Recommend site/plugin/browser for a session, URL, or cookie domains.
+    recommend_parser = subparsers.add_parser(
+        "recommend",
+        help="Recommend site/plugin/browser for a session, URL, or domain list",
+    )
+    recommend_parser.add_argument(
+        "--session", "-s",
+        help="Path to a .tokenade session file",
+    )
+    recommend_parser.add_argument(
+        "--url", "-u",
+        help="Target URL to recommend a handler for",
+    )
+    recommend_parser.add_argument(
+        "--domains", "-d",
+        nargs="*",
+        help="Cookie domains to match (space-separated)",
+    )
+    recommend_parser.add_argument(
+        "--browser",
+        help="Force a browser override (cloak / firefox / brave / chrome)",
+    )
+    recommend_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of human text",
+    )
+
     return parser
 
 
@@ -2214,6 +2297,7 @@ def main():
         "deps": cmd_deps,
         "profile": cmd_profile,
         "serve": cmd_serve,
+        "recommend": cmd_recommend,
     }
 
     try:
