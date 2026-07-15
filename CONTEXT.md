@@ -9,7 +9,7 @@ A collection of cookies, tokens, and storage data that proves a user is logged i
 _Avoid_: cookie file, token file, auth data
 
 **Session Packager**:
-Bsembles cookies + fingerprint + tokens + storage into a `.tokenade` file. Handles serialization, encryption, and format normalization.
+Assembles cookies + fingerprint + tokens + storage into a `.tokenade` file. Handles serialization, encryption, and format normalization.
 _Avoid_: exporter, serializer
 
 **Session Loader**:
@@ -18,7 +18,7 @@ _Avoid_: importer, injector
 
 **Site Handler**:
 A plugin that knows how to interact with a specific site — extract sessions, validate auth status, handle login flows. Registered by site name (e.g., `"google"`, `"github"`).
-_AAvoid_: site plugin, site adapter
+_Avoid_: site plugin, site adapter
 
 **OAuth Automation**:
 Using a stored OAuth provider session (e.g., Google) to authenticate on a third-party site that offers "Sign in with {Provider}". The plugin automates the browser interactions: clicking the OAuth button, handling the provider's account selector, waiting for redirect, and exporting the resulting session.
@@ -26,7 +26,7 @@ _Avoid_: SSO automation, login automation
 
 **CloakBrowser**:
 A stealth browser binary with C++ source-level patches that defeat bot detection. Returns standard Playwright objects. Required for sites that actively detect headless browsers (e.g., Google).
-_AAvoid_: stealth browser, undetectable browser
+_Avoid_: stealth browser, undetectable browser
 
 **Plugin**:
 A modular extension that adds site-specific behavior (handlers), session refresh logic, proxy providers, captcha solving, or notification delivery. Plugins declare dependencies on other plugins and are loaded from `~/.tokenade/plugins/`.
@@ -34,12 +34,12 @@ _Avoid_: extension, module, addon
 
 **Source Session**:
 The `.tokenade` file containing the OAuth provider's cookies (e.g., Google cookies from `google.com`). This is the input to an OAuth automation flow.
-_AAvoid_: input session, provider session
+_Avoid_: input session, provider session
 
 **Target Session**:
 The `.tokenade` file produced after successful OAuth on a third-party site. Contains the site's own session cookies (e.g., `labs.google`'s NextAuth JWT). This is the output of an OAuth automation flow.
-_AAvoid_: output session, result session
+_Avoid_: output session, result session
 
 **Stealth Level**:
 The degree of browser fingerprint spoofing applied: `"basic"` (JS patches only), `"advanced"` (JS + launch args), `"maximum"` (JS + args + CloakBrowser binary).
-_AAvoid_: evasion level, anti-detection level
+_Avoid_: evasion level, anti-detection level
