@@ -199,6 +199,11 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
         """
         Navigate to provider and verify we're logged in.
 
+        Uses positive verification: the final URL must still be on the
+        provider's domain. A redirect away from the provider means the
+        session is expired, even if the redirect target doesn't contain
+        obvious login keywords.
+
         Args:
             page: Playwright Page
             provider_url: Provider URL to check
@@ -211,6 +216,16 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
             time.sleep(2)
 
             current_url = page.url
+            from urllib.parse import urlparse
+            expected_host = urlparse(provider_url).hostname or ""
+            actual_host = urlparse(current_url).hostname or ""
+
+            if expected_host and actual_host != expected_host:
+                logger.warning(
+                    f"Provider session expired: {provider_url} redirected to {current_url}"
+                )
+                return False
+
             logged_out = any(
                 p in current_url
                 for p in ["/signin", "/login", "/accounts/signin", "/auth"]
