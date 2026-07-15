@@ -217,8 +217,22 @@ def cmd_plugin(args):
                         pass
 
     elif args.plugin_command == "install":
+        reg_name = getattr(args, "registry", None)
         print(f"\n📥 Installing plugin: {args.name}")
-        if registry.install(args.name):
+        if reg_name:
+            print(f"   Registry: {reg_name}")
+        # Detect multi-registry conflicts before install
+        plugin_meta, conflicts = registry.find_plugin(args.name, reg_name)
+        if plugin_meta is None:
+            print(f"   ❌ Plugin not found: {args.name}")
+            return
+        if conflicts and not reg_name:
+            print(f"   ⚠️  Found in multiple registries:")
+            for c in conflicts:
+                print(f"      • {c.get('_registry', '?')} (v{c.get('version', '?')})")
+            print(f"   Use: tokenade plugin install {args.name} --registry <name>")
+            return
+        if registry.install(args.name, registry_name=reg_name):
             from tokenade.core.integration.plugin_verifier import PluginVerifier
             verifier = PluginVerifier()
             verifier.register_plugin(args.name)
@@ -315,25 +329,31 @@ def cmd_plugin(args):
             print(f"❌ Plugin not found: {args.name}")
 
     elif args.plugin_command == "update":
-        if args.name:
-            print(f"\n🔄 Updating {args.name}...")
-            if registry.update(args.name):
-                print(f"   ✅ Updated: {args.name}")
-            else:
-                print(f"   ❌ Failed to update: {args.name}")
+        force = getattr(args, "force", False)
+        dry_run = getattr(args, "dry_run", False)
+        name = getattr(args, "name", None)
+        if dry_run:
+            print("\n🔍 Dry run — no changes will be made")
+        if name:
+            print(f"\n🔄 Updating {name}...")
         else:
             outdated = registry.get_outdated()
-            if not outdated:
+            if not outdated and not force:
                 print("\n✅ All plugins are up to date.")
-            else:
-                print(f"\n🔄 Updating {len(outdated)} plugin(s)...")
-                results = registry.update()
-                updated = sum(1 for v in results.values() if v)
-                failed = len(results) - updated
-                print(f"   ✅ {updated} updated, ❌ {failed} failed")
-                for name, success in results.items():
-                    if not success:
-                        print(f"      Failed: {name}")
+                return
+            print(f"\n🔄 Updating plugins...")
+        results = registry.update(plugin_name=name, force=force, dry_run=dry_run)
+        if results["updated"]:
+            for item in results["updated"]:
+                print(f"   ✅ {item}")
+        if results["skipped"] and (name or force):
+            for item in results["skipped"]:
+                print(f"   ⏭  Skipped (up to date): {item}")
+        if results["failed"]:
+            for item in results["failed"]:
+                print(f"   ❌ Failed: {item}")
+        if not any(results.values()):
+            print("   Nothing to update.")
 
     elif args.plugin_command == "sync":
         print("\n🔄 Syncing plugins from registry...")
@@ -444,6 +464,36 @@ def cmd_plugin(args):
                     print(f"      {e}")
             else:
                 print("   ✅ No depth violations")
+
+    elif args.plugin_command == "registry":
+        reg_action = getattr(args, "registry_action", None)
+        if reg_action == "add":
+            name = args.name
+            source = args.source
+            try:
+                entry = registry.add_registry(name, source)
+                print(f"\n✅ Registry added: {entry['name']}")
+                print(f"   Type: {entry['type']}")
+                print(f"   Source: {entry['source']}")
+            except ValueError as e:
+                print(f"\n❌ {e}")
+        elif reg_action == "remove":
+            if registry.remove_registry(args.name):
+                print(f"\n✅ Registry removed: {args.name}")
+            else:
+                print(f"\n❌ Registry not found: {args.name}")
+        elif reg_action == "list":
+            regs = registry.list_registries()
+            print(f"\n{'=' * 60}")
+            print(f"TOKENADE - Registries ({len(regs)})")
+            print(f"{'=' * 60}")
+            for r in regs:
+                status = "enabled" if r.get("enabled", True) else "disabled"
+                print(f"\n  {r['name']} [{r['type']}] ({status})")
+                print(f"    Source: {r['source']}")
+            print(f"\n{'=' * 60}\n")
+        else:
+            print("Usage: tokenade plugin registry {add,remove,list}")
 
     elif args.plugin_command == "configure":
         _plugin_configure(args)
@@ -1451,6 +1501,9 @@ Commands:
 
     plugin_install_parser = plugin_sub.add_parser("install", help="Install a plugin")
     plugin_install_parser.add_argument("name", help="Plugin name to install")
+    plugin_install_parser.add_argument(
+        "--registry", help="Registry to install from (required if plugin exists in multiple)"
+    )
 
     plugin_uninstall_parser = plugin_sub.add_parser("uninstall", help="Uninstall a plugin")
     plugin_uninstall_parser.add_argument("name", help="Plugin name to uninstall")
@@ -1466,6 +1519,18 @@ Commands:
 
     plugin_update_parser = plugin_sub.add_parser("update", help="Update plugins from registry")
     plugin_update_parser.add_argument("name", nargs="?", default=None, help="Plugin name to update (all if omitted)")
+    plugin_update_parser.add_argument("--force", action="store_true", help="Force re-download even if up-to-date")
+    plugin_update_parser.add_argument("--dry-run", action="store_true", help="Show what would be updated")
+
+    # plugin registry (multi-registry management)
+    plugin_registry_parser = plugin_sub.add_parser("registry", help="Manage plugin registries")
+    plugin_reg_sub = plugin_registry_parser.add_subparsers(dest="registry_action", help="Registry actions")
+    reg_add = plugin_reg_sub.add_parser("add", help="Add a registry (local path or remote URL)")
+    reg_add.add_argument("name", help="Registry name")
+    reg_add.add_argument("source", help="Local directory path or remote URL")
+    reg_remove = plugin_reg_sub.add_parser("remove", help="Remove a registry")
+    reg_remove.add_argument("name", help="Registry name")
+    plugin_reg_sub.add_parser("list", help="List configured registries")
 
     plugin_sync_parser = plugin_sub.add_parser("sync", help="Install all available plugins from registry")
     plugin_sync_parser.add_argument("--force", action="store_true", help="Reinstall even if already installed")

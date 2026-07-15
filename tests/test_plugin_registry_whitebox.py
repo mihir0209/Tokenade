@@ -38,13 +38,13 @@ def _make_plugin(name="test-plugin", version="1.0.0", type_="handler",
     return d
 
 
-def _write_cache(plugins_dir, plugins, timestamp=None):
-    """Write a fresh registry cache file."""
+def _write_cache(plugins_dir, plugins, timestamp=None, registry_name="default"):
+    """Write a fresh registry cache file (per-registry cache name)."""
     cache = {
         "timestamp": timestamp or time.time(),
         "plugins": plugins,
     }
-    (plugins_dir / ".registry_cache.json").write_text(json.dumps(cache))
+    (plugins_dir / f".cache_{registry_name}.json").write_text(json.dumps(cache))
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def reg_cached(tmp_path):
         _make_plugin("gamma", version="0.9.0", type_="captcha", downloads=50),
         _make_plugin("delta", version="3.0.0", type_="proxy", rating=4.5, review_count=10),
     ]
-    _write_cache(tmp_path, plugins)
+    _write_cache(tmp_path, plugins, registry_name="default")
     return PluginRegistry(registry_url="https://example.com/reg", plugins_dir=tmp_path)
 
 
@@ -194,7 +194,7 @@ class TestSearchSorts:
     def test_sort_by_recent(self, reg_cached):
         # "recent" reverses the original insertion order from the cache
         by_recent = reg_cached.search(sort_by="recent")
-        cache_plugins = json.loads((reg_cached.plugins_dir / ".registry_cache.json").read_text())["plugins"]
+        cache_plugins = json.loads((reg_cached.plugins_dir / ".cache_default.json").read_text())["plugins"]
         cache_names = [p["name"] for p in cache_plugins]
         assert [p["name"] for p in by_recent] == list(reversed(cache_names))
 
@@ -618,8 +618,9 @@ class TestOutdatedAndUpdate:
             "name": "alpha", "version": "0.1.0", "type": "handler", "entry_point": "p.py",
         }))
         with patch("shutil.rmtree"):
-            count = reg_cached.update(plugin_name="alpha")
-        assert count == 1
+            result = reg_cached.update(plugin_name="alpha")
+        assert len(result["updated"]) == 1
+        assert "alpha" in result["updated"][0]
 
     @patch.object(PluginRegistry, "_download_plugin", return_value=True)
     def test_update_all(self, mock_dl, reg_cached):
@@ -630,8 +631,8 @@ class TestOutdatedAndUpdate:
                 "name": name, "version": ver, "type": "handler", "entry_point": "p.py",
             }))
         with patch("shutil.rmtree"):
-            count = reg_cached.update()
-        assert count == 2
+            result = reg_cached.update()
+        assert len(result["updated"]) == 2
 
 
 # ===================================================================
@@ -642,7 +643,8 @@ class TestFetchRegistry:
     def test_fresh_cache_hit(self, reg):
         _write_cache(reg.plugins_dir, [{"name": "cached"}], timestamp=time.time())
         result = reg._fetch_registry()
-        assert result == [{"name": "cached"}]
+        assert len(result) == 1
+        assert result[0]["name"] == "cached"
 
     def test_stale_cache_network_success(self, reg):
         _write_cache(reg.plugins_dir, [{"name": "old"}], timestamp=time.time() - 7200)
@@ -654,7 +656,8 @@ class TestFetchRegistry:
             mock_resp.__exit__ = MagicMock(return_value=False)
             mock_open.return_value = mock_resp
             result = reg._fetch_registry()
-        assert result == [{"name": "fresh"}]
+        assert len(result) == 1
+        assert result[0]["name"] == "fresh"
 
     def test_stale_cache_network_fail(self, reg):
         _write_cache(reg.plugins_dir, [{"name": "old"}], timestamp=time.time() - 7200)
@@ -663,7 +666,7 @@ class TestFetchRegistry:
         assert result == []
 
     def test_corrupt_cache_network_fail(self, reg):
-        (reg.plugins_dir / ".registry_cache.json").write_text("NOT JSON!!!")
+        (reg.plugins_dir / ".cache_default.json").write_text("NOT JSON!!!")
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("fail")):
             result = reg._fetch_registry()
         assert result == []
@@ -677,7 +680,8 @@ class TestFetchRegistry:
             mock_resp.__exit__ = MagicMock(return_value=False)
             mock_open.return_value = mock_resp
             result = reg._fetch_registry()
-        assert result == [{"name": "new"}]
+        assert len(result) == 1
+        assert result[0]["name"] == "new"
         assert reg._cache_file.exists()
 
     def test_no_cache_network_fail(self, reg):
@@ -694,7 +698,8 @@ class TestFetchRegistry:
             mock_resp.__exit__ = MagicMock(return_value=False)
             mock_open.return_value = mock_resp
             result = reg._fetch_registry()
-        assert result == [{"name": "in-dict"}]
+        assert len(result) == 1
+        assert result[0]["name"] == "in-dict"
 
     def test_list_response_format(self, reg):
         response = json.dumps([{"name": "in-list"}]).encode()
@@ -705,7 +710,8 @@ class TestFetchRegistry:
             mock_resp.__exit__ = MagicMock(return_value=False)
             mock_open.return_value = mock_resp
             result = reg._fetch_registry()
-        assert result == [{"name": "in-list"}]
+        assert len(result) == 1
+        assert result[0]["name"] == "in-list"
 
     def test_url_error(self, reg):
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):

@@ -97,7 +97,7 @@ class TestPluginRegistryInstall:
         ]
         call_count = [0]
 
-        def mock_download(meta):
+        def mock_download(meta, reg=None):
             d = tmp_path / meta["name"]
             d.mkdir(exist_ok=True)
             (d / "plugin.json").write_text(json.dumps(meta))
@@ -218,32 +218,39 @@ class TestPluginRegistryListInstalled:
 
 class TestPluginRegistryFetchRegistry:
     def test_fetch_from_cache(self, tmp_path):
-        cache = tmp_path / ".registry_cache.json"
+        registry = PluginRegistry(
+            plugins_dir=tmp_path,
+            registry_url="https://example.com/reg",
+        )
+        cache = registry._cache_file
         cache.write_text(json.dumps({
             "timestamp": time.time(),
             "plugins": [{"name": "cached"}],
         }))
-
-        registry = PluginRegistry(plugins_dir=tmp_path)
         result = registry._fetch_registry()
         assert len(result) == 1
         assert result[0]["name"] == "cached"
 
     def test_fetch_stale_cache(self, tmp_path):
-        cache = tmp_path / ".registry_cache.json"
+        registry = PluginRegistry(
+            plugins_dir=tmp_path,
+            registry_url="https://example.com/reg",
+        )
+        cache = registry._cache_file
         cache.write_text(json.dumps({
             "timestamp": time.time() - 7200,
             "plugins": [{"name": "stale"}],
         }))
-
-        registry = PluginRegistry(plugins_dir=tmp_path)
         with patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen") as mock:
             mock.side_effect = urllib.error.URLError("network error")
             result = registry._fetch_registry()
             assert result == []
 
     def test_fetch_network_error(self, tmp_path):
-        registry = PluginRegistry(plugins_dir=tmp_path)
+        registry = PluginRegistry(
+            plugins_dir=tmp_path,
+            registry_url="https://example.com/reg",
+        )
         with patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen") as mock:
             mock.side_effect = urllib.error.URLError("network error")
             result = registry._fetch_registry()
@@ -262,8 +269,9 @@ class TestPluginRegistryUpdate:
         with patch.object(registry, "_fetch_registry", return_value=[
             {"name": "myplugin", "version": "1.0"},
         ]):
-            count = registry.update()
-            assert count == 0
+            result = registry.update()
+            assert result["updated"] == []
+            assert "myplugin" in result["skipped"]
 
     def test_update_specific_plugin(self, tmp_path):
         d = tmp_path / "myplugin"
@@ -282,8 +290,9 @@ class TestPluginRegistryUpdate:
                 mock_response.__enter__ = lambda s: s
                 mock_response.__exit__ = MagicMock(return_value=False)
                 mock.return_value = mock_response
-                count = registry.update("myplugin")
-                assert count == 1
+                result = registry.update("myplugin")
+                assert len(result["updated"]) == 1
+                assert "myplugin" in result["updated"][0]
 
     def test_update_plugin_not_in_registry(self, tmp_path):
         d = tmp_path / "myplugin"
@@ -293,8 +302,9 @@ class TestPluginRegistryUpdate:
         }))
         registry = PluginRegistry(plugins_dir=tmp_path)
         with patch.object(registry, "_fetch_registry", return_value=[]):
-            count = registry.update()
-            assert count == 0
+            result = registry.update()
+            assert result["updated"] == []
+            assert "myplugin" in result["skipped"]
 
 
 class TestPluginRegistryDownload:
@@ -500,8 +510,9 @@ class TestPluginRegistryExtra:
                 mock_resp.__enter__ = lambda s: s
                 mock_resp.__exit__ = MagicMock(return_value=False)
                 mock.return_value = mock_resp
-                count = registry.update("myplugin")
-                assert count == 1
+                result = registry.update("myplugin")
+                assert len(result["updated"]) == 1
+                assert "myplugin" in result["updated"][0]
 
     @patch("tokenade.core.integration.plugin_registry.urllib.request.urlopen")
     def test_download_network_error(self, mock_urlopen, tmp_path):

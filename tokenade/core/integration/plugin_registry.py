@@ -1,19 +1,22 @@
 """
-Plugin registry using GitHub raw content.
+Plugin registry with multi-source support.
 
-Plugins are listed in a JSON file hosted in a public GitHub repo.
-No domain or hosting costs required.
+Supports multiple registries (local directories and remote URLs) stored
+in ~/.tokenade/preferences.json. Registries are merged, deduplicated by
+name, and the first match wins for installs when no registry is specified.
 
-Enhanced with categories, tags, local ratings/downloads (optional), and verification.
-Registry JSON must not ship hand-edited vanity downloads/ratings (honesty policy).
+Local registries are auto-detected: a directory path containing plugins.json
+and a plugins/ subdirectory. Remote registries are HTTP URLs.
 """
 
 import json
 import logging
+import os
+import shutil
 import time
 import urllib.request
 import urllib.error
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
 from packaging.version import Version
@@ -29,8 +32,9 @@ def _version_lt(a: str, b: str) -> bool:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REGISTRY_URL = "https://raw.githubusercontent.com/mihir0209/tokenade-plugins/main"
+DEFAULT_REMOTE_REGISTRY = "https://raw.githubusercontent.com/mihir0209/tokenade-plugins/main"
 DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
+PREFERENCES_FILE = Path.home() / ".tokenade" / "preferences.json"
 
 CATEGORIES = [
     {"name": "authentication", "description": "OAuth2, SSO, API token refresh", "icon": "🔐"},
@@ -68,21 +72,150 @@ class Plugin:
 
 
 class PluginRegistry:
-    """Manage plugins via GitHub-hosted registry."""
+    """Manage plugins from multiple registries (local + remote)."""
 
     def __init__(
         self,
-        registry_url: str = DEFAULT_REGISTRY_URL,
         plugins_dir: Path = DEFAULT_PLUGINS_DIR,
+        registry_url: Optional[str] = None,
     ) -> None:
-        self.registry_url = self._normalize_registry_url(registry_url)
-        self.plugins_dir = plugins_dir
+        self.plugins_dir = Path(plugins_dir)
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
-        self._cache_file = self.plugins_dir / ".registry_cache.json"
         self._ratings_file = self.plugins_dir / ".ratings.json"
         self._downloads_file = self.plugins_dir / ".downloads.json"
         self._local_ratings = self._load_local_ratings()
         self._local_downloads = self._load_local_downloads()
+        self._registry_cache: Dict[str, List[Dict]] = {}
+        # Isolate preferences: default location for real installs,
+        # per-plugins_dir file for tests / custom dirs
+        if self.plugins_dir.resolve() == DEFAULT_PLUGINS_DIR.resolve():
+            self._preferences_file = PREFERENCES_FILE
+        else:
+            self._preferences_file = self.plugins_dir / ".preferences.json"
+        # Backward compat: if registry_url given, use as sole remote source
+        if registry_url is not None:
+            normalized = self._normalize_registry_url(registry_url)
+            self._registries = [{
+                "name": "default",
+                "source": normalized,
+                "type": "remote",
+                "enabled": True,
+            }]
+        else:
+            self._registries = self._load_preferences()
+
+    @property
+    def registry_url(self) -> str:
+        """Primary registry URL (backward-compat property for TUI/tests)."""
+        for r in self._registries:
+            if r.get("enabled", True) and r.get("type") == "remote":
+                return r["source"]
+        for r in self._registries:
+            if r.get("enabled", True):
+                return r["source"]
+        return DEFAULT_REMOTE_REGISTRY
+
+    @property
+    def _cache_file(self) -> Path:
+        """Primary cache file path (backward-compat for tests)."""
+        for r in self._registries:
+            if r.get("enabled", True):
+                if r["type"] == "remote":
+                    return self.plugins_dir / f".cache_{r['name']}.json"
+        return self.plugins_dir / ".registry_cache.json"
+
+    # ── Preferences (multi-registry) ────────────────────────────────
+
+    def _load_preferences(self) -> List[Dict]:
+        """Load registry list from preferences.json."""
+        prefs_file = getattr(self, "_preferences_file", PREFERENCES_FILE)
+        if prefs_file.exists():
+            try:
+                with open(prefs_file, "r", encoding="utf-8") as f:
+                    prefs = json.load(f)
+                return prefs.get("registries", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+        # Seed with the official remote registry
+        default = [{
+            "name": "official",
+            "source": DEFAULT_REMOTE_REGISTRY,
+            "type": "remote",
+            "enabled": True,
+        }]
+        self._save_preferences(default)
+        return default
+
+    def _save_preferences(self, registries: Optional[List[Dict]] = None) -> None:
+        """Write registry list to preferences.json."""
+        if registries is None:
+            registries = self._registries
+        prefs = {"registries": registries}
+        prefs_file = getattr(self, "_preferences_file", PREFERENCES_FILE)
+        prefs_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(prefs_file, "w", encoding="utf-8") as f:
+                json.dump(prefs, f, indent=2)
+        except OSError as e:
+            logger.warning(f"Failed to save preferences: {e}")
+
+    def add_registry(self, name: str, source: str) -> Dict:
+        """Add a registry. Auto-detects local vs remote. Returns the entry."""
+        # Duplicate check
+        for r in self._registries:
+            if r["name"] == name:
+                raise ValueError(f"Registry '{name}' already exists")
+
+        # Auto-detect type
+        expanded = os.path.expanduser(source)
+        if os.path.isdir(expanded):
+            reg_type = "local"
+            source = expanded
+            # Validate: must have plugins.json
+            if not (Path(source) / "plugins.json").exists():
+                raise ValueError(f"Local registry must contain plugins.json: {source}")
+        else:
+            reg_type = "remote"
+            source = self._normalize_registry_url(source)
+
+        entry = {"name": name, "source": source, "type": reg_type, "enabled": True}
+        self._registries.append(entry)
+        self._save_preferences()
+        return entry
+
+    def remove_registry(self, name: str) -> bool:
+        """Remove a registry by name."""
+        before = len(self._registries)
+        self._registries = [r for r in self._registries if r["name"] != name]
+        if len(self._registries) == before:
+            logger.warning(f"Registry not found: {name}")
+            return False
+        self._save_preferences()
+        return True
+
+    def list_registries(self) -> List[Dict]:
+        """Return all configured registries."""
+        return list(self._registries)
+
+    def get_registry(self, name: str) -> Optional[Dict]:
+        """Get a single registry by name."""
+        for r in self._registries:
+            if r["name"] == name:
+                return r
+        return None
+
+    # ── Registry detection helpers ──────────────────────────────────
+
+    @staticmethod
+    def _is_local_registry(source: str) -> bool:
+        """True if source is a local directory path."""
+        return os.path.isdir(os.path.expanduser(source))
+
+    def _registry_plugins_file(self, registry: Dict) -> Path:
+        """Return path to plugins.json for a local registry."""
+        return Path(registry["source"]) / "plugins.json"
+
+    # ── Existing helpers ────────────────────────────────────────────
 
     @staticmethod
     def _normalize_registry_url(url: str) -> str:
@@ -306,21 +439,81 @@ class PluginRegistry:
         self._local_downloads[name] = self._local_downloads.get(name, 0) + 1
         self._save_local_downloads()
 
-    def install(self, plugin_name: str, _install_chain: Optional[List[str]] = None) -> bool:
-        """Install a plugin from the registry. Auto-installs missing dependencies."""
+    def find_plugin(
+        self, plugin_name: str, registry_name: Optional[str] = None
+    ) -> Tuple[Optional[Dict], List[Dict]]:
+        """Find a plugin across registries.
+
+        Returns (plugin_meta, conflicts) where conflicts is a list of
+        registries that also have this plugin (only if >1 match).
+        """
+        matches: List[Dict] = []
+        for reg in self._registries:
+            if not reg.get("enabled", True):
+                continue
+            if registry_name and reg["name"] != registry_name:
+                continue
+            try:
+                plugins = self._fetch_single_registry(reg)
+            except Exception:
+                continue
+            for p in plugins:
+                if p.get("name") == plugin_name:
+                    p = dict(p)
+                    p["_registry"] = reg["name"]
+                    matches.append(p)
+
+        if not matches:
+            return None, []
+        if len(matches) == 1:
+            return matches[0], []
+        # Conflict: return first match + list of all
+        return matches[0], matches
+
+    def install(
+        self,
+        plugin_name: str,
+        registry_name: Optional[str] = None,
+        _install_chain: Optional[List[str]] = None,
+    ) -> bool:
+        """Install a plugin. Auto-installs missing dependencies.
+
+        Args:
+            plugin_name: Name of the plugin to install
+            registry_name: Optional registry to install from (for conflicts)
+            _install_chain: Internal chain for circular dependency detection
+        """
         if _install_chain is None:
             _install_chain = []
 
         if plugin_name in _install_chain:
-            logger.error(f"Circular dependency detected: {' -> '.join(_install_chain)} -> {plugin_name}")
+            logger.error(
+                f"Circular dependency detected: "
+                f"{' -> '.join(_install_chain)} -> {plugin_name}"
+            )
             return False
 
-        plugins = self._fetch_registry()
-        plugin_meta = None
-        for p in plugins:
-            if p.get("name") == plugin_name:
-                plugin_meta = p
-                break
+        if registry_name:
+            plugin_meta, conflicts = self.find_plugin(plugin_name, registry_name)
+        else:
+            enabled = [r for r in self._registries if r.get("enabled", True)]
+            if len(enabled) > 1:
+                plugin_meta, conflicts = self.find_plugin(plugin_name)
+                if conflicts:
+                    sources = [c.get("_registry", "?") for c in conflicts]
+                    logger.error(
+                        f"Plugin '{plugin_name}' found in multiple registries: "
+                        f"{', '.join(sources)}. Use --registry <name> to choose."
+                    )
+                    return False
+            else:
+                # Single registry: use merged fetch (mockable in tests)
+                plugin_meta = None
+                conflicts = []
+                for p in self._fetch_registry():
+                    if p.get("name") == plugin_name:
+                        plugin_meta = p
+                        break
 
         if plugin_meta is None:
             logger.error(f"Plugin not found in registry: {plugin_name}")
@@ -337,11 +530,12 @@ class PluginRegistry:
             dep_dir = self.plugins_dir / dep
             if not dep_dir.exists():
                 logger.info(f"Installing dependency: {dep}")
-                if not self.install(dep, _install_chain):
+                if not self.install(dep, registry_name, _install_chain):
                     logger.error(f"Failed to install dependency: {dep}")
                     return False
 
-        success = self._download_plugin(plugin_meta)
+        reg = self.get_registry(plugin_meta.get("_registry", ""))
+        success = self._download_plugin(plugin_meta, reg)
         if success:
             self.increment_downloads(plugin_name)
             logger.info(f"Plugin installed: {plugin_name}")
@@ -397,7 +591,7 @@ class PluginRegistry:
         return plugins
 
     def get_outdated(self) -> List[Dict]:
-        """List installed plugins with available updates."""
+        """List installed plugins with available updates (semver comparison)."""
         installed = self.list_installed()
         registry_plugins = self._fetch_registry()
         registry_map = {p["name"]: p for p in registry_plugins}
@@ -405,53 +599,159 @@ class PluginRegistry:
         outdated = []
         for plugin in installed:
             remote = registry_map.get(plugin.name)
-            if remote and remote.get("version", "") != plugin.version:
+            if not remote:
+                continue
+            remote_ver = remote.get("version", "")
+            if remote_ver and _version_lt(plugin.version, remote_ver):
                 outdated.append({
                     "name": plugin.name,
                     "installed_version": plugin.version,
-                    "available_version": remote.get("version", ""),
+                    "available_version": remote_ver,
                     "description": remote.get("description", ""),
+                    "registry": remote.get("_registry", ""),
                 })
-
         return outdated
 
-    def update(self, plugin_name: Optional[str] = None) -> int:
-        """Update one or all installed plugins. Returns count updated."""
+    def update(
+        self,
+        plugin_name: Optional[str] = None,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> Dict[str, List[str]]:
+        """Update one or all installed plugins.
+
+        Args:
+            plugin_name: Update only this plugin (None = all outdated)
+            force: Re-download even if already up-to-date
+            dry_run: Report what would be updated without changing files
+
+        Returns:
+            {"updated": [...], "skipped": [...], "failed": [...]}
+        """
         installed = self.list_installed()
         registry_plugins = self._fetch_registry()
         registry_map = {p["name"]: p for p in registry_plugins}
 
-        updated = 0
+        result: Dict[str, List[str]] = {"updated": [], "skipped": [], "failed": []}
+
         for plugin in installed:
             if plugin_name and plugin.name != plugin_name:
                 continue
 
             remote = registry_map.get(plugin.name)
             if not remote:
+                result["skipped"].append(plugin.name)
                 continue
 
-            if remote.get("version", "") != plugin.version:
-                plugin_dir = self.plugins_dir / plugin.name
-                import shutil
-                shutil.rmtree(plugin_dir)
-                if self._download_plugin(remote):
-                    updated += 1
-                    logger.info(f"Updated {plugin.name}: {plugin.version} -> {remote['version']}")
+            remote_ver = remote.get("version", "")
+            is_outdated = remote_ver and _version_lt(plugin.version, remote_ver)
 
-        return updated
+            if not is_outdated and not force:
+                result["skipped"].append(plugin.name)
+                continue
+
+            if dry_run:
+                result["updated"].append(
+                    f"{plugin.name} {plugin.version} -> {remote_ver}"
+                )
+                continue
+
+            # Backup user config
+            plugin_dir = self.plugins_dir / plugin.name
+            config_backup = None
+            config_path = plugin_dir / "config.json"
+            if config_path.exists():
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config_backup = f.read()
+                except OSError:
+                    pass
+
+            # Re-download
+            shutil.rmtree(plugin_dir)
+            reg = self.get_registry(remote.get("_registry", ""))
+            if self._download_plugin(remote, reg):
+                # Restore config
+                if config_backup is not None:
+                    try:
+                        with open(plugin_dir / "config.json", "w", encoding="utf-8") as f:
+                            f.write(config_backup)
+                    except OSError as e:
+                        logger.warning(f"Failed to restore config for {plugin.name}: {e}")
+                result["updated"].append(
+                    f"{plugin.name} {plugin.version} -> {remote_ver}"
+                )
+                logger.info(
+                    f"Updated {plugin.name}: {plugin.version} -> {remote_ver}"
+                )
+            else:
+                result["failed"].append(plugin.name)
+                logger.error(f"Failed to update {plugin.name}")
+
+        return result
 
     def _fetch_registry(self) -> List[Dict]:
-        """Fetch plugin list from GitHub."""
-        if self._cache_file.exists():
+        """Fetch and merge plugins from all enabled registries.
+
+        Local registries are read directly from disk (no TTL).
+        Remote registries use a 1-hour disk cache per registry.
+        Deduplicates by name — first registry in list wins.
+        """
+        seen_names: set = set()
+        merged: List[Dict] = []
+
+        for reg in self._registries:
+            if not reg.get("enabled", True):
+                continue
             try:
-                with open(self._cache_file, "r", encoding="utf-8") as f:
+                plugins = self._fetch_single_registry(reg)
+            except Exception as e:
+                logger.warning(f"Failed to fetch registry '{reg['name']}': {e}")
+                continue
+            for p in plugins:
+                name = p.get("name", "")
+                if name and name not in seen_names:
+                    p["_registry"] = reg["name"]
+                    seen_names.add(name)
+                    merged.append(p)
+
+        return merged
+
+    def _fetch_single_registry(self, registry: Dict) -> List[Dict]:
+        """Fetch plugins from a single registry (local or remote)."""
+        if registry["type"] == "local":
+            return self._fetch_local_registry(registry)
+        return self._fetch_remote_registry(registry)
+
+    def _fetch_local_registry(self, registry: Dict) -> List[Dict]:
+        """Read plugins.json directly from a local directory."""
+        plugins_file = Path(registry["source"]) / "plugins.json"
+        if not plugins_file.exists():
+            logger.warning(f"Local registry missing plugins.json: {plugins_file}")
+            return []
+        try:
+            with open(plugins_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            plugins = data if isinstance(data, list) else data.get("plugins", [])
+            return plugins
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to read local registry {plugins_file}: {e}")
+            return []
+
+    def _fetch_remote_registry(self, registry: Dict) -> List[Dict]:
+        """Fetch plugins.json from a remote URL with 1-hour cache."""
+        cache_file = self.plugins_dir / f".cache_{registry['name']}.json"
+
+        if cache_file.exists():
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
                     cache = json.load(f)
                 if time.time() - cache.get("timestamp", 0) < 3600:
                     return cache.get("plugins", [])
             except (json.JSONDecodeError, OSError):
                 pass
 
-        url = f"{self.registry_url}/plugins.json"
+        url = f"{registry['source']}/plugins.json"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Tokenade/2.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -460,36 +760,72 @@ class PluginRegistry:
             plugins = data if isinstance(data, list) else data.get("plugins", [])
 
             cache_data = {"timestamp": time.time(), "plugins": plugins}
-            with open(self._cache_file, "w", encoding="utf-8") as f:
+            with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, indent=2)
 
             return plugins
         except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to fetch plugin registry: {e}")
+            logger.warning(f"Failed to fetch remote registry '{registry['name']}': {e}")
             return []
 
-    def _download_plugin(self, plugin: Dict) -> bool:
-        """Download plugin files from GitHub.
+    def _download_plugin(self, plugin: Dict, registry: Optional[Dict] = None) -> bool:
+        """Download plugin files from a registry.
 
-        Downloads plugin.json and plugin.py (and any additional files listed).
-        Supports both raw GitHub URLs and directory URLs.
+        For local registries: copies files from the local directory.
+        For remote registries: downloads via HTTP.
+        Falls back to the first enabled registry if none specified.
         """
         name = plugin.get("name", "")
-        base_url = f"{self.registry_url}/plugins/{name}"
+        if not name:
+            return False
+
+        if registry is None:
+            reg_name = plugin.get("_registry", "")
+            registry = self.get_registry(reg_name) or self._registries[0] if self._registries else None
 
         plugin_dir = self.plugins_dir / name
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        # Core plugin files plus site metadata when present. site_config.json is
-        # optional for plugins in general, but must travel with site handlers.
         core_files = ["plugin.json", "plugin.py", "site_config.json"]
         extra_files = [f for f in plugin.get("files", []) if f not in core_files]
         all_files = core_files + extra_files
 
-        for filename in all_files:
-            file_url = f"{base_url}/{filename}"
-            target_path = plugin_dir / filename
+        if registry and registry["type"] == "local":
+            return self._copy_plugin_local(name, all_files, registry, plugin_dir)
+        return self._download_plugin_remote(name, all_files, plugin_dir)
 
+    def _copy_plugin_local(
+        self, name: str, files: List[str], registry: Dict, target_dir: Path
+    ) -> bool:
+        """Copy plugin files from a local registry directory."""
+        src_dir = Path(registry["source"]) / "plugins" / name
+        if not src_dir.exists():
+            logger.error(f"Plugin source not found in local registry: {src_dir}")
+            return False
+
+        for filename in files:
+            src = src_dir / filename
+            dst = target_dir / filename
+            if src.exists():
+                shutil.copy2(src, dst)
+            elif filename in ("plugin.json", "plugin.py"):
+                logger.error(f"Required file missing in local registry: {src}")
+                return False
+        return True
+
+    def _download_plugin_remote(self, name: str, files: List[str], target_dir: Path) -> bool:
+        """Download plugin files from a remote registry URL."""
+        # Find the remote registry source
+        reg_source = DEFAULT_REMOTE_REGISTRY
+        for reg in self._registries:
+            if reg["type"] == "remote" and reg.get("enabled", True):
+                reg_source = reg["source"]
+                break
+
+        base_url = f"{reg_source}/plugins/{name}"
+        for filename in files:
+            file_url = f"{base_url}/{filename}"
+            target_path = target_dir / filename
             try:
                 req = urllib.request.Request(file_url, headers={"User-Agent": "Tokenade/2.0"})
                 with urllib.request.urlopen(req, timeout=30) as resp:
@@ -497,12 +833,10 @@ class PluginRegistry:
                 with open(target_path, "wb") as f:
                     f.write(content)
             except (urllib.error.URLError, OSError) as e:
-                # Skip non-critical files (site_config.json, README.md, helpers)
                 if filename in ("plugin.json", "plugin.py"):
                     logger.error(f"Failed to download {file_url}: {e}")
                     return False
                 logger.debug(f"Skipped optional file {filename}: {e}")
-
         return True
 
     def discover_from_url(self, url: str) -> List[Dict]:
