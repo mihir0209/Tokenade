@@ -53,6 +53,7 @@ def cmd_export(args):
 
     browser_path = args.browser_path
     browser_name = args.browser_name or "unknown"
+    cdp_port = getattr(args, 'cdp_port', None)
 
     from tokenade.core.config import load_config
     config = load_config()
@@ -61,32 +62,34 @@ def cmd_export(args):
     if not args.profile:
         args.profile = config.get("default_profile")
 
-    if not browser_path and browser_name:
-        discovery = BrowserProfileDiscovery()
-        profiles = discovery.discover_all()
-        all_profiles = []
-        for browser_profiles in profiles.values():
-            all_profiles.extend(browser_profiles)
-        matching = [p for p in all_profiles if p.browser == browser_name]
-        if args.profile:
-            matching = [p for p in matching if p.name == args.profile]
-        if matching:
-            browser_path = str(matching[0].path)
-            print(f"📁 Using profile: {matching[0].name}")
-        else:
-            print(f"❌ No profile found for '{browser_name}'")
-            print("   Run 'tokenade export --list-profiles' to see available profiles")
+    # CDP export talks to a running browser — no local profile required
+    if not cdp_port:
+        if not browser_path and browser_name:
+            discovery = BrowserProfileDiscovery()
+            profiles = discovery.discover_all()
+            all_profiles = []
+            for browser_profiles in profiles.values():
+                all_profiles.extend(browser_profiles)
+            matching = [p for p in all_profiles if p.browser == browser_name]
             if args.profile:
-                print(f"   Profile '{args.profile}' not found — check spelling and try again")
+                matching = [p for p in matching if p.name == args.profile]
+            if matching:
+                browser_path = str(matching[0].path)
+                print(f"📁 Using profile: {matching[0].name}")
+            else:
+                print(f"❌ No profile found for '{browser_name}'")
+                print("   Run 'tokenade export --list-profiles' to see available profiles")
+                if args.profile:
+                    print(f"   Profile '{args.profile}' not found — check spelling and try again")
+                return
+
+        if not browser_path:
+            print("❌ No browser path specified.")
+            print("   Use --browser-name (e.g., --browser-name firefox) or --browser-path /path/to/profile")
+            print("   Or use --cdp-port N to extract from a running browser")
+            print("   Run 'tokenade export --list-profiles' to discover available profiles")
             return
 
-    if not browser_path and not getattr(args, 'cdp_port', None):
-        print("❌ No browser path specified.")
-        print("   Use --browser-name (e.g., --browser-name firefox) or --browser-path /path/to/profile")
-        print("   Run 'tokenade export --list-profiles' to discover available profiles")
-        return
-
-    cdp_port = getattr(args, 'cdp_port', None)
     if cdp_port:
         launched_browser = None
         import urllib.request as _urllib_req

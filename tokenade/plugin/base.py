@@ -231,7 +231,9 @@ class SiteHandlerPlugin(PluginBase):
         Core and CLI call this (via site_configs.get_site_config) to resolve
         domains, health cookies, and URLs for a site.
         """
-        if not self._site_config and self._plugin_dir:
+        if not hasattr(self, "_site_config"):
+            self._site_config = {}
+        if not self._site_config and getattr(self, "_plugin_dir", None):
             self._load_site_config_file()
         return dict(self._site_config)
 
