@@ -1,6 +1,6 @@
 # Release Hardening Plan
 
-This document is the working checklist for hardening Tokenade after the PyPI `1.1.5` release.
+This document is the working checklist for hardening Tokenade after the PyPI `1.1.51` release.
 
 Goal: make the published package installable, verifiable, and usable from a clean environment without depending on local source checkouts or hand-copied plugins.
 
@@ -14,8 +14,8 @@ Goal: make the published package installable, verifiable, and usable from a clea
 
 ## Current State
 
-- `tokenade==1.1.5` is published on PyPI.
-- Clean PyPI verification passed for `tokenade==1.1.5`.
+- `tokenade==1.1.51` is published on PyPI.
+- Clean PyPI verification passed for `tokenade==1.1.51`.
 - `~/.tokenade/plugins` was removed and plugins were reinstalled through a GitHub remote registry.
 - `tokenade-plugins` GitHub registry was fixed and pushed:
   - `discord-handler v1.2.0`
@@ -32,6 +32,7 @@ Goal: make the published package installable, verifiable, and usable from a clea
 - [x] Push `v1.1.3` tag.
 - [x] Push `v1.1.4` tag.
 - [x] Push `v1.1.5` tag.
+- [x] Push `v1.1.51` tag.
 - [x] Verify GitHub has the release commit and tags.
 
 Commands:
@@ -41,7 +42,7 @@ git status
 git log --oneline -5
 git tag -l 'v1.1.*'
 git push origin main
-git push origin v1.1.3 v1.1.4 v1.1.5
+git push origin v1.1.3 v1.1.4 v1.1.5 v1.1.51
 ```
 
 ### 2. Fix Or Verify Marketplace Registry Behavior
@@ -160,6 +161,14 @@ tokenade load --file discord.tokenade
 Add dated entries here as hardening steps complete.
 
 ### 2026-07-16
+
+- Published `tokenade==1.1.51` to PyPI.
+- Ran `scripts/verify_pypi_release.sh 1.1.51`; it passed after PyPI simple-index propagation caught up.
+- Pushed core `main` to GitHub through commit `d389647`.
+- Pushed core tag `v1.1.51` to GitHub.
+- GitHub Actions `CI Pipeline` and `Stealth Testing` are green on `main`.
+- CI now gates the maintained release regression suite instead of stale local-environment tests.
+- Marketplace checkout-dependent tests skip cleanly when `~/Projects/tokenade-plugins` is unavailable.
 
 - Published `tokenade==1.1.5` to PyPI.
 - Ran `scripts/verify_pypi_release.sh 1.1.5`; it passed.
