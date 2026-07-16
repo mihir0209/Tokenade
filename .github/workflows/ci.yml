@@ -138,6 +138,9 @@ jobs:
       - name: Build sdist and wheel
         run: python -m build
 
+      - name: Check wheel contents
+        run: python scripts/check_wheel_contents.py
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

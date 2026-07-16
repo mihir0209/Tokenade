@@ -73,6 +73,7 @@ Issues = "https://github.com/mihir0209/tokenade/issues"
 
 [tool.setuptools.packages.find]
 include = ["tokenade*"]
+exclude = ["tokenade.tests", "tokenade.tests.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tokenade/tests"]
