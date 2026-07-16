@@ -330,15 +330,40 @@ def cmd_export(args):
 
     local_storage = {}
     session_storage = {}
-    do_extract_storage = args.extract_local_storage or getattr(args, 'full', False)
+    storage = {"local": {}, "session": {}}
+    handler_has_storage = bool(
+        site_handler and hasattr(site_handler, "get_storage_origins")
+        and site_handler.get_storage_origins()
+    )
+    do_extract_storage = (
+        args.extract_local_storage
+        or getattr(args, 'full', False)
+        or handler_has_storage
+    )
 
     if do_extract_storage:
         print(f"\n💾 Extracting localStorage from: {browser_path}")
         ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
 
         try:
-            if args.local_storage_origin:
+            handler_origins = []
+            if site_handler and hasattr(site_handler, "get_storage_origins"):
+                handler_origins = list(site_handler.get_storage_origins() or [])
+
+            if handler_origins:
+                for origin in handler_origins:
+                    origin_data = ls_extractor.extract(origin_filter=origin)
+                    if origin_data:
+                        storage["local"][origin] = origin_data
+                local_storage = {
+                    key: value
+                    for entries in storage["local"].values()
+                    for key, value in entries.items()
+                }
+                print(f"   📊 Extracted {len(local_storage)} localStorage entries for plugin origins")
+            elif args.local_storage_origin:
                 local_storage = ls_extractor.extract(origin_filter=args.local_storage_origin)
+                storage["local"][args.local_storage_origin] = local_storage
                 print(f"   📊 localStorage entries for {args.local_storage_origin}: {len(local_storage)}")
             else:
                 origins = ls_extractor.list_origins()
@@ -348,6 +373,7 @@ def cmd_export(args):
                         try:
                             origin_data = ls_extractor.extract(origin_filter=origin)
                             local_storage.update(origin_data)
+                            storage["local"][origin] = origin_data
                         except Exception:
                             pass
                     print(f"   📊 Extracted {len(local_storage)} localStorage entries total")
@@ -372,7 +398,7 @@ def cmd_export(args):
         except Exception:
             pass
 
-    if not cookies and not local_storage and not session_storage:
+    if not cookies and not local_storage and not session_storage and not storage["local"]:
         print("❌ No cookies or localStorage to export")
         return
 
@@ -391,6 +417,7 @@ def cmd_export(args):
         profile=args.profile or "unknown",
         local_storage=local_storage if local_storage else None,
         session_storage=session_storage if session_storage else None,
+        storage=storage if storage["local"] or storage["session"] else None,
         extra_cookies=extra_cookies if extra_cookies else None,
     )
 

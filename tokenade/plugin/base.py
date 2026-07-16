@@ -343,6 +343,15 @@ class SiteHandlerPlugin(PluginBase):
             return [indicator]
         return []
 
+    def get_storage_origins(self) -> List[str]:
+        """Return browser origins whose localStorage belongs in an export.
+
+        Handlers for sites that keep authentication outside cookies should
+        override this. The exporter preserves these origins in the session
+        package instead of inferring one from an unrelated cookie domain.
+        """
+        return []
+
     def verify_login(self, browser_context: Any) -> PluginResult:
         """Verify if the browser is logged into this site.
 

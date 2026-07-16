@@ -157,6 +157,7 @@ class PluginExporter:
         try:
             from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
             from tokenade.core.importer.cookie_extractor import CookieExtractor
+            from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 
             # Discover browser profile
             discovery = BrowserProfileDiscovery()
@@ -184,10 +185,34 @@ class PluginExporter:
             # Load cookies into context
             extractor = CookieExtractor(browser_path, browser=browser_name)
             all_cookies = extractor.extract()
-            context.add_cookies(all_cookies)
+            filtered_cookies = self._filter_cookies(all_cookies, domains)
+            context.add_cookies(filtered_cookies)
+
+            # Site handlers declare the browser origins whose localStorage is
+            # part of their session. Keep this site-specific instead of
+            # guessing from the first cookie domain.
+            storage_origins = list(getattr(handler, "get_storage_origins", lambda: [])() or [])
+            storage = {"local": {}, "session": {}}
+            if storage_origins:
+                storage_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
+                for origin in storage_origins:
+                    entries = storage_extractor.extract(origin_filter=origin)
+                    if entries:
+                        storage["local"][origin] = entries
+
+                for origin, entries in storage["local"].items():
+                    page = context.new_page()
+                    page.goto(origin, wait_until="domcontentloaded")
+                    page.evaluate(
+                        "([items]) => Object.entries(items).forEach(([key, value]) => "
+                        "localStorage.setItem(key, value))",
+                        [entries],
+                    )
 
             # Use handler to extract session
             url = f"https://{domains[0]}"
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded")
             result = handler.extract_session(context, url)
 
             # Handle PluginResult or dict (backward compat)
@@ -212,7 +237,7 @@ class PluginExporter:
                 cookies=session.get("cookies", []),
                 browser=browser_name,
                 profile=browser_path,
-                storage=session.get("storage"),
+                storage=session.get("storage") or storage,
                 local_storage=session.get("local_storage"),
             )
             packager.save(package, output_file)
@@ -236,6 +261,17 @@ class PluginExporter:
             logger.error(f"Plugin export failed: {e}")
             # Fallback to default
             return self._export_default(browser_name, domains, output_file)
+
+    @staticmethod
+    def _filter_cookies(cookies: List[Dict[str, Any]], domains: List[str]) -> List[Dict[str, Any]]:
+        """Keep cookies matching the requested domains and their subdomains."""
+        filtered = []
+        normalized = [str(domain).lstrip(".").lower() for domain in domains if domain]
+        for cookie in cookies:
+            host = str(cookie.get("domain", "")).lstrip(".").lower()
+            if any(host == domain or host.endswith("." + domain) for domain in normalized):
+                filtered.append(cookie)
+        return filtered
 
     def _export_default(
         self,
