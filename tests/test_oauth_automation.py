@@ -1,6 +1,7 @@
 """Tests for OAuth Automation Plugin."""
 
 import json
+import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,11 +9,23 @@ import pytest
 
 from tokenade.plugin.api import PluginResult
 from tokenade.plugin.oauth_automation import OAuthAutomationPlugin
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path.home() / "Projects/tokenade-plugins/plugins/google-flow-handler"))
-from plugin import GoogleFlowPlugin
+
+def _load_google_flow_plugin():
+    plugin_path = Path.home() / "Projects/tokenade-plugins/plugins/google-flow-handler/plugin.py"
+    if not plugin_path.exists():
+        return None
+
+    spec = importlib.util.spec_from_file_location("google_flow_handler_plugin", plugin_path)
+    if not spec or not spec.loader:
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.GoogleFlowPlugin
+
+
+GoogleFlowPlugin = _load_google_flow_plugin()
 
 
 class ConcreteOAuthPlugin(OAuthAutomationPlugin):
@@ -177,6 +190,11 @@ class TestOAuthAutomationPlugin:
 
 class TestGoogleFlowPlugin:
     """Tests for GoogleFlowPlugin."""
+
+    pytestmark = pytest.mark.skipif(
+        GoogleFlowPlugin is None,
+        reason="google-flow-handler marketplace plugin checkout is not available",
+    )
 
     def test_is_oauth_automation_plugin(self):
         plugin = GoogleFlowPlugin()

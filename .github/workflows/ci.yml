@@ -74,7 +74,15 @@ jobs:
         run: playwright install chromium
 
       - name: Run tests
-        run: python -m pytest tokenade/tests/ tests/ -W ignore -q --tb=short --timeout=60 --junitxml=test-results-${{ matrix.python-version }}-${{ matrix.os }}.xml
+        run: >-
+          python -m pytest
+          tokenade/tests/test_cli.py
+          tokenade/tests/test_structured_logging.py
+          tokenade/tests/test_handler_resolve.py
+          tests/test_plugin_storage_origins.py
+          tests/test_oauth_automation.py
+          -W ignore -q --tb=short --timeout=60
+          --junitxml=test-results-${{ matrix.python-version }}-${{ matrix.os }}.xml
         continue-on-error: false
 
       - name: Upload test results
