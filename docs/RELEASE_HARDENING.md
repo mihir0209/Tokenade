@@ -31,7 +31,7 @@ Goal: make the published package installable, verifiable, and usable from a clea
 - [x] Push core branch commits to GitHub.
 - [x] Push `v1.1.3` tag.
 - [x] Push `v1.1.4` tag.
-- [ ] Push `v1.1.5` tag.
+- [x] Push `v1.1.5` tag.
 - [x] Verify GitHub has the release commit and tags.
 
 Commands:
@@ -164,7 +164,8 @@ Add dated entries here as hardening steps complete.
 - Published `tokenade==1.1.5` to PyPI.
 - Ran `scripts/verify_pypi_release.sh 1.1.5`; it passed.
 - `tokenade==1.1.5` verification confirmed default CLI logging is quiet and `tokenade test` prints missing-fingerprint next steps.
-- Pushed core `main` to GitHub through commit `853adae`.
+- Pushed core `main` to GitHub through commit `40a6921`.
+- Pushed core tag `v1.1.5` to GitHub.
 - Pushed core tags `v1.1.3` and `v1.1.4` to GitHub.
 - Verified GitHub raw `main` registry caught up and shows `discord-handler v1.2.0` and `telegram-handler v1.1.0`.
 - Removed pinned `github-current` registry; normal official registry is sufficient again.
