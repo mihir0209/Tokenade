@@ -60,6 +60,7 @@ def resolve_legacy_handler_class(site_name: Optional[str] = None) -> Optional[Ty
     try:
         from tokenade.core.integration.plugin_loader import PluginLoader
         loader = PluginLoader()
+        loader.load_all()
         plugin = loader.get_handler(key)
         if plugin is not None:
             # Wrap the plugin as a legacy SiteHandler for backward compat
