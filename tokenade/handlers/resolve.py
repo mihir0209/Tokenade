@@ -89,7 +89,76 @@ def _wrap_plugin_as_handler(plugin) -> Optional[Type[SiteHandler]]:
     if isinstance(plugin, LegacyHandlerAdapter) and plugin._legacy_cls is not None:
         return plugin._legacy_cls
 
-    # Otherwise, we can't easily wrap an arbitrary plugin as a legacy handler
-    # because the interfaces are fundamentally different.
-    # Return None and let the caller handle it.
-    return None
+    site_config = plugin.get_site_config() if hasattr(plugin, "get_site_config") else {}
+    site_name = site_config.get("name") or getattr(plugin, "name", "plugin")
+    domains = (
+        plugin.get_export_domains()
+        if hasattr(plugin, "get_export_domains")
+        else site_config.get("domains", [])
+    )
+    critical_cookies = (
+        plugin.get_critical_cookies()
+        if hasattr(plugin, "get_critical_cookies")
+        else site_config.get("critical_cookies", [])
+    )
+
+    class PluginLegacyHandler(SiteHandler):
+        SITE_NAME = str(site_name).replace("-handler", "")
+        DOMAINS = list(domains or [])
+        LOGIN_URL = str(site_config.get("login_url") or "")
+        DASHBOARD_URL = str(
+            site_config.get("dashboard_url") or site_config.get("validate_url") or ""
+        )
+        CRITICAL_COOKIES = list(critical_cookies or [])
+
+        def __init__(self, browser_manager=None, config=None):
+            super().__init__(browser_manager, config)
+            self._plugin = plugin
+
+        def _context(self):
+            return getattr(self.browser, "_context", None) or self.browser
+
+        def check_auth_status(self) -> AuthStatus:
+            cookies = self.extract_cookies()
+            if not cookies:
+                return AuthStatus.LOGGED_OUT
+            return AuthStatus.LOGGED_IN if self.validate_session(cookies) else AuthStatus.UNKNOWN
+
+        def extract_tokens(self) -> list:
+            return []
+
+        def extract_cookies(self) -> list:
+            if self.browser and hasattr(self.browser, "get_cookies"):
+                return self.browser.get_cookies()
+            context = self._context()
+            if context and hasattr(context, "cookies"):
+                return context.cookies()
+            return []
+
+        def validate_session(self, cookies: list) -> bool:
+            session = self._session_data.to_dict() if self._session_data else {}
+            session["cookies"] = cookies
+            try:
+                result = self._plugin.validate(session)
+                data = getattr(result, "data", {}) or {}
+                return bool(getattr(result, "success", False) and data.get("valid", False))
+            except Exception:
+                return False
+
+        def inject_session(self, session_data) -> bool:
+            self._session_data = session_data
+            session = session_data.to_dict() if hasattr(session_data, "to_dict") else dict(session_data)
+            context = self._context()
+            try:
+                result = self._plugin.inject_session(context, session)
+                if getattr(result, "success", False):
+                    return True
+            except Exception:
+                pass
+            if self.browser and hasattr(self.browser, "add_cookies"):
+                self.browser.add_cookies(session.get("cookies", []))
+                return True
+            return False
+
+    PluginLegacyHandler.__name__ = f"{plugin.__class__.__name__}LegacyHandler"
+    return PluginLegacyHandler
