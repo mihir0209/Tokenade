@@ -11,6 +11,7 @@
 
 ```bash
 pip install tokenade
+tokenade plugin sync
 ```
 
 > **Not a Multilogin / AdsPower replacement.** Tokenade is session **portability** (export → package → inject / proxy), not a full anti-detect browser product. Stealth is best-effort and measured — never “undetectable.”
@@ -45,7 +46,7 @@ Optional extras: `tokenade[tui]`, `tokenade[linux]`, `tokenade[enterprise]` (LDA
 ### 2. Install site plugins + quit the donor browser
 
 ```bash
-tokenade plugin install google-handler   # ships site_config.json
+tokenade plugin sync
 tokenade export --list-handlers
 ```
 
@@ -54,25 +55,23 @@ Fully quit the browser first (see [Best practices](#best-practices)). A running 
 ```bash
 tokenade export --list-profiles
 
-# Domains / critical cookies come from the plugin's site_config.json
-tokenade export --browser-name firefox --plugin google-handler -o gmail.tokenade
+# Hard sites use dedicated handlers that export required storage origins.
+tokenade export --browser-name firefox --plugin discord-handler -o discord.tokenade
 ```
 
 ### 3. Use the session
 
-**Launch** (inject into a clean profile — preferred for interactive use):
+**Load** into CloakBrowser (default automation backend):
 
 ```bash
-tokenade launch \
-  --browser brave \
-  --session gmail.tokenade \
-  --plugin google-handler \
-  --url "https://mail.google.com/mail/u/0/#inbox" \
-  --profile-dir /tmp/tokenade-brave-clean \
-  --port 9223 --visible
+tokenade load --file discord.tokenade
 ```
 
-Omit `--profile-dir` and Tokenade still uses a **clean temp profile** for session inject.
+Show a browser window when needed:
+
+```bash
+tokenade load --file discord.tokenade --visible
+```
 
 **Proxy** (CDP reverse proxy with optional TLS impersonation):
 
@@ -84,11 +83,11 @@ tokenade proxy -s gmail.tokenade
 **Encrypt** sensitive jars before sharing or storing:
 
 ```bash
-tokenade encrypt -s gmail.tokenade -o gmail.enc.tokenade
+tokenade encrypt -i discord.tokenade -o discord.tokenade.enc -p "my-secret"
 # or: tokenade export ... --encrypt-password '…'
 ```
 
-Full command list: `tokenade --help` and `tokenade <command> -h`. Deep dives live under [`docs/`](docs/).
+Full command list: `tokenade --help` and `tokenade <command> -h`. Start with [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); release hardening work is tracked in [`docs/RELEASE_HARDENING.md`](docs/RELEASE_HARDENING.md).
 
 ---
 
@@ -97,11 +96,11 @@ Full command list: `tokenade --help` and `tokenade <command> -h`. Deep dives liv
 | Capability | Status | Notes |
 |------------|--------|-------|
 | Cookie export (Chrome / Firefox / Brave / Edge) | **Works** | SQLite extraction; quit browser first |
-| Launch + inject (Gmail, multi-browser) | **Works** | Prefer clean `--profile-dir` |
+| Load + inject via CloakBrowser | **Works** | `tokenade load --file session.tokenade` |
 | Google: Firefox/Brave/Edge donor → non-Chrome target | **Works** | Multi-browser & multi-device verified (2026-07-10) |
 | Google → **Chrome / Chromium** target | **Fails** | Account chooser / signed out; avoid Google-owned browsers |
 | CDP proxy + session inject (Gmail, ChatGPT) | **Works** | Confirmed logged-in in real runs |
-| localStorage (e.g. Telegram Web) | **Works** | Use `--full` / storage flags when needed |
+| localStorage (Discord, Telegram Web) | **Works** | Handler-declared storage origins are exported automatically |
 | AES-256-GCM session encryption | **Works** | Core encryptor, PBKDF2 |
 | Session health scoring | **Works** | Heuristic on cookies — not live auth proof |
 | TLS fingerprint matching (`curl-cffi`) | **Works** | Core dependency; use thoughtfully with `cf_clearance` |
@@ -121,9 +120,9 @@ GitHub/Discord/Reddit from **session-only** cookies often fail when the donor ne
 └──────────────┘                 └────────────────┘
 ```
 
-1. **Export** — read cookies (and optional storage) from a real profile; package as `.tokenade`.
+1. **Export** — read cookies and handler-declared storage from a real profile; package as `.tokenade`.
 2. **Transfer** — copy the file (optionally encrypted) to another machine or process.
-3. **Replay** — `launch` (system browser + inject) or `proxy` (TLS-matched reverse proxy).
+3. **Replay** — `load` (CloakBrowser + inject), `launch` (system browser + inject), or `proxy` (TLS-matched reverse proxy).
 
 **Google recipe (verified):** donor **not** Chrome → target **Brave / Edge / Firefox** → **clean** `--profile-dir` → open the **product URL** (e.g. `mail.google.com`), not `accounts.google.com` after inject. Same jar can run on multiple non-Chrome browsers/devices concurrently. Vivaldi is code-supported but not battle-tested.
 
@@ -141,7 +140,7 @@ These matter more than flag trivia. Follow them and most “broken session” re
 3. **Prefer a stable donor** for high-value accounts. For Google, prefer Firefox / Brave / Edge — not Google Chrome — so cookies are portable.
 4. **Use `--list-profiles`** when multiple profiles exist; export the one that is actually logged in.
 5. **Encrypt before sharing** (`encrypt` or `--encrypt-password`). Treat `.tokenade` like a password dump.
-6. **Need storage (Telegram, some SPAs)?** Use `--full` or `--extract-local-storage` instead of cookies-only.
+6. **Need storage (Discord, Telegram, some SPAs)?** Prefer a site handler. Handlers can declare exact storage origins, so export captures the right localStorage automatically.
 
 ### Launch & inject
 
@@ -149,7 +148,7 @@ These matter more than flag trivia. Follow them and most “broken session” re
 8. **Navigate to the product URL**, not the IdP bounce page, after inject (e.g. inbox URL, not `accounts.google.com`).
 9. **Google: avoid Chrome-family targets** (Chrome, Chromium, Canary). Non-Chrome targets work; Chrome clean profiles still fail in practice.
 10. **One CDP port per concurrent browser** (`--port`). Parallel launches need distinct ports and profile dirs.
-11. **Site plugins** (`--plugin google-handler`) keep domain filters and launch URLs consistent between export and launch.
+11. **Site plugins** (`--plugin discord-handler`, `--plugin telegram-handler`, `--plugin generic-handler`) keep domain filters and storage rules consistent between export and load.
 
 ### Proxy & ops
 

@@ -93,6 +93,7 @@ class LogManager:
 
         root_logger = logging.getLogger("tokenade")
         root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+        root_logger.propagate = False
         root_logger.handlers.clear()
 
         log_file = cls._log_dir / "tokenade.log"

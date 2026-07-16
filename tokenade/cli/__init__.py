@@ -1245,17 +1245,14 @@ def cmd_recommend(args):
     print()
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 logger = logging.getLogger("tokenade")
+logger.addHandler(logging.NullHandler())
 
 
 def setup_logging(verbose: bool = False):
     """Configure logging level and structured output."""
     from tokenade.core.logging.structured import LogManager
-    level = "DEBUG" if verbose else "INFO"
+    level = "DEBUG" if verbose else "WARNING"
     json_output = getattr(setup_logging, '_json_output', False)
     LogManager.setup(level=level, json_output=json_output)
 

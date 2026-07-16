@@ -12,10 +12,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.4
+# tokenade 1.1.5
 ```
 
-This guide was verified against the published PyPI package `tokenade==1.1.4`, not an editable source checkout.
+This guide was verified against the published PyPI package `tokenade==1.1.5`, not an editable source checkout.
 
 ## Quick Start
 
@@ -295,24 +295,19 @@ tokenade plugin test discord-handler
 # Install a plugin
 tokenade plugin install discord-handler
 
+# Install all official plugins
+tokenade plugin sync
+
 # Search marketplace
 tokenade plugin search telegram
 ```
 
-To reinstall all official plugins from the GitHub-backed marketplace:
+Recommended first-time setup:
 
 ```bash
 rm -rf ~/.tokenade/plugins
-mkdir -p ~/.tokenade/plugins
-
-for plugin in \
-  auto-refresh bulk-export cookie-export discord-handler generic-handler \
-  google-flow-handler oauth-flow-handler oauth2 proxy-health proxy-rotate \
-  session-backup session-encrypt session-expiry-alert session-merge \
-  session-share telegram-handler webhook-notify
-do
-  tokenade plugin install "$plugin"
-done
+tokenade plugin sync
+tokenade plugin list
 ```
 
 If GitHub's `main` raw-content cache is stale immediately after a marketplace update, add a pinned GitHub registry for the current commit and install from it:

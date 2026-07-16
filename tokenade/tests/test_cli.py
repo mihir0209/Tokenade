@@ -25,10 +25,10 @@ class TestSetupLogging(unittest.TestCase):
             mock_setup.assert_called_once_with(level="DEBUG", json_output=False)
 
     def test_normal_logging(self):
-        """Test normal logging configures LogManager with INFO."""
+        """Test normal logging configures LogManager with WARNING."""
         with patch('tokenade.core.logging.structured.LogManager.setup') as mock_setup:
             setup_logging(verbose=False)
-            mock_setup.assert_called_once_with(level="INFO", json_output=False)
+            mock_setup.assert_called_once_with(level="WARNING", json_output=False)
 
 
 class TestCmdFingerprint(unittest.TestCase):

@@ -433,6 +433,11 @@ def cmd_test(args):
 
     report = tester.generate_report(args.output)
     print(report)
+    missing_fp = "Target fingerprint not found"
+    if any(missing_fp in (r.error_message or "") for r in tester.results):
+        print("\nNext step: collect or choose a fingerprint, then rerun the test:")
+        print("  tokenade fingerprint collect --name default --profile-dir <browser-profile-dir>")
+        print("  tokenade test -s <session.tokenade> --target-fp default")
 
 
 def cmd_setup(args):
