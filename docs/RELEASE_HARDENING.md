@@ -1,6 +1,6 @@
 # Release Hardening Plan
 
-This document is the working checklist for hardening Tokenade after the PyPI `1.1.51` release.
+This document is the working checklist for hardening Tokenade after the PyPI `1.1.53` release.
 
 Goal: make the published package installable, verifiable, and usable from a clean environment without depending on local source checkouts or hand-copied plugins.
 
@@ -14,8 +14,8 @@ Goal: make the published package installable, verifiable, and usable from a clea
 
 ## Current State
 
-- `tokenade==1.1.51` is published on PyPI.
-- Clean PyPI verification passed for `tokenade==1.1.51`.
+- `tokenade==1.1.53` is published on PyPI.
+- Clean PyPI verification passed for `tokenade==1.1.53`.
 - `~/.tokenade/plugins` was removed and plugins were reinstalled through a GitHub remote registry.
 - `tokenade-plugins` GitHub registry was fixed and pushed:
   - `discord-handler v1.2.0`
@@ -33,6 +33,8 @@ Goal: make the published package installable, verifiable, and usable from a clea
 - [x] Push `v1.1.4` tag.
 - [x] Push `v1.1.5` tag.
 - [x] Push `v1.1.51` tag.
+- [x] Push `v1.1.52` tag.
+- [x] Push `v1.1.53` tag.
 - [x] Verify GitHub has the release commit and tags.
 
 Commands:
@@ -42,7 +44,7 @@ git status
 git log --oneline -5
 git tag -l 'v1.1.*'
 git push origin main
-git push origin v1.1.3 v1.1.4 v1.1.5 v1.1.51
+git push origin v1.1.3 v1.1.4 v1.1.5 v1.1.51 v1.1.52 v1.1.53
 ```
 
 ### 2. Fix Or Verify Marketplace Registry Behavior
@@ -161,6 +163,14 @@ tokenade load --file discord.tokenade
 Add dated entries here as hardening steps complete.
 
 ### 2026-07-16
+
+- Published `tokenade==1.1.53` to PyPI.
+- Ran `scripts/verify_pypi_release.sh 1.1.53`; it passed after PyPI simple-index propagation caught up.
+- `tokenade==1.1.53` restores `tokenade test` after moving `PortabilityTester` from `tokenade.tests.portability` to runtime module `tokenade.core.portability`.
+- Published `tokenade==1.1.52` to PyPI, but superseded it because removing `tokenade.tests` exposed a runtime import in `tokenade test`.
+- `tokenade==1.1.52` should not be recommended; use `tokenade==1.1.53` or newer.
+- CI now checks built wheels with `scripts/check_wheel_contents.py` and fails if `tokenade/tests/` is included.
+- The `1.1.53` wheel excludes `tokenade/tests/` while keeping runtime portability code available.
 
 - Published `tokenade==1.1.51` to PyPI.
 - Ran `scripts/verify_pypi_release.sh 1.1.51`; it passed after PyPI simple-index propagation caught up.

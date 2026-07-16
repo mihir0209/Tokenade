@@ -12,10 +12,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.51
+# tokenade 1.1.53
 ```
 
-This guide was verified against the published PyPI package `tokenade==1.1.51`, not an editable source checkout.
+This guide was verified against the published PyPI package `tokenade==1.1.53`, not an editable source checkout.
 
 ## Quick Start
 
