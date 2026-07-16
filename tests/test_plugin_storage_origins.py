@@ -1,6 +1,17 @@
 import json
 from pathlib import Path
 
+import pytest
+
+
+MARKETPLACE_ROOT = Path.home() / "Projects/tokenade-plugins"
+
+
+pytestmark = pytest.mark.skipif(
+    not MARKETPLACE_ROOT.exists(),
+    reason="tokenade-plugins marketplace checkout is not available",
+)
+
 
 def _load_plugin(path: Path, class_name: str):
     import importlib.util
@@ -13,7 +24,7 @@ def _load_plugin(path: Path, class_name: str):
 
 def test_telegram_handler_declares_web_origin():
     plugin = _load_plugin(
-        Path("/home/ghostrider/Projects/tokenade-plugins/plugins/telegram-handler/plugin.py"),
+        MARKETPLACE_ROOT / "plugins/telegram-handler/plugin.py",
         "TelegramSiteHandler",
     )
 
@@ -22,7 +33,7 @@ def test_telegram_handler_declares_web_origin():
 
 def test_telegram_handler_validates_real_storage_shape():
     plugin = _load_plugin(
-        Path("/home/ghostrider/Projects/tokenade-plugins/plugins/telegram-handler/plugin.py"),
+        MARKETPLACE_ROOT / "plugins/telegram-handler/plugin.py",
         "TelegramSiteHandler",
     )
     session = {
@@ -44,7 +55,7 @@ def test_telegram_handler_validates_real_storage_shape():
 
 def test_discord_handler_reads_canonical_storage_shape():
     plugin = _load_plugin(
-        Path("/home/ghostrider/Projects/tokenade-plugins/plugins/discord-handler/plugin.py"),
+        MARKETPLACE_ROOT / "plugins/discord-handler/plugin.py",
         "DiscordSiteHandler",
     )
     session = {
