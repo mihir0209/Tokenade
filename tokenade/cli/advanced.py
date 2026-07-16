@@ -357,7 +357,7 @@ def cmd_test(args):
     from tokenade.core.fingerprint.manager import FingerprintManager
     from tokenade.core.fingerprint.injector import validate_injection
     from tokenade.handlers.resolve import resolve_legacy_handler_class
-    from tokenade.tests.portability import PortabilityTester
+    from tokenade.core.portability import PortabilityTester
 
     print("\n" + "=" * 80)
     print("TOKENADE - Portability Test")

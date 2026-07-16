@@ -666,7 +666,7 @@ class TestCmdTest:
                          variations=False, source_fp=None, target_fp="nonexistent",
                          test_api=False, validate_stealth=False, output=None)
         with patch("tokenade.core.fingerprint.manager.FingerprintManager", return_value=mock_fp):
-            with patch("tokenade.tests.portability.PortabilityTester") as mock_tester_cls:
+            with patch("tokenade.core.portability.PortabilityTester") as mock_tester_cls:
                 mock_tester = MagicMock()
                 result = MagicMock()
                 mock_tester.test_session_transfer.return_value = result
@@ -678,7 +678,7 @@ class TestCmdTest:
                 assert "no handler found" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.tests.portability.PortabilityTester")
+    @patch("tokenade.core.portability.PortabilityTester")
     def test_transfer_success(self, mock_tester_cls, mock_fp_cls, tmp_path, capsys):
         s = _make_session_file(tmp_path, "google")
         mock_fp = MagicMock()
@@ -706,7 +706,7 @@ class TestCmdTest:
         assert "transfer" in out.lower() or "testing" in out.lower()
 
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
-    @patch("tokenade.tests.portability.PortabilityTester")
+    @patch("tokenade.core.portability.PortabilityTester")
     def test_variations(self, mock_tester_cls, mock_fp_cls, tmp_path, capsys):
         s = _make_session_file(tmp_path, "google")
         mock_fp_inst = MagicMock()
@@ -730,7 +730,7 @@ class TestCmdTest:
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
     @patch("tokenade.core.browser.manager.BrowserFactory")
     @patch("tokenade.core.fingerprint.injector.validate_injection")
-    @patch("tokenade.tests.portability.PortabilityTester")
+    @patch("tokenade.core.portability.PortabilityTester")
     def test_validate_stealth(self, mock_tester_cls, mock_validate, mock_bf_cls, mock_fp_cls, tmp_path, capsys):
         s = _make_session_file(tmp_path, "google")
 
@@ -766,7 +766,7 @@ class TestCmdTest:
     @patch("tokenade.core.fingerprint.manager.FingerprintManager")
     @patch("tokenade.core.browser.manager.BrowserFactory")
     @patch("tokenade.core.fingerprint.injector.validate_injection")
-    @patch("tokenade.tests.portability.PortabilityTester")
+    @patch("tokenade.core.portability.PortabilityTester")
     def test_validate_stealth_invalid(self, mock_tester_cls, mock_validate, mock_bf_cls, mock_fp_cls, tmp_path, capsys):
         s = _make_session_file(tmp_path, "google")
 
