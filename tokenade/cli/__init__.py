@@ -27,6 +27,7 @@ from tokenade.cli.advanced import (
 
 VISIBLE_COMMANDS = (
     "config",
+    "run",
     "test",
     "fingerprint",
     "validate",
@@ -149,6 +150,7 @@ _tokenade() {
     local commands
     commands=(
         'config:Manage configuration'
+        'run:Run an executable installed plugin'
         'test:Test portability'
         'fingerprint:Manage fingerprints'
         'validate:Validate sessions'
@@ -174,6 +176,7 @@ compdef _tokenade tokenade
         print('''# Tokenade fish completion
 complete -c tokenade -f
 complete -c tokenade -n "__fish_use_subcommand" -a "config" -d "Manage configuration"
+complete -c tokenade -n "__fish_use_subcommand" -a "run" -d "Run an executable installed plugin"
 complete -c tokenade -n "__fish_use_subcommand" -a "test" -d "Test portability"
 complete -c tokenade -n "__fish_use_subcommand" -a "fingerprint" -d "Manage fingerprints"
 complete -c tokenade -n "__fish_use_subcommand" -a "validate" -d "Validate sessions"
@@ -1297,6 +1300,7 @@ Quick Start:
 
 Commands:
   export        Extract cookies from browser to .tokenade file
+  run           Run an executable installed plugin
   load          Load .tokenade session into a browser
   encrypt       Encrypt a .tokenade file
   decrypt       Decrypt a .tokenade file
@@ -2225,7 +2229,7 @@ Commands:
     )
 
     for hidden_command in (
-        "setup", "run", "extract", "transfer", "inject-profile",
+        "setup", "extract", "transfer", "inject-profile",
         "batch-export", "batch-load", "health-report", "refresh", "proxy",
         "share", "unshare", "import", "validate-rules", "diff",
         "sync", "monitor", "container", "serve", "analytics",

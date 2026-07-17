@@ -201,7 +201,6 @@ class TestParserSurface(unittest.TestCase):
 
     HIDDEN_COMMANDS = (
         "setup",
-        "run",
         "extract",
         "transfer",
         "inject-profile",
@@ -246,6 +245,7 @@ class TestParserSurface(unittest.TestCase):
 
     VISIBLE_COMMANDS = (
         "config",
+        "run",
         "test",
         "fingerprint",
         "validate",
