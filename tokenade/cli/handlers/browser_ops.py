@@ -1,4 +1,4 @@
-"""Browser ops CLI — launch, refresh-browser, accounts, patch-chrome."""
+"""Browser ops CLI — launch, refresh-browser, accounts."""
 import json
 import logging
 import os
@@ -1440,71 +1440,5 @@ def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time)
         return session_state["cookies"], session_state.get("local_storage", {}), session_state.get("session_storage", {})
 
     return asyncio.run(_do_refresh())
-
-
-def cmd_patch_chrome(args):
-    """Patch Chrome/Chromium binary to remove cdc_ artifacts."""
-    from tokenade.core.browser.patcher import ChromePatcher
-
-    patcher = ChromePatcher()
-    browser = getattr(args, "browser", "chrome")
-    binary_path = getattr(args, "binary", None)
-    output_path = getattr(args, "output", None)
-    action = getattr(args, "patch_action", "scan")
-
-    # Find binary if not specified
-    if not binary_path:
-        binary_path = patcher.find_browser_binary(browser)
-        if not binary_path:
-            print(f"❌ Could not find {browser} binary. Use --binary to specify path.")
-            return
-        print(f"🔍 Found {browser}: {binary_path}")
-
-    if action == "scan":
-        print(f"\n🔍 Scanning {binary_path} for cdc_ artifacts...")
-        result = patcher.scan(binary_path)
-        if result.get("error"):
-            print(f"❌ {result['error']}")
-            return
-        matches = result.get("matches", [])
-        if not matches:
-            print("✅ Binary is clean — no cdc_ artifacts found")
-        else:
-            print(f"⚠️  Found {len(matches)} cdc_ artifact(s):")
-            for i, m in enumerate(matches, 1):
-                raw_preview = m["raw"][:60]
-                if len(m["raw"]) > 60:
-                    raw_preview += b"..."
-                print(f"   {i}. Offset {m['offset']} ({m['length']} bytes): {raw_preview}")
-
-    elif action == "patch":
-        print(f"\n🔧 Patching {binary_path}...")
-        result = patcher.patch(binary_path, output_path=output_path)
-        if result.success:
-            print(f"✅ {result.summary}")
-            if result.backup_path:
-                print(f"📦 Backup: {result.backup_path}")
-        else:
-            print(f"❌ {result.summary}")
-
-    elif action == "restore":
-        print(f"\n♻️  Restoring {binary_path} from backup...")
-        if patcher.restore(binary_path):
-            print(f"✅ Restored {binary_path}")
-        else:
-            print(f"❌ No backup found for {binary_path}")
-
-    elif action == "verify":
-        print(f"\n🔎 Verifying {binary_path}...")
-        result = patcher.verify(binary_path)
-        if result["patched"]:
-            print("✅ Binary is patched (no cdc_ artifacts)")
-        else:
-            print(f"⚠️  Binary is NOT patched ({result['remaining_artifacts']} artifact(s) remain)")
-        if result["has_backup"]:
-            print(f"📦 Backup available: {binary_path}.backup")
-        if result["has_patched_variant"]:
-            print(f"🔧 Patched variant: {binary_path}.patched")
-
 
 # ── Daemon Commands ─────────────────────────────────────────────

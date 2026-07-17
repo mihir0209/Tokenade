@@ -76,6 +76,14 @@ Static audit found 60 registered top-level commands. `tokenade <command> --help`
 
 Primary issue: the package has a hardened core loop, but the CLI still exposes broad historical scaffolding as if it is all equally production-ready.
 
+Visibility rule from grilling session:
+
+- Default `tokenade --help` should show only real-world witnessed commands.
+- Unit tests, local integration tests, and clean-install tests are necessary but not enough for default visibility.
+- Do not publish separate experimental PyPI releases for unfinished command surfaces.
+- Future ideas should stay hidden, planned, or eventually moved under an explicit experimental surface until they are witnessed end-to-end.
+- First cleanup slice: remove `patch-chrome`; hide `container`, `serve`, and `sync` from default help while keeping the hidden commands callable during transition.
+
 Core loop that should remain first-class:
 
 - `export`: Session Packager entry point.

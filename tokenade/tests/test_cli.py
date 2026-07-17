@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch, mock_open
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenade.cli import setup_logging, main  # noqa: E402
+from tokenade.cli import setup_logging, main, _build_parser  # noqa: E402
 from tokenade.cli.advanced import cmd_fingerprint, cmd_validate  # noqa: E402
 
 
@@ -194,6 +194,32 @@ class TestMain(unittest.TestCase):
 
         main()
         mock_cmd_setup.assert_called_once()
+
+
+class TestParserSurface(unittest.TestCase):
+    """Test public CLI command visibility."""
+
+    def test_removed_patch_chrome_is_not_registered(self):
+        parser = _build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["patch-chrome", "--help"])
+
+    def test_hidden_transition_commands_not_in_top_level_help(self):
+        help_text = _build_parser().format_help()
+
+        self.assertNotIn("patch-chrome", help_text)
+        self.assertNotIn("==SUPPRESS==", help_text)
+        for command in ("sync", "container", "serve"):
+            self.assertNotRegex(help_text, rf"\n\s+{command}\s")
+
+    def test_hidden_transition_commands_remain_callable(self):
+        parser = _build_parser()
+
+        for command in ("sync", "container", "serve"):
+            with self.assertRaises(SystemExit) as cm:
+                parser.parse_args([command, "--help"])
+            self.assertEqual(cm.exception.code, 0)
 
 
 if __name__ == "__main__":

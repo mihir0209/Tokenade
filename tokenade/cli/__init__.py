@@ -15,7 +15,7 @@ from tokenade.cli.management import (
     cmd_sync, cmd_monitor, cmd_analytics,
     cmd_refresh_oauth, cmd_oauth_config, cmd_batch_refresh, cmd_cicd, cmd_ci,
     cmd_validate_session, cmd_encrypted_refresh, cmd_launch,
-    cmd_refresh_browser, cmd_accounts, cmd_patch_chrome,
+    cmd_refresh_browser, cmd_accounts,
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
     cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_cloak, cmd_tui,
@@ -110,7 +110,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare sync validate-rules diff plugin completion launch refresh-browser accounts patch-chrome"
+    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff plugin completion launch refresh-browser accounts"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -1288,6 +1288,12 @@ Commands:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    def _hide_subparser(name):
+        subparsers._choices_actions = [
+            action for action in subparsers._choices_actions
+            if action.dest != name
+        ]
+
     # Setup
     subparsers.add_parser("setup", help="Setup accounts")
 
@@ -1659,7 +1665,7 @@ Commands:
     plugin_configure_parser.add_argument("--validate", action="store_true", help="Validate config against schema")
 
     # Sync
-    sync_parser = subparsers.add_parser("sync", help="Sync sessions from browser cookies")
+    sync_parser = subparsers.add_parser("sync", help=argparse.SUPPRESS)
     sync_sub = sync_parser.add_subparsers(dest="sync_command", help="Sync commands")
 
     sync_add_parser = sync_sub.add_parser("add", help="Add a sync target")
@@ -1929,31 +1935,6 @@ Commands:
     accounts_refresh.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
                                   default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
-    # Patch Chrome Binary (remove cdc_ artifacts)
-    patch_parser = subparsers.add_parser("patch-chrome", help="Patch Chrome/Chromium binary to remove cdc_ artifacts")
-    patch_subparsers = patch_parser.add_subparsers(dest="patch_action")
-
-    # patch-chrome scan
-    patch_scan = patch_subparsers.add_parser("scan", help="Scan binary for cdc_ artifacts")
-    patch_scan.add_argument("--browser", "-b", default="chrome", help="Browser to scan (chrome, chromium, brave, edge)")
-    patch_scan.add_argument("--binary", help="Path to browser binary (auto-detected if omitted)")
-
-    # patch-chrome patch
-    patch_do = patch_subparsers.add_parser("patch", help="Patch binary to remove cdc_ artifacts")
-    patch_do.add_argument("--browser", "-b", default="chrome", help="Browser to patch")
-    patch_do.add_argument("--binary", help="Path to browser binary")
-    patch_do.add_argument("--output", "-o", help="Output path for patched binary (default: <binary>.patched)")
-
-    # patch-chrome restore
-    patch_restore = patch_subparsers.add_parser("restore", help="Restore binary from backup")
-    patch_restore.add_argument("--browser", "-b", default="chrome", help="Browser to restore")
-    patch_restore.add_argument("--binary", help="Path to browser binary")
-
-    # patch-chrome verify
-    patch_verify = patch_subparsers.add_parser("verify", help="Verify binary patch status")
-    patch_verify.add_argument("--browser", "-b", default="chrome", help="Browser to verify")
-    patch_verify.add_argument("--binary", help="Path to browser binary")
-
     # ── Mobile Import ────────────────────────────────────────────
     mobile_import_parser = subparsers.add_parser("mobile-import", help="Import sessions from mobile devices (Android/iOS)")
     mobile_import_parser.add_argument("--auto", action="store_true", help="Auto-detect device and browser")
@@ -2052,7 +2033,7 @@ Commands:
     clone_parser.add_argument("--list-profiles", action="store_true", help="List available browser profiles")
 
     # Container management
-    container_parser = subparsers.add_parser("container", help="Docker container management")
+    container_parser = subparsers.add_parser("container", help=argparse.SUPPRESS)
     container_sub = container_parser.add_subparsers(dest="container_action")
 
     container_start = container_sub.add_parser("start", help="Start proxy/API containers")
@@ -2184,7 +2165,7 @@ Commands:
     deps_install.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
     deps_install.add_argument("--playwright", action="store_true", help="Install Playwright dependencies")
 
-    serve_parser = subparsers.add_parser("serve", help="Start API server")
+    serve_parser = subparsers.add_parser("serve", help=argparse.SUPPRESS)
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     serve_parser.add_argument("--port", "-p", type=int, default=9224, help="Port to listen on (default: 9224)")
     serve_parser.add_argument("--api-key", help="API key for authentication")
@@ -2218,6 +2199,12 @@ Commands:
         action="store_true",
         help="Emit machine-readable JSON instead of human text",
     )
+
+    for hidden_command in ("sync", "container", "serve"):
+        _hide_subparser(hidden_command)
+    subparsers.metavar = "{" + ",".join(
+        action.dest for action in subparsers._choices_actions
+    ) + "}"
 
     return parser
 
@@ -2264,7 +2251,6 @@ def main():
         "launch": cmd_launch,
         "refresh-browser": cmd_refresh_browser,
         "accounts": cmd_accounts,
-        "patch-chrome": cmd_patch_chrome,
         "mobile-import": cmd_mobile_import,
         "clone-profile": cmd_clone_profile,
         "daemon": cmd_daemon,

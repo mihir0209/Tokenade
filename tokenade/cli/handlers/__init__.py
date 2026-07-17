@@ -47,5 +47,4 @@ from tokenade.cli.handlers.browser_ops import (  # noqa: F401
     cmd_launch,
     cmd_refresh_browser,
     cmd_accounts,
-    cmd_patch_chrome,
 )
