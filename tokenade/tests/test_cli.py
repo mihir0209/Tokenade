@@ -199,6 +199,17 @@ class TestMain(unittest.TestCase):
 class TestParserSurface(unittest.TestCase):
     """Test public CLI command visibility."""
 
+    HIDDEN_COMMANDS = (
+        "sync",
+        "container",
+        "serve",
+        "analytics",
+        "mobile-import",
+        "clone-profile",
+        "profile",
+        "k8s",
+    )
+
     def test_removed_patch_chrome_is_not_registered(self):
         parser = _build_parser()
 
@@ -210,13 +221,15 @@ class TestParserSurface(unittest.TestCase):
 
         self.assertNotIn("patch-chrome", help_text)
         self.assertNotIn("==SUPPRESS==", help_text)
-        for command in ("sync", "container", "serve"):
+        for command in self.HIDDEN_COMMANDS:
             self.assertNotRegex(help_text, rf"\n\s+{command}\s")
+
+        self.assertNotIn("undetectable", help_text.lower())
 
     def test_hidden_transition_commands_remain_callable(self):
         parser = _build_parser()
 
-        for command in ("sync", "container", "serve"):
+        for command in self.HIDDEN_COMMANDS:
             with self.assertRaises(SystemExit) as cm:
                 parser.parse_args([command, "--help"])
             self.assertEqual(cm.exception.code, 0)

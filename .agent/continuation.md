@@ -83,6 +83,8 @@ Visibility rule from grilling session:
 - Do not publish separate experimental PyPI releases for unfinished command surfaces.
 - Future ideas should stay hidden, planned, or eventually moved under an explicit experimental surface until they are witnessed end-to-end.
 - First cleanup slice: remove `patch-chrome`; hide `container`, `serve`, and `sync` from default help while keeping the hidden commands callable during transition.
+- Second cleanup slice: hide unproven roadmap surfaces `analytics`, `mobile-import`, `clone-profile`, `profile`, and `k8s` from default help while keeping them callable for transition/design work.
+- Replace “undetectable browser” wording with CloakBrowser / Stealth Level language.
 
 Core loop that should remain first-class:
 

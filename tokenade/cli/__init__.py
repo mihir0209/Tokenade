@@ -1709,7 +1709,7 @@ Commands:
     monitor_predict_parser.add_argument("--session", "-s", help="Single session file")
 
     # Analytics
-    analytics_parser = subparsers.add_parser("analytics", help="Session usage analytics")
+    analytics_parser = subparsers.add_parser("analytics", help=argparse.SUPPRESS)
     analytics_sub = analytics_parser.add_subparsers(dest="analytics_command", help="Analytics commands")
 
     analytics_report_parser = analytics_sub.add_parser("report", help="Show usage report")
@@ -1824,7 +1824,7 @@ Commands:
     encrypted_refresh_parser.add_argument("--force", action="store_true", help="Force refresh even if not expired")
 
     # CloakBrowser
-    cloak_parser = subparsers.add_parser("cloak", help="CloakBrowser stealth browser management")
+    cloak_parser = subparsers.add_parser("cloak", help="CloakBrowser management")
     cloak_sub = cloak_parser.add_subparsers(dest="cloak_action")
 
     cloak_info = cloak_sub.add_parser("info", help="Show CloakBrowser status and binary info")
@@ -1838,8 +1838,8 @@ Commands:
     cloak_serve.add_argument("--visible", action="store_true", help="Run headed")
     cloak_serve.add_argument("--idle-timeout", type=int, help="Idle timeout in seconds")
 
-    # Launch Undetectable Browser
-    launch_parser = subparsers.add_parser("launch", help="Launch undetectable system browser with CDP")
+    # Launch Browser
+    launch_parser = subparsers.add_parser("launch", help="Launch a browser with CloakBrowser as the default backend")
     launch_parser.add_argument("--browser", "-b", default="cloak", help="Browser to launch (cloak, firefox, brave, edge, vivaldi, chrome)")
     launch_parser.add_argument("--session", "-s", help="Session file to inject cookies from")
     launch_parser.add_argument("--url", "-u", help="URL to navigate to after injection")
@@ -1871,7 +1871,7 @@ Commands:
     )
 
     # Refresh Browser (cookie-based session refresh)
-    refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session via undetectable browser (no OAuth needed)")
+    refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session through a browser-backed flow")
     refresh_browser_parser.add_argument("--session", "-s", required=True, help="Session file to refresh")
     refresh_browser_parser.add_argument("--browser", "-b", default="cloak", help="Browser to use (cloak, firefox, brave, edge, vivaldi, chrome)")
     refresh_browser_parser.add_argument("--url", "-u", help="Target URL (auto-detected from cookies if not specified)")
@@ -1936,7 +1936,7 @@ Commands:
                                   default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
     # ── Mobile Import ────────────────────────────────────────────
-    mobile_import_parser = subparsers.add_parser("mobile-import", help="Import sessions from mobile devices (Android/iOS)")
+    mobile_import_parser = subparsers.add_parser("mobile-import", help=argparse.SUPPRESS)
     mobile_import_parser.add_argument("--auto", action="store_true", help="Auto-detect device and browser")
     mobile_import_parser.add_argument("--list-devices", action="store_true", help="List connected mobile devices")
     mobile_import_parser.add_argument("--device", "-d", help="Device serial number")
@@ -2024,7 +2024,7 @@ Commands:
     logs_parser.add_argument("--cleanup", type=int, metavar="DAYS", help="Remove log files older than N days")
 
     # ── Clone Profile ──────────────────────────────────────────
-    clone_parser = subparsers.add_parser("clone-profile", help="Clone browser profile with optional session injection")
+    clone_parser = subparsers.add_parser("clone-profile", help=argparse.SUPPRESS)
     clone_parser.add_argument("source", nargs="?", help="Source profile directory (omit to use system default)")
     clone_parser.add_argument("--dest", "-d", required=True, help="Destination directory for the clone")
     clone_parser.add_argument("--browser", "-b", default="chrome", help="Browser name (chrome, firefox, brave, edge, vivaldi)")
@@ -2075,7 +2075,7 @@ Commands:
     container_gen.add_argument("--base-port", type=int, default=9222, help="Starting port")
 
     # Kubernetes management
-    k8s_parser = subparsers.add_parser("k8s", help="Kubernetes deployment management")
+    k8s_parser = subparsers.add_parser("k8s", help=argparse.SUPPRESS)
     k8s_sub = k8s_parser.add_subparsers(dest="k8s_action")
 
     k8s_deploy = k8s_sub.add_parser("deploy", help="Generate and apply K8s manifests")
@@ -2102,7 +2102,7 @@ Commands:
 
     k8s_sub.add_parser("pods", help="List pods")
 
-    profile_parser = subparsers.add_parser("profile", help="Manage browser profiles")
+    profile_parser = subparsers.add_parser("profile", help=argparse.SUPPRESS)
     profile_sub = profile_parser.add_subparsers(dest="profile_command", help="Profile commands")
 
     profile_create = profile_sub.add_parser("create", help="Create a new profile")
@@ -2136,26 +2136,26 @@ Commands:
 
     profile_sub.add_parser("stats", help="Show profile statistics")
 
-    stealth_parser = subparsers.add_parser("stealth", help="Browser stealth management")
+    stealth_parser = subparsers.add_parser("stealth", help="Stealth Level diagnostics")
     stealth_sub = stealth_parser.add_subparsers(dest="stealth_action")
 
-    stealth_test = stealth_sub.add_parser("test", help="Test stealth against detection sites")
+    stealth_test = stealth_sub.add_parser("test", help="Test Stealth Level behavior against detection sites")
     stealth_test.add_argument("--url", "-u", help="Custom test URL")
     stealth_test.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
     stealth_test.add_argument("--output", "-o", help="Output file for HTML report")
 
-    stealth_report = stealth_sub.add_parser("report", help="Generate stealth report")
+    stealth_report = stealth_sub.add_parser("report", help="Generate Stealth Level report")
     stealth_report.add_argument("--output", "-o", help="Output file for report")
     stealth_report.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
 
-    stealth_battle = stealth_sub.add_parser("battle", help="Battle test against real detection sites")
+    stealth_battle = stealth_sub.add_parser("battle", help="Run detection-site diagnostics")
     stealth_battle.add_argument("--browser", "-b", choices=["chromium", "firefox"], default="chromium")
     stealth_battle.add_argument("--site", "-s", action="append", help="Specific site(s) to test (default: all)")
     stealth_battle.add_argument("--timeout", "-t", type=int, default=30, help="Per-site timeout in seconds")
     stealth_battle.add_argument("--output", "-o", help="Output file for JSON report")
 
-    stealth_sub.add_parser("deps", help="Check stealth system dependencies")
-    stealth_sub.add_parser("deps-install", help="Install missing stealth dependencies")
+    stealth_sub.add_parser("deps", help="Check browser automation system dependencies")
+    stealth_sub.add_parser("deps-install", help="Install missing browser automation dependencies")
 
     deps_parser = subparsers.add_parser("deps", help="System dependency management")
     deps_sub = deps_parser.add_subparsers(dest="deps_action")
@@ -2200,7 +2200,10 @@ Commands:
         help="Emit machine-readable JSON instead of human text",
     )
 
-    for hidden_command in ("sync", "container", "serve"):
+    for hidden_command in (
+        "sync", "container", "serve",
+        "analytics", "mobile-import", "clone-profile", "profile", "k8s",
+    ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(
         action.dest for action in subparsers._choices_actions
