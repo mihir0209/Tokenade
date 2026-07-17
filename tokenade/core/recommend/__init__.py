@@ -234,13 +234,19 @@ def recommend_plugin(
     """Return a plugin name for the given input, or None.
 
     Resolution order:
-      1. ``site_config.preferred_plugin`` for the resolved site
-      2. Multi-site plugin catalog (``sites/<site>.json`` inside a plugin dir)
-      3. ``PluginExporter.find_handler(domains)`` filtered to actual site
+      1. ``session.metadata.site_handler.plugin_name`` from export lineage
+      2. ``site_config.preferred_plugin`` for the resolved site
+      3. Multi-site plugin catalog (``sites/<site>.json`` inside a plugin dir)
+      4. ``PluginExporter.find_handler(domains)`` filtered to actual site
          handlers (excludes utility plugins masquerading as SiteHandlerPlugin)
-      4. ``generic-handler`` catch-all (low confidence)
-      5. None
+      5. ``generic-handler`` catch-all (low confidence)
+      6. None
     """
+    embedded = _session_site_handler_plugin(session)
+    if embedded:
+        logger.debug("recommend_plugin: embedded site_handler=%s", embedded)
+        return embedded
+
     if site is None:
         site = recommend_site(
             cookies=cookies, url=url, domains=domains, session=session
@@ -285,6 +291,20 @@ def recommend_plugin(
         logger.debug("recommend_plugin: generic-handler catch-all for site=%s", site)
         return "generic-handler"
 
+    return None
+
+
+def _session_site_handler_plugin(session: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return plugin name recorded by the Session Packager, if present."""
+    if not session:
+        return None
+    metadata = session.get("metadata") or {}
+    site_handler = metadata.get("site_handler") or {}
+    if not isinstance(site_handler, dict):
+        return None
+    plugin = site_handler.get("plugin_name") or site_handler.get("handler_name")
+    if plugin:
+        return str(plugin).strip()
     return None
 
 
@@ -532,9 +552,13 @@ def recommend(
         config=config,
     )
     if plugin:
+        embedded = _session_site_handler_plugin(session)
         preferred = _lookup_preferred_plugin(site) if site else None
         multisite = _lookup_multisite_catalog(site, config) if site else None
-        if preferred == plugin:
+        if embedded == plugin:
+            reasons.append(f"plugin = {plugin!r} (session metadata.site_handler)")
+            confidence += 0.3
+        elif preferred == plugin:
             reasons.append(f"plugin = {plugin!r} (site_config.preferred_plugin)")
             confidence += 0.25
         elif multisite == plugin:

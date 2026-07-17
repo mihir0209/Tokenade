@@ -22,6 +22,27 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _site_handler_metadata(handler: Any, *, auto_discovered: bool = True) -> Dict[str, Any]:
+    """Build reproducible export lineage metadata for a Site Handler."""
+    plugin_name = getattr(handler, "name", None) or type(handler).__name__
+    metadata = {
+        "plugin_name": plugin_name,
+        "plugin_version": getattr(handler, "version", None) or "unknown",
+        "handler_name": getattr(handler, "name", None) or plugin_name,
+        "handler_class": type(handler).__name__,
+        "auto_discovered": bool(auto_discovered),
+    }
+    try:
+        metadata["export_domains"] = list(handler.get_export_domains() or [])
+    except Exception:
+        metadata["export_domains"] = []
+    try:
+        metadata["storage_origins"] = list(handler.get_storage_origins() or [])
+    except Exception:
+        metadata["storage_origins"] = []
+    return metadata
+
+
 class PluginExporter:
     """Export sessions using site handler plugins when available."""
 
@@ -239,6 +260,10 @@ class PluginExporter:
                 profile=browser_path,
                 storage=session.get("storage") or storage,
                 local_storage=session.get("local_storage"),
+                metadata={
+                    "extraction_method": "site_handler",
+                    "site_handler": _site_handler_metadata(handler),
+                },
             )
             packager.save(package, output_file)
 

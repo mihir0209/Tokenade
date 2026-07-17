@@ -77,6 +77,20 @@ def resolve_legacy_handler_class(site_name: Optional[str] = None) -> Optional[Ty
     return None
 
 
+def resolve_legacy_handler_class_for_session(session_data: dict) -> Optional[Type[SiteHandler]]:
+    """Resolve a legacy handler using embedded Site Handler metadata first."""
+    metadata = session_data.get("metadata") or {}
+    site_handler = metadata.get("site_handler") or {}
+    if isinstance(site_handler, dict):
+        plugin_name = site_handler.get("plugin_name") or site_handler.get("handler_name")
+        if plugin_name:
+            handler_cls = resolve_legacy_handler_class(str(plugin_name))
+            if handler_cls is not None:
+                return handler_cls
+
+    return resolve_legacy_handler_class(session_data.get("site_name"))
+
+
 def _wrap_plugin_as_handler(plugin) -> Optional[Type[SiteHandler]]:
     """Wrap a SiteHandlerPlugin as a legacy SiteHandler class.
 

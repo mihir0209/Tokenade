@@ -106,6 +106,20 @@ class TestRecommendSite:
 
 
 class TestRecommendPlugin:
+    def test_session_embedded_site_handler_wins(self):
+        session = {
+            "site_name": "discord",
+            "cookies": [],
+            "metadata": {
+                "site_handler": {
+                    "plugin_name": "discord-handler",
+                    "plugin_version": "1.2.0",
+                }
+            },
+        }
+
+        assert recommend_plugin(session=session) == "discord-handler"
+
     def test_google_prefers_flow_handler(self):
         if not _marketplace_installed():
             pytest.skip("marketplace plugins not installed")
@@ -193,6 +207,22 @@ class TestRecommendBrowser:
 
 
 class TestRecommendComposite:
+    def test_session_embedded_site_handler_reason(self):
+        session = {
+            "site_name": "discord",
+            "cookies": [],
+            "metadata": {
+                "site_handler": {
+                    "plugin_name": "discord-handler",
+                    "plugin_version": "1.2.0",
+                }
+            },
+        }
+
+        r = recommend(session=session)
+        assert r.plugin == "discord-handler"
+        assert any("metadata.site_handler" in reason for reason in r.reasons)
+
     def test_empty_input_returns_browser_only(self):
         r = recommend()
         assert r.site is None

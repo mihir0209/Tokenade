@@ -1,7 +1,10 @@
 """Tests for legacy handler resolution (P3)."""
 
 from tokenade.plugin import PluginResult
-from tokenade.handlers.resolve import resolve_legacy_handler_class
+from tokenade.handlers.resolve import (
+    resolve_legacy_handler_class,
+    resolve_legacy_handler_class_for_session,
+)
 
 
 class _EmptyPluginLoader:
@@ -78,3 +81,40 @@ def test_resolve_wraps_site_handler_plugin(monkeypatch):
     assert handler_class.SITE_NAME == "discord"
     assert handler_class.DOMAINS == ["discord.com"]
     assert handler_class.CRITICAL_COOKIES == ["sid"]
+
+
+def test_resolve_session_prefers_embedded_site_handler(monkeypatch):
+    class FakePlugin:
+        name = "discord-handler"
+
+        def get_site_config(self):
+            return {"name": "discord", "domains": ["discord.com"]}
+
+        def get_export_domains(self):
+            return ["discord.com"]
+
+        def get_critical_cookies(self):
+            return []
+
+        def validate(self, session):
+            return PluginResult(success=True, data={"valid": True})
+
+        def inject_session(self, _context, _session):
+            return PluginResult(success=True, data={"injected_count": 1})
+
+    class PluginLoader:
+        def load_all(self):
+            return []
+
+        def get_handler(self, site_name):
+            return FakePlugin() if site_name == "discord-handler" else None
+
+    _use_loader(monkeypatch, PluginLoader)
+
+    session = {
+        "site_name": "unknown",
+        "metadata": {"site_handler": {"plugin_name": "discord-handler"}},
+    }
+    handler_class = resolve_legacy_handler_class_for_session(session)
+    assert handler_class is not None
+    assert handler_class.SITE_NAME == "discord"

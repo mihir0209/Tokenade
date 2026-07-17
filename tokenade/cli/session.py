@@ -369,6 +369,9 @@ def cmd_load(args):
         if result["success"]:
             print("\n✅ Session loaded successfully")
             print(f"   Site: {result.get('site_name', 'unknown')}")
+            if result.get("site_handler"):
+                handler = result["site_handler"]
+                print(f"   Site Handler: {handler.get('plugin_name') or handler.get('handler_name')}")
             print(f"   Cookies: {result['cookies_injected']}/{result['cookies_total']}")
 
             if result.get("local_storage_total", 0) > 0:

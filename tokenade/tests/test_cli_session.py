@@ -734,6 +734,25 @@ class TestCmdLoad:
         assert "localstorage" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.session.SessionLoader")
+    def test_load_prints_site_handler_metadata(self, mock_loader_cls, tmp_path, capsys):
+        f = _make_session_file(tmp_path, "session")
+        mock_loader = MagicMock()
+        mock_loader.load.return_value = {
+            "success": True,
+            "site_name": "discord",
+            "site_handler": {"plugin_name": "discord-handler"},
+            "cookies_injected": 5,
+            "cookies_total": 5,
+            "local_storage_injected": 0,
+            "local_storage_total": 0,
+        }
+        mock_loader_cls.return_value = mock_loader
+        cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
+                           stealth_level="maximum", validate=True, visible=False,
+                           profile_dir=None, no_local_storage=False, runtime=False))
+        assert "site handler: discord-handler" in capsys.readouterr().out.lower()
+
+    @patch("tokenade.cli.session.SessionLoader")
     def test_load_with_validation(self, mock_loader_cls, tmp_path, capsys):
         f = _make_session_file(tmp_path, "session")
         mock_loader = MagicMock()

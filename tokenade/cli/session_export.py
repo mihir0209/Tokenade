@@ -11,6 +11,30 @@ from tokenade.core.importer.session_packager import SessionPackager
 logger = logging.getLogger("tokenade")
 
 
+def _site_handler_metadata(site_handler, *, explicit_plugin=None, auto_discovered=False):
+    """Build reproducible export lineage metadata for a Site Handler."""
+    if not site_handler:
+        return None
+
+    plugin_name = explicit_plugin or getattr(site_handler, "name", None) or type(site_handler).__name__
+    metadata = {
+        "plugin_name": plugin_name,
+        "plugin_version": getattr(site_handler, "version", None) or "unknown",
+        "handler_name": getattr(site_handler, "name", None) or plugin_name,
+        "handler_class": type(site_handler).__name__,
+        "auto_discovered": bool(auto_discovered),
+    }
+    try:
+        metadata["export_domains"] = list(site_handler.get_export_domains() or [])
+    except Exception:
+        metadata["export_domains"] = []
+    try:
+        metadata["storage_origins"] = list(site_handler.get_storage_origins() or [])
+    except Exception:
+        metadata["storage_origins"] = []
+    return metadata
+
+
 def cmd_export(args):
     """Export session from existing browser to .tokenade file."""
     from tokenade.cli.session import _extract_via_cdp
@@ -175,6 +199,7 @@ def cmd_export(args):
     plugin_name = getattr(args, 'plugin', None)
     use_plugin = not getattr(args, 'no_plugin', False)
     site_handler = None
+    site_handler_auto_discovered = False
 
     if plugin_name or use_plugin:
         from tokenade.core.importer.plugin_export import PluginExporter
@@ -198,6 +223,7 @@ def cmd_export(args):
         elif domain_filter:
             site_handler = exporter.find_handler(domain_filter)
             if site_handler:
+                site_handler_auto_discovered = True
                 print(f"   🔌 Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
             else:
                 print("   ℹ️  No handler found for domains, using default extraction")
@@ -419,6 +445,17 @@ def cmd_export(args):
         session_storage=session_storage if session_storage else None,
         storage=storage if storage["local"] or storage["session"] else None,
         extra_cookies=extra_cookies if extra_cookies else None,
+        metadata=(
+            {
+                "extraction_method": "site_handler",
+                "site_handler": _site_handler_metadata(
+                    site_handler,
+                    explicit_plugin=plugin_name,
+                    auto_discovered=site_handler_auto_discovered,
+                ),
+            }
+            if site_handler else None
+        ),
     )
 
     site_name = package.get("site_name", "session")

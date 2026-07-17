@@ -619,3 +619,43 @@ class TestCloseAndGetLastResult:
             MockFactory.create.return_value = MagicMock()
             result = loader.load(path, validate=False)
             assert result.get("site_name") == "mysite"
+
+    def test_embedded_site_handler_metadata_in_result(self, tmp_path):
+        package = _make_package(site_name="discord")
+        package["metadata"] = {
+            "site_handler": {
+                "plugin_name": "discord-handler",
+                "export_domains": ["discord.com"],
+                "storage_origins": ["https://discord.com"],
+            }
+        }
+        path = _write_package(tmp_path, package)
+        loader = SessionLoader()
+        with patch("tokenade.core.importer.session_loader.BrowserFactory") as MockFactory:
+            MockFactory.create.return_value = MagicMock()
+            result = loader.load(path, validate=False)
+            assert result["site_handler"]["plugin_name"] == "discord-handler"
+
+    @patch("tokenade.core.importer.site_configs.get_site_config", return_value=None)
+    def test_embedded_site_handler_domains_used_for_default_site_config(self, _mock_get_site_config):
+        package = _make_package(site_name="discord")
+        package["metadata"] = {
+            "site_handler": {
+                "plugin_name": "discord-handler",
+                "export_domains": ["discord.com", "discordapp.com"],
+            }
+        }
+        loader = SessionLoader()
+        site_config = loader._build_default_site_config(package)
+        assert site_config["domains"] == ["discord.com", "discordapp.com"]
+
+    def test_embedded_storage_origin_used_for_infer_origin(self):
+        package = _make_package(site_name="discord")
+        package["metadata"] = {
+            "site_handler": {
+                "plugin_name": "discord-handler",
+                "storage_origins": ["https://discord.com"],
+            }
+        }
+        loader = SessionLoader()
+        assert loader._infer_origin(package) == "https://discord.com"

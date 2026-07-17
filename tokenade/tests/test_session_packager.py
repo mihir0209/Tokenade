@@ -34,6 +34,26 @@ class TestSessionPackager:
         )
         assert package["storage"]["local"]["https://example.com"] == ls
 
+    def test_package_merges_site_handler_metadata(self, packager):
+        cookies = [{"name": "session", "value": "abc", "domain": ".example.com", "path": "/"}]
+        package = packager.package(
+            cookies=cookies,
+            metadata={
+                "extraction_method": "site_handler",
+                "site_handler": {
+                    "plugin_name": "example-handler",
+                    "plugin_version": "1.2.3",
+                    "storage_origins": ["https://example.com"],
+                },
+            },
+        )
+
+        assert package["metadata"]["extraction_method"] == "site_handler"
+        assert package["metadata"]["cookie_count"] == 1
+        assert package["metadata"]["site_handler"]["plugin_name"] == "example-handler"
+        assert package["metadata"]["site_handler"]["plugin_version"] == "1.2.3"
+        assert package["metadata"]["site_handler"]["storage_origins"] == ["https://example.com"]
+
     def test_infer_auth_status_known_site(self, packager):
         # GitHub with critical cookie
         cookies = [

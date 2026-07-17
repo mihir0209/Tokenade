@@ -9,6 +9,7 @@ import pytest
 
 from tokenade.core.browser.storage_extractor import StorageExtractor
 from tokenade.core.importer.plugin_export import PluginExporter
+from tokenade.cli.session_export import _site_handler_metadata
 
 
 # ─── StorageExtractor Tests ────────────────────────────────
@@ -137,6 +138,22 @@ class TestPluginExporter:
         exporter._load_handlers = lambda: None
         handler = exporter.find_handler(["google.com", "mail.google.com"])
         assert handler is google
+
+    def test_site_handler_metadata_includes_lineage(self):
+        handler = MagicMock()
+        handler.name = "discord-handler"
+        handler.version = "1.2.0"
+        handler.get_export_domains.return_value = ["discord.com", "discordapp.com"]
+        handler.get_storage_origins.return_value = ["https://discord.com"]
+
+        metadata = _site_handler_metadata(handler, explicit_plugin="discord-handler")
+
+        assert metadata["plugin_name"] == "discord-handler"
+        assert metadata["plugin_version"] == "1.2.0"
+        assert metadata["handler_name"] == "discord-handler"
+        assert metadata["export_domains"] == ["discord.com", "discordapp.com"]
+        assert metadata["storage_origins"] == ["https://discord.com"]
+        assert metadata["auto_discovered"] is False
 
 
 # ─── v3.0 Format Tests ────────────────────────────────────

@@ -356,7 +356,7 @@ def cmd_test(args):
     from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
     from tokenade.core.fingerprint.manager import FingerprintManager
     from tokenade.core.fingerprint.injector import validate_injection
-    from tokenade.handlers.resolve import resolve_legacy_handler_class
+    from tokenade.handlers.resolve import resolve_legacy_handler_class_for_session
     from tokenade.core.portability import PortabilityTester
 
     print("\n" + "=" * 80)
@@ -371,10 +371,12 @@ def cmd_test(args):
     with open(session_file) as f:
         session_data = json.load(f)
 
-    handler_class = resolve_legacy_handler_class(
-        session_data.get("site_name")
-        or _recommend_site_fallback(session_data)
-    )
+    if not session_data.get("site_name"):
+        recommended_site = _recommend_site_fallback(session_data)
+        if recommended_site:
+            session_data["site_name"] = recommended_site
+
+    handler_class = resolve_legacy_handler_class_for_session(session_data)
     if handler_class is None:
         print(f"❌ No handler found for '{session_data.get('site_name', 'unknown')}'. Install from tokenade-plugins marketplace.")
         raise SystemExit(1)

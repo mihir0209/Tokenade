@@ -304,6 +304,9 @@ class SessionLoader:
             package = self.load_file(file_path)
             result["cookies_total"] = len(package.get("cookies", []))
             result["site_name"] = package.get("site_name", "unknown")
+            site_handler_metadata = self._site_handler_metadata(package)
+            if site_handler_metadata:
+                result["site_handler"] = site_handler_metadata
 
             # Step 2: Prepare browser config
             config_kwargs = {
@@ -389,6 +392,12 @@ class SessionLoader:
 
     def _infer_origin(self, package: Dict, site_config: Optional[Dict] = None) -> Optional[str]:
         """Infer the origin URL from package data or site config for localStorage injection."""
+        site_handler = self._site_handler_metadata(package)
+        if site_handler:
+            origins = site_handler.get("storage_origins") or []
+            if origins:
+                return origins[0]
+
         # Try site_config domains first
         if site_config and site_config.get("domains"):
             domains = site_config["domains"]
@@ -415,6 +424,7 @@ class SessionLoader:
     def _build_default_site_config(self, package: Dict) -> Dict:
         """Build a minimal site config from package when none provided."""
         site_name = package.get("site_name", "unknown")
+        site_handler = self._site_handler_metadata(package)
 
         # Try to get from site_configs first
         from tokenade.core.importer.site_configs import get_site_config
@@ -423,7 +433,11 @@ class SessionLoader:
             return preset
 
         cookies = package.get("cookies", [])
-        domains = list({c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")})
+        domains = []
+        if site_handler:
+            domains = list(site_handler.get("export_domains") or [])
+        if not domains:
+            domains = list({c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")})
 
         auth_cookie_names = []
         for c in cookies:
@@ -439,6 +453,12 @@ class SessionLoader:
             "login_indicator_css": None,
             "wait_seconds": 10,
         }
+
+    def _site_handler_metadata(self, package: Dict) -> Optional[Dict]:
+        """Return embedded Site Handler export metadata, if present."""
+        metadata = package.get("metadata") or {}
+        site_handler = metadata.get("site_handler")
+        return site_handler if isinstance(site_handler, dict) else None
 
     def load_into_runtime(self, file_path: str, runtime_engine=None) -> Dict:
         """

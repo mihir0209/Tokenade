@@ -147,7 +147,8 @@ class SessionPackager:
                 source_browser_manager=None,
                 tls_profile: Optional[Dict] = None,
                 oauth_config: Optional[Dict] = None,
-                extra_cookies: Optional[List[Dict]] = None) -> Dict:
+                extra_cookies: Optional[List[Dict]] = None,
+                metadata: Optional[Dict] = None) -> Dict:
         """
         Package cookies into .tokenade format (v3.0).
 
@@ -163,6 +164,7 @@ class SessionPackager:
             source_browser_manager: Optional browser manager for fingerprint collection
             tls_profile: Optional TLS profile for proxy mode
             oauth_config: Optional OAuth 2.0 configuration dict
+            metadata: Optional additional metadata to merge into package metadata
 
         Returns:
             .tokenade format dictionary (v3.0)
@@ -202,6 +204,17 @@ class SessionPackager:
         if not email and extra_cookies:
             email = self._extract_email(extra_cookies, site_name)
 
+        package_metadata = {
+            "extraction_method": "sqlite_direct",
+            "cookie_count": len(cookies),
+            "critical_cookie_count": critical_count,
+            "local_storage_count": sum(len(v) for v in storage_data["local"].values()),
+            "session_storage_count": sum(len(v) for v in storage_data["session"].values()),
+            **({"email": email} if email else {}),
+        }
+        if metadata:
+            package_metadata.update(metadata)
+
         package = {
             "version": self.TOKENADE_VERSION,
             "created_at": now,
@@ -219,14 +232,7 @@ class SessionPackager:
             "fingerprint": fingerprint,
             "tls_profile": tls_profile,
             "oauth_config": oauth_config,
-            "metadata": {
-                "extraction_method": "sqlite_direct",
-                "cookie_count": len(cookies),
-                "critical_cookie_count": critical_count,
-                "local_storage_count": sum(len(v) for v in storage_data["local"].values()),
-                "session_storage_count": sum(len(v) for v in storage_data["session"].values()),
-                **({"email": email} if email else {}),
-            },
+            "metadata": package_metadata,
         }
 
         ls_count = sum(len(v) for v in storage_data["local"].values())
