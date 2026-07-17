@@ -25,6 +25,26 @@ from tokenade.cli.advanced import (
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
 )
 
+VISIBLE_COMMANDS = (
+    "config",
+    "test",
+    "fingerprint",
+    "validate",
+    "export",
+    "load",
+    "encrypt",
+    "decrypt",
+    "rekey",
+    "health",
+    "sessions",
+    "plugin",
+    "completion",
+    "cloak",
+    "launch",
+    "refresh-browser",
+    "recommend",
+)
+
 
 def cmd_run(args):
     """Run an explicitly executable installed plugin from a JSON request."""
@@ -102,6 +122,7 @@ def cmd_config(args):
 def cmd_completion(args):
     """Generate shell completion scripts."""
     shell = args.shell
+    commands = " ".join(VISIBLE_COMMANDS)
 
     if shell == "bash":
         print('''# Tokenade bash completion
@@ -110,7 +131,7 @@ _tokenade() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="setup config extract transfer test fingerprint validate export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff plugin completion launch refresh-browser accounts"
+    commands="''' + commands + '''"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "--help --version --verbose" -- ${cur}) )
@@ -127,22 +148,22 @@ complete -F _tokenade tokenade
 _tokenade() {
     local commands
     commands=(
-        'setup:Setup accounts'
         'config:Manage configuration'
-        'extract:Extract tokens'
+        'test:Test portability'
+        'fingerprint:Manage fingerprints'
+        'validate:Validate sessions'
         'export:Export session from browser'
         'load:Load session file'
-        'inject-profile:Inject cookies into profile'
-        'proxy:Start proxy server'
         'health:Check session health'
-        'refresh:Refresh session'
         'encrypt:Encrypt session file'
         'decrypt:Decrypt session file'
+        'rekey:Change encryption password'
         'sessions:Manage sessions'
-        'share:Share session'
-        'batch-export:Batch export'
-        'batch-load:Batch load'
-        'diff:Compare sessions'
+        'plugin:Manage plugins'
+        'cloak:CloakBrowser management'
+        'launch:Launch a browser'
+        'refresh-browser:Refresh session through a browser-backed flow'
+        'recommend:Recommend site/plugin/browser'
         'completion:Generate shell completion'
     )
     _describe 'tokenade' commands
@@ -152,17 +173,22 @@ compdef _tokenade tokenade
     elif shell == "fish":
         print('''# Tokenade fish completion
 complete -c tokenade -f
-complete -c tokenade -n "__fish_use_subcommand" -a "setup" -d "Setup accounts"
 complete -c tokenade -n "__fish_use_subcommand" -a "config" -d "Manage configuration"
-complete -c tokenade -n "__fish_use_subcommand" -a "extract" -d "Extract tokens"
+complete -c tokenade -n "__fish_use_subcommand" -a "test" -d "Test portability"
+complete -c tokenade -n "__fish_use_subcommand" -a "fingerprint" -d "Manage fingerprints"
+complete -c tokenade -n "__fish_use_subcommand" -a "validate" -d "Validate sessions"
 complete -c tokenade -n "__fish_use_subcommand" -a "export" -d "Export session"
 complete -c tokenade -n "__fish_use_subcommand" -a "load" -d "Load session"
-complete -c tokenade -n "__fish_use_subcommand" -a "proxy" -d "Start proxy"
 complete -c tokenade -n "__fish_use_subcommand" -a "health" -d "Check health"
 complete -c tokenade -n "__fish_use_subcommand" -a "encrypt" -d "Encrypt session"
 complete -c tokenade -n "__fish_use_subcommand" -a "decrypt" -d "Decrypt session"
+complete -c tokenade -n "__fish_use_subcommand" -a "rekey" -d "Change encryption password"
 complete -c tokenade -n "__fish_use_subcommand" -a "sessions" -d "Manage sessions"
-complete -c tokenade -n "__fish_use_subcommand" -a "share" -d "Share session"
+complete -c tokenade -n "__fish_use_subcommand" -a "plugin" -d "Manage plugins"
+complete -c tokenade -n "__fish_use_subcommand" -a "cloak" -d "CloakBrowser management"
+complete -c tokenade -n "__fish_use_subcommand" -a "launch" -d "Launch a browser"
+complete -c tokenade -n "__fish_use_subcommand" -a "refresh-browser" -d "Refresh session through browser"
+complete -c tokenade -n "__fish_use_subcommand" -a "recommend" -d "Recommend site/plugin/browser"
 complete -c tokenade -n "__fish_use_subcommand" -a "completion" -d "Shell completion"
 ''')
     else:
@@ -1265,20 +1291,18 @@ def _build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Quick Start:
-  1. Export:   tokenade export --browser-name firefox --domains "google.com,accounts.google.com" -o my_session.tokenade
-  2. Proxy:    tokenade proxy -s my_session.tokenade
-  3. Browse:   Open http://127.0.0.1:9222 and enter the target URL
+  1. Export:   tokenade export --browser-name firefox --plugin discord-handler -o discord.tokenade
+  2. Check:    tokenade health -s discord.tokenade
+  3. Load:     tokenade load --file discord.tokenade --visible
 
 Commands:
   export        Extract cookies from browser to .tokenade file
-  proxy         Start CDP proxy server with donor session
   load          Load .tokenade session into a browser
-  inject-profile Inject cookies directly into browser profile
   encrypt       Encrypt a .tokenade file
   decrypt       Decrypt a .tokenade file
+  rekey         Change encryption password
   health        Check session health
-  monitor       Monitor session health in real-time
-  batch-export  Export multiple sites at once
+  plugin        Manage Site Handler plugins
         """,
     )
 
@@ -2201,8 +2225,14 @@ Commands:
     )
 
     for hidden_command in (
-        "sync", "container", "serve",
-        "analytics", "mobile-import", "clone-profile", "profile", "k8s",
+        "setup", "run", "extract", "transfer", "inject-profile",
+        "batch-export", "batch-load", "health-report", "refresh", "proxy",
+        "share", "unshare", "import", "validate-rules", "diff",
+        "sync", "monitor", "container", "serve", "analytics",
+        "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
+        "fleet", "autopsy", "tui", "validate-session", "encrypted-refresh",
+        "accounts", "mobile-import", "daemon", "versions", "rollback",
+        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(

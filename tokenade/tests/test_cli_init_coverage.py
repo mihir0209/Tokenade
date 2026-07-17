@@ -240,6 +240,7 @@ class TestCmdPlugin(unittest.TestCase):
         args.plugin_command = plugin_command
         args.name = name
         args.available = available
+        args.registry = None
         return args
 
     @patch("tokenade.core.integration.plugin_loader.PluginLoader")
@@ -312,6 +313,7 @@ class TestCmdPlugin(unittest.TestCase):
     @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
     def test_install_success(self, MockReg, MockLoader):
         mock_registry = MagicMock()
+        mock_registry.find_plugin.return_value = ({"name": "my_plugin"}, [])
         mock_registry.install.return_value = True
         MockReg.return_value = mock_registry
 
@@ -321,13 +323,14 @@ class TestCmdPlugin(unittest.TestCase):
         out = StringIO()
         with patch("sys.stdout", out):
             cmd_plugin(args)
-        mock_registry.install.assert_called_once_with("my_plugin")
+        mock_registry.install.assert_called_once_with("my_plugin", registry_name=None)
         self.assertIn("installed successfully", out.getvalue())
 
     @patch("tokenade.core.integration.plugin_loader.PluginLoader")
     @patch("tokenade.core.integration.plugin_registry.PluginRegistry")
     def test_install_failure(self, MockReg, MockLoader):
         mock_registry = MagicMock()
+        mock_registry.find_plugin.return_value = ({"name": "my_plugin"}, [])
         mock_registry.install.return_value = False
         MockReg.return_value = mock_registry
 

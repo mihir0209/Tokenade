@@ -200,14 +200,68 @@ class TestParserSurface(unittest.TestCase):
     """Test public CLI command visibility."""
 
     HIDDEN_COMMANDS = (
+        "setup",
+        "run",
+        "extract",
+        "transfer",
+        "inject-profile",
+        "batch-export",
+        "batch-load",
+        "health-report",
+        "refresh",
+        "proxy",
+        "share",
+        "unshare",
+        "import",
+        "validate-rules",
+        "diff",
         "sync",
+        "monitor",
         "container",
         "serve",
         "analytics",
+        "refresh-oauth",
+        "oauth-config",
+        "batch-refresh",
+        "cicd",
+        "ci",
+        "fleet",
+        "autopsy",
+        "tui",
+        "validate-session",
+        "encrypted-refresh",
+        "accounts",
         "mobile-import",
+        "daemon",
+        "versions",
+        "rollback",
+        "session-diff",
+        "logs",
         "clone-profile",
         "profile",
         "k8s",
+        "stealth",
+        "deps",
+    )
+
+    VISIBLE_COMMANDS = (
+        "config",
+        "test",
+        "fingerprint",
+        "validate",
+        "export",
+        "load",
+        "encrypt",
+        "decrypt",
+        "rekey",
+        "health",
+        "sessions",
+        "plugin",
+        "completion",
+        "cloak",
+        "launch",
+        "refresh-browser",
+        "recommend",
     )
 
     def test_removed_patch_chrome_is_not_registered(self):
@@ -225,6 +279,9 @@ class TestParserSurface(unittest.TestCase):
             self.assertNotRegex(help_text, rf"\n\s+{command}\s")
 
         self.assertNotIn("undetectable", help_text.lower())
+
+        for command in self.VISIBLE_COMMANDS:
+            self.assertRegex(help_text, rf"\n\s+{command}\s")
 
     def test_hidden_transition_commands_remain_callable(self):
         parser = _build_parser()

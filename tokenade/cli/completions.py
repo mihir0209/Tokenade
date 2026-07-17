@@ -8,7 +8,7 @@ BASH_COMPLETION = dedent("""\
         COMPREPLY=()
         cur="${COMP_WORDS[COMP_CWORD]}"
         prev="${COMP_WORDS[COMP_CWORD-1]}"
-        commands="setup extract transfer test fingerprint export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff"
+        commands="config test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend"
 
         if [[ ${cur} == -* ]]; then
             COMPREPLY=( $(compgen -W "--help --version --browser-name --domains --output --port --host --visible --session --format --password --expiry --profile --site-config --list-profiles" -- ${cur}) )
@@ -26,7 +26,7 @@ ZSH_COMPLETION = dedent("""\
 
     _tokenade() {
         _arguments \
-            '1:command:(setup extract transfer test fingerprint export load inject-profile encrypt decrypt rekey batch-export batch-load health refresh proxy sessions share unshare validate-rules diff)' \
+            '1:command:(config test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend)' \
             '*::arg:->args'
     }
 
@@ -36,15 +36,23 @@ ZSH_COMPLETION = dedent("""\
 FISH_COMPLETION = dedent("""\
     # Tokenade fish completion
     complete -c tokenade -f
-    complete -c tokenade -n '__fish_use_subcommand' -a setup -d 'Initial setup'
-    complete -c tokenade -n '__fish_use_subcommand' -a extract -d 'Extract cookies'
+    complete -c tokenade -n '__fish_use_subcommand' -a config -d 'Manage configuration'
+    complete -c tokenade -n '__fish_use_subcommand' -a test -d 'Test portability'
+    complete -c tokenade -n '__fish_use_subcommand' -a fingerprint -d 'Manage fingerprints'
+    complete -c tokenade -n '__fish_use_subcommand' -a validate -d 'Validate sessions'
     complete -c tokenade -n '__fish_use_subcommand' -a export -d 'Export session'
-    complete -c tokenade -n '__fish_use_subcommand' -a proxy -d 'Start proxy'
-    complete -c tokenade -n '__fish_use_subcommand' -a share -d 'Share session'
-    complete -c tokenade -n '__fish_use_subcommand' -a sessions -d 'Manage sessions'
-    complete -c tokenade -n '__fish_use_subcommand' -a health -d 'Check session health'
+    complete -c tokenade -n '__fish_use_subcommand' -a load -d 'Load session'
     complete -c tokenade -n '__fish_use_subcommand' -a encrypt -d 'Encrypt session'
     complete -c tokenade -n '__fish_use_subcommand' -a decrypt -d 'Decrypt session'
+    complete -c tokenade -n '__fish_use_subcommand' -a rekey -d 'Change encryption password'
+    complete -c tokenade -n '__fish_use_subcommand' -a health -d 'Check session health'
+    complete -c tokenade -n '__fish_use_subcommand' -a sessions -d 'Manage sessions'
+    complete -c tokenade -n '__fish_use_subcommand' -a plugin -d 'Manage plugins'
+    complete -c tokenade -n '__fish_use_subcommand' -a completion -d 'Generate completions'
+    complete -c tokenade -n '__fish_use_subcommand' -a cloak -d 'CloakBrowser management'
+    complete -c tokenade -n '__fish_use_subcommand' -a launch -d 'Launch browser'
+    complete -c tokenade -n '__fish_use_subcommand' -a refresh-browser -d 'Refresh through browser'
+    complete -c tokenade -n '__fish_use_subcommand' -a recommend -d 'Recommend handler'
 """)
 
 
