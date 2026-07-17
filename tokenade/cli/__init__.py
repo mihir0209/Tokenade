@@ -48,34 +48,112 @@ VISIBLE_COMMANDS = (
 
 
 def cmd_run(args):
-    """Run an explicitly executable installed plugin from a JSON request."""
+    """Run executable plugin operations from a nested request.json file."""
+    from tokenade.core.request_config import RequestConfigError, load_request_config
+    from tokenade.core.integration.plugin_loader import PluginLoader
     from tokenade.core.integration.plugin_runner import PluginRunner
     from tokenade.plugin.api import PluginRunErrorCode
 
     try:
-        with open(args.input, "r", encoding="utf-8") as handle:
-            request = json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
+        request_config = load_request_config(args.request)
+    except RequestConfigError as exc:
         envelope = {
             "success": False,
-            "plugin": args.plugin_name,
-            "method": args.method or "",
-            "data": None,
+            "operation": "run",
+            "results": [],
             "error": {
                 "code": PluginRunErrorCode.ARGUMENT_ERROR.value,
-                "message": f"invalid input file: {exc}",
+                "message": str(exc),
             },
         }
         print(json.dumps(envelope, ensure_ascii=False))
         raise SystemExit(2)
 
-    result = PluginRunner().run(args.plugin_name, request, args.method)
-    print(json.dumps(result.to_dict(), ensure_ascii=False))
-    if result.success:
-        return
-    if result.error and result.error.code == PluginRunErrorCode.PLUGIN_FAILURE:
-        raise SystemExit(1)
-    raise SystemExit(2)
+    if request_config.operation != "run":
+        envelope = {
+            "success": False,
+            "operation": request_config.operation,
+            "results": [],
+            "error": {
+                "code": PluginRunErrorCode.ARGUMENT_ERROR.value,
+                "message": "request.operation must be 'run' for tokenade run",
+            },
+        }
+        print(json.dumps(envelope, ensure_ascii=False))
+        raise SystemExit(2)
+
+    runner = PluginRunner()
+    loader = PluginLoader()
+    results = []
+    exit_code = 0
+
+    for plugin in request_config.plugins_for_role("run"):
+        run_role = plugin.role_config("run")
+        method = run_role.get("method")
+        if not plugin.required and loader.get_manifest(plugin.name) is None:
+            results.append({
+                "success": True,
+                "plugin": plugin.name,
+                "method": method or "",
+                "data": {
+                    "skipped": True,
+                    "reason": "optional plugin not installed",
+                },
+                "error": None,
+            })
+            continue
+
+        if method is not None and not isinstance(method, str):
+            result_data = {
+                "success": False,
+                "plugin": plugin.name,
+                "method": "",
+                "data": None,
+                "error": {
+                    "code": PluginRunErrorCode.ARGUMENT_ERROR.value,
+                    "message": f"plugin {plugin.name} roles.run.method must be a string",
+                },
+            }
+            results.append(result_data)
+            exit_code = 2
+            if request_config.stop_on_error:
+                break
+            continue
+        else:
+            result = runner.run(plugin.name, plugin.config, method)
+        results.append(result.to_dict())
+
+        if not result.success:
+            if result.error and result.error.code == PluginRunErrorCode.PLUGIN_FAILURE:
+                exit_code = 1
+            else:
+                exit_code = 2
+            if request_config.stop_on_error:
+                break
+
+    if not results:
+        envelope = {
+            "success": False,
+            "operation": "run",
+            "results": [],
+            "error": {
+                "code": PluginRunErrorCode.ARGUMENT_ERROR.value,
+                "message": "request.plugins must include at least one plugin with roles.run",
+            },
+        }
+        print(json.dumps(envelope, ensure_ascii=False))
+        raise SystemExit(2)
+
+    success = all(result.get("success") for result in results)
+    envelope = {
+        "success": success,
+        "operation": "run",
+        "results": results,
+        "error": None if success else next((r.get("error") for r in results if r.get("error")), None),
+    }
+    print(json.dumps(envelope, ensure_ascii=False))
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 def cmd_config(args):
@@ -1334,9 +1412,7 @@ Commands:
 
     # Generalized plugin execution
     run_parser = subparsers.add_parser("run", help="Run an executable installed plugin")
-    run_parser.add_argument("plugin_name", help="Installed plugin name")
-    run_parser.add_argument("method", nargs="?", help="Plugin method (manifest default if omitted)")
-    run_parser.add_argument("--input", required=True, help="Flat JSON request file")
+    run_parser.add_argument("--request", required=True, help="Nested request.json file")
 
     # Extract
     extract_parser = subparsers.add_parser("extract", help="Extract tokens")
