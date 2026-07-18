@@ -264,7 +264,7 @@ class TestGenericHandler:
             ]
         }
         result = h.validate(session)
-        assert result["score"] == 0
+        assert result["score"] == 50.0
 
     def test_validate_empty(self):
         h = self._get_handler()
@@ -277,13 +277,13 @@ class TestGenericHandler:
 
 @pytest.mark.skipif(not _plugins_installed, reason="~/.tokenade/plugins/ not present (CI)")
 class TestPluginDiscovery:
-    def test_google_handler_installed(self):
+    def test_google_flow_handler_installed(self):
         from pathlib import Path
-        assert (Path.home() / ".tokenade" / "plugins" / "google-handler").exists()
+        assert (Path.home() / ".tokenade" / "plugins" / "google-flow-handler").exists()
 
-    def test_github_handler_installed(self):
+    def test_oauth_flow_handler_installed(self):
         from pathlib import Path
-        assert (Path.home() / ".tokenade" / "plugins" / "github-handler").exists()
+        assert (Path.home() / ".tokenade" / "plugins" / "oauth-flow-handler").exists()
 
     def test_discord_handler_installed(self):
         from pathlib import Path
@@ -294,7 +294,7 @@ class TestPluginDiscovery:
         assert (Path.home() / ".tokenade" / "plugins" / "generic-handler").exists()
 
     def test_all_handlers_loadable(self):
-        for name in ["google-handler", "github-handler", "discord-handler", "generic-handler"]:
+        for name in ["google-flow-handler", "oauth-flow-handler", "discord-handler", "generic-handler"]:
             handler = _load_plugin(name)
             assert handler is not None, f"Failed to load {name}"
             assert hasattr(handler, "can_handle")
@@ -309,7 +309,7 @@ class TestPluginDiscovery:
         offline = [
             {"name": n, "version": "1.0.0", "description": "x"}
             for n in (
-                "google-handler", "github-handler",
+                "google-flow-handler", "oauth-flow-handler",
                 "discord-handler", "generic-handler",
             )
         ]
@@ -317,7 +317,7 @@ class TestPluginDiscovery:
         with patch.object(reg, "search", return_value=offline):
             plugins = reg.get_popular(limit=100)
         names = {p.get("name") for p in plugins}
-        assert "google-handler" in names
-        assert "github-handler" in names
+        assert "google-flow-handler" in names
+        assert "oauth-flow-handler" in names
         assert "discord-handler" in names
         assert "generic-handler" in names

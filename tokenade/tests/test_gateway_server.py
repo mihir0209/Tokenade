@@ -163,6 +163,20 @@ def test_control_plane_runtime_context_endpoints(tmp_path):
     assert drain["runtime"]["closed"] == []
 
 
+def test_tabs_new_url_uses_active_session_not_url_as_selector(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+
+    control_plane.contexts_prewarm()
+    control_plane.route_select({"id": "github-stable"})
+    tab = control_plane.tabs_new({"url": "https://github.com"})
+
+    assert tab["runtime"]["success"] is True
+    assert tab["runtime"]["context"]["page_count"] == 1
+
+
 def test_gateway_http_runtime_contexts(tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
     runtime = GatewayRuntime(FakeContextFactory())
@@ -223,6 +237,29 @@ def test_gateway_serve_forever_uses_single_threaded_http_server(monkeypatch, tmp
     assert captured["address"] == ("127.0.0.1", 0)
     assert captured["closed"] is True
     assert HTTPServer is not ThreadingHTTPServer
+
+
+def test_gateway_control_plane_shutdown_stops_server(monkeypatch, tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+
+    class Server:
+        def __init__(self, address, handler):
+            self.shutdown_called = False
+
+        def serve_forever(self):
+            pass
+
+        def shutdown(self):
+            self.shutdown_called = True
+
+        def server_close(self):
+            pass
+
+    monkeypatch.setattr("tokenade.core.gateway.server.HTTPServer", Server)
+    control_plane.serve_forever()
+
+    assert getattr(control_plane, "_server", None) is None
 
 
 def test_gateway_status_includes_redacted_proxy_provider(monkeypatch, tmp_path):

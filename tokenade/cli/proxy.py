@@ -17,6 +17,12 @@ def cmd_proxy(args):
     if getattr(args, "proxy_action", None) == "legacy":
         return cmd_proxy_legacy(args)
 
+    if not hasattr(args, "proxy_action"):
+        return cmd_proxy_legacy(args)
+
+    if any(getattr(args, name, None) for name in ("session", "all", "sessions_dir", "decrypt_password")):
+        return cmd_proxy_legacy(args)
+
     print("Usage: tokenade proxy {resolve}")
     return
 

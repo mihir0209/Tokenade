@@ -53,6 +53,19 @@ class PluginResult:
             "duration_ms": self.duration_ms,
         }
 
+    def __getitem__(self, key: str) -> Any:
+        if key in {"success", "data", "error", "warnings", "duration_ms"}:
+            return getattr(self, key)
+        return self.data[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key in {"success", "data", "error", "warnings", "duration_ms"}:
+            return getattr(self, key)
+        return self.data.get(key, default)
+
+    def __contains__(self, key: str) -> bool:
+        return key in {"success", "data", "error", "warnings", "duration_ms"} or key in self.data
+
 
 class PluginRunErrorCode(str, Enum):
     """Stable error codes used by the external plugin runner."""

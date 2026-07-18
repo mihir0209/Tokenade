@@ -479,6 +479,20 @@ def cmd_export(args):
         metadata=export_metadata or None,
     )
 
+    if site_handler and package.get("site_name") == "unknown":
+        handler_site_name = None
+        if hasattr(site_handler, "get_site_config"):
+            try:
+                handler_site_name = (site_handler.get_site_config() or {}).get("name")
+            except Exception:
+                handler_site_name = None
+        if not handler_site_name:
+            handler_site_name = getattr(site_handler, "site_name", None)
+        if not handler_site_name:
+            handler_site_name = (getattr(site_handler, "name", "") or "").removesuffix("-handler")
+        if handler_site_name:
+            package["site_name"] = handler_site_name
+
     site_name = package.get("site_name", "session")
     output = args.output or f"{site_name}_session"
 

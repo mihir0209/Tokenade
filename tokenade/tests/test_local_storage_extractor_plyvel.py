@@ -72,7 +72,7 @@ class TestExtractFirefoxErrorPath(unittest.TestCase):
                 return path
 
             with patch.object(ext, "_copy_db", side_effect=fake_copy):
-                with self.assertLogs(level="WARNING") as cm:
+                with self.assertLogs("tokenade.core.importer.local_storage_extractor", level="WARNING") as cm:
                     result = ext.extract_firefox()
 
             # Good origin data is still captured despite bad origin failing
@@ -98,7 +98,7 @@ class TestExtractFirefoxErrorPath(unittest.TestCase):
 
             ext.profile_path = tmpdir
             with patch.object(ext, "_copy_db", return_value=not_db):
-                with self.assertLogs(level="WARNING"):
+                with self.assertLogs("tokenade.core.importer.local_storage_extractor", level="WARNING"):
                     result = ext.extract_firefox()
             self.assertEqual(result, {})
 
@@ -202,7 +202,7 @@ class TestExtractChromeMockedPlyvel(unittest.TestCase):
             mock_plyvel.DB.side_effect = RuntimeError("DB locked")
 
             with patch.dict(sys.modules, {"plyvel": mock_plyvel}):
-                with self.assertLogs(level="ERROR"):
+                with self.assertLogs("tokenade.core.importer.local_storage_extractor", level="ERROR"):
                     result = ext.extract_chrome()
 
             self.assertEqual(result, {})
@@ -254,7 +254,7 @@ class TestExtractChromeMockedPlyvel(unittest.TestCase):
             mock_plyvel, mock_db = _make_mock_plyvel(entries)
 
             with patch.dict(sys.modules, {"plyvel": mock_plyvel}):
-                with self.assertLogs(level="DEBUG"):
+                with self.assertLogs("tokenade.core.importer.local_storage_extractor", level="DEBUG"):
                     result = ext.extract_chrome()
 
             self.assertEqual(result, {})

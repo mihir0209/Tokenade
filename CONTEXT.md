@@ -2,6 +2,18 @@
 
 Tokenade extracts, transfers, and injects browser sessions across machines and browsers. The core domain is session portability — making logged-in states moveable.
 
+## Local Witness Environment
+
+All currently working browser sessions to export are in Firefox's default Snap profile:
+
+`/home/ghostrider/snap/firefox/common/.mozilla/firefox/nj40lj6y.default`
+
+Use repo-local commands for pre-release witnesses:
+
+`python3 -m tokenade ...`
+
+Do not use the system-wide installed `tokenade` binary for local end-to-end validation.
+
 ## Language
 
 **Session**:

@@ -273,7 +273,7 @@ class TestNewPluginsInRegistry:
             {"name": n, "version": "1.0.0", "description": "x"}
             for n in (
                 "session-backup", "session-merge", "proxy-health",
-                "session-expiry-alert", "fingerprint-rotate", "bulk-export",
+                "session-expiry-alert", "proxy-rotate", "bulk-export",
             )
         ]
         reg = PluginRegistry()
@@ -282,14 +282,14 @@ class TestNewPluginsInRegistry:
         names = {p.get("name") for p in plugins}
         expected = {
             "session-backup", "session-merge", "proxy-health",
-            "session-expiry-alert", "fingerprint-rotate", "bulk-export",
+            "session-expiry-alert", "proxy-rotate", "bulk-export",
         }
         assert expected.issubset(names)
 
     @pytest.mark.skipif(not _plugin_available("session-backup"), reason="not installed")
     def test_new_plugins_loadable(self):
         for name in ["session-backup", "session-merge", "proxy-health",
-                      "session-expiry-alert", "fingerprint-rotate", "bulk-export"]:
+                      "session-expiry-alert", "proxy-rotate", "bulk-export"]:
             plugin = _load_plugin(name)
             assert plugin is not None, f"Failed to load {name}"
             assert hasattr(plugin, "name")

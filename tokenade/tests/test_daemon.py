@@ -100,7 +100,7 @@ class TestSessionEntry:
     def test_default_values(self):
         entry = SessionEntry(path="/test.tokenade")
         assert entry.path == "/test.tokenade"
-        assert entry.browser == "chrome"
+        assert entry.browser == "cloak"
         assert entry.enabled is True
         assert entry.refresh_count == 0
         assert entry.added_at is not None

@@ -18,7 +18,7 @@ from tokenade.core.browser.manager import (
 class TestBrowserConfig:
     def test_defaults(self):
         cfg = BrowserConfig()
-        assert cfg.browser_type == "chromium"
+        assert cfg.browser_type == "cloakbrowser"
         assert cfg.headless is True
         assert cfg.user_data_dir is None
         assert cfg.executable_path is None
@@ -182,6 +182,7 @@ class TestBrowserManagerABC:
 
 class TestPlaywrightBrowserManager:
     def _make_manager(self, **kwargs):
+        kwargs.setdefault("force_playwright", True)
         cfg = BrowserConfig(**kwargs)
         return PlaywrightBrowserManager(cfg)
 
@@ -652,7 +653,7 @@ class TestBrowserFactory:
     def test_create_default(self):
         mgr = BrowserFactory.create()
         assert isinstance(mgr, PlaywrightBrowserManager)
-        assert mgr.config.browser_type == "chromium"
+        assert mgr.config.browser_type == "cloakbrowser"
 
     def test_create_with_kwargs(self):
         mgr = BrowserFactory.create(headless=False, browser_type="firefox")

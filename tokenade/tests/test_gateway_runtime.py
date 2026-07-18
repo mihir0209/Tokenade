@@ -17,6 +17,8 @@ class FakePage:
 
     def goto(self, url, wait_until=None, timeout=None):
         self.goto_calls.append({"url": url, "wait_until": wait_until, "timeout": timeout})
+        if url == "https://abort.example":
+            raise RuntimeError("navigation aborted")
 
     def evaluate(self, script, data):
         self.evaluate_calls.append({"script": script, "data": data})
@@ -124,6 +126,30 @@ def test_active_context_changes_on_rotation_without_mutating_old_context(tmp_pat
     assert old_context.closed is False
     assert len(old_context.pages) == 2
     assert len(factory.contexts["github"].pages) == 2
+
+
+def test_new_page_navigates_optional_url_in_active_context(tmp_path):
+    records = {record.site_name: record for record in _records(tmp_path)}
+    factory = FakeContextFactory()
+    runtime = GatewayRuntime(factory)
+    runtime.activate(records["github"])
+
+    result = runtime.new_page(url="https://github.com")
+
+    page = factory.contexts["github"].pages[-1]
+    assert result["success"] is True
+    assert page.goto_calls == [{"url": "https://github.com", "wait_until": "domcontentloaded", "timeout": 30000}]
+
+
+def test_new_page_navigation_error_is_non_fatal(tmp_path):
+    records = {record.site_name: record for record in _records(tmp_path)}
+    runtime = GatewayRuntime(FakeContextFactory())
+    runtime.activate(records["github"])
+
+    result = runtime.new_page(url="https://abort.example")
+
+    assert result["success"] is True
+    assert "navigation aborted" in result["navigation_error"]
 
 
 def test_drain_closes_inactive_contexts_only(tmp_path):

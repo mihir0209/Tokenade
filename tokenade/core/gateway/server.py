@@ -153,10 +153,13 @@ class GatewayControlPlane:
     def tabs_new(self, selector: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not self.runtime:
             raise GatewayConfigError("gateway runtime is not enabled")
-        session = self._find_session(selector or {}) if selector else self.active_session
+        selector = selector or {}
+        has_session_selector = any(key in selector for key in ("id", "session_id", "path", "site", "site_name"))
+        session = self._find_session(selector) if has_session_selector else self.active_session
         if session is None:
             raise GatewayConfigError("no active session selected")
-        return {"success": True, "operation": "gateway", "runtime": self.runtime.new_page(session)}
+        url = selector.get("url") if isinstance(selector.get("url"), str) else None
+        return {"success": True, "operation": "gateway", "runtime": self.runtime.new_page(session, url=url)}
 
     def make_handler(self):
         control_plane = self
@@ -212,11 +215,18 @@ class GatewayControlPlane:
 
     def serve_forever(self):
         httpd = HTTPServer((self.server_config.host, self.server_config.port), self.make_handler())
+        self._server = httpd
         try:
             httpd.serve_forever()
         finally:
             self.close()
             httpd.server_close()
+            self._server = None
+
+    def shutdown(self):
+        httpd = getattr(self, "_server", None)
+        if httpd is not None:
+            httpd.shutdown()
 
     def _find_session(self, selector: Dict[str, Any]) -> Optional[SessionRecord]:
         session_id = selector.get("id") or selector.get("session_id")

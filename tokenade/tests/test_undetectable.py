@@ -16,7 +16,7 @@ from tokenade.core.browser.cdp_connection import (
 class TestBrowserLaunchConfig:
     def test_default_config(self):
         config = BrowserLaunchConfig()
-        assert config.browser == "chrome"
+        assert config.browser == "brave"
         assert config.visible is True
         assert config.port == 9222
         assert config.window_size == (1920, 1080)

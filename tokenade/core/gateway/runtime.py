@@ -157,7 +157,7 @@ class GatewayRuntime:
         self.active_context_id = session.id
         return runtime_context
 
-    def new_page(self, session: Optional[SessionRecord] = None) -> Dict[str, Any]:
+    def new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None) -> Dict[str, Any]:
         if session is not None:
             runtime_context = self.activate(session)
         elif self.active_context_id:
@@ -165,9 +165,18 @@ class GatewayRuntime:
         else:
             raise GatewayRuntimeError("no active context")
 
-        runtime_context.context.new_page()
+        page = runtime_context.context.new_page()
+        navigation_error = None
+        if url and hasattr(page, "goto"):
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            except Exception as exc:
+                navigation_error = str(exc)
         runtime_context.page_count += 1
-        return {"success": True, "context": runtime_context.to_dict()}
+        result = {"success": True, "context": runtime_context.to_dict()}
+        if navigation_error:
+            result["navigation_error"] = navigation_error
+        return result
 
     def drain_inactive(self) -> Dict[str, Any]:
         closed = []

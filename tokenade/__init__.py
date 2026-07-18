@@ -18,7 +18,7 @@ Usage:
     main()
 """
 
-__version__ = "1.1.53"
+__version__ = "1.1.60"
 __author__ = "MiHiR"
 __license__ = "MIT"
 

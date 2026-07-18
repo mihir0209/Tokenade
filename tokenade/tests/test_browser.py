@@ -28,7 +28,7 @@ class TestBrowserConfig(unittest.TestCase):
     def test_defaults(self):
         """Test default configuration values."""
         config = BrowserConfig()
-        self.assertEqual(config.browser_type, "chromium")
+        self.assertEqual(config.browser_type, "cloakbrowser")
         self.assertTrue(config.headless)
         self.assertIsNone(config.user_data_dir)
         self.assertEqual(config.viewport, {"width": 1920, "height": 1080})
@@ -131,7 +131,7 @@ class TestPlaywrightBrowserManager(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.config = BrowserConfig(headless=True)
+        self.config = BrowserConfig(headless=True, force_playwright=True)
         self.manager = PlaywrightBrowserManager(self.config)
 
     def test_initial_state(self):
@@ -164,7 +164,7 @@ class TestPlaywrightBrowserManager(unittest.TestCase):
     @patch("playwright.sync_api.sync_playwright")
     def test_launch_persistent_context(self, mock_sync_playwright):
         """Test launch with persistent context."""
-        config = BrowserConfig(user_data_dir="/tmp/test", headless=True)
+        config = BrowserConfig(user_data_dir="/tmp/test", headless=True, force_playwright=True)
         manager = PlaywrightBrowserManager(config)
 
         mock_playwright = MagicMock()

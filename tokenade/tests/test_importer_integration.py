@@ -61,7 +61,8 @@ class TestExportLoadRoundtrip:
 
             with patch.object(loader, "fp_manager"):
                 with patch("tokenade.core.browser.manager.BrowserFactory.create", return_value=mock_browser):
-                    result = loader.load(tokenade_path, validate=True)
+                    with patch("tokenade.core.importer.site_configs.get_site_config", return_value=None):
+                        result = loader.load(tokenade_path, validate=True)
 
             # Step 4: Verify
             assert result["success"] is True
@@ -125,8 +126,9 @@ class TestExportLoadRoundtrip:
 
             with patch.object(loader, "fp_manager"):
                 with patch("tokenade.core.browser.manager.BrowserFactory.create", return_value=mock_browser):
-                    with patch("tokenade.core.importer.session_loader.inject_stealth_script") as mock_inject:
-                        result = loader.load(tokenade_path, validate=True)
+                    with patch("tokenade.core.importer.site_configs.get_site_config", return_value=None):
+                        with patch("tokenade.core.importer.session_loader.inject_stealth_script") as mock_inject:
+                            result = loader.load(tokenade_path, validate=True)
 
             assert result["success"] is True
             mock_inject.assert_called_once()
@@ -165,7 +167,8 @@ class TestCLIRoundtrip:
             loader = SessionLoader()
             with patch.object(loader, "fp_manager"):
                 with patch("tokenade.core.browser.manager.BrowserFactory.create", return_value=mock_browser):
-                    result = loader.load(tokenade_path, validate=True)
+                    with patch("tokenade.core.importer.site_configs.get_site_config", return_value=None):
+                        result = loader.load(tokenade_path, validate=True)
 
             assert result["success"] is True
             assert result["cookies_injected"] == 1
