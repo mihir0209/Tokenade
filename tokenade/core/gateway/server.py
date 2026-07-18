@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 from tokenade.core.gateway.session_router import RoutingConfig, RoutingDecision, SessionRouter, SessionRoutingError
 from tokenade.core.gateway.session_store import SessionRecord, SessionStore
+from tokenade.core.gateway.runtime import BrowserManagerContextFactory, GatewayRuntime, GatewayRuntimeError
 from tokenade.core.request_config import RequestConfig
 
 
@@ -55,6 +56,7 @@ class GatewayControlPlane:
         routing_config: RoutingConfig,
         sessions: list[SessionRecord],
         plugins: Optional[list[Dict[str, Any]]] = None,
+        runtime: Optional[GatewayRuntime] = None,
     ):
         self.server_config = server_config
         self.routing_config = routing_config
@@ -62,6 +64,7 @@ class GatewayControlPlane:
         self.plugins = plugins or []
         self.router = SessionRouter(self.sessions, routing_config)
         self.active_session: Optional[SessionRecord] = None
+        self.runtime = runtime
 
     def status(self) -> Dict[str, Any]:
         return {
@@ -83,6 +86,11 @@ class GatewayControlPlane:
                 "drain_existing_tabs": self.routing_config.drain_existing_tabs,
             },
             "plugins": self.plugins,
+            "runtime": {
+                "enabled": self.runtime is not None,
+                "active_context_id": self.runtime.active_context_id if self.runtime else None,
+                "context_count": len(self.runtime.contexts()) if self.runtime else 0,
+            },
         }
 
     def session_list(self) -> Dict[str, Any]:
@@ -95,7 +103,8 @@ class GatewayControlPlane:
     def route_next(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         decision = self.router.select(context=context)
         self.active_session = decision.session
-        return self._decision_response(decision)
+        runtime_context = self.runtime.activate(decision.session) if self.runtime else None
+        return self._decision_response(decision, runtime_context)
 
     def route_select(self, selector: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(selector, dict):
@@ -106,13 +115,44 @@ class GatewayControlPlane:
             raise GatewayConfigError("no session matched selector")
 
         self.active_session = selected
+        runtime_context = self.runtime.activate(selected) if self.runtime else None
         decision = RoutingDecision(
             session=selected,
             strategy=self.routing_config.strategy,
             reason="manual-select",
             selected_at=time.time(),
         )
-        return self._decision_response(decision)
+        return self._decision_response(decision, runtime_context)
+
+    def context_list(self) -> Dict[str, Any]:
+        if not self.runtime:
+            return {"success": True, "operation": "gateway", "runtime_enabled": False, "contexts": []}
+        return {
+            "success": True,
+            "operation": "gateway",
+            "runtime_enabled": True,
+            "contexts": self.runtime.contexts(),
+        }
+
+    def contexts_prewarm(self) -> Dict[str, Any]:
+        if not self.runtime:
+            raise GatewayConfigError("gateway runtime is not enabled")
+        result = self.runtime.prewarm(self.sessions)
+        return {"success": True, "operation": "gateway", "runtime": result}
+
+    def contexts_drain(self) -> Dict[str, Any]:
+        if not self.runtime:
+            raise GatewayConfigError("gateway runtime is not enabled")
+        result = self.runtime.drain_inactive()
+        return {"success": True, "operation": "gateway", "runtime": result}
+
+    def tabs_new(self, selector: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        if not self.runtime:
+            raise GatewayConfigError("gateway runtime is not enabled")
+        session = self._find_session(selector or {}) if selector else self.active_session
+        if session is None:
+            raise GatewayConfigError("no active session selected")
+        return {"success": True, "operation": "gateway", "runtime": self.runtime.new_page(session)}
 
     def make_handler(self):
         control_plane = self
@@ -123,6 +163,8 @@ class GatewayControlPlane:
                     self._send_json(200, control_plane.status())
                 elif self.path == "/sessions":
                     self._send_json(200, control_plane.session_list())
+                elif self.path == "/contexts":
+                    self._send_json(200, control_plane.context_list())
                 else:
                     self._send_json(404, {"success": False, "error": "not found"})
 
@@ -133,9 +175,15 @@ class GatewayControlPlane:
                         self._send_json(200, control_plane.route_next(payload))
                     elif self.path == "/route/select":
                         self._send_json(200, control_plane.route_select(payload))
+                    elif self.path == "/contexts/prewarm":
+                        self._send_json(200, control_plane.contexts_prewarm())
+                    elif self.path == "/contexts/drain":
+                        self._send_json(200, control_plane.contexts_drain())
+                    elif self.path == "/tabs/new":
+                        self._send_json(200, control_plane.tabs_new(payload))
                     else:
                         self._send_json(404, {"success": False, "error": "not found"})
-                except (GatewayConfigError, SessionRoutingError, json.JSONDecodeError) as exc:
+                except (GatewayConfigError, GatewayRuntimeError, SessionRoutingError, json.JSONDecodeError) as exc:
                     self._send_json(400, {"success": False, "error": str(exc)})
 
             def log_message(self, format, *args):
@@ -163,6 +211,7 @@ class GatewayControlPlane:
         try:
             httpd.serve_forever()
         finally:
+            self.close()
             httpd.server_close()
 
     def _find_session(self, selector: Dict[str, Any]) -> Optional[SessionRecord]:
@@ -179,12 +228,19 @@ class GatewayControlPlane:
                 return session
         return None
 
-    def _decision_response(self, decision: RoutingDecision) -> Dict[str, Any]:
-        return {
+    def _decision_response(self, decision: RoutingDecision, runtime_context=None) -> Dict[str, Any]:
+        response = {
             "success": True,
             "operation": "gateway",
             "decision": decision.to_dict(),
         }
+        if runtime_context is not None:
+            response["runtime_context"] = runtime_context.to_dict()
+        return response
+
+    def close(self):
+        if self.runtime:
+            self.runtime.close()
 
 
 def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
@@ -220,4 +276,24 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
         }
         for plugin in request.plugins
     ]
-    return GatewayControlPlane(server_config, routing_config, sessions, plugins)
+    runtime = _create_runtime(request.raw.get("gateway"))
+    return GatewayControlPlane(server_config, routing_config, sessions, plugins, runtime=runtime)
+
+
+def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:
+    raw = gateway_config or {}
+    if not isinstance(raw, dict):
+        return None
+    runtime_config = raw.get("runtime", {})
+    if not isinstance(runtime_config, dict):
+        raise GatewayConfigError("request.gateway.runtime must be an object")
+    if runtime_config.get("enabled") is not True:
+        return None
+
+    backend = runtime_config.get("backend", raw.get("backend", "cloakbrowser"))
+    if not isinstance(backend, str) or not backend.strip():
+        raise GatewayConfigError("request.gateway.runtime.backend must be a string")
+    headless = runtime_config.get("headless", True)
+    if not isinstance(headless, bool):
+        raise GatewayConfigError("request.gateway.runtime.headless must be a boolean")
+    return GatewayRuntime(BrowserManagerContextFactory(backend=backend.strip(), headless=headless))

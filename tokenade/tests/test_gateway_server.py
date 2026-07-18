@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from tokenade.core.gateway.server import GatewayConfigError, create_gateway_control_plane
+from tokenade.core.gateway.runtime import GatewayRuntime
 from tokenade.core.request_config import parse_request_config
+from tokenade.tests.test_gateway_runtime import FakeContextFactory
 
 
 def _write_session(tmp_path, name, site_name="github", metadata=None):
@@ -138,3 +140,53 @@ def test_gateway_http_status_and_route_next(tmp_path):
     assert status["session_count"] == 1
     assert next_route["success"] is True
     assert next_route["decision"]["session"]["id"] == "github-stable"
+
+
+def test_control_plane_runtime_context_endpoints(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+
+    prewarm = control_plane.contexts_prewarm()
+    route = control_plane.route_next()
+    contexts = control_plane.context_list()
+    tab = control_plane.tabs_new()
+    drain = control_plane.contexts_drain()
+
+    assert prewarm["runtime"]["context_count"] == 1
+    assert route["runtime_context"]["session"]["id"] == "github-stable"
+    assert contexts["runtime_enabled"] is True
+    assert len(contexts["contexts"]) == 1
+    assert tab["runtime"]["success"] is True
+    assert drain["runtime"]["closed"] == []
+
+
+def test_gateway_http_runtime_contexts(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), control_plane.make_handler())
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{httpd.server_port}"
+
+    try:
+        prewarm_request = urllib.request.Request(f"{base_url}/contexts/prewarm", data=b"{}", method="POST")
+        with urllib.request.urlopen(prewarm_request, timeout=5) as response:
+            prewarm = json.loads(response.read().decode("utf-8"))
+        next_request = urllib.request.Request(f"{base_url}/route/next", data=b"{}", method="POST")
+        with urllib.request.urlopen(next_request, timeout=5) as response:
+            next_route = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(f"{base_url}/contexts", timeout=5) as response:
+            contexts = json.loads(response.read().decode("utf-8"))
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+    assert prewarm["runtime"]["context_count"] == 1
+    assert next_route["runtime_context"]["session"]["id"] == "github-stable"
+    assert contexts["runtime_enabled"] is True
+    assert len(contexts["contexts"]) == 1
