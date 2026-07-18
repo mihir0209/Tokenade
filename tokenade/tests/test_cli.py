@@ -241,6 +241,7 @@ class TestParserSurface(unittest.TestCase):
         "k8s",
         "stealth",
         "deps",
+        "gateway",
     )
 
     VISIBLE_COMMANDS = (

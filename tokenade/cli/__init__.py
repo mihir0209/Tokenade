@@ -156,6 +156,30 @@ def cmd_run(args):
         raise SystemExit(exit_code)
 
 
+def cmd_gateway(args):
+    """Run hidden gateway control plane from a nested request.json file."""
+    from tokenade.core.gateway.server import GatewayConfigError, create_gateway_control_plane
+    from tokenade.core.request_config import RequestConfigError, load_request_config
+
+    try:
+        request_config = load_request_config(args.request)
+        control_plane = create_gateway_control_plane(request_config)
+    except (GatewayConfigError, RequestConfigError) as exc:
+        envelope = {
+            "success": False,
+            "operation": "gateway",
+            "error": {
+                "code": "GATEWAY_CONFIG_ERROR",
+                "message": str(exc),
+            },
+        }
+        print(json.dumps(envelope, ensure_ascii=False))
+        raise SystemExit(2)
+
+    print(json.dumps(control_plane.status(), ensure_ascii=False))
+    control_plane.serve_forever()
+
+
 def cmd_config(args):
     """Manage configuration (~/.tokenade/config.json)."""
     from tokenade.core.config import load_config, DEFAULTS
@@ -1414,6 +1438,10 @@ Commands:
     run_parser = subparsers.add_parser("run", help="Run an executable installed plugin")
     run_parser.add_argument("--request", required=True, help="Nested request.json file")
 
+    # Hidden gateway control plane skeleton
+    gateway_parser = subparsers.add_parser("gateway", help=argparse.SUPPRESS)
+    gateway_parser.add_argument("--request", required=True, help="Nested gateway request.json file")
+
     # Extract
     extract_parser = subparsers.add_parser("extract", help="Extract tokens")
     extract_parser.add_argument("--visible", action="store_true", help="Show browser window")
@@ -2312,7 +2340,7 @@ Commands:
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
         "fleet", "autopsy", "tui", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
-        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps",
+        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps", "gateway",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(
@@ -2338,6 +2366,7 @@ def main():
         "setup": cmd_setup,
         "config": cmd_config,
         "run": cmd_run,
+        "gateway": cmd_gateway,
         "extract": cmd_extract,
         "transfer": cmd_transfer,
         "test": cmd_test,
