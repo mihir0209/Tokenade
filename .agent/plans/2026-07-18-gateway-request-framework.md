@@ -1,8 +1,22 @@
 # Gateway And Request Framework Plan
 
 **Date:** 2026-07-18  
-**Status:** Approved direction, pending implementation  
+**Status:** Six-phase implementation complete; gateway remains hidden pending live-browser witness  
 **North star:** Tokenade should port sessions through isolated, consistent browser identities while exposing a programmable request framework for plugins, routing, gateway control, and future upstream proxy providers.
+
+## Implementation Status
+
+- Phase 1 complete: nested `request.json` support for `tokenade run --request`.
+- Phase 2 complete: `SessionRouter` core, sanitized session records, and routing policies.
+- Phase 3 complete: hidden `gateway --request` control API with sanitized endpoints.
+- Phase 4 complete: gateway runtime seam with isolated context semantics and fake-context witness against real sessions.
+- Phase 5 complete: explicit source network stamp and proxy provider resolver with secret redaction.
+- Phase 6 complete: public `proxy resolve --request` upstream proxy tooling; legacy local/CDP proxy moved behind hidden `proxy legacy`.
+
+Current promotion decision:
+
+- `proxy` is visible because it now means upstream proxy-provider tooling and has resolver/redaction witnesses.
+- `gateway` remains hidden because it still needs a live CloakBrowser/Playwright isolated-context witness before public promotion.
 
 ## Why This Plan Exists
 
