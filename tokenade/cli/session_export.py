@@ -46,13 +46,14 @@ def cmd_export(args):
     if args.list_profiles:
         print("\n🔍 Discovering browser profiles...")
         discovery = BrowserProfileDiscovery()
-        profiles = discovery.discover_all()
+        profiles = discovery.refresh_cache()
+        total_profiles = sum(len(browser_profiles) for browser_profiles in profiles.values())
 
-        if not profiles:
+        if total_profiles == 0:
             print("   ❌ No browser profiles found")
             return
 
-        print(f"\n📁 Found {len(profiles)} profile(s):\n")
+        print(f"\n📁 Found {total_profiles} profile(s):\n")
         for browser_name, browser_profiles in profiles.items():
             for p in browser_profiles:
                 print(f"   Browser: {p.browser}")
@@ -90,13 +91,10 @@ def cmd_export(args):
     if not cdp_port:
         if not browser_path and browser_name:
             discovery = BrowserProfileDiscovery()
-            profiles = discovery.discover_all()
-            all_profiles = []
-            for browser_profiles in profiles.values():
-                all_profiles.extend(browser_profiles)
-            matching = [p for p in all_profiles if p.browser == browser_name]
+            matching = discovery.discover_browser(browser_name)
             if args.profile:
-                matching = [p for p in matching if p.name == args.profile]
+                wanted = args.profile.lower()
+                matching = [p for p in matching if p.name.lower() == wanted or os.path.basename(str(p.path)).lower() == wanted]
             if matching:
                 browser_path = str(matching[0].path)
                 print(f"📁 Using profile: {matching[0].name}")

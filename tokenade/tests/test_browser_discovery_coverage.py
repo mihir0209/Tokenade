@@ -1,8 +1,28 @@
 """Extended coverage tests for browser_discovery module."""
 
+import json
 import os
+from pathlib import Path
 from unittest.mock import patch
+
 from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery, BrowserProfile
+
+
+def _firefox_profile(path: Path) -> Path:
+    path.mkdir(parents=True)
+    (path / "cookies.sqlite").touch()
+    (path / "prefs.js").write_text("user_pref('browser.startup.homepage', 'about:home');")
+    return path
+
+
+def _chromium_profile(path: Path, name: str = "Default") -> Path:
+    path.mkdir(parents=True)
+    (path.parent / "Local State").write_text(json.dumps({"profile": {"info_cache": {path.name: {"name": name}}}}))
+    (path / "Preferences").write_text(json.dumps({"profile": {"name": name}}))
+    network = path / "Network"
+    network.mkdir()
+    (network / "Cookies").touch()
+    return path
 
 
 class TestBrowserProfileDataclass:
@@ -75,449 +95,251 @@ class TestPathExists:
             assert d._path_exists("$TESTVAR/file") is False
 
 
-class TestDiscoverChromeProfiles:
-    def test_no_profiles_returns_empty(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profiles = d.discover_chrome_profiles()
-            assert profiles == []
 
-    def test_discovers_default_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome_data"
-        chrome_dir.mkdir()
-        default = chrome_dir / "Default"
-        default.mkdir()
+class TestSignatureDiscovery:
+    def test_discovers_firefox_from_arbitrary_root(self, tmp_path):
+        profile_dir = _firefox_profile(tmp_path / "somewhere" / "snap" / "firefox" / "abc.default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
-        with patch.object(d, "_expand_path", return_value=str(chrome_dir)):
-            with patch("tokenade.core.importer.browser_discovery.os.path.exists", side_effect=lambda p: True if str(p) == str(chrome_dir) or str(p) == str(default) else False):
-                profiles = d.discover_chrome_profiles()
-                assert len(profiles) >= 1
-                assert any(p.is_default for p in profiles)
+        profiles = d.discover_firefox_profiles()
 
-    def test_discovers_additional_profiles(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome_data"
-        chrome_dir.mkdir()
-        (chrome_dir / "Default").mkdir()
-        (chrome_dir / "Profile 1").mkdir()
-        default_path = str(chrome_dir / "Default")
-        p1_path = str(chrome_dir / "Profile 1")
-        base_str = str(chrome_dir)
+        assert len(profiles) == 1
+        assert profiles[0].browser == "firefox"
+        assert profiles[0].path == str(profile_dir.resolve())
 
-        call_count = [0]
-
-        def expand_side_effect(path):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return base_str
-            return "/nonexistent/path"
-
-        with patch.object(d, "_expand_path", side_effect=expand_side_effect):
-            with patch("os.path.exists", side_effect=lambda p: p in (base_str, default_path)):
-                with patch("glob.glob", return_value=[p1_path]):
-                    profiles = d.discover_chrome_profiles()
-                    assert len(profiles) == 2
-
-    def test_empty_os_type_returns_empty(self):
-        d = BrowserProfileDiscovery()
-        d.os_type = "UnsupportedOS"
-        profiles = d.discover_chrome_profiles()
-        assert profiles == []
-
-
-class TestDiscoverFirefoxProfiles:
-    def test_no_profiles_returns_empty(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profiles = d.discover_firefox_profiles()
-            assert profiles == []
-
-    def test_profiles_ini_parsing(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla"
-        base.mkdir()
-        profiles_ini = tmp_path / "profiles.ini"
-        profiles_ini.write_text(
+    def test_discovers_firefox_profiles_ini_names_and_default(self, tmp_path):
+        profile_dir = _firefox_profile(tmp_path / "portable" / "Profiles" / "abc.default")
+        (tmp_path / "portable" / "profiles.ini").write_text(
             "[Profile0]\n"
-            "Name=default\n"
+            "Name=Personal\n"
             "IsRelative=1\n"
             "Path=Profiles/abc.default\n"
             "Default=1\n"
         )
-        profile_dir = tmp_path / "Profiles" / "abc.default"
-        profile_dir.mkdir(parents=True)
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
-        with patch.object(d, "_expand_path", return_value=str(base)):
-            def fake_exists(p):
-                p_str = str(p)
-                if p_str == str(base):
-                    return True
-                if p_str == str(profiles_ini):
-                    return True
-                if p_str == str(profile_dir):
-                    return True
-                return False
-            with patch("os.path.exists", side_effect=fake_exists):
-                profiles = d.discover_firefox_profiles()
-                assert len(profiles) >= 1
-
-    def test_absolute_path_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla"
-        base.mkdir()
-        profile_dir = tmp_path / "absolute_profile"
-        profile_dir.mkdir()
-
-        profiles_ini = tmp_path / "profiles.ini"
-        profiles_ini.write_text(
-            "[Profile0]\n"
-            "Name=AbsProfile\n"
-            "IsRelative=0\n"
-            f"Path={profile_dir}\n"
-            "Default=1\n"
-        )
-
-        with patch.object(d, "_expand_path", return_value=str(base)):
-            def fake_exists(p):
-                p_str = str(p)
-                if p_str == str(base):
-                    return True
-                if p_str == str(profiles_ini):
-                    return True
-                if p_str == str(profile_dir):
-                    return True
-                return False
-            with patch("os.path.exists", side_effect=fake_exists):
-                profiles = d.discover_firefox_profiles()
-                assert len(profiles) >= 1
-
-    def test_fallback_directory_scan(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla"
-        base.mkdir()
-        profile_dir = base / "abc.default-release"
-        profile_dir.mkdir()
-
-        base_str = str(base)
-        profile_str = str(profile_dir)
-
-        call_count = [0]
-
-        def expand_side_effect(path):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return base_str
-            return "/nonexistent/path"
-
-        with patch.object(d, "_expand_path", side_effect=expand_side_effect):
-            def exists_side_effect(p):
-                p_str = str(p)
-                if p_str == base_str:
-                    return True
-                if "profiles.ini" in p_str:
-                    return False
-                if p_str == profile_str:
-                    return True
-                return False
-            with patch("os.path.exists", side_effect=exists_side_effect):
-                with patch("glob.glob", return_value=[profile_str]):
-                    profiles = d.discover_firefox_profiles()
-                    assert len(profiles) == 1
-                    assert profiles[0].browser == "firefox"
-
-    def test_profiles_ini_in_parent_dir(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla" / "firefox"
-        base.mkdir(parents=True)
-        profiles_ini = tmp_path / "mozilla" / "profiles.ini"
-        profiles_ini.write_text(
-            "[Profile0]\n"
-            "Name=default\n"
-            "IsRelative=1\n"
-            "Path=firefox/abc.default\n"
-            "Default=1\n"
-        )
-        profile_dir = base / "abc.default"
-        profile_dir.mkdir()
-
-        with patch.object(d, "_expand_path", return_value=str(base)):
-            def fake_exists(p):
-                p_str = str(p)
-                if p_str == str(base):
-                    return True
-                if p_str == str(profiles_ini):
-                    return True
-                if p_str == str(profile_dir):
-                    return True
-                return False
-            with patch("os.path.exists", side_effect=fake_exists):
-                profiles = d.discover_firefox_profiles()
-                assert len(profiles) >= 1
-
-    def test_invalid_profiles_ini(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla"
-        base.mkdir()
-        profiles_ini = tmp_path / "profiles.ini"
-        profiles_ini.write_text("this is not valid ini {{{")
-
-        with patch.object(d, "_expand_path", return_value=str(base)):
-            with patch("os.path.exists", return_value=True):
-                profiles = d.discover_firefox_profiles()
-                assert isinstance(profiles, list)
-
-    def test_empty_profiles_ini(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        base = tmp_path / "mozilla"
-        base.mkdir()
-        profiles_ini = tmp_path / "profiles.ini"
-        profiles_ini.write_text("")
-
-        with patch.object(d, "_expand_path", return_value=str(base)):
-            with patch("os.path.exists", return_value=True):
-                profiles = d.discover_firefox_profiles()
-                assert profiles == []
-
-    def test_os_type_not_matching(self):
-        d = BrowserProfileDiscovery()
-        d.os_type = "UnsupportedOS"
         profiles = d.discover_firefox_profiles()
-        assert profiles == []
+
+        assert len(profiles) == 1
+        assert profiles[0].name == "Personal"
+        assert profiles[0].is_default is True
+        assert profiles[0].path == str(profile_dir.resolve())
+
+    def test_discovers_chromium_from_arbitrary_root(self, tmp_path):
+        profile_dir = _chromium_profile(tmp_path / "unknown-place" / "Chrome Canary" / "Profile 7", "Work")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+
+        profiles = d.discover_chrome_profiles()
+
+        assert len(profiles) == 1
+        assert profiles[0].browser == "chrome"
+        assert profiles[0].name == "Work"
+        assert profiles[0].path == str(profile_dir.resolve())
+
+    def test_classifies_edge_brave_vivaldi_by_path_tokens(self, tmp_path):
+        edge = _chromium_profile(tmp_path / "random" / "Microsoft Edge" / "Default")
+        brave = _chromium_profile(tmp_path / "random" / "BraveSoftware" / "Profile 1", "Brave Work")
+        vivaldi = _chromium_profile(tmp_path / "random" / "vivaldi" / "Default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+
+        profiles = d.discover_all()
+
+        actual = {browser: [p.path for p in found] for browser, found in profiles.items()}
+        assert actual["edge"] == [str(edge.resolve())], actual
+        assert actual["brave"] == [str(brave.resolve())], actual
+        assert actual["vivaldi"] == [str(vivaldi.resolve())], actual
+
+    def test_env_scan_roots(self, tmp_path):
+        profile_dir = _firefox_profile(tmp_path / "nested" / "abc.default")
+        with patch.dict(os.environ, {BrowserProfileDiscovery.SCAN_ROOTS_ENV: str(tmp_path)}):
+            d = BrowserProfileDiscovery()
+            profiles = d.discover_firefox_profiles()
+        assert [p.path for p in profiles] == [str(profile_dir.resolve())]
+
+    def test_max_depth_limits_scan(self, tmp_path):
+        _firefox_profile(tmp_path / "one" / "two" / "three" / "abc.default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path], max_depth=2)
+
+        assert d.discover_firefox_profiles() == []
+
+    def test_prunes_node_modules(self, tmp_path):
+        _firefox_profile(tmp_path / "node_modules" / "package" / "abc.default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+
+        assert d.discover_firefox_profiles() == []
+
+    def test_ignores_chromium_like_app_data_without_user_data_parent(self, tmp_path):
+        app_data = tmp_path / "Code"
+        app_data.mkdir()
+        (app_data / "Preferences").write_text(json.dumps({"profile": {"name": "Code"}}))
+        network = app_data / "Network"
+        network.mkdir()
+        (network / "Cookies").touch()
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+
+        assert d.discover_chrome_profiles() == []
 
 
-class TestDiscoverEdgeProfiles:
-    def test_no_profiles_returns_empty(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profiles = d.discover_edge_profiles()
-            assert profiles == []
+class TestPersistentCache:
+    def test_refresh_cache_writes_browser_paths_json(self, tmp_path):
+        cache_path = tmp_path / "cache" / "browser_paths.json"
+        profile_dir = _firefox_profile(tmp_path / "profiles" / "abc.default")
+        with patch.dict(os.environ, {BrowserProfileDiscovery.CACHE_PATH_ENV: str(cache_path)}):
+            d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+            result = d.refresh_cache()
 
-    def test_discovers_default_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        edge_dir = tmp_path / "edge_data"
-        edge_dir.mkdir()
-        (edge_dir / "Default").mkdir()
+        assert [p.path for p in result["firefox"]] == [str(profile_dir.resolve())]
+        data = json.loads(cache_path.read_text())
+        assert data["version"] == BrowserProfileDiscovery.CACHE_VERSION
+        assert data["profiles"]["firefox"][0]["path"] == str(profile_dir.resolve())
 
-        with patch.object(d, "_expand_path", return_value=str(edge_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    profiles = d.discover_edge_profiles()
-                    assert len(profiles) == 1
-                    assert profiles[0].browser == "edge"
-                    assert profiles[0].is_default is True
+    def test_discover_browser_reads_cache_before_scan(self, tmp_path):
+        cache_path = tmp_path / "browser_paths.json"
+        profile_dir = _firefox_profile(tmp_path / "profiles" / "abc.default")
+        payload = {
+            "version": BrowserProfileDiscovery.CACHE_VERSION,
+            "created_at": 9999999999,
+            "scan_roots": [str(tmp_path)],
+            "profiles": {
+                "chrome": [],
+                "firefox": [{
+                    "name": "default",
+                    "path": str(profile_dir),
+                    "browser": "firefox",
+                    "last_used": None,
+                    "is_default": True,
+                }],
+                "edge": [],
+                "brave": [],
+                "vivaldi": [],
+            },
+        }
+        cache_path.write_text(json.dumps(payload))
+        with patch.dict(os.environ, {BrowserProfileDiscovery.CACHE_PATH_ENV: str(cache_path)}):
+            d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+            with patch.object(d, "_scan_profiles", side_effect=AssertionError("scan should not run")):
+                profiles = d.discover_browser("firefox")
 
-    def test_discovers_additional_profiles(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        edge_dir = tmp_path / "edge_data"
-        edge_dir.mkdir()
-        (edge_dir / "Default").mkdir()
-        (edge_dir / "Profile 1").mkdir()
+        assert [p.path for p in profiles] == [str(profile_dir)]
 
-        with patch.object(d, "_expand_path", return_value=str(edge_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[str(edge_dir / "Profile 1")]):
-                    profiles = d.discover_edge_profiles()
-                    assert len(profiles) == 2
+    def test_stale_cache_is_ignored(self, tmp_path):
+        cache_path = tmp_path / "browser_paths.json"
+        profile_dir = _firefox_profile(tmp_path / "profiles" / "abc.default")
+        cache_path.write_text(json.dumps({
+            "version": BrowserProfileDiscovery.CACHE_VERSION,
+            "created_at": 0,
+            "profiles": {"firefox": []},
+        }))
+        with patch.dict(os.environ, {
+            BrowserProfileDiscovery.CACHE_PATH_ENV: str(cache_path),
+            BrowserProfileDiscovery.CACHE_MAX_AGE_ENV: "1",
+        }):
+            d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+            profiles = d.discover_browser("firefox")
 
-    def test_no_default_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        edge_dir = tmp_path / "edge_data"
-        edge_dir.mkdir()
-        # No "Default" directory created
-
-        with patch.object(d, "_expand_path", return_value=str(edge_dir)):
-            with patch("os.path.exists", side_effect=lambda p: str(p) == str(edge_dir)):
-                with patch("glob.glob", return_value=[]):
-                    profiles = d.discover_edge_profiles()
-                    assert len(profiles) == 0
-
-    def test_os_type_not_matching(self):
-        d = BrowserProfileDiscovery()
-        d.os_type = "UnsupportedOS"
-        profiles = d.discover_edge_profiles()
-        assert profiles == []
+        assert [p.path for p in profiles] == [str(profile_dir.resolve())]
 
 
-class TestDiscoverBraveProfiles:
-    def test_no_profiles_returns_empty(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profiles = d.discover_brave_profiles()
-            assert profiles == []
+class TestDiscoverBrowserMethods:
+    def test_no_profiles_returns_empty(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        assert d.discover_chrome_profiles() == []
+        assert d.discover_firefox_profiles() == []
+        assert d.discover_edge_profiles() == []
+        assert d.discover_brave_profiles() == []
+        assert d.discover_vivaldi_profiles() == []
 
-    def test_discovers_default_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        brave_dir = tmp_path / "brave_data"
-        brave_dir.mkdir()
-        (brave_dir / "Default").mkdir()
+    def test_unknown_browser_returns_empty(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        assert d.discover_browser("unknown_browser") == []
 
-        with patch.object(d, "_expand_path", return_value=str(brave_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    profiles = d.discover_brave_profiles()
-                    assert len(profiles) == 1
-                    assert profiles[0].browser == "brave"
-
-    def test_discovers_additional_profiles(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        brave_dir = tmp_path / "brave_data"
-        brave_dir.mkdir()
-        (brave_dir / "Default").mkdir()
-        (brave_dir / "Profile 1").mkdir()
-
-        with patch.object(d, "_expand_path", return_value=str(brave_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[str(brave_dir / "Profile 1")]):
-                    profiles = d.discover_brave_profiles()
-                    assert len(profiles) == 2
-
-    def test_os_type_not_matching(self):
-        d = BrowserProfileDiscovery()
-        d.os_type = "UnsupportedOS"
-        profiles = d.discover_brave_profiles()
-        assert profiles == []
+    def test_chromium_alias_maps_to_chrome(self, tmp_path):
+        profile_dir = _chromium_profile(tmp_path / "chromium" / "Default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        profiles = d.discover_browser("chromium")
+        assert [p.path for p in profiles] == [str(profile_dir.resolve())]
 
 
 class TestGetProfile:
-    def test_finds_existing_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome"
-        chrome_dir.mkdir()
-        (chrome_dir / "Default").mkdir()
+    def test_finds_existing_profile_by_name(self, tmp_path):
+        _chromium_profile(tmp_path / "chrome" / "Default", "Person 1")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
-        with patch.object(d, "_expand_path", return_value=str(chrome_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    profile = d.get_profile("chrome", "Default")
-                    assert profile is not None
-                    assert profile.name == "Default"
+        profile = d.get_profile("chrome", "Person 1")
 
-    def test_returns_none_for_missing(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profile = d.get_profile("chrome", "Nonexistent")
-            assert profile is None
+        assert profile is not None
+        assert profile.name == "Person 1"
 
-    def test_returns_none_for_unknown_browser(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profile = d.get_profile("unknown_browser", "Default")
-            assert profile is None
+    def test_finds_existing_profile_by_directory_name(self, tmp_path):
+        _chromium_profile(tmp_path / "chrome" / "Profile 8", "Work")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+
+        profile = d.get_profile("chrome", "Profile 8")
+
+        assert profile is not None
+        assert profile.name == "Work"
+
+    def test_returns_none_for_missing(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        assert d.get_profile("chrome", "Nonexistent") is None
+
+    def test_returns_none_for_unknown_browser(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        assert d.get_profile("unknown_browser", "Default") is None
 
 
 class TestGetDefaultProfile:
     def test_returns_default_profile(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome"
-        chrome_dir.mkdir()
-        (chrome_dir / "Default").mkdir()
+        _chromium_profile(tmp_path / "chrome" / "Default")
+        _chromium_profile(tmp_path / "chrome" / "Profile 2", "Other")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
-        with patch.object(d, "_expand_path", return_value=str(chrome_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    profile = d.get_default_profile("chrome")
-                    assert profile is not None
-                    assert profile.is_default is True
+        profile = d.get_default_profile("chrome")
+
+        assert profile is not None
+        assert profile.is_default is True
 
     def test_returns_first_when_no_default(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        edge_dir = tmp_path / "edge"
-        edge_dir.mkdir()
+        _chromium_profile(tmp_path / "chrome" / "Profile 2", "Other")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
-        with patch.object(d, "_expand_path", return_value=str(edge_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    d.get_default_profile("edge")
-                    # May be None or first profile depending on structure
+        profile = d.get_default_profile("chrome")
+        assert profile is not None
+        assert profile.name == "Other"
 
-    def test_returns_none_for_empty(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            profile = d.get_default_profile("nonexistent")
-            assert profile is None
+    def test_returns_none_for_empty(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        assert d.get_default_profile("chrome") is None
 
 
 class TestListProfilesText:
-    def test_empty_profiles_text(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            text = d.list_profiles_text()
-            assert "No browser profiles found" in text
-            assert "Total profiles: 0" in text
+    def test_empty_profiles_text(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        text = d.list_profiles_text()
+        assert "No browser profiles found" in text
+        assert "Total profiles: 0" in text
 
     def test_with_profiles_text(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome"
-        chrome_dir.mkdir()
-        (chrome_dir / "Default").mkdir()
-
-        with patch.object(d, "_expand_path", return_value=str(chrome_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    text = d.list_profiles_text()
-                    assert "BROWSER PROFILES" in text
-                    assert "=" * 60 in text
-
-    def test_profiles_text_contains_default_mark(self, tmp_path):
-        d = BrowserProfileDiscovery()
-        chrome_dir = tmp_path / "chrome"
-        chrome_dir.mkdir()
-        (chrome_dir / "Default").mkdir()
-
-        with patch.object(d, "_expand_path", return_value=str(chrome_dir)):
-            with patch("os.path.exists", return_value=True):
-                with patch("glob.glob", return_value=[]):
-                    text = d.list_profiles_text()
-                    assert "default" in text.lower()
+        _chromium_profile(tmp_path / "chrome" / "Default")
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        text = d.list_profiles_text()
+        assert "BROWSER PROFILES" in text
+        assert "CHROME" in text
+        assert "default" in text.lower()
 
 
 class TestDiscoverAll:
-    def test_returns_all_browser_keys(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            result = d.discover_all()
-            assert "chrome" in result
-            assert "firefox" in result
-            assert "edge" in result
-            assert "brave" in result
-            assert "vivaldi" in result
+    def test_returns_all_browser_keys(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        result = d.discover_all()
+        assert "chrome" in result
+        assert "firefox" in result
+        assert "edge" in result
+        assert "brave" in result
+        assert "vivaldi" in result
 
-    def test_all_values_are_lists(self):
-        d = BrowserProfileDiscovery()
-        with patch("os.path.exists", return_value=False):
-            result = d.discover_all()
-            for key in result:
-                assert isinstance(result[key], list)
-
-
-class TestBrowserPaths:
-    def test_chrome_paths_has_all_platforms(self):
-        paths = BrowserProfileDiscovery.BROWSER_PATHS["chrome"]
-        assert "Windows" in paths
-        assert "Linux" in paths
-        assert "Darwin" in paths
-
-    def test_firefox_paths_has_all_platforms(self):
-        paths = BrowserProfileDiscovery.BROWSER_PATHS["firefox"]
-        assert "Windows" in paths
-        assert "Linux" in paths
-        assert "Darwin" in paths
-
-    def test_edge_paths_has_all_platforms(self):
-        paths = BrowserProfileDiscovery.BROWSER_PATHS["edge"]
-        assert "Windows" in paths
-        assert "Linux" in paths
-        assert "Darwin" in paths
-
-    def test_brave_paths_has_all_platforms(self):
-        paths = BrowserProfileDiscovery.BROWSER_PATHS["brave"]
-        assert "Windows" in paths
-        assert "Linux" in paths
-        assert "Darwin" in paths
-
-    def test_vivaldi_paths_has_all_platforms(self):
-        paths = BrowserProfileDiscovery.BROWSER_PATHS["vivaldi"]
-        assert "Windows" in paths
-        assert "Linux" in paths
-        assert "Darwin" in paths
+    def test_all_values_are_lists(self, tmp_path):
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        result = d.discover_all()
+        for key in result:
+            assert isinstance(result[key], list)
