@@ -1,8 +1,39 @@
 # Phase 6: Command Promotion And Proxy Reassignment
 
 **Date:** 2026-07-18  
-**Status:** Planned  
+**Status:** Complete  
 **Parent plan:** `.agent/plans/2026-07-18-gateway-request-framework.md`
+
+## Progress
+
+- 2026-07-18: Started implementation.
+- 2026-07-18: Gateway remains hidden because Phase 4 has a real-session/fake-context witness but not a live CloakBrowser/Playwright context witness.
+- 2026-07-18: Proxy will be reassigned to upstream proxy-provider tooling with visible `proxy resolve --request`; old local/CDP proxy behavior will move under hidden `proxy legacy`.
+- 2026-07-18: Made `proxy` visible as upstream provider tooling and kept `gateway` hidden.
+- 2026-07-18: Added `tokenade proxy resolve --request request.json` with redacted output by default and optional `--show-secrets`.
+- 2026-07-18: Moved old overloaded local/CDP proxy behavior behind hidden `tokenade proxy legacy` instead of top-level `proxy` semantics.
+- 2026-07-18: Updated completion scripts and parser-surface tests to match the public command surface.
+- 2026-07-18: Verified broader CLI/gateway/proxy regression slice and witnessed help surface plus redacted `proxy resolve` output.
+
+## Verification
+
+```bash
+python3 -m pytest tokenade/tests/test_proxy_provider_resolver.py tokenade/tests/test_cli.py tokenade/tests/test_cli_refactor.py -q
+python3 -m pytest tokenade/tests/test_proxy_provider_resolver.py tokenade/tests/test_source_network_context.py tokenade/tests/test_cli_gateway.py tokenade/tests/test_gateway_server.py tokenade/tests/test_gateway_runtime.py tokenade/tests/test_gateway_session_router.py tokenade/tests/test_request_config.py tokenade/tests/test_plugin_run_cli.py tokenade/tests/test_cli.py tokenade/tests/test_cli_refactor.py -q
+python3 -m flake8 tokenade/cli/proxy.py tokenade/cli/__init__.py tokenade/cli/completions.py tokenade/tests/test_proxy_provider_resolver.py tokenade/tests/test_cli.py tokenade/tests/test_cli_refactor.py --max-line-length=120 --ignore=E501,W503,W293,E203,F541,F841,E306,E402,E226,E128,E127,E731,F821,F401,F811,E401,E704
+```
+
+Witness results:
+
+```text
+HELP_SURFACE {"gateway_hidden": true, "old_proxy_text_hidden": true, "proxy_visible": true}
+PROXY_RESOLVE {"operation": "proxy.resolve", "password": "***", "provider": "fake-provider", "secret_exposed": false, "success": true}
+```
+
+## Promotion Decision
+
+- `proxy` is public because it now means upstream proxy-provider tooling and has provider resolver tests plus a redaction witness.
+- `gateway` remains hidden because it still lacks a live CloakBrowser/Playwright browser-context witness, even though fake-context runtime and real-session control-plane witnesses pass.
 
 ## Goal
 

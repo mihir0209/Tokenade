@@ -1,5 +1,7 @@
 """Tests for proxy provider plugin normalization and redaction."""
 
+import json
+
 import pytest
 
 from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver, normalize_proxy_result
@@ -87,3 +89,45 @@ def test_missing_required_provider_fails_closed():
 def test_normalize_proxy_result_requires_server():
     with pytest.raises(ProxyProviderError, match="result.server is required"):
         normalize_proxy_result({"username": "x"})
+
+
+def test_proxy_resolve_cli_emits_redacted_provider_result(monkeypatch, tmp_path, capsys):
+    from tokenade.cli import _build_parser
+    from tokenade.cli.proxy import cmd_proxy
+
+    request_file = tmp_path / "request.json"
+    request_file.write_text(json.dumps({
+        "operation": "gateway",
+        "source_network": {"approx_country": "US"},
+        "plugins": [{
+            "name": "brightdata",
+            "roles": {"proxy_provider": {"mode": "sticky"}},
+            "config": {"zone": "residential"},
+        }],
+    }))
+    provider = FakeProvider()
+    monkeypatch.setattr("tokenade.core.proxy.provider.PluginLoader", lambda: FakeLoader(provider))
+    monkeypatch.setattr("tokenade.core.request_config.validate_required_plugins", lambda plugins: None)
+
+    args = _build_parser().parse_args(["proxy", "resolve", "--request", str(request_file)])
+    cmd_proxy(args)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["success"] is True
+    assert output["operation"] == "proxy.resolve"
+    assert output["results"][0]["proxy"]["password"] == "***"
+    assert "secret-password" not in json.dumps(output)
+
+
+def test_proxy_parser_keeps_legacy_hidden_but_callable():
+    from tokenade.cli import _build_parser
+
+    parser = _build_parser()
+    help_text = parser.format_help()
+    proxy_help = parser.parse_args(["proxy", "resolve", "--request", "request.json"])
+    legacy_args = parser.parse_args(["proxy", "legacy", "--session", "s.tokenade"])
+
+    assert "proxy" in help_text
+    assert "fingerprint-matched proxy" not in help_text.lower()
+    assert proxy_help.proxy_action == "resolve"
+    assert legacy_args.proxy_action == "legacy"

@@ -1590,32 +1590,38 @@ Commands:
     refresh_parser.add_argument("--source-profile", help="Source profile name")
     refresh_parser.add_argument("--site-config", help="Site config JSON file for filtering")
 
-    # Proxy
-    proxy_parser = subparsers.add_parser("proxy", help="Start fingerprint-matched proxy server")
-    proxy_parser.add_argument("--session", "-s", help="Path to .tokenade session file (single mode)")
-    proxy_parser.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
-    proxy_parser.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
-    proxy_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
-    proxy_parser.add_argument("--mode", choices=["gui", "forward"], default="gui",
-                              help="Proxy mode: gui (browser GUI) or forward (HTTP_PROXY)")
-    proxy_parser.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
-    proxy_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
-    proxy_parser.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
-    proxy_parser.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
-    proxy_parser.add_argument("--fingerprint", action="store_true", help="Enable TLS fingerprint matching via curl-cffi (breaks cf_clearance)")
-    proxy_parser.add_argument("--impersonate", help="Browser to impersonate (e.g., chrome120, chrome131, firefox128, safari17_0)")
-    proxy_parser.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
-    proxy_parser.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
-    proxy_parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
-    proxy_parser.add_argument("--auto-refresh", action="store_true", help="Auto-refresh session from source browser when cookies expire")
-    proxy_parser.add_argument("--source-browser", help="Source browser for auto-refresh (e.g., firefox, chrome)")
-    proxy_parser.add_argument("--source-profile", help="Source profile for auto-refresh (e.g., default, Profile 1)")
-    proxy_parser.add_argument("--auto-navigate", action="store_true", help="Auto-navigate to site URL when proxy starts")
-    proxy_parser.add_argument("--target-url", help="Override default navigation URL")
-    proxy_parser.add_argument("--rotate", action="store_true", help="Enable session rotation across multiple sessions")
-    proxy_parser.add_argument("--rotate-strategy", choices=["health-weighted", "round-robin", "random", "least-recently-used"],
+    # Proxy — upstream proxy provider tooling. Legacy local/CDP behavior is hidden under `proxy legacy`.
+    proxy_parser = subparsers.add_parser("proxy", help="Resolve upstream proxy provider requests")
+    proxy_sub = proxy_parser.add_subparsers(dest="proxy_action")
+    proxy_resolve = proxy_sub.add_parser("resolve", help="Resolve upstream proxy provider from request.json")
+    proxy_resolve.add_argument("--request", required=True, help="Nested request.json with roles.proxy_provider")
+    proxy_resolve.add_argument("--show-secrets", action="store_true", help="Include proxy credentials in output")
+    proxy_resolve.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+
+    proxy_legacy = proxy_sub.add_parser("legacy", help=argparse.SUPPRESS)
+    proxy_legacy.add_argument("--session", "-s", help="Path to .tokenade session file (single mode)")
+    proxy_legacy.add_argument("--all", action="store_true", help="Serve all sessions (multi-site mode)")
+    proxy_legacy.add_argument("--sessions-dir", "-d", help="Directory of .tokenade files (for --all)")
+    proxy_legacy.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
+    proxy_legacy.add_argument("--mode", choices=["gui", "forward"], default="gui", help="Proxy mode: gui or forward")
+    proxy_legacy.add_argument("--port", "-p", type=int, default=9222, help="Port to listen on (default: 9222)")
+    proxy_legacy.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    proxy_legacy.add_argument("--legacy", action="store_true", help="Use legacy service-worker proxy (default: CDP)")
+    proxy_legacy.add_argument("--visible", action="store_true", help="Show browser window (CDP mode only)")
+    proxy_legacy.add_argument("--fingerprint", action="store_true", help="Enable TLS fingerprint matching via curl-cffi")
+    proxy_legacy.add_argument("--impersonate", help="Browser to impersonate")
+    proxy_legacy.add_argument("--no-open-browser", action="store_true", help="Don't open browser automatically")
+    proxy_legacy.add_argument("--no-gui", action="store_true", help="Disable GUI mode (legacy proxy only)")
+    proxy_legacy.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)")
+    proxy_legacy.add_argument("--auto-refresh", action="store_true", help="Auto-refresh session from source browser")
+    proxy_legacy.add_argument("--source-browser", help="Source browser for auto-refresh")
+    proxy_legacy.add_argument("--source-profile", help="Source profile for auto-refresh")
+    proxy_legacy.add_argument("--auto-navigate", action="store_true", help="Auto-navigate to site URL when proxy starts")
+    proxy_legacy.add_argument("--target-url", help="Override default navigation URL")
+    proxy_legacy.add_argument("--rotate", action="store_true", help="Enable session rotation across multiple sessions")
+    proxy_legacy.add_argument("--rotate-strategy", choices=["health-weighted", "round-robin", "random", "least-recently-used"],
                               default="health-weighted", help="Rotation strategy (default: health-weighted)")
-    proxy_parser.add_argument("--rotate-interval", type=int, default=300, help="Rotation interval in seconds (default: 300)")
+    proxy_legacy.add_argument("--rotate-interval", type=int, default=300, help="Rotation interval in seconds (default: 300)")
 
     # Sessions (subcommand group)
     sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")
@@ -2337,7 +2343,7 @@ Commands:
 
     for hidden_command in (
         "setup", "extract", "transfer", "inject-profile",
-        "batch-export", "batch-load", "health-report", "refresh", "proxy",
+        "batch-export", "batch-load", "health-report", "refresh",
         "share", "unshare", "import", "validate-rules", "diff",
         "sync", "monitor", "container", "serve", "analytics",
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",

@@ -11,7 +11,77 @@ logger = logging.getLogger("tokenade")
 
 
 def cmd_proxy(args):
-    """Start fingerprint-matched proxy server."""
+    """Resolve upstream proxy provider requests or run hidden legacy proxy."""
+    if getattr(args, "proxy_action", None) == "resolve":
+        return cmd_proxy_resolve(args)
+    if getattr(args, "proxy_action", None) == "legacy":
+        return cmd_proxy_legacy(args)
+
+    print("Usage: tokenade proxy {resolve}")
+    return
+
+
+def cmd_proxy_resolve(args):
+    """Resolve upstream proxy provider plugins from request.json."""
+    from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver
+    from tokenade.core.request_config import RequestConfigError, load_request_config
+
+    try:
+        request = load_request_config(args.request)
+        providers = request.plugins_for_role("proxy_provider")
+        if not providers:
+            raise ProxyProviderError("request.plugins must include at least one plugin with roles.proxy_provider")
+
+        source_network = {}
+        raw_source = request.raw.get("source_network")
+        if isinstance(raw_source, dict):
+            source_network = raw_source
+
+        session_metadata = {}
+        raw_sessions = request.raw.get("sessions")
+        if isinstance(raw_sessions, dict):
+            session_metadata["sessions"] = {k: v for k, v in raw_sessions.items() if k in ("dir", "pattern")}
+
+        resolver = ProxyProviderResolver()
+        results = []
+        for plugin in providers:
+            try:
+                proxy = resolver.resolve(plugin, session_metadata=session_metadata, source_network=source_network)
+                results.append({
+                    "success": True,
+                    "plugin_name": plugin.name,
+                    "proxy": proxy.to_dict(show_secrets=bool(args.show_secrets)),
+                    "error": None,
+                })
+            except ProxyProviderError as exc:
+                if plugin.required:
+                    raise
+                results.append({
+                    "success": True,
+                    "plugin_name": plugin.name,
+                    "proxy": None,
+                    "error": {"message": str(exc), "skipped": True},
+                })
+
+        envelope = {
+            "success": all(result["success"] for result in results),
+            "operation": "proxy.resolve",
+            "results": results,
+        }
+        print(json.dumps(envelope, ensure_ascii=False, indent=2 if args.pretty else None))
+    except (ProxyProviderError, RequestConfigError) as exc:
+        envelope = {
+            "success": False,
+            "operation": "proxy.resolve",
+            "results": [],
+            "error": {"message": str(exc)},
+        }
+        print(json.dumps(envelope, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+        raise SystemExit(2)
+
+
+def cmd_proxy_legacy(args):
+    """Hidden legacy local/CDP proxy behavior."""
     from tokenade.core.importer.session_packager import SessionPackager
     from tokenade.core.errors import DependencyError, TokenadeError
 

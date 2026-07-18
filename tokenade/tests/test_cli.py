@@ -208,7 +208,6 @@ class TestParserSurface(unittest.TestCase):
         "batch-load",
         "health-report",
         "refresh",
-        "proxy",
         "share",
         "unshare",
         "import",
@@ -263,6 +262,7 @@ class TestParserSurface(unittest.TestCase):
         "launch",
         "refresh-browser",
         "recommend",
+        "proxy",
     )
 
     def test_removed_patch_chrome_is_not_registered(self):

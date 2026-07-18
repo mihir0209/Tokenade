@@ -8,7 +8,7 @@ BASH_COMPLETION = dedent("""\
         COMPREPLY=()
         cur="${COMP_WORDS[COMP_CWORD]}"
         prev="${COMP_WORDS[COMP_CWORD-1]}"
-        commands="config run test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend"
+        commands="config run test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend proxy"
 
         if [[ ${cur} == -* ]]; then
             COMPREPLY=( $(compgen -W "--help --version --browser-name --domains --output --port --host --visible --session --format --password --expiry --profile --site-config --list-profiles" -- ${cur}) )
@@ -26,7 +26,7 @@ ZSH_COMPLETION = dedent("""\
 
     _tokenade() {
         _arguments \
-            '1:command:(config run test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend)' \
+            '1:command:(config run test fingerprint validate export load encrypt decrypt rekey health sessions plugin completion cloak launch refresh-browser recommend proxy)' \
             '*::arg:->args'
     }
 
@@ -54,6 +54,7 @@ FISH_COMPLETION = dedent("""\
     complete -c tokenade -n '__fish_use_subcommand' -a launch -d 'Launch browser'
     complete -c tokenade -n '__fish_use_subcommand' -a refresh-browser -d 'Refresh through browser'
     complete -c tokenade -n '__fish_use_subcommand' -a recommend -d 'Recommend handler'
+    complete -c tokenade -n '__fish_use_subcommand' -a proxy -d 'Resolve upstream proxy'
 """)
 
 
