@@ -430,6 +430,37 @@ def cmd_export(args):
 
     packager = SessionPackager()
 
+    export_metadata = {}
+    if site_handler:
+        export_metadata.update({
+            "extraction_method": "site_handler",
+            "site_handler": _site_handler_metadata(
+                site_handler,
+                explicit_plugin=plugin_name,
+                auto_discovered=site_handler_auto_discovered,
+            ),
+        })
+
+    if getattr(args, 'stamp_network', False):
+        from tokenade.core.network.source_context import SourceNetworkError, capture_source_network
+        try:
+            export_metadata["source_network"] = capture_source_network(
+                include_source_ip=bool(getattr(args, 'include_source_ip', False))
+            )
+            print("   🌐 Source network stamp captured")
+        except SourceNetworkError as e:
+            print(f"❌ Source network stamp failed: {e}")
+            raise SystemExit(1) from e
+
+    proxy_plugin = getattr(args, 'proxy_plugin', None)
+    if proxy_plugin:
+        export_metadata["proxy_provider_request"] = {
+            "plugin_name": proxy_plugin,
+            "export_traffic_routed": False,
+            "note": "Provider metadata only; export traffic is not routed through this proxy plugin.",
+        }
+        print(f"   🔌 Proxy provider metadata recorded: {proxy_plugin} (export traffic not routed)")
+
     extra_cookies = []
     if cookies:
         for c in cookies:
@@ -445,17 +476,7 @@ def cmd_export(args):
         session_storage=session_storage if session_storage else None,
         storage=storage if storage["local"] or storage["session"] else None,
         extra_cookies=extra_cookies if extra_cookies else None,
-        metadata=(
-            {
-                "extraction_method": "site_handler",
-                "site_handler": _site_handler_metadata(
-                    site_handler,
-                    explicit_plugin=plugin_name,
-                    auto_discovered=site_handler_auto_discovered,
-                ),
-            }
-            if site_handler else None
-        ),
+        metadata=export_metadata or None,
     )
 
     site_name = package.get("site_name", "session")

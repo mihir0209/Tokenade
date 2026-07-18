@@ -190,3 +190,36 @@ def test_gateway_http_runtime_contexts(tmp_path):
     assert next_route["runtime_context"]["session"]["id"] == "github-stable"
     assert contexts["runtime_enabled"] is True
     assert len(contexts["contexts"]) == 1
+
+
+def test_gateway_status_includes_redacted_proxy_provider(monkeypatch, tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={
+        "session_id": "github-stable",
+        "source_network": {"approx_country": "US", "raw_ip_stored": False},
+    })
+
+    class Proxy:
+        def to_dict(self, show_secrets=False):
+            assert show_secrets is False
+            return {"server": "http://proxy.example:8080", "username": "us***", "password": "***"}
+
+    class Resolver:
+        def resolve(self, plugin, session_metadata=None, source_network=None):
+            assert plugin.name == "brightdata"
+            assert source_network["approx_country"] == "US"
+            assert "github" in session_metadata["sites"]
+            return Proxy()
+
+    monkeypatch.setattr("tokenade.core.gateway.server.ProxyProviderResolver", lambda: Resolver())
+    request = _request(tmp_path, {"plugins": [{
+        "name": "brightdata",
+        "roles": {"proxy_provider": {"mode": "sticky", "match_source_location": True}},
+        "config": {"zone": "residential"},
+    }]})
+
+    status = create_gateway_control_plane(request).status()
+
+    assert status["upstream_proxies"] == [{
+        "plugin_name": "brightdata",
+        "proxy": {"server": "http://proxy.example:8080", "username": "us***", "password": "***"},
+    }]

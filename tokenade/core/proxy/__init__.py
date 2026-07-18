@@ -40,3 +40,11 @@ __all__ = [
     "SessionAwareProxy",
     "create_residential_proxy",
 ]
+from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver, ResolvedProxy, normalize_proxy_result
+
+__all__ = [
+    "ProxyProviderError",
+    "ProxyProviderResolver",
+    "ResolvedProxy",
+    "normalize_proxy_result",
+]

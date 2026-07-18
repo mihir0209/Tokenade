@@ -24,6 +24,20 @@ def test_gateway_parser_requires_request():
     assert args.request == "request.json"
 
 
+def test_export_parser_has_network_and_proxy_metadata_flags():
+    args = _build_parser().parse_args([
+        "export",
+        "--browser-name", "firefox",
+        "--stamp-network",
+        "--include-source-ip",
+        "--proxy-plugin", "brightdata",
+    ])
+
+    assert args.stamp_network is True
+    assert args.include_source_ip is True
+    assert args.proxy_plugin == "brightdata"
+
+
 def test_gateway_cli_invalid_request_exits_two(tmp_path, capsys):
     request_file = tmp_path / "request.json"
     request_file.write_text("not json")

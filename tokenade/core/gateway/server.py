@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from tokenade.core.gateway.session_router import RoutingConfig, RoutingDecision, SessionRouter, SessionRoutingError
 from tokenade.core.gateway.session_store import SessionRecord, SessionStore
 from tokenade.core.gateway.runtime import BrowserManagerContextFactory, GatewayRuntime, GatewayRuntimeError
+from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver
 from tokenade.core.request_config import RequestConfig
 
 
@@ -57,6 +58,7 @@ class GatewayControlPlane:
         sessions: list[SessionRecord],
         plugins: Optional[list[Dict[str, Any]]] = None,
         runtime: Optional[GatewayRuntime] = None,
+        upstream_proxies: Optional[list[Dict[str, Any]]] = None,
     ):
         self.server_config = server_config
         self.routing_config = routing_config
@@ -65,6 +67,7 @@ class GatewayControlPlane:
         self.router = SessionRouter(self.sessions, routing_config)
         self.active_session: Optional[SessionRecord] = None
         self.runtime = runtime
+        self.upstream_proxies = upstream_proxies or []
 
     def status(self) -> Dict[str, Any]:
         return {
@@ -91,6 +94,7 @@ class GatewayControlPlane:
                 "active_context_id": self.runtime.active_context_id if self.runtime else None,
                 "context_count": len(self.runtime.contexts()) if self.runtime else 0,
             },
+            "upstream_proxies": self.upstream_proxies,
         }
 
     def session_list(self) -> Dict[str, Any]:
@@ -277,7 +281,8 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
         for plugin in request.plugins
     ]
     runtime = _create_runtime(request.raw.get("gateway"))
-    return GatewayControlPlane(server_config, routing_config, sessions, plugins, runtime=runtime)
+    upstream_proxies = _resolve_proxy_providers(request, sessions)
+    return GatewayControlPlane(server_config, routing_config, sessions, plugins, runtime=runtime, upstream_proxies=upstream_proxies)
 
 
 def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:
@@ -297,3 +302,39 @@ def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:
     if not isinstance(headless, bool):
         raise GatewayConfigError("request.gateway.runtime.headless must be a boolean")
     return GatewayRuntime(BrowserManagerContextFactory(backend=backend.strip(), headless=headless))
+
+
+def _resolve_proxy_providers(request: RequestConfig, sessions: list[SessionRecord]) -> list[Dict[str, Any]]:
+    provider_plugins = request.plugins_for_role("proxy_provider")
+    if not provider_plugins:
+        return []
+
+    resolver = ProxyProviderResolver()
+    session_metadata = {
+        "session_count": len(sessions),
+        "sites": sorted({session.site_name for session in sessions}),
+    }
+    source_network = _source_network_from_sessions(sessions)
+    resolved = []
+    for plugin in provider_plugins:
+        try:
+            proxy = resolver.resolve(plugin, session_metadata=session_metadata, source_network=source_network)
+        except ProxyProviderError as exc:
+            if plugin.required:
+                raise GatewayConfigError(str(exc)) from exc
+            resolved.append({
+                "plugin_name": plugin.name,
+                "skipped": True,
+                "reason": str(exc),
+            })
+            continue
+        resolved.append({"plugin_name": plugin.name, "proxy": proxy.to_dict(show_secrets=False)})
+    return resolved
+
+
+def _source_network_from_sessions(sessions: list[SessionRecord]) -> Dict[str, Any]:
+    for session in sessions:
+        source_network = session.metadata.get("source_network")
+        if isinstance(source_network, dict):
+            return dict(source_network)
+    return {}

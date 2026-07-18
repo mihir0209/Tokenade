@@ -1498,6 +1498,9 @@ Commands:
     export_parser.add_argument("--plugin", help="Force specific site handler plugin (e.g., generic-handler)")
     export_parser.add_argument("--no-plugin", action="store_true", help="Skip plugin, use default extraction")
     export_parser.add_argument("--list-handlers", action="store_true", help="List available site handler plugins")
+    export_parser.add_argument("--stamp-network", action="store_true", help="Opt in to approximate source network metadata capture")
+    export_parser.add_argument("--include-source-ip", action="store_true", help="Store raw source IP with --stamp-network")
+    export_parser.add_argument("--proxy-plugin", help="Record intended proxy provider plugin metadata without routing export traffic")
 
     # Load
     load_parser = subparsers.add_parser("load", help="Load session file into browser")
