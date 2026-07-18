@@ -15,6 +15,7 @@
 - 2026-07-18: Added focused fake-context tests proving isolation, route activation, old-context preservation, new-page binding, draining, sanitized context output, and fast prewarmed switching.
 - 2026-07-18: Verified Phase 3/4 regression slice and lint pass.
 - 2026-07-18: Witnessed runtime against `/tmp/real-sessions` with fake isolated contexts: prewarmed 7 contexts, selected GitHub, opened a new active-context tab, drained 6 inactive contexts, and confirmed context output contains no cookie/storage fields.
+- 2026-07-18: Witnessed live CloakBrowser runtime through hidden gateway HTTP API with `/tmp/real-sessions/github.tokenade`: prewarm, route select, tab creation, and sanitized context output all passed.
 
 ## Verification
 
@@ -42,7 +43,7 @@ Witness result:
 
 - Phase 4 introduces the runtime seam and verifies isolated context semantics with fake Playwright-compatible contexts.
 - The default hidden gateway still does not force live browser launch unless `gateway.runtime.enabled` is set or a runtime is injected.
-- Real CloakBrowser/Playwright browser context witness should be handled as a later hardening step before any public gateway promotion.
+- Real CloakBrowser browser context witness passed after switching the gateway HTTP server to single-threaded request handling, avoiding Playwright sync cross-thread errors.
 
 ## Goal
 

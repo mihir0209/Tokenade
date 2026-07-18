@@ -419,6 +419,7 @@ class TestShellCompletions:
         assert "run" in BASH_COMPLETION
         assert "encrypt" in BASH_COMPLETION
         assert "proxy" in BASH_COMPLETION
+        assert "gateway" in BASH_COMPLETION
 
     def test_zsh_completion_contains_commands(self):
         from tokenade.cli.completions import ZSH_COMPLETION
@@ -426,6 +427,7 @@ class TestShellCompletions:
         assert "export" in ZSH_COMPLETION
         assert "run" in ZSH_COMPLETION
         assert "proxy" in ZSH_COMPLETION
+        assert "gateway" in ZSH_COMPLETION
 
     def test_fish_completion_contains_commands(self):
         from tokenade.cli.completions import FISH_COMPLETION
@@ -433,6 +435,7 @@ class TestShellCompletions:
         assert "export" in FISH_COMPLETION
         assert "run" in FISH_COMPLETION
         assert "proxy" in FISH_COMPLETION
+        assert "gateway" in FISH_COMPLETION
 
     def test_install_bash(self, tmp_path, monkeypatch):
         from tokenade.cli.completions import install_completion

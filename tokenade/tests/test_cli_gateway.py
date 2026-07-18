@@ -1,4 +1,4 @@
-"""Tests for the hidden gateway CLI command."""
+"""Tests for the gateway CLI command."""
 
 import json
 
@@ -7,11 +7,11 @@ import pytest
 from tokenade.cli import _build_parser, cmd_gateway
 
 
-def test_gateway_is_hidden_from_top_level_help_but_callable():
+def test_gateway_is_visible_after_live_runtime_witness():
     parser = _build_parser()
     help_text = parser.format_help()
 
-    assert "gateway" not in help_text
+    assert "gateway" in help_text
     with pytest.raises(SystemExit) as exc:
         parser.parse_args(["gateway", "--help"])
     assert exc.value.code == 0

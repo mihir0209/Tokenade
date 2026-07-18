@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import urllib.request
+from http.server import HTTPServer
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -190,6 +191,38 @@ def test_gateway_http_runtime_contexts(tmp_path):
     assert next_route["runtime_context"]["session"]["id"] == "github-stable"
     assert contexts["runtime_enabled"] is True
     assert len(contexts["contexts"]) == 1
+
+
+def test_gateway_serve_forever_uses_single_threaded_http_server(monkeypatch, tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    captured = {}
+
+    class Server:
+        def __init__(self, address, handler):
+            captured["class"] = self.__class__
+            captured["address"] = address
+
+        def serve_forever(self):
+            raise KeyboardInterrupt()
+
+        def server_close(self):
+            captured["closed"] = True
+
+    class FakeHTTPServer(Server):
+        pass
+
+    monkeypatch.setattr("tokenade.core.gateway.server.HTTPServer", FakeHTTPServer)
+
+    try:
+        control_plane.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+    assert captured["class"] is FakeHTTPServer
+    assert captured["address"] == ("127.0.0.1", 0)
+    assert captured["closed"] is True
+    assert HTTPServer is not ThreadingHTTPServer
 
 
 def test_gateway_status_includes_redacted_proxy_provider(monkeypatch, tmp_path):

@@ -240,7 +240,6 @@ class TestParserSurface(unittest.TestCase):
         "k8s",
         "stealth",
         "deps",
-        "gateway",
     )
 
     VISIBLE_COMMANDS = (
@@ -263,6 +262,7 @@ class TestParserSurface(unittest.TestCase):
         "refresh-browser",
         "recommend",
         "proxy",
+        "gateway",
     )
 
     def test_removed_patch_chrome_is_not_registered(self):

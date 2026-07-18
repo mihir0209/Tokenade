@@ -44,6 +44,8 @@ VISIBLE_COMMANDS = (
     "launch",
     "refresh-browser",
     "recommend",
+    "proxy",
+    "gateway",
 )
 
 
@@ -1438,8 +1440,8 @@ Commands:
     run_parser = subparsers.add_parser("run", help="Run an executable installed plugin")
     run_parser.add_argument("--request", required=True, help="Nested request.json file")
 
-    # Hidden gateway control plane skeleton
-    gateway_parser = subparsers.add_parser("gateway", help=argparse.SUPPRESS)
+    # Gateway control plane for multi-session routing.
+    gateway_parser = subparsers.add_parser("gateway", help="Run session gateway control plane")
     gateway_parser.add_argument("--request", required=True, help="Nested gateway request.json file")
 
     # Extract
@@ -2349,7 +2351,7 @@ Commands:
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
         "fleet", "autopsy", "tui", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
-        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps", "gateway",
+        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(

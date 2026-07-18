@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, Optional
 
 from tokenade.core.gateway.session_router import RoutingConfig, RoutingDecision, SessionRouter, SessionRoutingError
@@ -211,7 +211,7 @@ class GatewayControlPlane:
         return GatewayRequestHandler
 
     def serve_forever(self):
-        httpd = ThreadingHTTPServer((self.server_config.host, self.server_config.port), self.make_handler())
+        httpd = HTTPServer((self.server_config.host, self.server_config.port), self.make_handler())
         try:
             httpd.serve_forever()
         finally:

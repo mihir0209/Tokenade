@@ -14,6 +14,7 @@
 - 2026-07-18: Moved old overloaded local/CDP proxy behavior behind hidden `tokenade proxy legacy` instead of top-level `proxy` semantics.
 - 2026-07-18: Updated completion scripts and parser-surface tests to match the public command surface.
 - 2026-07-18: Verified broader CLI/gateway/proxy regression slice and witnessed help surface plus redacted `proxy resolve` output.
+- 2026-07-18: Promoted `gateway` after a live CloakBrowser hidden-gateway HTTP witness passed against `/tmp/real-sessions/github.tokenade`.
 
 ## Verification
 
@@ -33,7 +34,7 @@ PROXY_RESOLVE {"operation": "proxy.resolve", "password": "***", "provider": "fak
 ## Promotion Decision
 
 - `proxy` is public because it now means upstream proxy-provider tooling and has provider resolver tests plus a redaction witness.
-- `gateway` remains hidden because it still lacks a live CloakBrowser/Playwright browser-context witness, even though fake-context runtime and real-session control-plane witnesses pass.
+- `gateway` is public because live CloakBrowser hidden-gateway HTTP runtime witness now passes against a real session.
 
 ## Goal
 
