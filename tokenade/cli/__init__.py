@@ -1992,7 +1992,8 @@ Commands:
     launch_parser.add_argument("--session", "-s", help="Session file to inject cookies from")
     launch_parser.add_argument("--url", "-u", help="URL to navigate to after injection")
     launch_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
-    launch_parser.add_argument("--profile-dir", help="Custom profile directory")
+    launch_parser.add_argument("--profile", help="Discovered browser profile name to launch (copied by default)")
+    launch_parser.add_argument("--profile-dir", help="Exact profile directory to launch")
     launch_parser.add_argument("--visible", action="store_true", help="Show browser window (default unless --headless)")
     launch_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
     launch_parser.add_argument("--extra-args", help="Extra browser args (comma-separated)")
@@ -2007,7 +2008,9 @@ Commands:
     launch_parser.add_argument("--humanize", action="store_true", help="Human-like mouse/keyboard/scroll (CloakBrowser)")
     launch_parser.add_argument("--geoip", action="store_true", help="Auto-detect timezone/locale from proxy IP (CloakBrowser)")
     launch_parser.add_argument("--no-cloak", action="store_true", help="Force Playwright + JS patches (skip CloakBrowser)")
-    launch_parser.add_argument("--profile", help="Persistent profile directory (CloakBrowser)")
+    launch_parser.add_argument("--copy-profile", action="store_true", help="Copy the selected profile before launch (default for discovered profiles)")
+    launch_parser.add_argument("--use-original-profile", action="store_true", help="Launch directly against the original discovered profile")
+    launch_parser.add_argument("--refresh-profiles", action="store_true", help="Refresh browser profile cache before resolving --profile")
     launch_parser.add_argument("--decrypt-password", help="Decrypt .tokenade file with this password")
     launch_parser.add_argument(
         "--plugin",

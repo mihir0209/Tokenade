@@ -272,8 +272,15 @@ class TestCloakCLIParser:
     def test_launch_profile_flag(self):
         from tokenade.cli import _build_parser
         p = _build_parser()
-        a = p.parse_args(["launch", "-s", "test.tokenade", "--profile", "./my-profile"])
-        assert a.profile == "./my-profile"
+        a = p.parse_args(["launch", "--browser", "firefox", "--profile", "default"])
+        assert a.profile == "default"
+
+    def test_launch_profile_safety_flags(self):
+        from tokenade.cli import _build_parser
+        p = _build_parser()
+        a = p.parse_args(["launch", "--browser", "firefox", "--profile", "default", "--use-original-profile", "--refresh-profiles"])
+        assert a.use_original_profile is True
+        assert a.refresh_profiles is True
 
     def test_cloak_help(self):
         from tokenade.cli import _build_parser

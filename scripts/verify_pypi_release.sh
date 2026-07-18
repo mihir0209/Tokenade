@@ -53,6 +53,10 @@ export HOME="$HOME_DIR"
 
 run tokenade --version
 
+if [[ "${TOKENADE_VERIFY_INSTALL_CLOAK:-0}" == "1" ]]; then
+  run tokenade cloak install
+fi
+
 actual_version="$(tokenade --version | awk '{print $2}')"
 if [[ "$actual_version" != "$VERSION" ]]; then
   printf 'Expected tokenade %s, got %s\n' "$VERSION" "$actual_version" >&2

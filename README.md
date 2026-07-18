@@ -195,6 +195,123 @@ Authoring guide: [`docs/PLUGIN_DEVELOPMENT.md`](docs/PLUGIN_DEVELOPMENT.md). Exa
 
 ---
 
+## Request framework
+
+For automation and orchestration, Tokenade accepts a nested `request.json` envelope. The core validates structure only; plugin `config` is dynamic pass-through.
+
+### Run operation
+
+Execute plugin operations in order:
+
+```json
+{
+  "version": "1",
+  "operation": "run",
+  "plugins": [
+    {
+      "name": "generic-handler",
+      "required": true,
+      "roles": {
+        "run": {
+          "method": "process"
+        }
+      },
+      "config": {
+        "session_file": "/path/to/github.tokenade",
+        "site": "github"
+      }
+    }
+  ],
+  "execution": {
+    "stop_on_error": true
+  }
+}
+```
+
+```bash
+tokenade run --request request.json
+```
+
+### Gateway operation
+
+Start a local multi-session control plane with isolated browser contexts:
+
+```json
+{
+  "version": "1",
+  "operation": "gateway",
+  "sessions": {
+    "dir": "./sessions",
+    "pattern": "*.tokenade"
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 9222,
+    "backend": "cdp"
+  },
+  "routing": {
+    "object": "session",
+    "strategy": "health-weighted",
+    "switch_interval_seconds": 30,
+    "sticky_by": "site",
+    "failover": true,
+    "drain_existing_tabs": true
+  },
+  "plugins": []
+}
+```
+
+```bash
+tokenade gateway --request request.json
+```
+
+Gateway API endpoints:
+- `GET /status` — routing state and session count
+- `GET /sessions` — sanitized session records (no cookies/storage)
+- `POST /route/next` — select next session by strategy
+- `POST /route/select` — set active session by ID/path/site
+- `GET /contexts` — isolated browser context state
+- `POST /contexts/prewarm` — prewarm contexts for sessions
+- `POST /contexts/drain` — close inactive contexts
+- `POST /tabs/new` — open new tab on active context
+
+**Privacy:** gateway outputs session metadata only (site, cookie count, health score). Never cookies, tokens, localStorage, or proxy credentials.
+
+### Proxy resolve operation
+
+Resolve upstream proxy provider configuration with credential redaction:
+
+```json
+{
+  "version": "1",
+  "operation": "proxy.resolve",
+  "plugins": [
+    {
+      "name": "brightdata",
+      "required": true,
+      "roles": {
+        "proxy_provider": {
+          "mode": "sticky",
+          "nearest_to_source": true,
+          "fallback": "fail"
+        }
+      },
+      "config": {
+        "zone": "residential"
+      }
+    }
+  ]
+}
+```
+
+```bash
+tokenade proxy resolve --request request.json
+```
+
+Output is redacted by default. Use `--show-secrets` to reveal credentials.
+
+---
+
 ## Security (short)
 
 - Treat every `.tokenade` as credentials.

@@ -17,6 +17,48 @@ from tokenade.cli.handlers.session_ops import (  # noqa: F401
 )
 
 
+def _resolve_launch_profile(browser: str, profile_name: Optional[str], refresh_profiles: bool = False):
+    """Resolve a launch profile by browser/name using browser discovery cache."""
+    from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
+
+    discovery = BrowserProfileDiscovery()
+    profiles_by_browser = discovery.refresh_cache() if refresh_profiles else None
+    profiles = profiles_by_browser.get(browser, []) if profiles_by_browser is not None else discovery.discover_browser(browser)
+    if not profiles:
+        return None
+    if profile_name:
+        wanted = profile_name.lower()
+        for profile in profiles:
+            if profile.name.lower() == wanted or Path(profile.path).name.lower() == wanted:
+                return profile
+        return None
+    for profile in profiles:
+        if profile.is_default:
+            return profile
+    return profiles[0]
+
+
+def _copy_launch_profile(source_dir: str, dest_dir: str) -> bool:
+    """Copy a discovered launch profile into an isolated working directory."""
+    import shutil
+
+    skip_dirs = {
+        "Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache",
+        "Service Worker", "ServiceWorker", "ScriptCache", "component_crx_cache",
+        "extensions_crx_cache", "cache2", "startupCache", "thumbnails",
+    }
+
+    def _ignore(_directory, contents):
+        return [name for name in contents if name in skip_dirs]
+
+    try:
+        shutil.copytree(source_dir, dest_dir, ignore=_ignore, dirs_exist_ok=True)
+        return True
+    except Exception as e:
+        logger.warning("Profile copy failed from %s to %s: %s", source_dir, dest_dir, e)
+        return False
+
+
 def cmd_launch(args):
     """Launch undetectable browser with CDP (CloakBrowser default)."""
     import asyncio
@@ -91,8 +133,12 @@ def cmd_launch(args):
             print(f"🔌 CDP Port: {args.port}")
             print(f"👁️  Visible: {args.visible}")
 
-            # Profile lock only matters when reusing the *default system* profile.
-            using_isolated_profile = bool(args.profile_dir or args.session)
+            # Profile lock only matters when directly reusing a real system profile.
+            using_original_profile = bool(getattr(args, "use_original_profile", False))
+            if using_original_profile and bool(getattr(args, "copy_profile", False)):
+                print("❌ Use either --copy-profile or --use-original-profile, not both.")
+                return
+            using_isolated_profile = bool(args.profile_dir or args.session or not using_original_profile)
             if not using_isolated_profile:
                 import subprocess as _sp
                 _ps_cmd = ["pgrep", "-c", system_browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {system_browser}.exe"]
@@ -106,24 +152,45 @@ def cmd_launch(args):
                     if _is_running:
                         print(f"   ⚠️  {system_browser} is already running. Default profile is locked.")
                         print(f"   Close all {system_browser} windows first, then retry.")
-                        print(f"   Or use --profile-dir / --session for an isolated profile.")
+                        print(f"   Or omit --use-original-profile to launch an isolated profile copy.")
                         return
                 except Exception:
                     pass
 
             profile_dir = args.profile_dir
+            selected_profile = None
+            profile_name = getattr(args, "profile", None)
+            if profile_name and profile_dir:
+                print("❌ Use either --profile NAME or --profile-dir PATH, not both.")
+                return
+            if profile_name or (not profile_dir and not args.session):
+                selected_profile = _resolve_launch_profile(
+                    system_browser,
+                    profile_name,
+                    refresh_profiles=bool(getattr(args, "refresh_profiles", False)),
+                )
+                if profile_name and not selected_profile:
+                    print(f"❌ Profile '{profile_name}' not found for {system_browser}")
+                    print("   Run 'tokenade export --list-profiles' to refresh and inspect profiles.")
+                    return
+
             if args.session and not profile_dir:
                 import tempfile
                 profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_clean_")
                 print(f"   📁 Clean profile (session inject): {profile_dir}")
                 print(f"   💡 Pass --profile-dir PATH to reuse or pin a profile directory.")
             elif not profile_dir and not args.session:
-                real_dir = launcher._get_default_profile_dir(system_browser)
-                if real_dir:
+                real_dir = selected_profile.path if selected_profile else launcher._get_default_profile_dir(system_browser)
+                if real_dir and using_original_profile:
+                    profile_dir = real_dir
+                    label = selected_profile.name if selected_profile else "default"
+                    print(f"   📁 Using original profile: {label} ({real_dir})")
+                elif real_dir:
                     import tempfile
                     profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_")
-                    print(f"   📁 Copying profile from: {real_dir}")
-                    if launcher._copy_profile(system_browser, profile_dir):
+                    label = selected_profile.name if selected_profile else "default"
+                    print(f"   📁 Copying profile '{label}' from: {real_dir}")
+                    if _copy_launch_profile(real_dir, profile_dir):
                         print(f"   ✅ Profile copied to: {profile_dir}")
                     else:
                         print(f"   ⚠️  Profile copy failed, using fresh profile")
