@@ -1,5 +1,19 @@
 # Phases Summary
 
+## Gateway Maturity Sprint (2026-07-19 to 2026-07-20)
+
+All 5 gateway maturity phases completed and shipped in tokenade 1.1.62-1.1.63.
+
+### Completed Phases
+
+| Phase | Title | Commit | Shipped |
+|-------|-------|--------|---------|
+| 1 | Auto-rotation | `8f15201` | 1.1.62 |
+| 2 | Health monitoring | `8f15201` | 1.1.62 |
+| 3 | Session persistence | `8f15201` | 1.1.62 |
+| 4 | Webhook notifications | `8f15201` | 1.1.62 |
+| 5 | Rate limiting | `73e6434` | 1.1.63 |
+
 ## Gateway & Request Framework Sprint (2026-07-18)
 
 All 6 phases completed and shipped in tokenade 1.1.61-1.1.62.
@@ -24,6 +38,7 @@ All 6 phases completed and shipped in tokenade 1.1.61-1.1.62.
 - **Source network stamp** — privacy-conscious opt-in metadata capture
 - **Proxy provider resolver** — upstream proxy integration with credential redaction
 - **CLI surface alignment** — `gateway` and `proxy` promoted to visible commands
+- **Gateway maturity** — auto-rotation, health monitoring, persistence, webhooks, rate limiting
 
 ### Key Files
 
@@ -42,4 +57,5 @@ All 6 phases completed and shipped in tokenade 1.1.61-1.1.62.
 - Nested run: `github.tokenade` via `generic-handler`
 - Gateway: live CloakBrowser HTTP runtime against GitHub session
 - Proxy resolve: redacted provider output with fake provider
+- Gateway maturity: rate limiting tested with 429 responses
 - All tests passing: 5099 passed, 23 skipped
