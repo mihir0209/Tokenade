@@ -4,67 +4,71 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.62] - 2026-07-19
 
-### Added — Plugin Ecosystem (Phases 0-10)
-
-**Core infrastructure:**
-- Event bus (sync/async, priority, thread-safe) -- core/events/
-- Shared context (4 namespaces: sessions, plugins, config, runtime + TaskTracker) -- core/context/
-- Plugin registry system (GitHub-hosted, multi-registry, priority ordering) -- core/integration/plugin_registry.py
-- Plugin loader (DISCOVERED -> LOADED -> CONFIGURED -> ACTIVE -> FAILED lifecycle, hooks, reload w/ config preservation) -- core/integration/plugin_loader.py
-- Dependency resolution (topological sort, DFS cycle detection, depth limit 5, semver) -- core/integration/dependency_graph.py, dependency_resolver.py
-- Plugin config system (schema validation, env_var constraints, global config merging) -- core/integration/plugin_config.py
-- Plugin testing framework (8 contract tests) -- core/integration/plugin_testing.py
-- Plugin verifier (checksum-based integrity) -- core/integration/plugin_verifier.py
-
-**5 plugin types:**
-- SiteHandlerPlugin -- Override site-specific cookie extraction/injection
-- SessionRefreshPlugin -- Refresh sessions via OAuth/browser
-- ProxyProviderPlugin -- Provide rotating proxies
-- CaptchaPlugin -- Solve CAPTCHAs (image/reCAPTCHA/hCaptcha)
-- NotificationPlugin -- Webhook/email alerts for events
-
-**CLI updates:**
-- --no-plugin flag on launch, refresh-browser, accounts refresh (opt-out)
-- Auto-discovery of handlers/refreshers by default (no flag needed)
-- tokenade plugin deps <name> -- Show dependency tree
-- tokenade plugin check-deps [name] -- Check missing/circular/depth violations
-- tokenade plugin configure <name> -- --show/--set/--reset/--validate
-- tokenade plugin test [--verbose] [name] -- Run contract tests
-- tokenade plugin list now shows lifecycle state + health
-- tokenade plugin info <name> now shows lifecycle, config, health, error
-
-**TUI updates:**
-- Registries tab -- Add/remove/enable/disable/prioritize registries
-- Plugin health visualization (healthy / unhealthy)
-- Plugin config visualization (sensitive values redacted)
-- Plugin task visualization (active/recent tasks)
-- Reload/Configure buttons on installed plugins
-- Plugin detail screen shows lifecycle state + health
-
-**Handler conversions:**
-- Google/GitHub/GenericOAuth2 adapters -> SiteHandlerPlugin
-- site_config.json files for domain/cookie filtering
-- GitHub handler registered with HandlerRegistry
-- OAuth2Plugin converted to SessionRefreshPlugin
-- PluginCaptchaSolver adapter bridges CaptchaPlugin -> CaptchaSolver
-
-**Documentation:**
-- docs/plugin-api.md -- Full API reference (base classes, events, context, types)
-- docs/plugin-user-guide.md -- Install, manage, configure, troubleshoot
-- 5 example plugins in examples/plugins/ (site-handler, proxy-provider, captcha-solver, notifier, refresh)
+### Added
+- Launch profile selection: `--profile NAME`, `--copy-profile`, `--use-original-profile`, `--refresh-profiles`
+- Browser profile cache at `~/.tokenade/browser_paths.json` with signature-based discovery
+- `TOKENADE_VERIFY_INSTALL_CLOAK=1` option for PyPI verification with CloakBrowser binary install
+- Request framework examples in README (`run`, `gateway`, `proxy resolve`)
+- Privacy statement for gateway output (metadata only, never cookies/storage)
 
 ### Changed
-- System works WITHOUT plugins -- plugins override/extend defaults
-- Plugins run by default -- --no-plugin flag to exclude (was opt-in)
-- --plugin flag still works for explicit selection (backward compatible)
-- Latest version wins for dependency version conflicts (major mismatch = rejected)
-- No plugin sandboxing (full trust model)
-- Registry management primarily through TUI
+- Default safety behavior: discovered profiles copied to temp directory (not mutated)
+- `.agent/` cleanup: removed stale documentation files
 
-### Removed
-- ProxyPlugin (replaced by ProxyProviderPlugin)
+### Fixed
+- Profile copy handles lock files gracefully
+- Case-insensitive profile name matching
+
+---
+
+## [1.1.61] - 2026-07-18
+
+### Added
+- **Gateway control plane**: `tokenade gateway --request request.json`
+  - `/status`, `/sessions`, `/route/next`, `/route/select` endpoints
+  - `/contexts`, `/contexts/prewarm`, `/contexts/drain`, `/tabs/new` endpoints
+  - Isolated browser contexts per session (CloakBrowser/Playwright)
+- **Nested request framework**: `tokenade run --request request.json`
+  - Ordered plugin execution with `roles.run`
+  - Plugin config pass-through
+  - Missing required plugin fail-closed with install suggestions
+- **SessionRouter core**: routing strategies (round-robin, random, health-weighted, sticky)
+  - Sanitized session records (no cookies/storage in output)
+  - `switch_interval_seconds >= 5` enforcement
+- **Source network stamp**: privacy-conscious opt-in metadata capture
+- **Proxy provider resolver**: upstream proxy integration with credential redaction
+- **CLI surface alignment**: `gateway` and `proxy` promoted to visible commands
+- **Browser profile discovery**: signature-based detection (Firefox `cookies.sqlite`, Chromium `Preferences`)
+
+### Changed
+- `proxy` command reassigned to upstream proxy tooling (`proxy resolve --request`)
+- Legacy local/CDP proxy moved to hidden `proxy legacy`
+- Gateway rotation model: isolated contexts, not in-place mutation
+
+### Fixed
+- Gateway HTTP server uses single-threaded `HTTPServer` (avoids Playwright cross-thread errors)
+- Gateway `/tabs/new` no longer mistakes URL for session selector
+
+---
+
+## [1.1.60] - 2026-07-18
+
+### Added
+- Site Handler export metadata in `.tokenade` files
+- Plugin-declared storage origins for Discord/Telegram export
+- `recommend()` module for site/plugin/browser suggestions
+- CloakBrowser as default automation backend
+- Browser profile cache for faster discovery
+
+### Changed
+- Marketplace witness scripts use env-var overrides
+- Telegram witness uses strict neutral-chat URL (`https://web.telegram.org/a/#777000`)
+
+### Fixed
+- Google Flow single-account limitation documented
+- Firefox Snap profile export works with running browser
 
 
 ## [1.0.0] - 2026-07-12

@@ -216,7 +216,6 @@ class TestParserSurface(unittest.TestCase):
         "sync",
         "monitor",
         "container",
-        "serve",
         "analytics",
         "refresh-oauth",
         "oauth-config",
@@ -235,8 +234,6 @@ class TestParserSurface(unittest.TestCase):
         "rollback",
         "session-diff",
         "logs",
-        "clone-profile",
-        "profile",
         "k8s",
         "stealth",
         "deps",
@@ -263,6 +260,9 @@ class TestParserSurface(unittest.TestCase):
         "recommend",
         "proxy",
         "gateway",
+        "serve",
+        "profile",
+        "clone-profile",
     )
 
     def test_removed_patch_chrome_is_not_registered(self):

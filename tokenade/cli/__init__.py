@@ -2175,7 +2175,7 @@ Commands:
     logs_parser.add_argument("--cleanup", type=int, metavar="DAYS", help="Remove log files older than N days")
 
     # ── Clone Profile ──────────────────────────────────────────
-    clone_parser = subparsers.add_parser("clone-profile", help=argparse.SUPPRESS)
+    clone_parser = subparsers.add_parser("clone-profile", help="Clone a browser profile to a new directory")
     clone_parser.add_argument("source", nargs="?", help="Source profile directory (omit to use system default)")
     clone_parser.add_argument("--dest", "-d", required=True, help="Destination directory for the clone")
     clone_parser.add_argument("--browser", "-b", default="chrome", help="Browser name (chrome, firefox, brave, edge, vivaldi)")
@@ -2253,7 +2253,7 @@ Commands:
 
     k8s_sub.add_parser("pods", help="List pods")
 
-    profile_parser = subparsers.add_parser("profile", help=argparse.SUPPRESS)
+    profile_parser = subparsers.add_parser("profile", help="Manage browser profiles")
     profile_sub = profile_parser.add_subparsers(dest="profile_command", help="Profile commands")
 
     profile_create = profile_sub.add_parser("create", help="Create a new profile")
@@ -2316,7 +2316,7 @@ Commands:
     deps_install.add_argument("--browser", "-b", choices=["chrome", "firefox"], default="chrome")
     deps_install.add_argument("--playwright", action="store_true", help="Install Playwright dependencies")
 
-    serve_parser = subparsers.add_parser("serve", help=argparse.SUPPRESS)
+    serve_parser = subparsers.add_parser("serve", help="Start API server for session management")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     serve_parser.add_argument("--port", "-p", type=int, default=9224, help="Port to listen on (default: 9224)")
     serve_parser.add_argument("--api-key", help="API key for authentication")
@@ -2355,11 +2355,11 @@ Commands:
         "setup", "extract", "transfer", "inject-profile",
         "batch-export", "batch-load", "health-report", "refresh",
         "share", "unshare", "import", "validate-rules", "diff",
-        "sync", "monitor", "container", "serve", "analytics",
+        "sync", "monitor", "container", "analytics",
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
         "fleet", "autopsy", "tui", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
-        "session-diff", "logs", "clone-profile", "profile", "k8s", "stealth", "deps",
+        "session-diff", "logs", "k8s", "stealth", "deps",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(
