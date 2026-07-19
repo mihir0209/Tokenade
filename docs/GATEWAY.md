@@ -77,9 +77,32 @@ tokenade gateway --request gateway.request.json
     "object": "session",
     "strategy": "health-weighted",
     "switch_interval_seconds": 300,
+    "health_check_interval_seconds": 30,
+    "unhealthy_threshold": 3,
     "sticky_by": "site",
     "failover": true,
     "drain_existing_tabs": true
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 9222,
+    "backend": "cloakbrowser",
+    "runtime": {
+      "enabled": true,
+      "backend": "cloakbrowser",
+      "headless": true
+    },
+    "state_file": "~/.tokenade/gateway_state.json",
+    "webhooks": {
+      "on_rotate": "https://example.com/webhook/rotate",
+      "on_select": "https://example.com/webhook/select",
+      "on_unhealthy": "https://example.com/webhook/unhealthy",
+      "secret": "hmac-secret-key"
+    },
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "burst": 10
+    }
   },
   "plugins": []
 }
@@ -137,6 +160,5 @@ tab = resp.json()
 - Health monitoring with auto-failover
 - Session persistence across restarts
 - Webhook notifications
-- Rate limiting
 
 See `.agent/plans/gateway-maturity.md` for details.

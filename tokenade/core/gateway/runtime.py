@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any, Dict, Optional, Protocol
 
 from tokenade.core.gateway.session_store import SessionRecord
 from tokenade.core.importer.session_loader import SessionLoader
+
+logger = logging.getLogger(__name__)
 
 
 class GatewayRuntimeError(RuntimeError):
@@ -64,38 +67,81 @@ class GatewaySessionContext:
         }
 
 
+class _ContextWrapper:
+    """Lightweight wrapper around a Playwright browser context."""
+
+    def __init__(self, context, page, config):
+        self._context = context
+        self._page = page
+        self.config = config
+
+    def add_cookies(self, cookies: list[Dict[str, Any]]):
+        if self._context:
+            return self._context.add_cookies(cookies)
+        return 0
+
+    def new_page(self):
+        if self._context:
+            return self._context.new_page()
+        raise GatewayRuntimeError("browser context is not active")
+
+    def close(self):
+        if self._context:
+            try:
+                self._context.close()
+            except Exception:
+                pass
+
+
 class BrowserManagerContextFactory:
     """Default factory that creates isolated browser-manager contexts.
 
-    This keeps Phase 4 conservative: each context is isolated because it gets its
-    own BrowserManager-backed browser context. Future work can replace this with
-    a shared-browser context factory once CDP/CloakBrowser lifecycle is proven.
+    Uses a single browser instance and creates multiple isolated contexts from it.
+    This avoids the Playwright asyncio event loop issue when creating multiple contexts.
     """
 
     def __init__(self, backend: str = "cloakbrowser", headless: bool = True):
         self.backend = backend
         self.headless = headless
-        self._managers = []
+        self._browser_manager = None
+        self._contexts = []
+
+    def _ensure_browser(self):
+        """Ensure browser is launched, create on first call."""
+        if self._browser_manager is None:
+            from tokenade.core.browser.manager import BrowserFactory
+            self._browser_manager = BrowserFactory.create(
+                backend="cloakbrowser" if self.backend in ("cloak", "cloakbrowser") else "playwright",
+                browser_type=self.backend,
+                headless=self.headless,
+            )
+            self._browser_manager.launch()
+        return self._browser_manager
 
     def create_context(self, session: SessionRecord):
-        from tokenade.core.browser.manager import BrowserFactory
-
-        manager = BrowserFactory.create(
-            backend="cloakbrowser" if self.backend in ("cloak", "cloakbrowser") else "playwright",
-            browser_type=self.backend,
-            headless=self.headless,
-        )
-        manager.launch()
-        self._managers.append(manager)
+        manager = self._ensure_browser()
+        # Create a new isolated context from the same browser
+        if hasattr(manager, '_browser') and manager._browser:
+            context = manager._browser.new_context(viewport=manager.config.viewport)
+            page = context.new_page()
+            wrapper = _ContextWrapper(context, page, manager.config)
+            self._contexts.append(context)
+            return _BrowserManagerGatewayContext(wrapper)
         return _BrowserManagerGatewayContext(manager)
 
     def close(self):
-        for manager in list(self._managers):
+        for context in list(self._contexts):
             try:
-                manager.close()
+                context.close()
             except Exception:
                 pass
-        self._managers.clear()
+        self._contexts.clear()
+        if self._browser_manager is not None:
+            try:
+                self._browser_manager.close()
+            except Exception:
+                pass
+            self._browser_manager = None
 
 
 class _BrowserManagerGatewayContext:
@@ -240,19 +286,25 @@ class GatewayRuntime:
         return origins
 
     def _inject_local_storage_origin(self, context: Any, origin: str, values: Dict[str, Any]):
+        if not values:
+            return
         page = context.new_page()
-        if hasattr(page, "goto"):
-            page.goto(origin, wait_until="domcontentloaded", timeout=15000)
-        if hasattr(page, "evaluate"):
-            page.evaluate(
-                """
-                (data) => {
-                    for (const [key, value] of Object.entries(data)) {
-                        localStorage.setItem(key, value);
+        try:
+            if hasattr(page, "goto"):
+                page.goto(origin, wait_until="domcontentloaded", timeout=15000)
+            if hasattr(page, "evaluate"):
+                page.evaluate(
+                    """
+                    (data) => {
+                        for (const [key, value] of Object.entries(data)) {
+                            localStorage.setItem(key, value);
+                        }
                     }
-                }
-                """,
-                values,
-            )
-        if hasattr(page, "close"):
-            page.close()
+                    """,
+                    values,
+                )
+        except Exception as exc:
+            logger.warning("localStorage injection failed for %s: %s", origin, exc)
+        finally:
+            if hasattr(page, "close"):
+                page.close()

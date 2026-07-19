@@ -36,7 +36,7 @@ class SessionRecord:
             "auth_status": self.auth_status,
             "cookie_count": self.cookie_count,
             "health_score": self.health_score,
-            "healthy": self.healthy,
+            "healthy": getattr(self, '_healthy', self.healthy),
             "metadata": dict(self.metadata),
         }
 

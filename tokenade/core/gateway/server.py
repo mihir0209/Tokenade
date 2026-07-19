@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -17,6 +18,42 @@ from tokenade.core.request_config import RequestConfig
 
 class GatewayConfigError(ValueError):
     """Raised when a gateway request cannot create a control plane."""
+
+
+class _RateLimiter:
+    """Simple per-IP rate limiter using sliding window."""
+
+    def __init__(self, requests_per_minute: int = 60, burst: int = 10):
+        self.requests_per_minute = requests_per_minute
+        self.burst = burst
+        self._windows: Dict[str, list] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, ip: str) -> bool:
+        """Check if request is allowed for IP. Returns True if allowed."""
+        now = time.time()
+        window_start = now - 60  # 1-minute window
+        with self._lock:
+            if ip not in self._windows:
+                self._windows[ip] = []
+            # Clean old requests
+            self._windows[ip] = [t for t in self._windows[ip] if t > window_start]
+            # Check limit
+            if len(self._windows[ip]) >= self.requests_per_minute:
+                return False
+            # Allow and record
+            self._windows[ip].append(now)
+            return True
+
+    def cleanup(self):
+        """Clean up old entries."""
+        now = time.time()
+        window_start = now - 60
+        with self._lock:
+            for ip in list(self._windows.keys()):
+                self._windows[ip] = [t for t in self._windows[ip] if t > window_start]
+                if not self._windows[ip]:
+                    del self._windows[ip]
 
 
 @dataclass(frozen=True)
@@ -59,6 +96,9 @@ class GatewayControlPlane:
         plugins: Optional[list[Dict[str, Any]]] = None,
         runtime: Optional[GatewayRuntime] = None,
         upstream_proxies: Optional[list[Dict[str, Any]]] = None,
+        state_file: Optional[str] = None,
+        webhooks: Optional[Dict[str, str]] = None,
+        rate_limit_config: Optional[Dict[str, int]] = None,
     ):
         self.server_config = server_config
         self.routing_config = routing_config
@@ -68,6 +108,182 @@ class GatewayControlPlane:
         self.active_session: Optional[SessionRecord] = None
         self.runtime = runtime
         self.upstream_proxies = upstream_proxies or []
+        self.state_file = state_file
+
+        # Webhooks
+        self.webhooks = webhooks or {}
+        self._webhook_secret = self.webhooks.get("secret", "")
+
+        # Rate limiting
+        self._rate_limiter = _RateLimiter(
+            requests_per_minute=rate_limit_config.get("requests_per_minute", 60) if rate_limit_config else 60,
+            burst=rate_limit_config.get("burst", 10) if rate_limit_config else 10,
+        ) if rate_limit_config else None
+
+        # Load previous state if state_file exists
+        if state_file:
+            self._load_state()
+
+    def _fire_webhook(self, event: str, data: Dict[str, Any]):
+        """Fire a webhook notification (async, fire-and-forget)."""
+        if not self.webhooks.get(f"on_{event}"):
+            return
+        url = self.webhooks[f"on_{event}"]
+        payload = {
+            "event": event,
+            "timestamp": time.time(),
+            "gateway": {
+                "host": self.server_config.host,
+                "port": self.server_config.port,
+            },
+            "data": data,
+        }
+        body = json.dumps(payload).encode("utf-8")
+
+        # Compute HMAC signature
+        headers = {"Content-Type": "application/json"}
+        if self._webhook_secret:
+            import hmac
+            import hashlib
+            signature = hmac.new(
+                self._webhook_secret.encode("utf-8"),
+                body,
+                hashlib.sha256,
+            ).hexdigest()
+            headers["X-Tokenade-Signature"] = f"sha256={signature}"
+
+        # Fire-and-forget in background thread
+        def _send():
+            try:
+                import urllib.request
+                req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status >= 400:
+                        logger.warning("Webhook %s returned status %d", url, resp.status)
+            except Exception as exc:
+                logger.debug("Webhook fire failed for %s: %s", event, exc)
+
+        thread = threading.Thread(target=_send, daemon=True)
+        thread.start()
+
+        # Auto-rotation
+        self._auto_rotate_timer: Optional[threading.Timer] = None
+        self._auto_rotate_interval = routing_config.switch_interval_seconds
+        if self._auto_rotate_interval and self._auto_rotate_interval > 0:
+            self._start_auto_rotate_timer()
+
+        # Health monitoring
+        self._health_timer: Optional[threading.Timer] = None
+        if routing_config.health_check_interval_seconds:
+            self._start_health_monitor()
+
+    def _start_auto_rotate_timer(self):
+        """Start background timer for auto-rotation."""
+        if self._auto_rotate_interval and self._auto_rotate_interval > 0:
+            self._auto_rotate_timer = threading.Timer(
+                self._auto_rotate_interval,
+                self._auto_rotate_callback
+            )
+            self._auto_rotate_timer.daemon = True
+            self._auto_rotate_timer.start()
+
+    def _auto_rotate_callback(self):
+        """Background timer callback for auto-rotation."""
+        try:
+            self.route_next()
+        except Exception:
+            pass  # Silently ignore auto-rotation errors
+        finally:
+            # Schedule next rotation
+            self._start_auto_rotate_timer()
+
+    def _cancel_auto_rotate_timer(self):
+        """Cancel the auto-rotation timer."""
+        if self._auto_rotate_timer:
+            self._auto_rotate_timer.cancel()
+            self._auto_rotate_timer = None
+
+    def reset_auto_rotate_timer(self):
+        """Reset the auto-rotation timer (call on manual rotation)."""
+        self._cancel_auto_rotate_timer()
+        self._start_auto_rotate_timer()
+
+    # Health monitoring
+    def _start_health_monitor(self):
+        """Start background health monitoring."""
+        interval = self.routing_config.health_check_interval_seconds
+        if interval and interval > 0:
+            self._health_timer = threading.Timer(interval, self._health_check_callback)
+            self._health_timer.daemon = True
+            self._health_timer.start()
+
+    def _health_check_callback(self):
+        """Background timer callback for health checks."""
+        try:
+            self._check_all_sessions_health()
+        except Exception:
+            pass  # Silently ignore health check errors
+        finally:
+            # Schedule next health check
+            self._start_health_monitor()
+
+    def _check_all_sessions_health(self):
+        """Check health of all sessions and mark unhealthy ones."""
+        from tokenade.core.refresh.health_checker import SessionHealthChecker
+        checker = SessionHealthChecker()
+
+        for session in self.sessions:
+            try:
+                health = checker.check_session(session.path)
+                if not health.healthy:
+                    session._health_failures = getattr(session, '_health_failures', 0) + 1
+                    if session._health_failures >= self.routing_config.unhealthy_threshold:
+                        session._healthy = False
+                else:
+                    session._health_failures = 0
+                    session._healthy = True
+            except Exception:
+                session._health_failures = getattr(session, '_health_failures', 0) + 1
+                if session._health_failures >= self.routing_config.unhealthy_threshold:
+                    session._healthy = False
+
+    def _save_state(self):
+        """Save gateway state to disk (atomic write)."""
+        if not self.state_file:
+            return
+        try:
+            state = {
+                "active_session": self.active_session.path if self.active_session else None,
+                "active_session_id": self.active_session.id if self.active_session else None,
+                "runtime_enabled": self.runtime is not None,
+                "context_count": len(self.runtime.contexts()) if self.runtime else 0,
+                "saved_at": time.time(),
+            }
+            state_dir = Path(self.state_file).parent
+            state_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = self.state_file + ".tmp"
+            with open(temp_file, "w") as f:
+                json.dump(state, f, indent=2)
+            Path(temp_file).replace(self.state_file)
+        except Exception as exc:
+            logger.warning("Failed to save gateway state: %s", exc)
+
+    def _load_state(self):
+        """Load gateway state from disk."""
+        if not self.state_file or not Path(self.state_file).exists():
+            return
+        try:
+            with open(self.state_file) as f:
+                state = json.load(f)
+            active_path = state.get("active_session") or state.get("active_session_id")
+            if active_path:
+                for session in self.sessions:
+                    if session.path == active_path or session.id == active_path:
+                        self.active_session = session
+                        logger.info("Restored active session: %s", session.site_name)
+                        break
+        except Exception as exc:
+            logger.warning("Failed to load gateway state: %s", exc)
 
     def status(self) -> Dict[str, Any]:
         return {
@@ -108,6 +324,16 @@ class GatewayControlPlane:
         decision = self.router.select(context=context)
         self.active_session = decision.session
         runtime_context = self.runtime.activate(decision.session) if self.runtime else None
+        # Reset auto-rotate timer on manual rotation
+        self.reset_auto_rotate_timer()
+        # Save state after rotation
+        self._save_state()
+        # Fire webhook
+        self._fire_webhook("rotate", {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        })
         return self._decision_response(decision, runtime_context)
 
     def route_select(self, selector: Dict[str, Any]) -> Dict[str, Any]:
@@ -126,6 +352,16 @@ class GatewayControlPlane:
             reason="manual-select",
             selected_at=time.time(),
         )
+        # Reset auto-rotate timer on manual selection
+        self.reset_auto_rotate_timer()
+        # Save state after selection
+        self._save_state()
+        # Fire webhook
+        self._fire_webhook("select", {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        })
         return self._decision_response(decision, runtime_context)
 
     def context_list(self) -> Dict[str, Any]:
@@ -166,6 +402,18 @@ class GatewayControlPlane:
 
         class GatewayRequestHandler(BaseHTTPRequestHandler):
             def do_GET(self):
+                if not control_plane._rate_limiter:
+                    self._handle_get()
+                    return
+                client_ip = self.client_address[0]
+                if not control_plane._rate_limiter.allow(client_ip):
+                    retry_after = 60
+                    self._send_json(429, {"success": False, "error": "rate limit exceeded"},
+                                    {"Retry-After": str(retry_after)})
+                    return
+                self._handle_get()
+
+            def _handle_get(self):
                 if self.path == "/status":
                     self._send_json(200, control_plane.status())
                 elif self.path == "/sessions":
@@ -176,6 +424,13 @@ class GatewayControlPlane:
                     self._send_json(404, {"success": False, "error": "not found"})
 
             def do_POST(self):
+                if control_plane._rate_limiter:
+                    client_ip = self.client_address[0]
+                    if not control_plane._rate_limiter.allow(client_ip):
+                        retry_after = 60
+                        self._send_json(429, {"success": False, "error": "rate limit exceeded"},
+                                        {"Retry-After": str(retry_after)})
+                        return
                 try:
                     payload = self._read_json()
                     if self.path == "/route/next":
@@ -203,11 +458,14 @@ class GatewayControlPlane:
                 body = self.rfile.read(length).decode("utf-8")
                 return json.loads(body)
 
-            def _send_json(self, status_code: int, payload: Dict[str, Any]):
+            def _send_json(self, status_code: int, payload: Dict[str, Any], extra_headers: Optional[Dict[str, str]] = None):
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self.send_response(status_code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                if extra_headers:
+                    for key, value in extra_headers.items():
+                        self.send_header(key, value)
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -253,6 +511,11 @@ class GatewayControlPlane:
         return response
 
     def close(self):
+        self._save_state()
+        self._cancel_auto_rotate_timer()
+        if self._health_timer:
+            self._health_timer.cancel()
+            self._health_timer = None
         if self.runtime:
             self.runtime.close()
 
@@ -292,7 +555,21 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
     ]
     runtime = _create_runtime(request.raw.get("gateway"))
     upstream_proxies = _resolve_proxy_providers(request, sessions)
-    return GatewayControlPlane(server_config, routing_config, sessions, plugins, runtime=runtime, upstream_proxies=upstream_proxies)
+    gateway_raw = request.raw.get("gateway", {})
+    state_file = gateway_raw.get("state_file")
+    webhooks = gateway_raw.get("webhooks", {})
+    rate_limit_config = gateway_raw.get("rate_limit", {})
+    return GatewayControlPlane(
+        server_config,
+        routing_config,
+        sessions,
+        plugins,
+        runtime=runtime,
+        upstream_proxies=upstream_proxies,
+        state_file=state_file,
+        webhooks=webhooks,
+        rate_limit_config=rate_limit_config,
+    )
 
 
 def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:

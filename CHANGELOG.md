@@ -4,6 +4,20 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.63] - 2026-07-20
+
+### Added
+- **Gateway rate limiting**: `gateway.rate_limit` config with per-IP sliding window
+  - `requests_per_minute` (default 60) — max requests per IP per minute
+  - `burst` (default 10) — burst allowance
+  - Returns `429 Too Many Requests` with `Retry-After` header when exceeded
+- **Gateway docs updated**: request shape now includes `rate_limit`, `webhooks`, `state_file`
+
+### Changed
+- Gateway maturity complete: all 5 phases implemented (auto-rotation, health monitoring, persistence, webhooks, rate limiting)
+
+---
+
 ## [1.1.62] - 2026-07-19
 
 ### Added

@@ -24,6 +24,8 @@ class RoutingConfig:
     sticky_by: str = "site"
     failover: bool = True
     drain_existing_tabs: bool = True
+    health_check_interval_seconds: Optional[float] = None
+    unhealthy_threshold: int = 3
 
     STRATEGIES = ("round-robin", "random", "health-weighted", "sticky")
 
@@ -60,6 +62,19 @@ class RoutingConfig:
         if not isinstance(drain_existing_tabs, bool):
             raise SessionRoutingError("routing.drain_existing_tabs must be a boolean")
 
+        health_check_interval = raw.get("health_check_interval_seconds")
+        if health_check_interval is not None:
+            if not isinstance(health_check_interval, (int, float)) or isinstance(health_check_interval, bool):
+                raise SessionRoutingError("routing.health_check_interval_seconds must be a number")
+            if health_check_interval < 10:
+                raise SessionRoutingError("routing.health_check_interval_seconds must be >= 10")
+
+        unhealthy_threshold = raw.get("unhealthy_threshold", 3)
+        if not isinstance(unhealthy_threshold, int) or isinstance(unhealthy_threshold, bool):
+            raise SessionRoutingError("routing.unhealthy_threshold must be an integer")
+        if unhealthy_threshold < 1:
+            raise SessionRoutingError("routing.unhealthy_threshold must be >= 1")
+
         return cls(
             object=route_object,
             strategy=strategy,
@@ -67,6 +82,8 @@ class RoutingConfig:
             sticky_by=sticky_by.strip(),
             failover=failover,
             drain_existing_tabs=drain_existing_tabs,
+            health_check_interval_seconds=float(health_check_interval) if health_check_interval is not None else None,
+            unhealthy_threshold=unhealthy_threshold,
         )
 
 
