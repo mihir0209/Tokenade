@@ -1,38 +1,16 @@
-# Tokenade - Production-grade session portability tool
-# Multi-stage build for minimal image size
-
-# Stage 1: Build dependencies
-FROM python:3.12-slim AS builder
-
-WORKDIR /build
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libffi-dev \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy project files
-COPY pyproject.toml README.md ./
-COPY tokenade/ ./tokenade/
-
-# Install tokenade package
-RUN pip install --no-cache-dir --user .
-
-# Stage 2: Runtime image
 FROM python:3.12-slim
 
-LABEL maintainer="Tokenade Team"
-LABEL description="Production-grade session portability tool"
-LABEL version="5.0.0"
-
-WORKDIR /app
-
-# Install runtime dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Playwright dependencies
-    libglib2.0-0 \
+    curl \
+    wget \
+    gnupg \
+    unzip \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CloakBrowser dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -40,59 +18,48 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcups2 \
     libdrm2 \
     libdbus-1-3 \
-    libxcb1 \
     libxkbcommon0 \
-    libx11-6 \
+    libatspi2.0-0 \
     libxcomposite1 \
     libxdamage1 \
-    libxext6 \
     libxfixes3 \
     libxrandr2 \
     libgbm1 \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
-    libatspi2.0-0 \
-    # Xvfb for headless browser operations
-    xvfb \
-    # Secret storage for Linux
-    libsecret-1-0 \
-    # General utilities
-    curl \
-    jq \
+    libwayland-client0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+# Create non-root user
+RUN groupadd -r tokenade && useradd -r -g tokenade -m tokenade
 
-# Install Playwright browsers
-RUN playwright install chromium && playwright install-deps chromium
+# Set working directory
+WORKDIR /home/tokenade
 
-# Create non-root user for security
-RUN groupadd -r tokenade && useradd -r -g tokenade -d /app -s /bin/bash tokenade
+# Copy requirements and install
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e .
 
-# Create data directories with proper ownership
-RUN mkdir -p /app/sessions /app/browser_data /app/.fingerprints /app/reports \
-    && chown -R tokenade:tokenade /app
+# Copy application code
+COPY . .
+
+# Install tokenade
+RUN pip install --no-cache-dir -e .
+
+# Create necessary directories
+RUN mkdir -p /home/tokenade/.tokenade/plugins \
+    && mkdir -p /home/tokenade/.tokenade/sessions \
+    && mkdir -p /home/tokenade/.tokenade/logs \
+    && chown -R tokenade:tokenade /home/tokenade/.tokenade
 
 # Switch to non-root user
 USER tokenade
 
-# Environment variables
+# Set environment variables
+ENV TOKENADE_HOME=/home/tokenade/.tokenade
 ENV PYTHONUNBUFFERED=1
-ENV TOKENADE_DATA_DIR=/app
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-
-# Health check - test that tokenade is importable and version is accessible
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import tokenade; print(tokenade.__version__)" || exit 1
-
-# Expose ports
-# 9222: CDP proxy
-# 9224: API server
-EXPOSE 9222
-EXPOSE 9224
 
 # Default command
 ENTRYPOINT ["tokenade"]

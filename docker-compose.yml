@@ -1,115 +1,62 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  # Default service - interactive shell
   tokenade:
     build: .
-    image: tokenade:latest
     container_name: tokenade
     volumes:
-      - tokenade-sessions:/app/sessions
-      - tokenade-browser:/app/browser_data
-      - tokenade-fingerprints:/app/.fingerprints
-      - tokenade-reports:/app/reports
+      - tokenade-sessions:/home/tokenade/.tokenade/sessions
+      - tokenade-plugins:/home/tokenade/.tokenade/plugins
+      - tokenade-config:/home/tokenade/.tokenade
     environment:
-      - TOKENADE_DATA_DIR=/app
-      - PYTHONUNBUFFERED=1
-    # For headless browser support
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - seccomp=unconfined
-    stdin_open: true
-    tty: true
-    restart: "no"
-    command: bash
+      - TOKENADE_HOME=/home/tokenade/.tokenade
+    networks:
+      - tokenade-net
+    restart: unless-stopped
 
-  # Proxy service
-  tokenade-proxy:
+  # Optional: Gateway service for session routing
+  gateway:
     build: .
-    image: tokenade:latest
-    container_name: tokenade-proxy
+    container_name: tokenade-gateway
+    command: ["gateway", "--request", "/home/tokenade/.tokenade/gateway.request.json"]
+    volumes:
+      - tokenade-sessions:/home/tokenade/.tokenade/sessions
+      - tokenade-plugins:/home/tokenade/.tokenade/plugins
+      - tokenade-config:/home/tokenade/.tokenade
     ports:
       - "9222:9222"
-    volumes:
-      - tokenade-sessions:/app/sessions
-      - tokenade-browser:/app/browser_data
     environment:
-      - TOKENADE_DATA_DIR=/app
-      - PYTHONUNBUFFERED=1
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - seccomp=unconfined
+      - TOKENADE_HOME=/home/tokenade/.tokenade
+    networks:
+      - tokenade-net
+    depends_on:
+      - tokenade
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import tokenade; print(tokenade.__version__)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 128M
-    command: ["proxy", "--all", "--port", "9222"]
 
-  # API server service
-  tokenade-api:
+  # Optional: API server for session management
+  api:
     build: .
-    image: tokenade:latest
     container_name: tokenade-api
+    command: ["serve", "--host", "0.0.0.0", "--port", "9224"]
+    volumes:
+      - tokenade-sessions:/home/tokenade/.tokenade/sessions
+      - tokenade-plugins:/home/tokenade/.tokenade/plugins
+      - tokenade-config:/home/tokenade/.tokenade
     ports:
       - "9224:9224"
-    volumes:
-      - tokenade-sessions:/app/sessions
     environment:
-      - TOKENADE_DATA_DIR=/app
-      - PYTHONUNBUFFERED=1
+      - TOKENADE_HOME=/home/tokenade/.tokenade
+    networks:
+      - tokenade-net
+    depends_on:
+      - tokenade
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import tokenade; print(tokenade.__version__)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-        reservations:
-          cpus: "0.1"
-          memory: 64M
-    command: ["python", "-c", "from tokenade.core.api.server import TokenadeAPIServer; import asyncio; s=TokenadeAPIServer(); asyncio.run(s.start())"]
-
-  # Development service with live code mounting
-  tokenade-dev:
-    build: .
-    image: tokenade:dev
-    container_name: tokenade-dev
-    volumes:
-      - ./tokenade:/app/tokenade
-      - tokenade-sessions:/app/sessions
-      - tokenade-browser:/app/browser_data
-    environment:
-      - TOKENADE_DATA_DIR=/app
-      - PYTHONUNBUFFERED=1
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - seccomp=unconfined
-    stdin_open: true
-    tty: true
-    restart: "no"
-    command: bash
 
 volumes:
   tokenade-sessions:
-  tokenade-browser:
-  tokenade-fingerprints:
-  tokenade-reports:
+  tokenade-plugins:
+  tokenade-config:
+
+networks:
+  tokenade-net:
+    driver: bridge

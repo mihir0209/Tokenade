@@ -4,6 +4,28 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.64] - 2026-07-20
+
+### Added
+- **google-flow-handler v1.1.0**: Multi-account OAuth support
+  - `target_email` parameter for specific account selection
+  - `account_index` fallback for multi-account sessions
+  - `max_retries` with automatic retry logic
+- **Batch operations**: Parallel batch export, load, and refresh
+  - `ParallelBatchExporter` — export from multiple browsers in parallel
+  - `ParallelBatchLoader` — load multiple sessions in parallel
+  - `ParallelBatchRefresher` — refresh multiple sessions in parallel
+- **Container support**: Docker integration
+  - `Dockerfile` for building Tokenade image
+  - `docker-compose.yml` for multi-service deployment
+  - `container` command for Docker management
+- **TUI promoted**: Terminal UI now visible in default CLI
+
+### Changed
+- Default CLI surface expanded with TUI command
+
+---
+
 ## [1.1.63] - 2026-07-20
 
 ### Added

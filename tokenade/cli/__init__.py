@@ -2355,9 +2355,9 @@ Commands:
         "setup", "extract", "transfer", "inject-profile",
         "batch-export", "batch-load", "health-report", "refresh",
         "share", "unshare", "import", "validate-rules", "diff",
-        "sync", "monitor", "container", "analytics",
+        "sync", "monitor", "analytics",
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
-        "fleet", "autopsy", "tui", "validate-session", "encrypted-refresh",
+        "fleet", "autopsy", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
         "session-diff", "logs", "k8s", "stealth", "deps",
     ):
