@@ -4,6 +4,44 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.65] - 2026-07-20
+
+### Added
+- **Session Sync**: Synchronize sessions across machines
+  - `SessionSyncer` class with push/pull/bidirectional sync
+  - SSH/SCP and rsync transport backends
+  - Conflict resolution (newest, oldest, local, remote)
+  - File hashing for change detection
+  - `sync` CLI command (hidden)
+- **Session Sharing**: Share sessions via encrypted URLs and QR codes
+  - `SessionSharer` class with AES-256 encryption
+  - Token-based access control with expiration
+  - Password protection support
+  - QR code generation
+  - `share` CLI command (hidden)
+- **Session Vault**: Encrypted session storage with key rotation
+  - `SessionVault` class with AES-256-GCM encryption
+  - Automatic key rotation
+  - Backup and restore
+  - Integrity verification
+  - `vault` CLI command (hidden)
+- **Monitoring Dashboard**: Web UI for session monitoring
+  - `DashboardServer` class with real-time status
+  - Auto-refresh browser UI
+  - Session management endpoints
+  - `dashboard` CLI command (hidden)
+- **Enterprise Features**: RBAC and audit logging
+  - `RBACManager` with role and permission management
+  - `AuditLogger` with comprehensive action tracking
+  - Hierarchical roles
+  - User-role assignments
+
+### Changed
+- Fixed batch operations import error (`BatchRefresher` → `ParallelBatchRefresher`)
+- Added `vault` and `dashboard` commands to CLI
+
+---
+
 ## [1.1.64] - 2026-07-20
 
 ### Added

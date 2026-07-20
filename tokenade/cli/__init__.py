@@ -19,6 +19,7 @@ from tokenade.cli.management import (
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
     cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_cloak, cmd_tui,
+    cmd_vault, cmd_dashboard,
 )
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
@@ -2323,6 +2324,64 @@ Commands:
     serve_parser.add_argument("--sessions-dir", "-d", help="Sessions directory")
     serve_parser.add_argument("--cors", help="Allowed CORS origins (comma-separated)")
 
+    # Vault
+    vault_parser = subparsers.add_parser("vault", help="Encrypted session storage")
+    vault_sub = vault_parser.add_subparsers(dest="vault_action")
+
+    vault_store = vault_sub.add_parser("store", help="Store session in vault")
+    vault_store.add_argument("name", help="Entry name")
+    vault_store.add_argument("file", help="Session file to store")
+    vault_store.add_argument("--vault-path", help="Vault path")
+    vault_store.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_retrieve = vault_sub.add_parser("retrieve", help="Retrieve from vault")
+    vault_retrieve.add_argument("name", help="Entry name")
+    vault_retrieve.add_argument("--output", help="Output file path")
+    vault_retrieve.add_argument("--vault-path", help="Vault path")
+    vault_retrieve.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_delete = vault_sub.add_parser("delete", help="Delete from vault")
+    vault_delete.add_argument("name", help="Entry name")
+    vault_delete.add_argument("--vault-path", help="Vault path")
+    vault_delete.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_list = vault_sub.add_parser("list", help="List vault entries")
+    vault_list.add_argument("--vault-path", help="Vault path")
+    vault_list.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_rotate = vault_sub.add_parser("rotate", help="Rotate encryption key")
+    vault_rotate.add_argument("--vault-path", help="Vault path")
+    vault_rotate.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_backup = vault_sub.add_parser("backup", help="Backup vault")
+    vault_backup.add_argument("--name", help="Backup name")
+    vault_backup.add_argument("--vault-path", help="Vault path")
+    vault_backup.add_argument("--json", action="store_true", help="JSON output")
+
+    vault_restore = vault_sub.add_parser("restore", help="Restore vault from backup")
+    vault_restore.add_argument("name", help="Backup name")
+    vault_restore.add_argument("--vault-path", help="Vault path")
+    vault_restore.add_argument("--json", action="store_true", help="JSON output")
+
+    # Dashboard
+    dashboard_parser = subparsers.add_parser("dashboard", help="Session monitoring web dashboard")
+    dashboard_sub = dashboard_parser.add_subparsers(dest="dashboard_action")
+
+    dashboard_start = dashboard_sub.add_parser("start", help="Start dashboard server")
+    dashboard_start.add_argument("--host", default="127.0.0.1", help="Bind host")
+    dashboard_start.add_argument("--port", type=int, default=8080, help="Bind port")
+    dashboard_start.add_argument("--title", help="Dashboard title")
+    dashboard_start.add_argument("--refresh", type=int, help="Refresh interval (seconds)")
+
+    dashboard_status = dashboard_sub.add_parser("status", help="Check dashboard status")
+    dashboard_status.add_argument("--host", default="127.0.0.1", help="Dashboard host")
+    dashboard_status.add_argument("--port", type=int, default=8080, help="Dashboard port")
+
+    dashboard_sessions = dashboard_sub.add_parser("sessions", help="List sessions via dashboard")
+    dashboard_sessions.add_argument("--host", default="127.0.0.1", help="Dashboard host")
+    dashboard_sessions.add_argument("--port", type=int, default=8080, help="Dashboard port")
+    dashboard_sessions.add_argument("--json", action="store_true", help="JSON output")
+
     # Recommend site/plugin/browser for a session, URL, or cookie domains.
     recommend_parser = subparsers.add_parser(
         "recommend",
@@ -2360,6 +2419,7 @@ Commands:
         "fleet", "autopsy", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
         "session-diff", "logs", "k8s", "stealth", "deps",
+        "vault", "dashboard",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(
@@ -2442,6 +2502,8 @@ def main():
         "profile": cmd_profile,
         "serve": cmd_serve,
         "recommend": cmd_recommend,
+        "vault": cmd_vault,
+        "dashboard": cmd_dashboard,
     }
 
     try:
