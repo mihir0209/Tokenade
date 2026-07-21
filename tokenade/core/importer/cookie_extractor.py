@@ -128,6 +128,120 @@ SITE_DETECTION = {
             "usc_",
         ],
     },
+    "spotify": {
+        "domains": [
+            "spotify.com",
+            ".spotify.com",
+            "open.spotify.com",
+            "api.spotify.com",
+            "accounts.spotify.com",
+        ],
+        "critical_cookies": [
+            "sp_t",
+            "sp_l",
+            "sp_did",
+            "__Host-3-incognito-sso-token",
+            "session",
+        ],
+    },
+    "facebook": {
+        "domains": [
+            "facebook.com",
+            ".facebook.com",
+            "www.facebook.com",
+            "m.facebook.com",
+            "web.facebook.com",
+        ],
+        "critical_cookies": [
+            "c_user",
+            "xs",
+            "sb",
+            "datr",
+            "fr",
+            "presence",
+        ],
+    },
+    "instagram": {
+        "domains": [
+            "instagram.com",
+            ".instagram.com",
+            "www.instagram.com",
+            "i.instagram.com",
+        ],
+        "critical_cookies": [
+            "sessionid",
+            "ds_user_id",
+            "csrftoken",
+            "rur",
+            "mid",
+            "ig_did",
+        ],
+    },
+    "youtube": {
+        "domains": [
+            "youtube.com",
+            ".youtube.com",
+            "www.youtube.com",
+            "m.youtube.com",
+        ],
+        "critical_cookies": [
+            "VISITOR_INFO1_LIVE",
+            "PREF",
+            "GPS",
+            "YSC",
+            "CONSENT",
+        ],
+    },
+    "amazon": {
+        "domains": [
+            "amazon.com",
+            ".amazon.com",
+            "www.amazon.com",
+            "amazon.in",
+            ".amazon.in",
+            "www.amazon.in",
+        ],
+        "critical_cookies": [
+            "session-id",
+            "session-id-time",
+            "i18n-prefs",
+            "lc-main",
+            "ubid-main",
+        ],
+    },
+    "microsoft": {
+        "domains": [
+            "microsoft.com",
+            ".microsoft.com",
+            "live.com",
+            ".live.com",
+            "login.live.com",
+            "outlook.live.com",
+            "onedrive.live.com",
+        ],
+        "critical_cookies": [
+            "ESTSAUTH",
+            "ESTSAUTHPERSISTENT",
+            "ANON",
+            "MUID",
+            "MUIDB",
+        ],
+    },
+    "slack": {
+        "domains": [
+            "slack.com",
+            ".slack.com",
+            "app.slack.com",
+            "workspace.slack.com",
+        ],
+        "critical_cookies": [
+            "d",
+            "d-s",
+            "domo",
+            "xoxc-",
+            "xoxp-",
+        ],
+    },
 }
 
 

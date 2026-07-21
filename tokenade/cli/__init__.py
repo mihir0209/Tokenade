@@ -21,6 +21,7 @@ from tokenade.cli.management import (
     cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_cloak, cmd_tui,
     cmd_vault, cmd_dashboard,
 )
+from tokenade.cli.sync_remote import cmd_sync_remote
 from tokenade.cli.advanced import (
     cmd_batch_export, cmd_batch_load, cmd_validate, cmd_validate_rules,
     cmd_diff, cmd_fingerprint, cmd_test, cmd_setup,
@@ -2382,6 +2383,40 @@ Commands:
     dashboard_sessions.add_argument("--port", type=int, default=8080, help="Dashboard port")
     dashboard_sessions.add_argument("--json", action="store_true", help="JSON output")
 
+    # Sync Remote (cross-machine synchronization)
+    sync_remote_parser = subparsers.add_parser("sync-remote", help="Synchronize sessions across machines (SSH/rsync)")
+    sync_remote_sub = sync_remote_parser.add_subparsers(dest="sync_action")
+
+    sync_remote_push = sync_remote_sub.add_parser("push", help="Push sessions to remote")
+    sync_remote_push.add_argument("--remote-host", required=True, help="Remote host")
+    sync_remote_push.add_argument("--remote-port", type=int, default=22, help="Remote SSH port")
+    sync_remote_push.add_argument("--remote-path", default="~/.tokenade/sessions", help="Remote path")
+    sync_remote_push.add_argument("--local-path", default="~/.tokenade/sessions", help="Local path")
+    sync_remote_push.add_argument("--json", action="store_true", help="JSON output")
+
+    sync_remote_pull = sync_remote_sub.add_parser("pull", help="Pull sessions from remote")
+    sync_remote_pull.add_argument("--remote-host", required=True, help="Remote host")
+    sync_remote_pull.add_argument("--remote-port", type=int, default=22, help="Remote SSH port")
+    sync_remote_pull.add_argument("--remote-path", default="~/.tokenade/sessions", help="Remote path")
+    sync_remote_pull.add_argument("--local-path", default="~/.tokenade/sessions", help="Local path")
+    sync_remote_pull.add_argument("--json", action="store_true", help="JSON output")
+
+    sync_remote_bidi = sync_remote_sub.add_parser("bidirectional", help="Bidirectional sync")
+    sync_remote_bidi.add_argument("--remote-host", required=True, help="Remote host")
+    sync_remote_bidi.add_argument("--remote-port", type=int, default=22, help="Remote SSH port")
+    sync_remote_bidi.add_argument("--remote-path", default="~/.tokenade/sessions", help="Remote path")
+    sync_remote_bidi.add_argument("--local-path", default="~/.tokenade/sessions", help="Local path")
+    sync_remote_bidi.add_argument("--conflict", choices=["newest", "oldest", "local", "remote"],
+                           default="newest", help="Conflict resolution")
+    sync_remote_bidi.add_argument("--json", action="store_true", help="JSON output")
+
+    sync_remote_status = sync_remote_sub.add_parser("status", help="Show sync status")
+    sync_remote_status.add_argument("--remote-host", required=True, help="Remote host")
+    sync_remote_status.add_argument("--remote-port", type=int, default=22, help="Remote SSH port")
+    sync_remote_status.add_argument("--remote-path", default="~/.tokenade/sessions", help="Remote path")
+    sync_remote_status.add_argument("--local-path", default="~/.tokenade/sessions", help="Local path")
+    sync_remote_status.add_argument("--json", action="store_true", help="JSON output")
+
     # Recommend site/plugin/browser for a session, URL, or cookie domains.
     recommend_parser = subparsers.add_parser(
         "recommend",
@@ -2419,7 +2454,7 @@ Commands:
         "fleet", "autopsy", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",
         "session-diff", "logs", "k8s", "stealth", "deps",
-        "vault", "dashboard",
+        "vault", "dashboard", "sync-remote",
     ):
         _hide_subparser(hidden_command)
     subparsers.metavar = "{" + ",".join(
@@ -2504,6 +2539,7 @@ def main():
         "recommend": cmd_recommend,
         "vault": cmd_vault,
         "dashboard": cmd_dashboard,
+        "sync-remote": cmd_sync_remote,
     }
 
     try:
