@@ -84,6 +84,294 @@ class SyncResult:
         }
 
 
+class SyncTransport:
+    """Base class for sync transport backends."""
+    
+    def connect(self) -> bool:
+        raise NotImplementedError
+    
+    def disconnect(self) -> None:
+        raise NotImplementedError
+    
+    def upload(self, local_path: Path, remote_path: str) -> bool:
+        raise NotImplementedError
+    
+    def download(self, remote_path: str, local_path: Path) -> bool:
+        raise NotImplementedError
+    
+    def list_remote(self, path: str) -> List[str]:
+        raise NotImplementedError
+
+
+class SSHTransport(SyncTransport):
+    """SSH/SCP transport backend using paramiko."""
+    
+    def __init__(self, host: str, port: int = 22, username: str = ""):
+        self.host = host
+        self.port = port
+        self.username = username
+        self._client = None
+    
+    def connect(self) -> bool:
+        try:
+            import paramiko
+            self._client = paramiko.SSHClient()
+            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self._client.connect(
+                self.host,
+                port=self.port,
+                username=self.username,
+                look_for_keys=True,
+            )
+            return True
+        except ImportError:
+            logger.warning("paramiko not installed, SSH transport unavailable")
+            return False
+        except Exception as e:
+            logger.error(f"SSH connection failed: {e}")
+            return False
+    
+    def disconnect(self) -> None:
+        if self._client:
+            self._client.close()
+            self._client = None
+    
+    def upload(self, local_path: Path, remote_path: str) -> bool:
+        if not self._client:
+            return False
+        try:
+            sftp = self._client.open_sftp()
+            sftp.put(str(local_path), remote_path)
+            sftp.close()
+            return True
+        except Exception as e:
+            logger.error(f"SFTP upload failed: {e}")
+            return False
+    
+    def download(self, remote_path: str, local_path: Path) -> bool:
+        if not self._client:
+            return False
+        try:
+            sftp = self._client.open_sftp()
+            sftp.get(remote_path, str(local_path))
+            sftp.close()
+            return True
+        except Exception as e:
+            logger.error(f"SFTP download failed: {e}")
+            return False
+    
+    def list_remote(self, path: str) -> List[str]:
+        if not self._client:
+            return []
+        try:
+            sftp = self._client.open_sftp()
+            files = sftp.listdir(path)
+            sftp.close()
+            return files
+        except Exception as e:
+            logger.error(f"SFTP list failed: {e}")
+            return []
+
+
+class SubprocessSSHTransport(SyncTransport):
+    """SSH/SCP transport using subprocess (no paramiko dependency)."""
+    
+    def __init__(self, host: str, port: int = 22, username: str = ""):
+        self.host = host
+        self.port = port
+        self.username = username
+    
+    def connect(self) -> bool:
+        """Test SSH connection."""
+        import subprocess
+        
+        remote = self._remote_prefix()
+        cmd = ["ssh", "-p", str(self.port), "-o", "BatchMode=yes", remote, "echo ok"]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                return True
+            if "Host key verification failed" in result.stderr:
+                logger.warning("SSH host key verification failed; add host key manually")
+            return False
+        except FileNotFoundError:
+            logger.error("ssh binary not found")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.error("SSH connection timed out")
+            return False
+    
+    def disconnect(self) -> None:
+        pass
+    
+    def upload(self, local_path: Path, remote_path: str) -> bool:
+        import subprocess
+        
+        remote = self._remote_prefix()
+        cmd = [
+            "scp",
+            "-P", str(self.port),
+            "-r",
+            str(local_path),
+            f"{remote}:{remote_path}",
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode != 0:
+                logger.error(f"SCP upload failed: {result.stderr}")
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"SCP upload failed: {e}")
+            return False
+    
+    def download(self, remote_path: str, local_path: Path) -> bool:
+        import subprocess
+        
+        remote = self._remote_prefix()
+        cmd = [
+            "scp",
+            "-P", str(self.port),
+            "-r",
+            f"{remote}:{remote_path}",
+            str(local_path),
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode != 0:
+                logger.error(f"SCP download failed: {result.stderr}")
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"SCP download failed: {e}")
+            return False
+    
+    def list_remote(self, path: str) -> List[str]:
+        import subprocess
+        
+        remote = self._remote_prefix()
+        cmd = [
+            "ssh",
+            "-p", str(self.port),
+            remote,
+            f"ls {path} 2>/dev/null || echo ''",
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if not output:
+                    return []
+                return output.split("\n")
+            return []
+        except Exception as e:
+            logger.error(f"SSH list failed: {e}")
+            return []
+    
+    def mkdir_remote(self, path: str) -> bool:
+        """Create remote directory if it doesn't exist."""
+        import subprocess
+        
+        remote = self._remote_prefix()
+        cmd = [
+            "ssh",
+            "-p", str(self.port),
+            remote,
+            f"mkdir -p {path}",
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"SSH mkdir failed: {e}")
+            return False
+    
+    def _remote_prefix(self) -> str:
+        """Get remote prefix for SSH/SCP commands."""
+        if self.username:
+            return f"{self.username}@{self.host}"
+        return self.host
+
+
+class RsyncTransport(SyncTransport):
+    """rsync transport backend."""
+    
+    def __init__(self, host: str, port: int = 22, username: str = ""):
+        self.host = host
+        self.port = port
+        self.username = username
+    
+    def connect(self) -> bool:
+        return True
+    
+    def disconnect(self) -> None:
+        pass
+    
+    def upload(self, local_path: Path, remote_path: str) -> bool:
+        import subprocess
+        
+        remote = f"{self.username}@{self.host}:{remote_path}" if self.username else f"{self.host}:{remote_path}"
+        
+        cmd = [
+            "rsync",
+            "-avz",
+            "-e", f"ssh -p {self.port}",
+            str(local_path),
+            remote,
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"rsync upload failed: {e}")
+            return False
+    
+    def download(self, remote_path: str, local_path: Path) -> bool:
+        import subprocess
+        
+        remote = f"{self.username}@{self.host}:{remote_path}" if self.username else f"{self.host}:{remote_path}"
+        
+        cmd = [
+            "rsync",
+            "-avz",
+            "-e", f"ssh -p {self.port}",
+            remote,
+            str(local_path),
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"rsync download failed: {e}")
+            return False
+    
+    def list_remote(self, path: str) -> List[str]:
+        import subprocess
+        
+        remote = f"{self.username}@{self.host}:{path}" if self.username else f"{self.host}:{path}"
+        
+        cmd = [
+            "ssh",
+            "-p", str(self.port),
+            remote,
+            f"ls {path}",
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return result.stdout.strip().split("\n")
+            return []
+        except Exception as e:
+            logger.error(f"SSH list failed: {e}")
+            return []
+
+
 class SessionSyncer:
     """
     Synchronizes session files across machines.
@@ -250,6 +538,28 @@ class SessionSyncer:
             "config": self.config.to_dict(),
         }
     
+    def _get_transport(self) -> SyncTransport:
+        """Get the appropriate transport backend."""
+        host = self.config.remote_host
+        port = self.config.remote_port
+        
+        # Try paramiko first
+        try:
+            import paramiko
+            transport = SSHTransport(host, port)
+            if transport.connect():
+                return transport
+        except ImportError:
+            pass
+        
+        # Fall back to subprocess SSH
+        transport = SubprocessSSHTransport(host, port)
+        if transport.connect():
+            return transport
+        
+        # Try rsync as last resort
+        return RsyncTransport(host, port)
+    
     def _resolve_local_files(self, patterns: Optional[List[str]] = None) -> List[Path]:
         """Resolve local session files."""
         if not self._local_dir.exists():
@@ -263,8 +573,32 @@ class SessionSyncer:
         return files
     
     def _resolve_remote_files(self, patterns: Optional[List[str]] = None) -> List[Path]:
-        """Resolve remote session files (stub for now)."""
-        return []
+        """Resolve remote session files via SSH."""
+        transport = self._get_transport()
+        
+        try:
+            remote_path = os.path.expanduser(self.config.remote_path)
+            
+            # Create remote directory if it doesn't exist
+            if isinstance(transport, SubprocessSSHTransport):
+                transport.mkdir_remote(remote_path)
+            
+            # List remote files
+            remote_files = transport.list_remote(remote_path)
+            
+            # Filter for .tokenade files
+            result = []
+            for filename in remote_files:
+                if filename.endswith(".tokenade"):
+                    # Create a Path-like object for remote files
+                    result.append(Path(remote_path) / filename)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Failed to list remote files: {e}")
+            return []
+        finally:
+            transport.disconnect()
     
     def _create_manifest(self, files: List[Path]) -> Dict[str, Dict]:
         """Create manifest with file hashes."""
@@ -356,174 +690,28 @@ class SessionSyncer:
         return False
     
     def _push_file(self, file_path: Path) -> None:
-        """Push a single file to remote (stub)."""
-        logger.info(f"Would push {file_path} to {self.config.remote_host}:{self._remote_dir}")
+        """Push a single file to remote."""
+        transport = self._get_transport()
+        try:
+            remote_path = os.path.expanduser(self.config.remote_path)
+            remote_file = f"{remote_path}/{file_path.name}"
+            
+            if transport.upload(file_path, remote_file):
+                logger.info(f"Pushed {file_path.name} to {self.config.remote_host}:{remote_path}")
+            else:
+                raise Exception(f"Failed to upload {file_path.name}")
+        finally:
+            transport.disconnect()
     
     def _pull_file(self, file_path: Path) -> None:
-        """Pull a single file from remote (stub)."""
-        logger.info(f"Would pull {file_path} from {self.config.remote_host}:{self._remote_dir}")
-
-
-class SyncTransport:
-    """Base class for sync transport backends."""
-    
-    def connect(self) -> bool:
-        raise NotImplementedError
-    
-    def disconnect(self) -> None:
-        raise NotImplementedError
-    
-    def upload(self, local_path: Path, remote_path: str) -> bool:
-        raise NotImplementedError
-    
-    def download(self, remote_path: str, local_path: Path) -> bool:
-        raise NotImplementedError
-    
-    def list_remote(self, path: str) -> List[str]:
-        raise NotImplementedError
-
-
-class SSHTransport(SyncTransport):
-    """SSH/SCP transport backend."""
-    
-    def __init__(self, host: str, port: int = 22, username: str = ""):
-        self.host = host
-        self.port = port
-        self.username = username
-        self._client = None
-    
-    def connect(self) -> bool:
+        """Pull a single file from remote."""
+        transport = self._get_transport()
         try:
-            import paramiko
-            self._client = paramiko.SSHClient()
-            self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self._client.connect(
-                self.host,
-                port=self.port,
-                username=self.username,
-                look_for_keys=True,
-            )
-            return True
-        except ImportError:
-            logger.warning("paramiko not installed, SSH transport unavailable")
-            return False
-        except Exception as e:
-            logger.error(f"SSH connection failed: {e}")
-            return False
-    
-    def disconnect(self) -> None:
-        if self._client:
-            self._client.close()
-            self._client = None
-    
-    def upload(self, local_path: Path, remote_path: str) -> bool:
-        if not self._client:
-            return False
-        try:
-            sftp = self._client.open_sftp()
-            sftp.put(str(local_path), remote_path)
-            sftp.close()
-            return True
-        except Exception as e:
-            logger.error(f"SFTP upload failed: {e}")
-            return False
-    
-    def download(self, remote_path: str, local_path: Path) -> bool:
-        if not self._client:
-            return False
-        try:
-            sftp = self._client.open_sftp()
-            sftp.get(remote_path, str(local_path))
-            sftp.close()
-            return True
-        except Exception as e:
-            logger.error(f"SFTP download failed: {e}")
-            return False
-    
-    def list_remote(self, path: str) -> List[str]:
-        if not self._client:
-            return []
-        try:
-            sftp = self._client.open_sftp()
-            files = sftp.listdir(path)
-            sftp.close()
-            return files
-        except Exception as e:
-            logger.error(f"SFTP list failed: {e}")
-            return []
-
-
-class RsyncTransport(SyncTransport):
-    """rsync transport backend."""
-    
-    def __init__(self, host: str, port: int = 22, username: str = ""):
-        self.host = host
-        self.port = port
-        self.username = username
-    
-    def connect(self) -> bool:
-        return True
-    
-    def disconnect(self) -> None:
-        pass
-    
-    def upload(self, local_path: Path, remote_path: str) -> bool:
-        import subprocess
-        
-        remote = f"{self.username}@{self.host}:{remote_path}" if self.username else f"{self.host}:{remote_path}"
-        
-        cmd = [
-            "rsync",
-            "-avz",
-            "-e", f"ssh -p {self.port}",
-            str(local_path),
-            remote,
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"rsync upload failed: {e}")
-            return False
-    
-    def download(self, remote_path: str, local_path: Path) -> bool:
-        import subprocess
-        
-        remote = f"{self.username}@{self.host}:{remote_path}" if self.username else f"{self.host}:{remote_path}"
-        
-        cmd = [
-            "rsync",
-            "-avz",
-            "-e", f"ssh -p {self.port}",
-            remote,
-            str(local_path),
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            return result.returncode == 0
-        except Exception as e:
-            logger.error(f"rsync download failed: {e}")
-            return False
-    
-    def list_remote(self, path: str) -> List[str]:
-        import subprocess
-        
-        remote = f"{self.username}@{self.host}:{path}" if self.username else f"{self.host}:{path}"
-        
-        cmd = [
-            "ssh",
-            "-p", str(self.port),
-            remote,
-            f"ls {path}",
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                return result.stdout.strip().split("\n")
-            return []
-        except Exception as e:
-            logger.error(f"SSH list failed: {e}")
-            return []
+            local_file = self._local_dir / file_path.name
+            
+            if transport.download(str(file_path), local_file):
+                logger.info(f"Pulled {file_path.name} from {self.config.remote_host}")
+            else:
+                raise Exception(f"Failed to download {file_path.name}")
+        finally:
+            transport.disconnect()

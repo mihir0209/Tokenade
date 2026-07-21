@@ -48,6 +48,9 @@ VISIBLE_COMMANDS = (
     "recommend",
     "proxy",
     "gateway",
+    "dashboard",
+    "vault",
+    "sync-remote",
 )
 
 
