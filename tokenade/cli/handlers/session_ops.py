@@ -1246,5 +1246,129 @@ def _clone_list_profiles(cloner, args):
 
 
 # ---------------------------------------------------------------------------
+# URL Shortener share commands
+# ---------------------------------------------------------------------------
+
+def cmd_share_url(args):
+    """Share sessions via URL shortener with password protection."""
+    from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
+
+    if not hasattr(args, "share_action"):
+        print("Usage: tokenade share-url <action> [options]", file=sys.stderr)
+        sys.exit(1)
+
+    config = URLShortenerConfig(
+        backend=getattr(args, "backend", None) or "local",
+        api_key=getattr(args, "api_key", None),
+        custom_domain=getattr(args, "domain", None),
+        expiry_hours=getattr(args, "expiry", None) or 24,
+        require_password=True,
+        password_min_length=getattr(args, "password_min_length", None) or 8,
+        max_uses=getattr(args, "max_uses", None) or 0,
+    )
+
+    shortener = SessionURLShortener(config)
+
+    if args.share_action == "create":
+        if not getattr(args, "password", None):
+            print("Error: --password is required for URL shortener sharing", file=sys.stderr)
+            sys.exit(1)
+
+        result = shortener.create_share(
+            session_file=args.session,
+            password=args.password,
+            expiry_hours=getattr(args, "expiry", None),
+            max_uses=getattr(args, "max_uses", None),
+            include_request_json=getattr(args, "include_request", False),
+        )
+
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get("success"):
+                print("\n" + "=" * 60)
+                print("TOKENADE - URL Shortener Share")
+                print("=" * 60)
+                print(f"\n🔗 Share URL: {result['short_url']}")
+                print(f"🆔 Share ID: {result['short_id']}")
+                print(f"🔒 Requires Password: Yes")
+                if result.get("expires_at"):
+                    print(f"⏰ Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(result['expires_at']))}")
+                print("\n⚠️  IMPORTANT: Send this URL to the receiver.")
+                print("   They will be asked for the password to decrypt the session.")
+                print(f"\n{'=' * 60}\n")
+            else:
+                print(f"Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+                sys.exit(1)
+
+    elif args.share_action == "retrieve":
+        if not getattr(args, "password", None):
+            print("Error: --password is required to retrieve session", file=sys.stderr)
+            sys.exit(1)
+
+        result = shortener.retrieve_session(
+            short_url=args.share_url,
+            password=args.password,
+            output_path=getattr(args, "output", None),
+        )
+
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get("success"):
+                print("\n" + "=" * 60)
+                print("TOKENADE - Session Retrieved")
+                print("=" * 60)
+                if getattr(args, "output", None):
+                    print(f"\n✅ Session saved to: {args.output}")
+                remaining = result.get("remaining_uses")
+                if remaining is not None:
+                    print(f"📊 Remaining uses: {remaining}")
+                print(f"\n{'=' * 60}\n")
+            else:
+                print(f"Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+                sys.exit(1)
+
+    elif args.share_action == "revoke":
+        success = shortener.revoke(args.share_id)
+        if getattr(args, "json", False):
+            print(json.dumps({"success": success}, indent=2))
+        else:
+            if success:
+                print(f"✅ Revoked share: {args.share_id}")
+            else:
+                print(f"❌ Share not found: {args.share_id}")
+
+    elif args.share_action == "list":
+        shares = shortener.list_shares()
+        if getattr(args, "json", False):
+            print(json.dumps(shares, indent=2))
+        else:
+            if not shares:
+                print("No active shares")
+            else:
+                print("\n" + "=" * 60)
+                print("Active URL Shortener Shares")
+                print("=" * 60)
+                for share in shares:
+                    print(f"\n🆔 {share['short_id']}")
+                    print(f"   URL: {share['short_url']}")
+                    print(f"   Expires: {share['expires_at']}")
+                    print(f"   Uses: {share['current_uses']}/{share['max_uses']}")
+                print(f"\n{'=' * 60}\n")
+
+    elif args.share_action == "cleanup":
+        count = shortener.cleanup_expired()
+        if getattr(args, "json", False):
+            print(json.dumps({"cleaned": count}, indent=2))
+        else:
+            print(f"✅ Cleaned up {count} expired shares")
+
+    else:
+        print(f"Unknown share-url action: {args.share_action}", file=sys.stderr)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Container management commands
 # ---------------------------------------------------------------------------

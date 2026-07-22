@@ -49,6 +49,7 @@ from tokenade.cli.handlers.session_ops import (  # noqa: F401
     cmd_logs,
     cmd_mobile_import,
     cmd_clone_profile,
+    cmd_share_url,
     _resolve_upstream_proxy,
     _run_post_refresh_plugins,
 )

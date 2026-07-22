@@ -19,7 +19,7 @@ from tokenade.cli.management import (
     cmd_daemon, cmd_versions, cmd_rollback, cmd_session_diff,
     cmd_logs, cmd_health_report, cmd_mobile_import, cmd_clone_profile, cmd_import,
     cmd_container, cmd_k8s, cmd_fleet, cmd_autopsy, cmd_cloak, cmd_tui,
-    cmd_vault, cmd_dashboard,
+    cmd_vault, cmd_dashboard, cmd_share_url,
 )
 from tokenade.cli.sync_remote import cmd_sync_remote
 from tokenade.cli.advanced import (
@@ -1685,6 +1685,38 @@ Commands:
     unshare_parser.add_argument("session_id", help="Session ID to revoke")
     unshare_parser.add_argument("--list", action="store_true", help="List all active shares")
 
+    # Share URL (URL shortener with password protection)
+    share_url_parser = subparsers.add_parser("share-url", help="Share sessions via URL shortener with password protection")
+    share_url_subparsers = share_url_parser.add_subparsers(dest="share_action")
+
+    share_url_create = share_url_subparsers.add_parser("create", help="Create password-protected share link")
+    share_url_create.add_argument("session", help="Session file to share")
+    share_url_create.add_argument("--password", required=True, help="Password for encryption (required)")
+    share_url_create.add_argument("--expiry", type=int, default=24, help="Expiry in hours (default: 24)")
+    share_url_create.add_argument("--max-uses", type=int, default=0, help="Max uses (0=unlimited)")
+    share_url_create.add_argument("--backend", choices=["local", "bitly", "tinyurl"], default="local", help="URL shortener backend")
+    share_url_create.add_argument("--api-key", help="API key for URL shortener (for bitly)")
+    share_url_create.add_argument("--domain", help="Custom domain for shortener")
+    share_url_create.add_argument("--password-min-length", type=int, default=8, help="Minimum password length")
+    share_url_create.add_argument("--include-request", action="store_true", help="Include request.json in session")
+    share_url_create.add_argument("--json", action="store_true", help="JSON output")
+
+    share_url_retrieve = share_url_subparsers.add_parser("retrieve", help="Retrieve session with password")
+    share_url_retrieve.add_argument("share_url", help="Share URL or share ID")
+    share_url_retrieve.add_argument("--password", required=True, help="Password for decryption (required)")
+    share_url_retrieve.add_argument("--output", help="Output file path")
+    share_url_retrieve.add_argument("--json", action="store_true", help="JSON output")
+
+    share_url_revoke = share_url_subparsers.add_parser("revoke", help="Revoke a share link")
+    share_url_revoke.add_argument("share_id", help="Share ID to revoke")
+    share_url_revoke.add_argument("--json", action="store_true", help="JSON output")
+
+    share_url_list = share_url_subparsers.add_parser("list", help="List active share links")
+    share_url_list.add_argument("--json", action="store_true", help="JSON output")
+
+    share_url_cleanup = share_url_subparsers.add_parser("cleanup", help="Cleanup expired share links")
+    share_url_cleanup.add_argument("--json", action="store_true", help="JSON output")
+
     # Import shared session
     import_parser = subparsers.add_parser("import", help="Import a shared session from URL")
     import_parser.add_argument("url", help="tokenade://share/ URL")
@@ -2521,6 +2553,7 @@ def main():
         "sessions": cmd_sessions,
         "share": cmd_share,
         "unshare": cmd_unshare,
+        "share-url": cmd_share_url,
         "import": cmd_import,
         "sync": cmd_sync,
         "monitor": cmd_monitor,

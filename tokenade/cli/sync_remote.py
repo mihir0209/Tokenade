@@ -18,7 +18,7 @@ def cmd_sync_remote(args):
         remote_port=args.remote_port or 22,
         remote_path=args.remote_path or "~/.tokenade/sessions",
         local_path=args.local_path or "~/.tokenade/sessions",
-        conflict_resolution=args.conflict or "newest",
+        conflict_resolution=getattr(args, 'conflict', None) or "newest",
     )
     
     syncer = SessionSyncer(config)
