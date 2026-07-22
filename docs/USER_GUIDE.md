@@ -12,10 +12,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.62
+# tokenade 1.1.70
 ```
 
-This guide was verified against the published PyPI package `tokenade==1.1.62`, not an editable source checkout.
+This guide was verified against the published PyPI package `tokenade==1.1.70`, not an editable source checkout.
 
 ## Quick Start
 
@@ -376,6 +376,169 @@ CLOAKBROWSER STATUS
   Binary path:       /home/user/.cloakbrowser/chromium-146.0.7680.177.5/chrome
 ============================================================
 ```
+
+### `tokenade dashboard`
+
+Start a web-based monitoring dashboard for sessions.
+
+```bash
+# Start dashboard server
+tokenade dashboard start --port 8080
+
+# Start with authentication
+tokenade dashboard start --port 8080 --require-auth --username admin --password secret
+
+# Start with HTTPS
+tokenade dashboard start --port 8443 --ssl-certfile cert.pem --ssl-keyfile key.pem
+
+# Check dashboard status
+tokenade dashboard status
+
+# List sessions via API
+tokenade dashboard sessions
+```
+
+The dashboard provides:
+- Real-time session health monitoring
+- Session management (view, validate, delete)
+- Auto-refresh UI
+- REST API for integration
+- Authentication and HTTPS support
+
+### `tokenade vault`
+
+Secure encrypted storage for sessions with key rotation.
+
+```bash
+# Store a session
+tokenade vault store /path/to/session.tokenade --name "twitter-fresh"
+
+# Retrieve a session
+tokenade vault retrieve "twitter-fresh" --output retrieved.tokenade
+
+# List stored sessions
+tokenade vault list
+
+# Delete a session
+tokenade vault delete "twitter-fresh"
+
+# Rotate encryption key
+tokenade vault rotate-key
+
+# Backup vault
+tokenade vault backup --output vault-backup.tar.gz
+
+# Restore vault
+tokenade vault restore --input vault-backup.tar.gz
+```
+
+Sessions are encrypted with AES-256-GCM. The vault supports key rotation without data loss.
+
+### `tokenade sync-remote`
+
+Sync sessions to/from a remote machine via SSH/SCP.
+
+```bash
+# Check sync status
+tokenade sync-remote status --remote-host user@remote --remote-path ~/.tokenade/sessions
+
+# Push sessions to remote
+tokenade sync-remote push --remote-host user@remote --remote-path ~/.tokenade/sessions
+
+# Pull sessions from remote
+tokenade sync-remote pull --remote-host user@remote --remote-path ~/.tokenade/sessions
+
+# Bidirectional sync
+tokenade sync-remote bidirectional --remote-host user@remote --remote-path ~/.tokenade/sessions
+
+# With conflict resolution
+tokenade sync-remote push --remote-host user@remote --remote-path ~/.tokenade/sessions --conflict remote-wins
+```
+
+Conflict resolution strategies:
+- `local-wins`: Local version takes precedence
+- `remote-wins`: Remote version takes precedence
+- `newer-wins`: Most recently modified version wins
+- `manual`: Skip conflicts for manual resolution
+
+### `tokenade share-url`
+
+Create password-protected share links for sessions.
+
+```bash
+# Create a password-protected share link
+tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!"
+
+# Create with expiry
+tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!" --expiry-hours 24
+
+# Retrieve a shared session
+tokenade share-url retrieve <share_id> --password "MySecurePassword123!" --output session.tokenade
+
+# List active shares
+tokenade share-url list
+
+# Revoke a share
+tokenade share-url revoke <share_id>
+
+# Cleanup expired shares
+tokenade share-url cleanup
+```
+
+Features:
+- Password-protected encrypted sharing
+- URL shortener integration (local, Bitly, TinyURL)
+- Automatic expiration
+- Use limits
+- PBKDF2 + AES-256-GCM encryption
+
+### Enterprise Features
+
+Tokenade includes enterprise-grade security and compliance features.
+
+#### RBAC (Role-Based Access Control)
+
+```python
+from tokenade.core.enterprise.auth import RBACManager, Role
+
+# Create roles
+rbac = RBACManager()
+rbac.create_role("admin", permissions=["read", "write", "delete", "manage_users"])
+rbac.create_role("user", permissions=["read", "write"])
+rbac.create_role("viewer", permissions=["read"])
+
+# Assign roles
+rbac.assign_role("alice", "admin")
+rbac.assign_role("bob", "user")
+```
+
+#### Encrypted Audit Logging
+
+```python
+from tokenade.core.enterprise.encrypted_audit import EncryptedAuditLogger
+
+audit = EncryptedAuditLogger()
+
+# Log an event
+audit.log(
+    user_id="alice",
+    action="export",
+    resource="session",
+    resource_id="twitter-fresh",
+    details={"browser": "firefox", "cookies": 113},
+    success=True,
+)
+
+# Query logs
+entries = audit.query(user_id="alice", action="export")
+for entry in entries:
+    print(f"  {entry['timestamp']}: {entry['action']} on {entry['resource']}")
+
+# Rotate encryption key
+audit.rotate_key()
+```
+
+Audit logs are encrypted with AES-256-GCM and support key rotation.
 
 ### `tokenade launch`
 

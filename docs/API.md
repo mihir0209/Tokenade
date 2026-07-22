@@ -507,6 +507,473 @@ Run a one-time synchronization of all configured sync targets.
 
 ---
 
+## Dashboard API Endpoints
+
+Base URL: `http://127.0.0.1:8080`
+
+The Dashboard provides a web UI for session monitoring with authentication and HTTPS support.
+
+### List Sessions
+
+```
+GET /api/sessions
+```
+
+Returns all sessions.
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "name": "twitter-fresh",
+    "path": "/path/to/twitter.tokenade",
+    "size": 29191,
+    "modified": 1784671233.761121,
+    "status": "healthy"
+  }
+]
+```
+
+### Health Status
+
+```
+GET /api/health
+```
+
+Returns health status.
+
+**Response** `200 OK`:
+
+```json
+{
+  "status": "healthy",
+  "healthy": 5,
+  "total": 5,
+  "timestamp": 1784671651.0
+}
+```
+
+### Statistics
+
+```
+GET /api/stats
+```
+
+Returns session statistics.
+
+**Response** `200 OK`:
+
+```json
+{
+  "total": 5,
+  "healthy": 4,
+  "expired": 1,
+  "unknown": 0
+}
+```
+
+### Authentication
+
+```
+POST /api/auth/login
+```
+
+Authenticate user.
+
+**Request**:
+```json
+{
+  "username": "admin",
+  "password": "secret"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "token": "session-token"
+}
+```
+
+```
+POST /api/auth/logout
+```
+
+Logout user.
+
+---
+
+## Vault API Endpoints
+
+Base URL: `http://127.0.0.1:9224`
+
+The Vault provides encrypted storage for sessions with key rotation.
+
+### Store Session
+
+```
+POST /api/vault/store
+```
+
+Store a session in the vault.
+
+**Request**:
+```json
+{
+  "session_file": "/path/to/session.tokenade",
+  "name": "twitter-fresh"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "name": "twitter-fresh"
+}
+```
+
+### Retrieve Session
+
+```
+POST /api/vault/retrieve
+```
+
+Retrieve a session from the vault.
+
+**Request**:
+```json
+{
+  "name": "twitter-fresh",
+  "output_path": "/path/to/output.tokenade"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "output_path": "/path/to/output.tokenade"
+}
+```
+
+### List Stored Sessions
+
+```
+GET /api/vault/list
+```
+
+Returns list of stored sessions.
+
+**Response** `200 OK`:
+```json
+{
+  "sessions": [
+    {"name": "twitter-fresh", "stored_at": "2026-07-22T10:30:00Z"},
+    {"name": "github-session", "stored_at": "2026-07-21T15:45:00Z"}
+  ]
+}
+```
+
+### Delete Session
+
+```
+POST /api/vault/delete
+```
+
+Delete a session from the vault.
+
+**Request**:
+```json
+{
+  "name": "twitter-fresh"
+}
+```
+
+### Rotate Key
+
+```
+POST /api/vault/rotate-key
+```
+
+Rotate the encryption key.
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "rotated_at": "2026-07-22T10:30:00Z"
+}
+```
+
+---
+
+## Sync-Remote API Endpoints
+
+Base URL: `http://127.0.0.1:9224`
+
+The Sync-Remote feature syncs sessions to/from a remote machine via SSH/SCP.
+
+### Sync Status
+
+```
+GET /api/sync/status
+```
+
+Returns sync status.
+
+**Response** `200 OK`:
+```json
+{
+  "remote_host": "user@remote",
+  "remote_path": "~/.tokenade/sessions",
+  "local_path": "~/.tokenade/sessions",
+  "last_sync": "2026-07-22T10:30:00Z",
+  "status": "synced"
+}
+```
+
+### Trigger Push
+
+```
+POST /api/sync/push
+```
+
+Push sessions to remote.
+
+**Request**:
+```json
+{
+  "remote_host": "user@remote",
+  "remote_path": "~/.tokenade/sessions",
+  "conflict": "remote-wins"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "pushed": 5,
+  "skipped": 0,
+  "conflicts": 0
+}
+```
+
+### Trigger Pull
+
+```
+POST /api/sync/pull
+```
+
+Pull sessions from remote.
+
+### Bidirectional Sync
+
+```
+POST /api/sync/bidirectional
+```
+
+Perform bidirectional sync.
+
+---
+
+## Share-URL API Endpoints
+
+Base URL: `http://127.0.0.1:9224`
+
+The Share-URL feature creates password-protected share links for sessions.
+
+### Create Share
+
+```
+POST /api/share-url/create
+```
+
+Create a password-protected share link.
+
+**Request**:
+```json
+{
+  "session_file": "/path/to/session.tokenade",
+  "password": "MySecurePassword123!",
+  "expiry_hours": 24,
+  "max_uses": 5
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "share_id": "abc123",
+  "short_url": "tokenade://share/abc123",
+  "expires_at": "2026-07-23T10:30:00Z"
+}
+```
+
+### Retrieve Session
+
+```
+POST /api/share-url/retrieve
+```
+
+Retrieve a shared session.
+
+**Request**:
+```json
+{
+  "share_id": "abc123",
+  "password": "MySecurePassword123!",
+  "output_path": "/path/to/output.tokenade"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "output_path": "/path/to/output.tokenade"
+}
+```
+
+### List Shares
+
+```
+GET /api/share-url/list
+```
+
+Returns list of active shares.
+
+**Response** `200 OK`:
+```json
+{
+  "shares": [
+    {
+      "share_id": "abc123",
+      "short_url": "tokenade://share/abc123",
+      "created_at": "2026-07-22T10:30:00Z",
+      "expires_at": "2026-07-23T10:30:00Z",
+      "uses": 2,
+      "max_uses": 5,
+      "is_valid": true
+    }
+  ]
+}
+```
+
+### Revoke Share
+
+```
+POST /api/share-url/revoke
+```
+
+Revoke a share.
+
+**Request**:
+```json
+{
+  "share_id": "abc123"
+}
+```
+
+### Cleanup Expired
+
+```
+POST /api/share-url/cleanup
+```
+
+Cleanup expired shares.
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "cleaned": 3
+}
+```
+
+---
+
+## Enterprise API Endpoints
+
+Base URL: `http://127.0.0.1:9224`
+
+Enterprise features include RBAC and encrypted audit logging.
+
+### Audit Log Query
+
+```
+GET /api/audit/query
+```
+
+Query audit logs.
+
+**Query Parameters**:
+- `user_id`: Filter by user ID
+- `action`: Filter by action
+- `resource`: Filter by resource type
+- `start_time`: Start timestamp
+- `end_time`: End timestamp
+
+**Response** `200 OK`:
+```json
+{
+  "entries": [
+    {
+      "timestamp": "2026-07-22T10:30:00Z",
+      "user_id": "alice",
+      "action": "export",
+      "resource": "session",
+      "resource_id": "twitter-fresh",
+      "details": {"browser": "firefox", "cookies": 113},
+      "success": true
+    }
+  ],
+  "total": 1
+}
+```
+
+### RBAC Role Management
+
+```
+GET /api/rbac/roles
+```
+
+List roles.
+
+```
+POST /api/rbac/roles
+```
+
+Create a role.
+
+**Request**:
+```json
+{
+  "name": "admin",
+  "permissions": ["read", "write", "delete", "manage_users"]
+}
+```
+
+```
+POST /api/rbac/roles/assign
+```
+
+Assign a role to a user.
+
+**Request**:
+```json
+{
+  "user_id": "alice",
+  "role": "admin"
+}
+```
+
+---
+
 ## CDP Proxy Endpoints
 
 Base URL: `http://127.0.0.1:9222`
