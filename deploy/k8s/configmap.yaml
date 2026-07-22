@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tokenade-config
+  namespace: tokenade
+  labels:
+    app.kubernetes.io/name: tokenade
+data:
+  TOKENADE_AUTOMATION_BROWSER: "cloak"
+  TOKENADE_DEFAULT_BROWSER: "firefox"
+  TOKENADE_LOG_LEVEL: "info"
+  TOKENADE_SESSIONS_DIR: "/data/sessions"
+  TOKENADE_VAULT_DIR: "/data/vault"
+  TOKENADE_ANALYTICS_DIR: "/data/analytics"

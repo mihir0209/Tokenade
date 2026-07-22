@@ -795,12 +795,93 @@ def run_tui(mode: str = "full"):
     # ── Sessions View ─────────────────────────────────────────
 
     class SessionsView(Vertical):
-        """Session management view."""
+        """Session management view with health scores and actions."""
 
         def compose(self) -> ComposeResult:
             yield Static("📁 Sessions", classes="card-title")
             yield Rule()
             yield Container(id="sessions-list")
+
+    # ── Vault View ────────────────────────────────────────────
+
+    class VaultView(Vertical):
+        """Encrypted session vault management view."""
+
+        def compose(self) -> ComposeResult:
+            yield Static("🔒 Session Vault", classes="card-title")
+            yield Rule()
+            yield Static("  Encrypted storage with AES-256-GCM key rotation", classes="card-meta")
+            yield Horizontal(
+                Button("Refresh", variant="primary", compact=True, id="vault-refresh"),
+                Button("Rotate Key", variant="warning", compact=True, id="vault-rotate-key"),
+                Button("Backup", variant="default", compact=True, id="vault-backup"),
+            )
+            yield Rule()
+            yield Container(id="vault-list")
+
+    # ── Sync View ─────────────────────────────────────────────
+
+    class SyncView(Vertical):
+        """Cross-machine session sync view."""
+
+        def compose(self) -> ComposeResult:
+            yield Static("🔄 Session Sync (Remote)", classes="card-title")
+            yield Rule()
+            yield Static("  Sync sessions via SSH/SCP with connection pooling", classes="card-meta")
+            yield Horizontal(
+                Input(placeholder="user@remote-host", id="sync-host-input"),
+                Input(placeholder="~/.tokenade/sessions", id="sync-path-input"),
+            )
+            yield Horizontal(
+                Button("Status", variant="primary", compact=True, id="sync-status"),
+                Button("Push", variant="success", compact=True, id="sync-push"),
+                Button("Pull", variant="warning", compact=True, id="sync-pull"),
+                Button("Bidirectional", variant="default", compact=True, id="sync-bidir"),
+            )
+            yield Rule()
+            yield Container(id="sync-result")
+
+    # ── Share View ────────────────────────────────────────────
+
+    class ShareView(Vertical):
+        """Session sharing with password-protected URLs."""
+
+        def compose(self) -> ComposeResult:
+            yield Static("🔗 Session Sharing (URL Shortener)", classes="card-title")
+            yield Rule()
+            yield Static("  Create password-protected share links with expiry", classes="card-meta")
+            yield Horizontal(
+                Input(placeholder="/path/to/session.tokenade", id="share-session-input"),
+                Input(placeholder="Password", password=True, id="share-password-input"),
+            )
+            yield Horizontal(
+                Input(placeholder="Expiry hours (24)", id="share-expiry-input"),
+                Input(placeholder="Max uses (0=unlimited)", id="share-max-uses-input"),
+            )
+            yield Horizontal(
+                Button("Create Share", variant="success", compact=True, id="share-create"),
+                Button("List Shares", variant="primary", compact=True, id="share-list"),
+                Button("Cleanup Expired", variant="warning", compact=True, id="share-cleanup"),
+            )
+            yield Rule()
+            yield Container(id="share-result")
+
+    # ── Analytics View ────────────────────────────────────────
+
+    class AnalyticsView(Vertical):
+        """Session usage analytics view."""
+
+        def compose(self) -> ComposeResult:
+            yield Static("📊 Session Analytics", classes="card-title")
+            yield Rule()
+            yield Static("  Usage patterns, health trends, and insights", classes="card-meta")
+            yield Horizontal(
+                Button("Generate Report", variant="primary", compact=True, id="analytics-report"),
+                Button("Export CSV", variant="default", compact=True, id="analytics-csv"),
+                Button("Cleanup Old Events", variant="warning", compact=True, id="analytics-cleanup"),
+            )
+            yield Rule()
+            yield Container(id="analytics-result")
 
     # ── Settings View ─────────────────────────────────────────
 
@@ -904,7 +985,11 @@ def run_tui(mode: str = "full"):
             Binding("1", "show_marketplace", "Marketplace"),
             Binding("2", "show_installed", "Installed"),
             Binding("3", "show_sessions", "Sessions"),
-            Binding("4", "show_settings", "Settings"),
+            Binding("4", "show_vault", "Vault"),
+            Binding("5", "show_sync", "Sync"),
+            Binding("6", "show_share", "Share"),
+            Binding("7", "show_analytics", "Analytics"),
+            Binding("8", "show_settings", "Settings"),
             Binding("q", "quit", "Quit"),
             Binding("slash", "focus_search", "Search", show=False),
             Binding("question_mark", "help", "Help"),
@@ -927,11 +1012,19 @@ def run_tui(mode: str = "full"):
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
-            with TabbedContent("Marketplace", "Installed", "Registries", "Sessions", "Settings", id="main-tabs"):
+            with TabbedContent(
+                "Marketplace", "Installed", "Registries", "Sessions",
+                "Vault", "Sync", "Share", "Analytics", "Settings",
+                id="main-tabs",
+            ):
                 yield TabPane("Marketplace", MarketplaceView(), id="tab-marketplace")
                 yield TabPane("Installed", InstalledView(), id="tab-installed")
                 yield TabPane("Registries", RegistriesView(), id="tab-registries")
                 yield TabPane("Sessions", SessionsView(), id="tab-sessions")
+                yield TabPane("Vault", VaultView(), id="tab-vault")
+                yield TabPane("Sync", SyncView(), id="tab-sync")
+                yield TabPane("Share", ShareView(), id="tab-share")
+                yield TabPane("Analytics", AnalyticsView(), id="tab-analytics")
                 yield TabPane("Settings", SettingsView(), id="tab-settings")
             yield Footer()
 
@@ -1318,6 +1411,32 @@ def run_tui(mode: str = "full"):
             elif btn_id.startswith("delete-session-"):
                 name = btn_id.removeprefix("delete-session-")
                 self._delete_session(name)
+            elif btn_id == "vault-refresh":
+                self._vault_refresh()
+            elif btn_id == "vault-rotate-key":
+                self._vault_rotate_key()
+            elif btn_id == "vault-backup":
+                self._vault_backup()
+            elif btn_id == "sync-status":
+                self._sync_status()
+            elif btn_id == "sync-push":
+                self._sync_push()
+            elif btn_id == "sync-pull":
+                self._sync_pull()
+            elif btn_id == "sync-bidir":
+                self._sync_bidirectional()
+            elif btn_id == "share-create":
+                self._share_create()
+            elif btn_id == "share-list":
+                self._share_list()
+            elif btn_id == "share-cleanup":
+                self._share_cleanup()
+            elif btn_id == "analytics-report":
+                self._analytics_report()
+            elif btn_id == "analytics-csv":
+                self._analytics_export_csv()
+            elif btn_id == "analytics-cleanup":
+                self._analytics_cleanup()
 
         # ── Plugin action handlers (Phase 10) ──────────────────
 
@@ -1603,6 +1722,18 @@ def run_tui(mode: str = "full"):
         def action_show_settings(self):
             self.query_one("#main-tabs").active = "tab-settings"
 
+        def action_show_vault(self):
+            self.query_one("#main-tabs").active = "tab-vault"
+
+        def action_show_sync(self):
+            self.query_one("#main-tabs").active = "tab-sync"
+
+        def action_show_share(self):
+            self.query_one("#main-tabs").active = "tab-share"
+
+        def action_show_analytics(self):
+            self.query_one("#main-tabs").active = "tab-analytics"
+
         def action_focus_search(self):
             try:
                 self.query_one("#search-input", Input).focus()
@@ -1611,7 +1742,7 @@ def run_tui(mode: str = "full"):
 
         def action_help(self):
             self.notify(
-                "1-4: tabs  /: search  j/k: nav  "
+                "1-8: tabs  /: search  j/k: nav  "
                 "Enter: details  i: install  u: uninstall  "
                 "r: rate  q: quit",
                 timeout=5,
@@ -1692,6 +1823,259 @@ def run_tui(mode: str = "full"):
             plugin = self._get_focused_plugin()
             if plugin:
                 self.push_screen(RateScreen(plugin))
+
+        # ── Vault handlers ─────────────────────────────────────
+
+        def _vault_refresh(self):
+            """Refresh vault contents display."""
+            try:
+                container = self.query_one("#vault-list", Container)
+                container.remove_children()
+                from tokenade.core.vault.vault import SessionVault
+                vault = SessionVault()
+                sessions = vault.list_sessions()
+                if not sessions:
+                    container.mount(Static("  Vault is empty.", classes="session-card"))
+                    container.mount(Static("  Store a session: tokenade vault store <file> --name <name>", classes="session-card"))
+                    return
+                for name, meta in sessions.items():
+                    created = meta.get("created_at", meta.get("created", "?"))
+                    container.mount(Static(
+                        f"  {name}  •  created: {created}",
+                        classes="session-card",
+                    ))
+                    container.mount(Horizontal(
+                        Button("Retrieve", variant="primary", compact=True, id=f"vault-retrieve-{name}"),
+                        Button("Delete", variant="error", compact=True, id=f"vault-delete-{name}"),
+                    ))
+                self.notify(f"Loaded {len(sessions)} vault sessions", timeout=3)
+            except Exception as e:
+                self.notify(f"Vault refresh error: {e}", severity="error")
+
+        def _vault_rotate_key(self):
+            """Rotate vault encryption key."""
+            try:
+                from tokenade.core.vault.vault import SessionVault
+                vault = SessionVault()
+                vault.rotate_key()
+                self.notify("Vault encryption key rotated", timeout=3)
+            except Exception as e:
+                self.notify(f"Key rotation error: {e}", severity="error")
+
+        def _vault_backup(self):
+            """Backup vault."""
+            try:
+                from tokenade.core.vault.vault import SessionVault
+                vault = SessionVault()
+                backup_path = str(Path.home() / ".tokenade" / "vault_backup.tar.gz")
+                vault.backup(backup_path)
+                self.notify(f"Vault backed up to {backup_path}", timeout=3)
+            except Exception as e:
+                self.notify(f"Backup error: {e}", severity="error")
+
+        # ── Sync handlers ──────────────────────────────────────
+
+        def _sync_status(self):
+            """Show sync status."""
+            try:
+                host = self.query_one("#sync-host-input", Input).value.strip()
+                path = self.query_one("#sync-path-input", Input).value.strip()
+                if not host:
+                    self.notify("Enter a remote host", severity="warning")
+                    return
+                from tokenade.core.sync.syncer import SessionSyncer, SyncConfig
+                config = SyncConfig(
+                    remote_host=host,
+                    remote_path=path or "~/.tokenade/sessions",
+                    local_path=str(Path.home() / ".tokenade" / "sessions"),
+                )
+                syncer = SessionSyncer(config)
+                status = syncer.status()
+                container = self.query_one("#sync-result", Container)
+                container.remove_children()
+                container.mount(Static(f"  Remote: {host}", classes="session-card"))
+                container.mount(Static(f"  Remote files: {status.remote_files}", classes="session-card"))
+                container.mount(Static(f"  Local files: {status.local_files}", classes="session-card"))
+                container.mount(Static(f"  Pending push: {status.pending_push}", classes="session-card"))
+                container.mount(Static(f"  Pending pull: {status.pending_pull}", classes="session-card"))
+                self.notify("Sync status loaded", timeout=3)
+            except Exception as e:
+                self.notify(f"Sync status error: {e}", severity="error")
+
+        def _sync_push(self):
+            """Push sessions to remote."""
+            try:
+                host = self.query_one("#sync-host-input", Input).value.strip()
+                path = self.query_one("#sync-path-input", Input).value.strip()
+                if not host:
+                    self.notify("Enter a remote host", severity="warning")
+                    return
+                from tokenade.core.sync.syncer import SessionSyncer, SyncConfig
+                config = SyncConfig(
+                    remote_host=host,
+                    remote_path=path or "~/.tokenade/sessions",
+                    local_path=str(Path.home() / ".tokenade" / "sessions"),
+                )
+                syncer = SessionSyncer(config)
+                result = syncer.push()
+                self.notify(f"Push complete: {result.pushed} pushed, {result.skipped} skipped", timeout=3)
+            except Exception as e:
+                self.notify(f"Push error: {e}", severity="error")
+
+        def _sync_pull(self):
+            """Pull sessions from remote."""
+            try:
+                host = self.query_one("#sync-host-input", Input).value.strip()
+                path = self.query_one("#sync-path-input", Input).value.strip()
+                if not host:
+                    self.notify("Enter a remote host", severity="warning")
+                    return
+                from tokenade.core.sync.syncer import SessionSyncer, SyncConfig
+                config = SyncConfig(
+                    remote_host=host,
+                    remote_path=path or "~/.tokenade/sessions",
+                    local_path=str(Path.home() / ".tokenade" / "sessions"),
+                )
+                syncer = SessionSyncer(config)
+                result = syncer.pull()
+                self.notify(f"Pull complete: {result.pulled} pulled, {result.skipped} skipped", timeout=3)
+            except Exception as e:
+                self.notify(f"Pull error: {e}", severity="error")
+
+        def _sync_bidirectional(self):
+            """Bidirectional sync."""
+            try:
+                host = self.query_one("#sync-host-input", Input).value.strip()
+                path = self.query_one("#sync-path-input", Input).value.strip()
+                if not host:
+                    self.notify("Enter a remote host", severity="warning")
+                    return
+                from tokenade.core.sync.syncer import SessionSyncer, SyncConfig
+                config = SyncConfig(
+                    remote_host=host,
+                    remote_path=path or "~/.tokenade/sessions",
+                    local_path=str(Path.home() / ".tokenade" / "sessions"),
+                )
+                syncer = SessionSyncer(config)
+                result = syncer.sync("bidirectional")
+                self.notify(f"Sync complete: {result.pushed} pushed, {result.pulled} pulled", timeout=3)
+            except Exception as e:
+                self.notify(f"Sync error: {e}", severity="error")
+
+        # ── Share handlers ─────────────────────────────────────
+
+        def _share_create(self):
+            """Create a share URL."""
+            try:
+                session = self.query_one("#share-session-input", Input).value.strip()
+                password = self.query_one("#share-password-input", Input).value.strip()
+                expiry = self.query_one("#share-expiry-input", Input).value.strip()
+                max_uses = self.query_one("#share-max-uses-input", Input).value.strip()
+                if not session or not password:
+                    self.notify("Session and password are required", severity="warning")
+                    return
+                from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
+                config = URLShortenerConfig(
+                    require_password=True,
+                    password_min_length=8,
+                )
+                shortener = SessionURLShortener(config)
+                result = shortener.create_share(
+                    session_file=session,
+                    password=password,
+                    expiry_hours=int(expiry) if expiry else 24,
+                    max_uses=int(max_uses) if max_uses else 0,
+                )
+                container = self.query_one("#share-result", Container)
+                container.remove_children()
+                container.mount(Static(f"  Share URL: {result['short_url']}", classes="session-card"))
+                container.mount(Static(f"  Share ID: {result['share_id']}", classes="session-card"))
+                self.notify("Share created", timeout=3)
+            except Exception as e:
+                self.notify(f"Share error: {e}", severity="error")
+
+        def _share_list(self):
+            """List active shares."""
+            try:
+                from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
+                config = URLShortenerConfig()
+                shortener = SessionURLShortener(config)
+                shares = shortener.list_shares()
+                container = self.query_one("#share-result", Container)
+                container.remove_children()
+                if not shares:
+                    container.mount(Static("  No active shares.", classes="session-card"))
+                    return
+                for share in shares:
+                    valid = "valid" if share.get("is_valid", True) else "expired"
+                    container.mount(Static(
+                        f"  {share.get('share_id', '?')}  •  {valid}  •  "
+                        f"uses: {share.get('uses', 0)}/{share.get('max_uses', '∞')}",
+                        classes="session-card",
+                    ))
+                self.notify(f"Found {len(shares)} shares", timeout=3)
+            except Exception as e:
+                self.notify(f"Share list error: {e}", severity="error")
+
+        def _share_cleanup(self):
+            """Cleanup expired shares."""
+            try:
+                from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
+                config = URLShortenerConfig()
+                shortener = SessionURLShortener(config)
+                count = shortener.cleanup_expired()
+                self.notify(f"Cleaned up {count} expired shares", timeout=3)
+            except Exception as e:
+                self.notify(f"Cleanup error: {e}", severity="error")
+
+        # ── Analytics handlers ─────────────────────────────────
+
+        def _analytics_report(self):
+            """Generate analytics report."""
+            try:
+                from tokenade.core.analytics.engine import AnalyticsEngine
+                engine = AnalyticsEngine()
+                report = engine.generate_report()
+                container = self.query_one("#analytics-result", Container)
+                container.remove_children()
+                container.mount(Static(f"  Period: {report.period_days} days", classes="session-card"))
+                container.mount(Static(f"  Total events: {report.total_events}", classes="session-card"))
+                container.mount(Static(f"  Exports: {report.total_exports}", classes="session-card"))
+                container.mount(Static(f"  Loads: {report.total_loads}", classes="session-card"))
+                container.mount(Static(f"  Shares: {report.total_shares}", classes="session-card"))
+                container.mount(Static(f"  Syncs: {report.total_syncs}", classes="session-card"))
+                container.mount(Static(f"  Success rate: {report.success_rate:.1%}", classes="session-card"))
+                if report.top_sites:
+                    container.mount(Static("  Top sites:", classes="session-card"))
+                    for s in report.top_sites[:5]:
+                        container.mount(Static(
+                            f"    {s['site']}: {s['events']} events",
+                            classes="session-card",
+                        ))
+                self.notify("Analytics report generated", timeout=3)
+            except Exception as e:
+                self.notify(f"Analytics error: {e}", severity="error")
+
+        def _analytics_export_csv(self):
+            """Export analytics to CSV."""
+            try:
+                from tokenade.core.analytics.engine import AnalyticsEngine
+                engine = AnalyticsEngine()
+                csv_path = str(Path.home() / ".tokenade" / "analytics" / "export.csv")
+                engine.export_csv(csv_path)
+                self.notify(f"Exported to {csv_path}", timeout=3)
+            except Exception as e:
+                self.notify(f"Export error: {e}", severity="error")
+
+        def _analytics_cleanup(self):
+            """Cleanup old analytics events."""
+            try:
+                from tokenade.core.analytics.engine import AnalyticsEngine
+                engine = AnalyticsEngine()
+                engine.cleanup()
+                self.notify("Analytics events cleaned up", timeout=3)
+            except Exception as e:
+                self.notify(f"Cleanup error: {e}", severity="error")
 
     # ── Launch ────────────────────────────────────────────────
 

@@ -642,12 +642,19 @@ plugin_dir: ~/.tokenade/plugins
 
 ## Troubleshooting
 
+### Common Errors
+
 **"Browser is running" error during export:**
-Close the browser before exporting, or use CDP mode.
+```bash
+# Close the browser first, then export
+tokenade export --browser-name firefox --domains "google.com" -o gmail.tokenade
+```
 
 **Plugin not found:**
 ```bash
 tokenade plugin install <plugin-name>
+# Or install all official plugins
+tokenade plugin sync
 ```
 
 **Session marked unhealthy:**
@@ -659,7 +666,72 @@ tokenade recommend --url https://yoursite.com
 ```
 This tells you which plugin to install.
 
+**Textual not installed (TUI):**
+```bash
+pip install 'tokenade[tui]'
+```
+
+**CloakBrowser not found:**
+```bash
+tokenade cloak install
+```
+
+**pymobiledevice3 not available (iOS):**
+```bash
+pip install pymobiledevice3
+# Requires macOS with device connected
+```
+
+**SSH connection refused during sync-remote:**
+```bash
+# Ensure SSH server is running on remote
+sudo systemctl status sshd
+# Test connection manually
+ssh user@remote-host echo "connected"
+```
+
+**Vault key rotation fails:**
+```bash
+# Ensure you have write permission to vault directory
+ls -la ~/.tokenade/vault/
+# Check vault integrity
+tokenade vault list
+```
+
+**Dashboard won't start:**
+```bash
+# Check if port is in use
+lsof -i :8080
+# Use a different port
+tokenade dashboard start --port 9090
+```
+
+**Share-url password too short:**
+```bash
+# Default minimum is 8 characters
+tokenade share-url create session.tokenade --password "long-password-here"
+```
+
+### Debug Mode
+
+Enable verbose logging:
+```bash
+tokenade -v export --browser-name firefox --domains "google.com" -o gmail.tokenade
+```
+
+### Log Files
+
+Check logs for detailed error information:
+```bash
+# View recent logs
+ls ~/.tokenade/logs/
+# Or use the logs command
+tokenade logs --tail 50
+```
+
 ## Python API
+
+### Basic Usage
 
 ```python
 from tokenade.core.recommend import recommend_site, recommend_plugin, recommend_browser
@@ -669,6 +741,158 @@ result = recommend_site(url="https://discord.com")
 print(result.site)       # "discord"
 print(result.plugin)     # "discord-handler"
 print(result.browser)    # "cloak"
+```
+
+### Vault Operations
+
+```python
+from tokenade.core.vault.vault import SessionVault
+
+vault = SessionVault()
+
+# Store a session
+vault.store("twitter.tokenade", name="twitter-fresh")
+
+# Retrieve a session
+vault.retrieve("twitter-fresh", output_path="retrieved.tokenade")
+
+# List stored sessions
+sessions = vault.list_sessions()
+
+# Rotate encryption key
+vault.rotate_key()
+```
+
+### Session Analytics
+
+```python
+from tokenade.core.analytics.engine import AnalyticsEngine
+
+engine = AnalyticsEngine()
+
+# Record events
+engine.record_event("export", {"site": "twitter", "cookies": 113})
+engine.record_event("load", {"site": "twitter"})
+
+# Generate report
+report = engine.generate_report()
+print(f"Total events: {report.total_events}")
+print(f"Success rate: {report.success_rate:.1%}")
+
+# Export to CSV
+engine.export_csv("analytics.csv")
+```
+
+### Session Sharing
+
+```python
+from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
+
+config = URLShortenerConfig(require_password=True)
+shortener = SessionURLShortener(config)
+
+# Create share
+result = shortener.create_share(
+    session_file="twitter.tokenade",
+    password="MySecurePassword123!",
+    expiry_hours=24,
+)
+print(f"Share URL: {result['short_url']}")
+
+# Retrieve session
+shortener.retrieve_session(
+    short_url=result['short_url'],
+    password="MySecurePassword123!",
+    output_path="retrieved.tokenade",
+)
+```
+
+### Session Sync
+
+```python
+from tokenade.core.sync.syncer import SessionSyncer, SyncConfig
+
+config = SyncConfig(
+    remote_host="user@remote-host",
+    remote_path="~/.tokenade/sessions",
+    local_path="~/.tokenade/sessions",
+)
+
+syncer = SessionSyncer(config)
+
+# Push sessions
+result = syncer.push()
+
+# Pull sessions
+result = syncer.pull()
+
+# Bidirectional sync
+result = syncer.sync("bidirectional")
+```
+
+### Mobile Import
+
+```python
+from tokenade.core.importer.mobile_import import MobileImportManager
+
+manager = MobileImportManager()
+
+# List connected devices
+devices = manager.list_devices()
+for device in devices:
+    print(f"{device.platform}: {device.model} ({device.os_version})")
+
+# Extract from device
+result = manager.extract(device, browser="chrome", domains=["google.com"])
+
+# Extract from iTunes backup (no device needed)
+result = manager.extract_from_itunes_backup(browser="safari")
+
+# List iTunes backups
+backups = manager.list_itunes_backups()
+```
+
+### Enterprise Features
+
+```python
+from tokenade.core.enterprise.auth import RBACManager
+from tokenade.core.enterprise.encrypted_audit import EncryptedAuditLogger
+
+# RBAC
+rbac = RBACManager()
+rbac.create_role("admin", permissions=["read", "write", "delete"])
+rbac.assign_role("alice", "admin")
+
+# Audit logging
+audit = EncryptedAuditLogger()
+audit.log(user_id="alice", action="export", resource="session", success=True)
+entries = audit.query(user_id="alice")
+```
+
+### Docker Deployment
+
+```bash
+# Build image
+docker build -t tokenade:latest .
+
+# Run API server
+docker run -p 9224:9224 tokenade:latest
+
+# Run with docker-compose
+docker-compose up -d
+```
+
+### Kubernetes Deployment
+
+```bash
+# Apply all manifests
+kubectl apply -f deploy/k8s/
+
+# Check pods
+kubectl -n tokenade get pods
+
+# View logs
+kubectl -n tokenade logs -f deployment/tokenade
 ```
 
 ## License

@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokenade-api
+  namespace: tokenade
+  labels:
+    app.kubernetes.io/name: tokenade
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: tokenade
+    app.kubernetes.io/component: api
+  ports:
+    - name: api
+      port: 9224
+      targetPort: 9224
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokenade-dashboard
+  namespace: tokenade
+  labels:
+    app.kubernetes.io/name: tokenade
+    app.kubernetes.io/component: dashboard
+spec:
+  selector:
+    app.kubernetes.io/name: tokenade
+    app.kubernetes.io/component: dashboard
+  ports:
+    - name: dashboard
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

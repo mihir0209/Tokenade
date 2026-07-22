@@ -117,6 +117,11 @@ class MobileImportManager:
     """
     Unified manager for importing sessions from mobile devices.
 
+    Supports:
+    - Android: via ADB (pull cookie databases directly from device)
+    - iOS: via pymobiledevice3 (macOS only, device required)
+    - iOS iTunes Backup: from local iTunes/Finder backup (all platforms, no device)
+
     Usage:
         manager = MobileImportManager()
 
@@ -124,6 +129,12 @@ class MobileImportManager:
         devices = manager.list_devices()
         for device in devices:
             result = manager.extract(device, browser="chrome")
+
+        # Extract from iTunes backup (no device connected)
+        result = manager.extract_from_itunes_backup(
+            domains=["com.apple.mobilesafari"],
+            browser="safari",
+        )
     """
 
     def __init__(self):
@@ -554,3 +565,266 @@ class MobileImportManager:
         except Exception as e:
             logger.debug(f"ADB pull failed: {remote_path}: {e}")
             return False
+
+    # ── iTunes Backup Support ──────────────────────────────────
+
+    @staticmethod
+    def _find_itunes_backups() -> List[Dict[str, str]]:
+        """Find iTunes/Finder backups on the local filesystem.
+
+        Returns:
+            List of dicts with 'name', 'path', 'device_name', 'date' keys.
+        """
+        backup_dirs = []
+
+        if platform.system() == "Darwin":
+            base = Path.home() / "Library" / "Application Support" / "MobileSync" / "Backup"
+        elif platform.system() == "Windows":
+            base = Path.home() / "AppData" / "Roaming" / "Apple Computer" / "MobileSync" / "Backup"
+        else:
+            # Linux: check common iTunes backup locations
+            base = Path.home() / ".local" / "share" / "itunes-backups"
+
+        if base.exists():
+            for d in base.iterdir():
+                if d.is_dir() and (d / "Manifest.db").exists():
+                    info = {
+                        "name": d.name,
+                        "path": str(d),
+                        "device_name": d.name,
+                        "date": datetime.fromtimestamp(
+                            d.stat().st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                    }
+                    # Try to read device name from Info.plist
+                    info_plist = d / "Info.plist"
+                    if info_plist.exists():
+                        try:
+                            import plistlib
+                            with open(info_plist, "rb") as f:
+                                plist = plistlib.load(f)
+                            info["device_name"] = plist.get("Device Name", d.name)
+                            info["product_type"] = plist.get("Product Type", "")
+                            info["ios_version"] = plist.get("Product Version", "")
+                        except Exception:
+                            pass
+                    backup_dirs.append(info)
+
+        # Also check for backups created with third-party tools
+        alt_paths = [
+            Path.home() / "Android" / "com.github.mihir0209.tokenade" / "backups",
+        ]
+        for alt in alt_paths:
+            if alt.exists():
+                for d in alt.iterdir():
+                    if d.is_dir() and (d / "Manifest.db").exists():
+                        backup_dirs.append({
+                            "name": d.name,
+                            "path": str(d),
+                            "device_name": d.name,
+                            "date": datetime.fromtimestamp(
+                                d.stat().st_mtime, tz=timezone.utc
+                            ).isoformat(),
+                        })
+
+        return backup_dirs
+
+    @staticmethod
+    def _find_safari_cookies_in_backup(backup_path: str) -> Optional[str]:
+        """Find Safari cookies file in an iTunes backup.
+
+        Args:
+            backup_path: Path to the iTunes backup directory
+
+        Returns:
+            Path to Cookies.binarycookies file, or None
+        """
+        backup = Path(backup_path)
+
+        # Common iOS Safari cookie paths within backups
+        safari_patterns = [
+            # iOS 8-14
+            "AppDomain-com.apple.mobilesafari/Library/Cookies/Cookies.binarycookies",
+            # iOS 15+
+            "AppDomain-com.apple.mobilesafari/Library/Cookies/Cookies.binarycookies",
+            # Alternative domain
+            "AppDomain-com.apple.WebKit.Networking/.../Cookies.binarycookies",
+        ]
+
+        for pattern in safari_patterns:
+            candidate = backup / pattern
+            if candidate.exists():
+                return str(candidate)
+
+        # Fallback: glob search for Cookies.binarycookies
+        for candidate in backup.rglob("Cookies.binarycookies"):
+            # Only return Safari cookies, not other apps
+            if "mobilesafari" in str(candidate).lower():
+                return str(candidate)
+
+        return None
+
+    @staticmethod
+    def _find_chrome_cookies_in_backup(backup_path: str) -> Optional[str]:
+        """Find Chrome cookies file in an iTunes backup.
+
+        Args:
+            backup_path: Path to the iTunes backup directory
+
+        Returns:
+            Path to Cookies file, or None
+        """
+        backup = Path(backup_path)
+
+        chrome_patterns = [
+            "AppDomain-com.google.Chrome/Library/Application Support/Google/Chrome/Default/Cookies",
+            "AppDomain-com.google.Chrome/.../Cookies",
+        ]
+
+        for pattern in chrome_patterns:
+            candidate = backup / pattern
+            if candidate.exists():
+                return str(candidate)
+
+        for candidate in backup.rglob("Cookies"):
+            if "google.chrome" in str(candidate).lower():
+                return str(candidate)
+
+        return None
+
+    def extract_from_itunes_backup(
+        self,
+        backup_path: Optional[str] = None,
+        domains: Optional[List[str]] = None,
+        browser: str = "safari",
+        output_file: Optional[str] = None,
+        site_name: Optional[str] = None,
+    ) -> MobileExtractResult:
+        """Extract cookies from an iTunes/Finder backup.
+
+        Works on all platforms without a connected device.
+
+        Args:
+            backup_path: Path to iTunes backup. If None, finds the most recent backup.
+            domains: Domain filter (None = all)
+            browser: Browser to extract from ("safari" or "chrome")
+            output_file: Output .tokenade file path
+            site_name: Site name override
+
+        Returns:
+            MobileExtractResult
+        """
+        from tokenade.core.importer.cookie_extractor import CookieExtractor
+        from tokenade.core.importer.session_packager import SessionPackager
+
+        # Find backup
+        if not backup_path:
+            backups = self._find_itunes_backups()
+            if not backups:
+                return MobileExtractResult(
+                    success=False,
+                    error="No iTunes backups found. "
+                    "Create a backup with iTunes/Finder or specify --backup-path.",
+                )
+            # Use most recent backup
+            backups.sort(key=lambda b: b.get("date", ""), reverse=True)
+            backup_path = backups[0]["path"]
+            logger.info(f"Using most recent backup: {backups[0]['name']} ({backups[0]['date']})")
+
+        if not Path(backup_path).exists():
+            return MobileExtractResult(
+                success=False,
+                error=f"Backup path not found: {backup_path}",
+            )
+
+        # Find cookies file
+        if browser == "safari":
+            cookies_file = self._find_safari_cookies_in_backup(backup_path)
+        elif browser == "chrome":
+            cookies_file = self._find_chrome_cookies_in_backup(backup_path)
+        else:
+            return MobileExtractResult(
+                success=False, browser=browser,
+                error=f"Unsupported browser for iTunes backup: {browser}. Use 'safari' or 'chrome'.",
+            )
+
+        if not cookies_file:
+            return MobileExtractResult(
+                success=False, browser=browser,
+                error=f"No {browser} cookies found in backup at {backup_path}",
+            )
+
+        # Parse cookies
+        if browser == "safari":
+            from tokenade.core.importer.safari_extractor import SafariExtractor
+            extractor = SafariExtractor(profile_path=cookies_file)
+            all_cookies = extractor.extract()
+        else:
+            try:
+                extractor = CookieExtractor(
+                    str(Path(cookies_file).parent), browser=browser
+                )
+                all_cookies = extractor.extract()
+            except Exception as e:
+                return MobileExtractResult(
+                    success=False, browser=browser,
+                    error=f"Failed to parse Chrome cookies: {e}",
+                )
+
+        # Filter by domains
+        if domains:
+            filtered = []
+            for cookie in all_cookies:
+                cookie_domain = cookie.get("domain", "").lstrip(".")
+                for d in domains:
+                    d_clean = d.lstrip(".")
+                    if cookie_domain == d_clean or cookie_domain.endswith("." + d_clean):
+                        filtered.append(cookie)
+                        break
+            all_cookies = filtered
+
+        if not all_cookies:
+            return MobileExtractResult(
+                success=False, browser=browser,
+                error="No cookies found matching specified domains",
+            )
+
+        # Package session
+        packager = SessionPackager()
+        session = packager.package(
+            cookies=all_cookies,
+            browser=browser,
+            profile="mobile",
+        )
+
+        if "metadata" not in session:
+            session["metadata"] = {}
+        session["metadata"]["source"] = "itunes_backup"
+        session["metadata"]["backup_path"] = backup_path
+        session["metadata"]["browser"] = browser
+
+        extracted_domains = list({c.get("domain", "").lstrip(".") for c in all_cookies})
+
+        if not output_file:
+            site = site_name or session.get("site_name", "mobile")
+            output_file = f"{site}_{browser}_backup.tokenade"
+
+        packager.save(session, output_file)
+
+        return MobileExtractResult(
+            success=True,
+            browser=browser,
+            cookie_count=len(all_cookies),
+            session_file=output_file,
+            site_name=session.get("site_name", "unknown"),
+            auth_status=session.get("auth_status", "unknown"),
+            domains=extracted_domains,
+        )
+
+    def list_itunes_backups(self) -> List[Dict[str, str]]:
+        """List all iTunes/Finder backups found on this machine.
+
+        Returns:
+            List of backup info dicts.
+        """
+        return self._find_itunes_backups()

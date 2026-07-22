@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tokenade-pdb
+  namespace: tokenade
+  labels:
+    app.kubernetes.io/name: tokenade
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tokenade

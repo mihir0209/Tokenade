@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tokenade
+  labels:
+    app.kubernetes.io/name: tokenade
+    app.kubernetes.io/part-of: tokenade
