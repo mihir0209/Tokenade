@@ -492,6 +492,14 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception:
             pass
 
+    def on_switch_changed(self, event) -> None:
+        try:
+            cid = getattr(event.control, "id", None)
+            if cid == "share-no-remote":
+                self._update_share_remote_status()
+        except Exception:
+            pass
+
     def _set_selected_session(self, session: Optional[Dict]):
         self._selected_session = session
         self._refresh_selected_label()
@@ -824,20 +832,57 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception as e:
             logger.debug("Settings update failed: %s", e)
 
+    def _share_remote_status_text(self) -> str:
+        try:
+            from tokenade.core.sharing.supabase_store import SupabaseConfig
+            try:
+                offline = bool(self.query_one("#share-no-remote").value)
+            except Exception:
+                offline = False
+            if offline:
+                return "Remote share: OFF for this create (embed-only / --no-remote)"
+            sc = SupabaseConfig.from_env()
+            if not sc.enabled:
+                return "Remote share: OFF (full URL still works offline)"
+            if sc.is_public_default:
+                return f"Remote share: ON — public default ({sc.url})"
+            return f"Remote share: ON — private ({sc.source}: {sc.url})"
+        except Exception as e:
+            return f"Remote share: ? ({e})"
+
+    def _update_share_remote_status(self) -> None:
+        try:
+            self.query_one("#share-remote-status").update(self._share_remote_status_text())
+        except Exception:
+            pass
+
     def _refresh_share_sessions(self):
         """Rebuild share session Select from ~/.tokenade/sessions."""
         try:
             opts = session_select_options(SESSIONS_DIR)
             sel = self.query_one("#share-session-select")
             if isinstance(sel, Static):
+                # Legacy Static placeholder — cannot refresh; user should restart TUI
+                self.notify(
+                    "Restart TUI to restore session picker (or paste path)",
+                    severity="warning",
+                    timeout=4,
+                )
                 return
             if hasattr(sel, "set_options"):
                 sel.set_options(opts)
             else:
-                # Fallback: clear + reassign
                 sel._options = []  # type: ignore[attr-defined]
                 if opts:
                     sel.set_options(opts)
+            try:
+                if opts:
+                    sel.prompt = "Pick a .tokenade session…"
+                else:
+                    sel.prompt = f"No sessions in {SESSIONS_DIR}"
+            except Exception:
+                pass
+            self._update_share_remote_status()
             self.notify(f"{len(opts)} sessions available", timeout=2)
         except Exception as e:
             logger.debug("Share session refresh failed: %s", e)
@@ -930,6 +975,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._share_list()
         elif btn_id == "share-cleanup":
             self._share_cleanup()
+        elif btn_id == "share-revoke":
+            self._share_revoke()
         elif btn_id == "share-refresh-sessions":
             self._refresh_share_sessions()
         elif btn_id == "analytics-report":
@@ -1176,17 +1223,66 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.notify("Passwords do not match", severity="warning")
                 return
 
+            try:
+                expiry_hours = int(expiry) if expiry else 24
+            except ValueError:
+                self.notify("Expiry must be a whole number of hours", severity="warning")
+                return
+            try:
+                max_uses_n = int(max_uses) if max_uses else 0
+            except ValueError:
+                self.notify("Max uses must be a whole number", severity="warning")
+                return
+            if expiry_hours < 0 or max_uses_n < 0:
+                self.notify("Expiry and max uses cannot be negative", severity="warning")
+                return
+
+            offline = False
+            try:
+                offline = bool(self.query_one("#share-no-remote").value)
+            except Exception:
+                offline = False
+
+            from tokenade.core.sharing.supabase_store import SupabaseConfig
             from tokenade.core.sharing.url_shortener import (
                 SessionURLShortener, URLShortenerConfig,
             )
-            shortener = SessionURLShortener(URLShortenerConfig(require_password=True))
+
+            sb_cfg = SupabaseConfig(url="", anon_key="", source="disabled") if offline else None
+            if not offline:
+                sb_cfg = SupabaseConfig.from_env()
+                # Soft-warn about public remote clamps
+                if sb_cfg.enabled and sb_cfg.is_public_default:
+                    if expiry_hours > 168:
+                        self.notify(
+                            "Public remote caps expiry at 7 days (168h)",
+                            severity="warning",
+                            timeout=4,
+                        )
+                    if max_uses_n == 0:
+                        self.notify(
+                            "Public remote: 0 max-uses becomes 10",
+                            severity="information",
+                            timeout=3,
+                        )
+                    elif max_uses_n > 50:
+                        self.notify(
+                            "Public remote caps max-uses at 50",
+                            severity="warning",
+                            timeout=4,
+                        )
+
+            shortener = SessionURLShortener(
+                URLShortenerConfig(require_password=True),
+                supabase_config=sb_cfg,
+            )
             result = shortener.create_share(
                 session_file=str(path),
                 password=password,
-                expiry_hours=int(expiry) if expiry else 24,
-                max_uses=int(max_uses) if max_uses else 0,
+                expiry_hours=expiry_hours,
+                max_uses=max_uses_n,
             )
-            if not result.get("success", True):
+            if not result.get("success"):
                 err = result.get("error") or result.get("message") or "Share failed"
                 container = self.query_one("#share-result")
                 container.remove_children()
@@ -1215,14 +1311,18 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             )
             short_url = result.get("short_url") or f"tokenade://share/{short_id}"
             file_name = result.get("file_name") or path.name
+            # Do not retain password in process state
             self._last_share = {
                 "short_id": short_id,
                 "full_url": full_url,
                 "short_url": short_url,
-                "password": password,
                 "session": path.name,
                 "file_name": file_name,
             }
+            try:
+                self.query_one("#share-revoke-input").value = short_id
+            except Exception:
+                pass
 
             remote = bool(result.get("remote"))
             transport = result.get("transport") or ("supabase" if remote else "embedded")
@@ -1240,11 +1340,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             prune = "yes" if result.get("pruned") else "no"
             ct = result.get("ciphertext_chars")
             size_line = f"Ciphertext: {ct} chars" if ct else ""
+            exp_line = f"Expiry:     {expiry_hours}h · max uses: {max_uses_n or '∞/remote-default'}"
             for line in (
                 f"Session:    {path.name}",
                 f"Transport:  {transport}",
                 f"Short ID:   {short_id}",
                 f"Short URL:  {short_url}",
+                exp_line,
                 f"Pruned:     {prune}",
                 size_line,
                 "",
@@ -1254,10 +1356,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     else "Share ref (retrieve via short id + remote):"
                 ),
             ):
-                if not line and line != "":
-                    continue
                 container.mount(Static(line or " ", classes="session-card" if line else "card-meta"))
-            # Show full URL in chunks so it's selectable in TUI
             show_url = full_url or short_url
             for i in range(0, min(len(show_url), 4000), 100):
                 container.mount(Static(show_url[i:i + 100], classes="session-card"))
@@ -1268,7 +1367,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             for line in help_text.splitlines():
                 container.mount(Static(line or " ", classes="card-meta"))
 
-            # Prefer copying short id when remote works; else full URL
             if remote:
                 self._copy_to_clipboard(short_id, "Short id copied")
                 self.notify("Share created — short id copied", timeout=3)
@@ -1281,6 +1379,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.query_one("#share-password-confirm").value = ""
             except Exception:
                 pass
+            self._update_share_remote_status()
         except Exception as e:
             self.notify(f"Share error: {e}", severity="error")
 
@@ -1341,6 +1440,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.notify(f"Received → {saved}", timeout=3)
                 self._load_sessions()
                 self._update_sessions()
+                try:
+                    self.query_one("#share-receive-password").value = ""
+                except Exception:
+                    pass
             else:
                 err = result.get("error") or "receive failed"
                 container.mount(Static(f"  Error: {err}", classes="session-card"))
@@ -1350,12 +1453,18 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _share_list(self):
         try:
+            import time as _time
             from tokenade.core.sharing.url_shortener import (
                 SessionURLShortener, URLShortenerConfig,
             )
             shares = SessionURLShortener(URLShortenerConfig()).list_shares()
             container = self.query_one("#share-result")
             container.remove_children()
+            self._update_share_remote_status()
+            container.mount(Static(
+                f"  Local active shares ({len(shares)}) — remote not listable",
+                classes="card-meta",
+            ))
             if not shares:
                 container.mount(Static("  No active shares.", classes="session-card"))
                 return
@@ -1364,12 +1473,77 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 uses = share.get("current_uses", share.get("uses", 0))
                 max_uses = share.get("max_uses", 0)
                 max_s = "∞" if not max_uses else str(max_uses)
+                exp = share.get("expires_at") or 0
+                try:
+                    exp_s = (
+                        _time.strftime("%Y-%m-%d %H:%M", _time.localtime(float(exp)))
+                        if float(exp) > 0
+                        else "never"
+                    )
+                except Exception:
+                    exp_s = "?"
+                revoked = " REVOKED" if share.get("revoked") else ""
                 container.mount(Static(
-                    f"  {sid}  •  uses: {uses}/{max_s}",
+                    f"  {sid}  •  uses {uses}/{max_s}  •  expires {exp_s}{revoked}",
                     classes="session-card",
                 ))
+            container.mount(Static(
+                "  Tip: paste a short id above → Revoke  |  Cleanup strips expired embeds",
+                classes="card-meta",
+            ))
         except Exception as e:
             self.notify(f"Share list error: {e}", severity="error")
+
+    def _share_revoke(self):
+        try:
+            sid = ""
+            try:
+                sid = self.query_one("#share-revoke-input").value.strip()
+            except Exception:
+                sid = ""
+            if not sid and self._last_share:
+                sid = str(self._last_share.get("short_id") or "")
+            if not sid:
+                self.notify("Enter a short id to revoke", severity="warning")
+                return
+            # Accept full URL / tokenade://share/ID
+            if "share/" in sid:
+                sid = sid.rstrip("/").split("share/")[-1].split("?")[0].strip()
+            from tokenade.core.sharing.url_shortener import (
+                SessionURLShortener, URLShortenerConfig,
+            )
+            from tokenade.core.sharing.supabase_store import (
+                SupabaseConfig, SupabaseShareStore,
+            )
+            shortener = SessionURLShortener(URLShortenerConfig())
+            local_ok = shortener.revoke(sid)
+            remote_ok = False
+            try:
+                store = SupabaseShareStore(SupabaseConfig.from_env())
+                if store.available:
+                    remote_ok = bool(store.revoke(sid))
+            except Exception:
+                remote_ok = False
+            container = self.query_one("#share-result")
+            container.remove_children()
+            if local_ok or remote_ok:
+                where = []
+                if local_ok:
+                    where.append("local")
+                if remote_ok:
+                    where.append("remote")
+                msg = f"Revoked {sid} ({'+'.join(where)})"
+                container.mount(Static(f"  {msg}", classes="session-card"))
+                self.notify(msg, timeout=3)
+            else:
+                container.mount(Static(
+                    f"  Share not found locally or remote: {sid}",
+                    classes="session-card",
+                ))
+                self.notify(f"Share not found: {sid}", severity="warning")
+            self._share_list()
+        except Exception as e:
+            self.notify(f"Revoke error: {e}", severity="error")
 
     def _share_cleanup(self):
         try:
@@ -1950,6 +2124,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def action_show_share(self):
         self._activate_tab("tab-share")
+        self.call_after_refresh(self._update_share_remote_status)
 
     def action_show_analytics(self):
         self._activate_tab("tab-analytics")

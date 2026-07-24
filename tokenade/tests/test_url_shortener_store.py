@@ -106,3 +106,20 @@ def test_cleanup_local_store_removes_expired(tmp_path):
     assert "old" not in s._urls
     assert "ok" in s._urls
     assert stats["remaining"] == 1
+
+
+def test_revoke_accepts_tokenade_url(tmp_path):
+    s = _shortener(tmp_path)
+    now = time.time()
+    from tokenade.core.sharing.url_shortener import ShortenedURL
+
+    s._urls["abcXYZ"] = ShortenedURL(
+        short_id="abcXYZ",
+        original_url="tokenade://share/abcXYZ",
+        short_url="tokenade://share/abcXYZ",
+        created_at=now,
+        expires_at=now + 9999,
+    )
+    assert s.revoke("tokenade://share/abcXYZ?data=nope") is True
+    assert s._urls["abcXYZ"].revoked is True
+    assert s.revoke("missing") is False

@@ -12,10 +12,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.70
+# tokenade 1.1.77
 ```
 
-This guide was verified against the published PyPI package `tokenade==1.1.70`, not an editable source checkout.
+This guide was verified against the published PyPI package `tokenade==1.1.77`, not an editable source checkout.
 
 ## Quick Start
 
@@ -461,24 +461,26 @@ Conflict resolution strategies:
 - `newer-wins`: Most recently modified version wins
 - `manual`: Skip conflicts for manual resolution
 
-### `tokenade share-url`
+### `tokenade share-url` (canonical)
 
-Create password-protected share links for sessions. Password never leaves the
-machine; ciphertext may be stored on the public Supabase project (or your own)
-for short-id retrieve. Full URL always embeds `?data=` for offline peer share.
-`tokenade://` is CLI-only (not a browser protocol).
+Create password-protected share links for sessions. The password never leaves
+the machine. Ciphertext may be stored on the public Supabase project (or your
+own) so peers can retrieve by short id. Small sessions also get a full
+`tokenade://share/<id>?data=…` URL for offline peer share; large sessions
+skip the embed (remote short-id only, or fail if remote is off / over size).
+`tokenade://` is CLI/TUI-only (not a browser protocol).
 
 ```bash
-# Create (uses public remote by default; full URL always offline-capable)
+# Create (public remote by default when available)
 tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!"
 
-# Create with expiry / max uses
-tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!" --expiry-hours 24
+# Create with expiry / max uses (--expiry is hours; not --expiry-hours)
+tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!" --expiry 24 --max-uses 5
 
 # Status of remote (limits, public vs private)
 tokenade share-url status
 
-# Offline-only create (no Supabase)
+# Offline-only create (no Supabase; needs small enough payload to embed)
 tokenade share-url create session.tokenade --password "..." --no-remote
 
 # Private project override
@@ -488,20 +490,25 @@ tokenade share-url create session.tokenade --password "..." \
 # Retrieve (short id or full URL)
 tokenade share-url retrieve <share_id> --password "MySecurePassword123!" -o session.tokenade
 
-# List / revoke / cleanup (local share index)
+# List / revoke / cleanup (local share index; cleanup also strips oversized embeds)
 tokenade share-url list
 tokenade share-url revoke <share_id>
 tokenade share-url cleanup
 ```
 
+**Public remote limits (server-side):** max ciphertext ~2M chars; 30 creates/IP/hour;
+expiry capped at 7 days; `max_uses` 1–50 (`0` becomes `10` on public store).
+Prefer site-scoped exports (`--domains`) over full-profile dumps for sharing.
+
 Private Supabase setup (OSS): copy `.env.example` → `.env`, set `DATABASE_URL`,
 then `python3 scripts/apply_supabase_schema.py` and optionally `--verify`.
+TUI Share tab: remote status, offline toggle, list/revoke/cleanup.
 
 Features:
-- Password-protected encrypted sharing (PBKDF2 + AES-256-GCM)
+- Password-protected encrypted sharing (PBKDF2 + Fernet)
 - Short-id via Supabase RPCs (public default or private project)
-- Full URL offline embed (`?data=`)
-- Automatic expiration and use limits
+- Full URL offline embed (`?data=`) when payload is small enough
+- Automatic expiration, use limits, and local store compaction
 
 ### Enterprise Features
 
@@ -598,9 +605,10 @@ tokenade test -s session.tokenade --target-fp default
 | `tokenade refresh` | Refresh session from source browser |
 | `tokenade batch-export` | Export multiple sites at once |
 | `tokenade batch-load` | Load multiple sessions |
-| `tokenade share` | Create shareable session link or QR code |
-| `tokenade unshare` | Revoke a shared session |
-| `tokenade import` | Import a shared session from URL |
+| `tokenade share-url` | **Canonical** password share (create/retrieve/revoke/list/cleanup/status) |
+| `tokenade share` | Legacy share link / QR (prefer `share-url`) |
+| `tokenade unshare` | Legacy revoke (prefer `share-url revoke`) |
+| `tokenade import` | Legacy import from URL (prefer `share-url retrieve`) |
 | `tokenade proxy` | Start CDP proxy with donor session |
 | `tokenade monitor` | Monitor session health in real-time |
 | `tokenade analytics` | Session usage analytics |
@@ -624,12 +632,17 @@ tokenade test -s session.tokenade --target-fp default
 
 ## Configuration
 
-Config file: `~/.tokenade/config.yaml`
+Config file: `~/.tokenade/config.json`
 
-```yaml
-automation_browser: cloak     # default browser for automation
-default_browser: firefox      # browser to export from
-plugin_dir: ~/.tokenade/plugins
+```json
+{
+  "automation_browser": "cloak",
+  "default_browser": "firefox",
+  "plugin_dir": "~/.tokenade/plugins",
+  "supabase_use_default": true,
+  "supabase_url": "",
+  "supabase_anon_key": ""
+}
 ```
 
 ## Supported Sites
@@ -721,6 +734,14 @@ tokenade dashboard start --port 9090
 ```bash
 # Default minimum is 8 characters
 tokenade share-url create session.tokenade --password "long-password-here"
+```
+
+**Share payload too large / short id won't retrieve:**
+```bash
+# Prefer site-scoped export, then share
+tokenade export --browser-name firefox --domains "example.com" -o site.tokenade
+tokenade share-url create site.tokenade --password "long-password-here"
+tokenade share-url status   # check remote + limits
 ```
 
 ### Debug Mode

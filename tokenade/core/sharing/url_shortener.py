@@ -668,8 +668,13 @@ class SessionURLShortener:
         }
     
     def revoke(self, short_id: str) -> bool:
-        """Revoke a share link."""
-        url_entry = self._urls.get(short_id)
+        """Revoke a local share link entry (remote revoke is separate)."""
+        sid = (short_id or "").strip()
+        if "share/" in sid:
+            sid = sid.rstrip("/").split("share/")[-1].split("?")[0].strip()
+        if not sid:
+            return False
+        url_entry = self._urls.get(sid)
         if not url_entry:
             return False
         

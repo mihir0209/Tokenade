@@ -8,7 +8,7 @@ try:
     from textual.containers import Horizontal, ScrollableContainer, Vertical
     from textual.events import MouseDown, MouseMove, MouseUp
     from textual.widget import Widget
-    from textual.widgets import Static, Button, Input, Rule, Select, Label
+    from textual.widgets import Static, Button, Input, Rule, Select, Label, Switch
     _OK = True
 except ImportError:
     _OK = False
@@ -23,6 +23,7 @@ except ImportError:
     class Rule: pass
     class Select: pass
     class Label: pass
+    class Switch: pass
     class MouseDown: pass
     class MouseMove: pass
     class MouseUp: pass
@@ -188,6 +189,32 @@ class ShareView(BaseView):
         min-width: 14;
         margin-top: 1;
     }
+    ShareView #share-remote-status {
+        height: auto;
+        color: $text-muted;
+        margin: 0 0 1 0;
+        padding: 0 1;
+    }
+    ShareView #share-limits-hint {
+        height: auto;
+        color: $text-muted;
+        margin: 0 0 0 0;
+    }
+    ShareView .switch-row {
+        height: 3;
+        width: 100%;
+        layout: horizontal;
+        align: left middle;
+        margin-top: 1;
+    }
+    ShareView .switch-row Switch {
+        width: auto;
+        margin-right: 1;
+    }
+    ShareView .switch-row Label {
+        width: 1fr;
+        color: $text-muted;
+    }
     ShareView #share-log-split {
         height: 1;
         dock: none;
@@ -209,22 +236,20 @@ class ShareView(BaseView):
         with Horizontal(id="share-panes"):
             with Vertical(id="share-create-pane"):
                 yield Static("Session share", classes="pane-title")
+                yield Static("Remote share: …", id="share-remote-status")
                 yield Label("Session file", classes="field-label")
                 opts = session_select_options()
                 with Horizontal(classes="field-row"):
-                    if opts:
-                        yield Select(
-                            opts,
-                            prompt="Pick a .tokenade session…",
-                            id="share-session-select",
-                            allow_blank=True,
-                        )
-                    else:
-                        yield Static(
-                            f"No sessions in {SESSIONS_DIR}",
-                            id="share-session-select",
-                            classes="card-meta",
-                        )
+                    yield Select(
+                        opts if opts else [],
+                        prompt=(
+                            "Pick a .tokenade session…"
+                            if opts
+                            else f"No sessions in {SESSIONS_DIR}"
+                        ),
+                        id="share-session-select",
+                        allow_blank=True,
+                    )
                     yield Input(
                         placeholder="Or paste path to .tokenade",
                         id="share-session-input",
@@ -253,13 +278,21 @@ class ShareView(BaseView):
                 yield Label("Options", classes="field-label")
                 with Horizontal(classes="field-row"):
                     yield Input(
-                        placeholder="Expiry hours (default 24)",
+                        placeholder="Expiry hours (default 24, max 168)",
                         id="share-expiry-input",
                     )
                     yield Input(
-                        placeholder="Max uses (0 = unlimited)",
+                        placeholder="Max uses (0 → 10 on public remote)",
                         id="share-max-uses-input",
                     )
+                yield Static(
+                    "Public remote: max 7d expiry · max_uses 1–50 (0→10). "
+                    "Local/offline: 0 uses = unlimited.",
+                    id="share-limits-hint",
+                )
+                with Horizontal(classes="switch-row"):
+                    yield Switch(value=False, id="share-no-remote")
+                    yield Label("Offline only (embed URL, no remote short-id)")
 
                 with Vertical(classes="btn-grid"):
                     with Horizontal(classes="btn-row"):
@@ -295,10 +328,21 @@ class ShareView(BaseView):
                             id="share-list",
                         )
                         yield Button(
-                            "Cleanup expired",
+                            "Cleanup",
                             variant="warning",
                             compact=True,
                             id="share-cleanup",
+                        )
+                    with Horizontal(classes="btn-row"):
+                        yield Input(
+                            placeholder="short id to revoke…",
+                            id="share-revoke-input",
+                        )
+                        yield Button(
+                            "Revoke",
+                            variant="error",
+                            compact=True,
+                            id="share-revoke",
                         )
 
             with Vertical(id="share-receive-pane"):
@@ -334,6 +378,10 @@ class ShareView(BaseView):
 
     def on_mount(self) -> None:
         self.call_after_refresh(self._apply_default_split)
+        try:
+            self.app._update_share_remote_status()  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
     def on_resize(self) -> None:
         if not self._user_resized_log:
