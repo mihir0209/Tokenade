@@ -644,8 +644,10 @@ class TestRefresherAutoDiscovery:
             mock_launcher.launch.side_effect = RuntimeError("no browser in test")
             mock_launcher_cls.return_value = mock_launcher
             from tokenade.cli.handlers.browser_ops import cmd_refresh_browser
+            import pytest
             with capture_stdout() as buf:
-                cmd_refresh_browser(args)
+                with pytest.raises(SystemExit):
+                    cmd_refresh_browser(args)
             output = buf.getvalue()
         assert "demo-refresh" in output or "Auto-discovered" in output or "refresher" in output.lower()
 
@@ -688,8 +690,10 @@ class TestRefresherAutoDiscovery:
             mock_launcher.launch.side_effect = RuntimeError("no browser in test")
             mock_launcher_cls.return_value = mock_launcher
             from tokenade.cli.handlers.browser_ops import cmd_refresh_browser
+            import pytest
             with capture_stdout() as buf:
-                cmd_refresh_browser(args)
+                with pytest.raises(SystemExit):
+                    cmd_refresh_browser(args)
             output = buf.getvalue()
         # PluginLoader (for refresh) should never be instantiated for auto-discovery
         # when --no-plugin set. (The browser launch path itself may or may not use one.)

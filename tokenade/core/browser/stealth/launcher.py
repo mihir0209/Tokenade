@@ -125,17 +125,26 @@ class BrowserProcess:
         return False
 
     def close(self):
-        """Terminate the browser process."""
+        """Terminate the browser process (and process group when launched in a new session)."""
         if self.process and self.is_running:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=3)
+                import os
+                import signal
+                try:
+                    os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+                except Exception:
+                    self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
+                    except Exception:
+                        self.process.kill()
+                    self.process.wait(timeout=3)
             except Exception:
                 pass
-        logger.info(f"Browser {self.browser_name} closed (PID: {self.pid})")
+        logger.info(f"Browser {self.browser_name} closed (PID: {getattr(self, 'pid', '?')})")
 
 
 class SystemBrowserLauncher:
@@ -211,6 +220,8 @@ class SystemBrowserLauncher:
         ],
         "Windows": [
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
         ],
     }
 
@@ -299,6 +310,21 @@ class SystemBrowserLauncher:
         elif browser.lower() in ("edge", "msedge"):
             if os_type == "Linux":
                 path = os.path.expanduser("~/.config/microsoft-edge")
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Darwin":
+                path = os.path.expanduser(
+                    "~/Library/Application Support/Microsoft Edge"
+                )
+                if os.path.exists(path):
+                    return path
+            elif os_type == "Windows":
+                path = os.path.join(
+                    os.environ.get("LOCALAPPDATA", ""),
+                    "Microsoft",
+                    "Edge",
+                    "User Data",
+                )
                 if os.path.exists(path):
                     return path
 

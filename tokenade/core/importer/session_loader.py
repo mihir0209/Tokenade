@@ -379,9 +379,8 @@ class SessionLoader:
 
         finally:
             self._last_result = result
-            # Always close browser to prevent sync/async Playwright conflicts
-            # and resource leaks in batch operations
-            if self._browser:
+            # Keep browser open for interactive --visible loads; headless/batch closes.
+            if self._browser and not visible:
                 try:
                     self._browser.close()
                     self._browser = None

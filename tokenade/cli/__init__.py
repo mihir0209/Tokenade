@@ -197,7 +197,7 @@ def cmd_config(args):
         print(config.config_path)
 
     elif args.config_command == "show":
-        print(f"\n📋 Tokenade Config ({config.config_path})\n")
+        print(f"\n[LIST] Tokenade Config ({config.config_path})\n")
         for key in sorted(DEFAULTS.keys()):
             value = config.get(key)
             default = DEFAULTS[key]
@@ -206,17 +206,17 @@ def cmd_config(args):
 
     elif args.config_command == "get":
         if not args.key:
-            print("❌ Usage: tokenade config get <key>")
+            print("[ERROR] Usage: tokenade config get <key>")
             return
         value = config.get(args.key)
         if value is None:
-            print(f"❌ Unknown config key: {args.key}")
+            print(f"[ERROR] Unknown config key: {args.key}")
         else:
             print(value)
 
     elif args.config_command == "set":
         if not args.key or not args.value:
-            print("❌ Usage: tokenade config set <key> <value>")
+            print("[ERROR] Usage: tokenade config set <key> <value>")
             return
         # Type coercion for booleans
         value = args.value
@@ -226,7 +226,7 @@ def cmd_config(args):
             value = int(value)
         config.set(args.key, value)
         config.save()
-        print(f"✅ Set {args.key} = {value}")
+        print(f"[OK] Set {args.key} = {value}")
 
 
 def cmd_completion(args):
@@ -319,20 +319,20 @@ def cmd_plugin(args):
     if args.plugin_command == "list":
         if args.available:
             installed_names = {p["name"] for p in loader.discover()}
-            print("\n🌐 Available plugins from registry:")
+            print("\n[NET] Available plugins from registry:")
             plugins = registry.search()
             if not plugins:
                 print("   No plugins found in registry")
             for p in plugins:
-                status = " ✓ installed" if p["name"] in installed_names else ""
-                print(f"   • {p['name']} v{p.get('version', '?')} — {p.get('description', '')}{status}")
+                status = " [OK] installed" if p["name"] in installed_names else ""
+                print(f"   - {p['name']} v{p.get('version', '?')} - {p.get('description', '')}{status}")
         else:
             # Load plugins so we can show lifecycle state; graceful if load fails
             try:
                 loader.load_all()
             except Exception:
                 pass
-            print("\n📦 Installed plugins:")
+            print("\n[PKG] Installed plugins:")
             installed = loader.discover()
             if not installed:
                 print("   No plugins installed. Use 'tokenade plugin install <name>' to install.")
@@ -340,8 +340,8 @@ def cmd_plugin(args):
                 name = p["name"]
                 loaded = loader.get_plugin(name)
                 state_str = loaded.state.value if loaded else "not loaded"
-                enabled = " ✓" if p.get("enabled", True) else " (disabled)"
-                print(f"   • {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}) [{state_str}]{enabled} — {p.get('description', '')}")
+                enabled = " [OK]" if p.get("enabled", True) else " (disabled)"
+                print(f"   - {p['name']} v{p.get('version', '?')} ({p.get('type', '?')}) [{state_str}]{enabled} - {p.get('description', '')}")
                 # Show health from shared context when available
                 if loaded:
                     try:
@@ -356,18 +356,18 @@ def cmd_plugin(args):
 
     elif args.plugin_command == "install":
         reg_name = getattr(args, "registry", None)
-        print(f"\n📥 Installing plugin: {args.name}")
+        print(f"\n[IN] Installing plugin: {args.name}")
         if reg_name:
             print(f"   Registry: {reg_name}")
         # Detect multi-registry conflicts before install
         plugin_meta, conflicts = registry.find_plugin(args.name, reg_name)
         if plugin_meta is None:
-            print(f"   ❌ Plugin not found: {args.name}")
+            print(f"   [ERROR] Plugin not found: {args.name}")
             return
         if conflicts and not reg_name:
-            print(f"   ⚠️  Found in multiple registries:")
+            print(f"   [WARN] Found in multiple registries:")
             for c in conflicts:
-                print(f"      • {c.get('_registry', '?')} (v{c.get('version', '?')})")
+                print(f"      - {c.get('_registry', '?')} (v{c.get('version', '?')})")
             print(f"   Use: tokenade plugin install {args.name} --registry <name>")
             return
         before = {p["name"] for p in loader.discover()}
@@ -378,17 +378,17 @@ def cmd_plugin(args):
             after = {p["name"] for p in loader.discover()}
             deps_installed = sorted(after - before)
             if deps_installed:
-                print(f"   📦 Dependencies installed: {', '.join(deps_installed)}")
-            print("   ✅ Plugin installed successfully")
+                print(f"   [PKG] Dependencies installed: {', '.join(deps_installed)}")
+            print("   [OK] Plugin installed successfully")
         else:
-            print("   ❌ Failed to install plugin")
+            print("   [ERROR] Failed to install plugin")
 
     elif args.plugin_command == "uninstall":
-        print(f"\n🗑️  Uninstalling plugin: {args.name}")
+        print(f"\n[DEL] Uninstalling plugin: {args.name}")
         if registry.uninstall(args.name):
-            print("   ✅ Plugin uninstalled successfully")
+            print("   [OK] Plugin uninstalled successfully")
         else:
-            print("   ❌ Failed to uninstall plugin (not installed or dependency conflict)")
+            print("   [ERROR] Failed to uninstall plugin (not installed or dependency conflict)")
 
     elif args.plugin_command == "info":
         installed = loader.discover()
@@ -400,7 +400,7 @@ def cmd_plugin(args):
         if not plugin:
             registry_details = registry.get_plugin_details(args.name)
             if registry_details:
-                print(f"\n📋 Plugin: {args.name} (not installed)")
+                print(f"\n[LIST] Plugin: {args.name} (not installed)")
                 print(f"   Version: {registry_details.get('version', '?')}")
                 print(f"   Type: {registry_details.get('type', '?')}")
                 print(f"   Author: {registry_details.get('author', '?')}")
@@ -409,11 +409,11 @@ def cmd_plugin(args):
                     print(f"   Dependencies: {', '.join(registry_details['dependencies'])}")
                 print(f"   Install: tokenade plugin install {args.name}")
             else:
-                print(f"❌ Plugin not found: {args.name}")
+                print(f"[ERROR] Plugin not found: {args.name}")
             return
         installed_ver = plugin.get("version", "?")
         enabled = plugin.get("enabled", True)
-        print(f"\n📋 Plugin: {plugin['name']}")
+        print(f"\n[LIST] Plugin: {plugin['name']}")
         print(f"   Version: {installed_ver}")
         print(f"   Type: {plugin.get('type', '?')}")
         print(f"   Author: {plugin.get('author', '?')}")
@@ -451,66 +451,66 @@ def cmd_plugin(args):
         verifier = PluginVerifier()
         if verifier._local_checksums.get(args.name):
             result = verifier.verify(args.name)
-            print(f"   Integrity: {'✓ verified' if result.verified else '✗ tampered'}")
+            print(f"   Integrity: {'[OK] verified' if result.verified else '[X] tampered'}")
         else:
             print(f"   Integrity: unregistered (run 'tokenade plugin verify' to register)")
 
     elif args.plugin_command == "enable":
         if loader.enable(args.name):
-            print(f"✅ Plugin enabled: {args.name}")
+            print(f"[OK] Plugin enabled: {args.name}")
         else:
-            print(f"❌ Plugin not found: {args.name}")
+            print(f"[ERROR] Plugin not found: {args.name}")
 
     elif args.plugin_command == "disable":
         if loader.disable(args.name):
-            print(f"✅ Plugin disabled: {args.name}")
+            print(f"[OK] Plugin disabled: {args.name}")
         else:
-            print(f"❌ Plugin not found: {args.name}")
+            print(f"[ERROR] Plugin not found: {args.name}")
 
     elif args.plugin_command == "update":
         force = getattr(args, "force", False)
         dry_run = getattr(args, "dry_run", False)
         name = getattr(args, "name", None)
         if dry_run:
-            print("\n🔍 Dry run — no changes will be made")
+            print("\n[SEARCH] Dry run - no changes will be made")
         if name:
-            print(f"\n🔄 Updating {name}...")
+            print(f"\n[SYNC] Updating {name}...")
         else:
             outdated = registry.get_outdated()
             if not outdated and not force:
-                print("\n✅ All plugins are up to date.")
+                print("\n[OK] All plugins are up to date.")
                 return
-            print(f"\n🔄 Updating plugins...")
+            print(f"\n[SYNC] Updating plugins...")
         results = registry.update(plugin_name=name, force=force, dry_run=dry_run)
         if results["updated"]:
             for item in results["updated"]:
-                print(f"   ✅ {item}")
+                print(f"   [OK] {item}")
         if results["skipped"] and (name or force):
             for item in results["skipped"]:
-                print(f"   ⏭  Skipped (up to date): {item}")
+                print(f"   [SKIP] Skipped (up to date): {item}")
         if results["failed"]:
             for item in results["failed"]:
-                print(f"   ❌ Failed: {item}")
+                print(f"   [ERROR] Failed: {item}")
         if not any(results.values()):
             print("   Nothing to update.")
 
     elif args.plugin_command == "sync":
-        print("\n🔄 Syncing plugins from registry...")
+        print("\n[SYNC] Syncing plugins from registry...")
         plugins = registry.get_popular(limit=100)
         installed = {p.name for p in loader.list_all()}
         to_install = [p for p in plugins if p.get("name") not in installed]
 
         if not to_install:
-            print("✅ All available plugins already installed.")
+            print("[OK] All available plugins already installed.")
         else:
             print(f"   Installing {len(to_install)} plugin(s)...")
             for p in to_install:
                 name = p.get("name", "")
                 success = registry.install(name)
                 if success:
-                    print(f"   ✅ {name}")
+                    print(f"   [OK] {name}")
                 else:
-                    print(f"   ❌ {name}")
+                    print(f"   [ERROR] {name}")
             loader.load_all()
             print(f"\n   Done. {len(loader.list_all())} plugins installed.")
 
@@ -521,9 +521,9 @@ def cmd_plugin(args):
             pass
         loaded = loader.reload(args.name)
         if loaded:
-            print(f"✅ Plugin reloaded: {args.name} v{loaded.version} ({loaded.state.value})")
+            print(f"[OK] Plugin reloaded: {args.name} v{loaded.version} ({loaded.state.value})")
         else:
-            print(f"❌ Failed to reload: {args.name}")
+            print(f"[ERROR] Failed to reload: {args.name}")
 
     elif args.plugin_command == "search":
         _plugin_search(registry, args)
@@ -563,9 +563,9 @@ def cmd_plugin(args):
             graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
         resolver = DependencyResolver(graph)
         if args.name not in graph.get_all_plugins():
-            print(f"❌ Plugin not found: {args.name}")
+            print(f"[ERROR] Plugin not found: {args.name}")
             return
-        print(f"\n   📦 Dependency tree for {args.name}:")
+        print(f"\n   [PKG] Dependency tree for {args.name}:")
         print("   " + resolver.get_dependency_tree(args.name).replace("\n", "\n   "))
 
     elif args.plugin_command == "check-deps":
@@ -577,32 +577,32 @@ def cmd_plugin(args):
         resolver = DependencyResolver(graph)
         if args.name:
             if args.name not in graph.get_all_plugins():
-                print(f"❌ Plugin not found: {args.name}")
+                print(f"[ERROR] Plugin not found: {args.name}")
                 return
             missing = [d for d in graph.get_dependencies(args.name) if d not in graph.get_all_plugins()]
             if missing:
-                print(f"\n   ⚠️  Missing dependencies for {args.name}: {', '.join(missing)}")
+                print(f"\n   [WARN] Missing dependencies for {args.name}: {', '.join(missing)}")
             else:
-                print(f"\n   ✅ No missing dependencies for {args.name}")
+                print(f"\n   [OK] No missing dependencies for {args.name}")
         else:
             missing = resolver.check_missing()
             circular = resolver.check_circular()
             depth = resolver.check_depth()
             print("\n   Dependency check (all plugins):")
             if missing:
-                print(f"   ⚠️  Missing dependencies: {', '.join(missing)}")
+                print(f"   [WARN] Missing dependencies: {', '.join(missing)}")
             else:
-                print("   ✅ No missing dependencies")
+                print("   [OK] No missing dependencies")
             if circular:
-                print(f"   🔄 Circular dependencies: {', '.join(circular)}")
+                print(f"   [SYNC] Circular dependencies: {', '.join(circular)}")
             else:
-                print("   ✅ No circular dependencies")
+                print("   [OK] No circular dependencies")
             if depth:
-                print(f"   ⚠️  Depth violations:")
+                print(f"   [WARN] Depth violations:")
                 for e in depth:
                     print(f"      {e}")
             else:
-                print("   ✅ No depth violations")
+                print("   [OK] No depth violations")
 
     elif args.plugin_command == "registry":
         reg_action = getattr(args, "registry_action", None)
@@ -611,16 +611,16 @@ def cmd_plugin(args):
             source = args.source
             try:
                 entry = registry.add_registry(name, source)
-                print(f"\n✅ Registry added: {entry['name']}")
+                print(f"\n[OK] Registry added: {entry['name']}")
                 print(f"   Type: {entry['type']}")
                 print(f"   Source: {entry['source']}")
             except ValueError as e:
-                print(f"\n❌ {e}")
+                print(f"\n[ERROR] {e}")
         elif reg_action == "remove":
             if registry.remove_registry(args.name):
-                print(f"\n✅ Registry removed: {args.name}")
+                print(f"\n[OK] Registry removed: {args.name}")
             else:
-                print(f"\n❌ Registry not found: {args.name}")
+                print(f"\n[ERROR] Registry not found: {args.name}")
         elif reg_action == "list":
             regs = registry.list_registries()
             print(f"\n{'=' * 60}")
@@ -664,9 +664,9 @@ def _plugin_search(registry, args):
     print(f"{'=' * 70}")
 
     for p in results:
-        stars = f"★ {p.get('rating', 0):.1f}" if p.get('rating') else ""
-        verified = " ✓" if p.get('verified') else ""
-        downloads = f"↓ {p.get('downloads', 0)}" if p.get('downloads') else ""
+        stars = f"* {p.get('rating', 0):.1f}" if p.get('rating') else ""
+        verified = " [OK]" if p.get('verified') else ""
+        downloads = f"v {p.get('downloads', 0)}" if p.get('downloads') else ""
         print(f"\n  {p['name']}{verified} v{p.get('version', '?')}")
         print(f"    {p.get('description', '')}")
         meta = " | ".join(filter(None, [stars, downloads, f"by {p.get('author', '')}"]))
@@ -714,8 +714,8 @@ def _plugin_popular(registry, args):
         if dl is None and rt is None:
             print("     metrics: n/a (downloads/ratings not tracked yet)")
         else:
-            dl_s = f"↓ {dl} downloads" if dl is not None else "↓ n/a"
-            rt_s = f"★ {rt:.1f}" if rt is not None else "★ n/a"
+            dl_s = f"v {dl} downloads" if dl is not None else "v n/a"
+            rt_s = f"* {rt:.1f}" if rt is not None else "* n/a"
             print(f"     {dl_s} | {rt_s}")
 
     print(f"\n{'=' * 60}\n")
@@ -744,7 +744,7 @@ def _plugin_recent(registry, args):
 def _plugin_rate(registry, args):
     """Rate a plugin."""
     if registry.rate_plugin(args.name, args.rating, args.review or ""):
-        print(f"✅ Rated {args.name}: {args.rating}/5")
+        print(f"[OK] Rated {args.name}: {args.rating}/5")
         if args.review:
             print(f"   Review: {args.review}")
 
@@ -753,13 +753,13 @@ def _plugin_rate(registry, args):
         sync = RatingSync()
         if sync.has_pat():
             if sync.submit_rating(args.name, args.rating, args.review or ""):
-                print("   🌐 Synced to GitHub")
+                print("   [NET] Synced to GitHub")
             else:
-                print("   ⚠️ GitHub sync failed (local rating saved)")
+                print("   [WARN] GitHub sync failed (local rating saved)")
         else:
-            print("   💡 Set github-token to sync globally: tokenade config set github-token <PAT>")
+            print("   [TIP] Set github-token to sync globally: tokenade config set github-token <PAT>")
     else:
-        print(f"❌ Failed to rate {args.name} (rating must be 1.0-5.0)")
+        print(f"[ERROR] Failed to rate {args.name} (rating must be 1.0-5.0)")
 
 
 def _plugin_ratings(registry, args):
@@ -772,7 +772,7 @@ def _plugin_ratings(registry, args):
     if not global_ratings:
         print("\n  No global ratings found.")
         if not sync.has_pat():
-            print("  💡 Set github-token to sync ratings: tokenade config set github-token <PAT>")
+            print("  [TIP] Set github-token to sync ratings: tokenade config set github-token <PAT>")
         return
 
     name = getattr(args, "name", None)
@@ -781,21 +781,21 @@ def _plugin_ratings(registry, args):
         # Show specific plugin
         if name in global_ratings:
             r = global_ratings[name]
-            stars = "★" * int(r.get("rating", 0)) + "☆" * (5 - int(r.get("rating", 0)))
-            print(f"\n  {name} — {stars} ({r.get('rating', 0):.1f}/5)")
+            stars = "*" * int(r.get("rating", 0)) + "*" * (5 - int(r.get("rating", 0)))
+            print(f"\n  {name} - {stars} ({r.get('rating', 0):.1f}/5)")
             print(f"  Reviews: {r.get('review_count', 0)}")
             for rev in r.get("reviews", []):
-                print(f"    ⭐ {rev.get('rating', 0)}: {rev.get('review', '')[:80]}")
+                print(f"    * {rev.get('rating', 0)}: {rev.get('review', '')[:80]}")
         else:
             print(f"\n  No global ratings for: {name}")
     else:
         # Show all
-        print(f"\n  🌐 Global Ratings ({len(global_ratings)} plugins)\n")
+        print(f"\n  [NET] Global Ratings ({len(global_ratings)} plugins)\n")
         for name, r in sorted(global_ratings.items()):
-            stars = "★" * int(r.get("rating", 0)) + "☆" * (5 - int(r.get("rating", 0)))
+            stars = "*" * int(r.get("rating", 0)) + "*" * (5 - int(r.get("rating", 0)))
             print(f"  {stars} {r.get('rating', 0):.1f}  {name}  ({r.get('review_count', 0)} reviews)")
         if not sync.has_pat():
-            print(f"\n  💡 Set github-token to sync: tokenade config set github-token <PAT>")
+            print(f"\n  [TIP] Set github-token to sync: tokenade config set github-token <PAT>")
 
 
 def _plugin_verify(args):
@@ -829,18 +829,18 @@ def _plugin_verify(args):
     all_ok = True
     for r in results:
         if r.plugin_name in registered:
-            icon = "📝"
+            icon = "[NOTE]"
             status = f"registered ({r.files_checked} files checksummed)"
         elif r.verified:
-            icon = "✅"
+            icon = "[OK]"
             status = r.summary
         else:
-            icon = "❌"
+            icon = "[ERROR]"
             status = r.summary
             all_ok = False
         print(f"\n  {icon} {r.plugin_name}: {status}")
         for err in r.errors:
-            print(f"     ⚠️  {err}")
+            print(f"     [WARN] {err}")
 
     print(f"\n{'=' * 60}")
     if all_ok:
@@ -865,7 +865,7 @@ def _plugin_outdated(registry):
 
     for p in outdated:
         print(f"\n  {p['name']}")
-        print(f"    Installed: {p['installed_version']} → Available: {p['available_version']}")
+        print(f"    Installed: {p['installed_version']} -> Available: {p['available_version']}")
         if p.get('description'):
             print(f"    {p['description']}")
 
@@ -884,7 +884,7 @@ def _plugin_browse(registry, args):
     output_path = args.output or str(Path.home() / ".tokenade" / "marketplace.html")
 
     path = generate_marketplace_html(plugins, categories, output_path)
-    print(f"✅ Marketplace page generated: {path}")
+    print(f"[OK] Marketplace page generated: {path}")
     print(f"   Open in browser: file://{path}")
 
 
@@ -912,11 +912,11 @@ def _plugin_test(args):
     total_failed = 0
 
     for suite in suites:
-        status = "✅" if suite.passed else "❌"
+        status = "[OK]" if suite.passed else "[ERROR]"
         print(f"\n{status} {suite.summary()}")
         for result in suite.results:
-            icon = "  ✓" if result.passed else "  ✗"
-            msg = f" — {result.message}" if result.message and (not result.passed or verbose) else ""
+            icon = "  [OK]" if result.passed else "  [X]"
+            msg = f" - {result.message}" if result.message and (not result.passed or verbose) else ""
             dur = f" ({result.duration:.2f}s)" if verbose and result.duration else ""
             print(f"{icon} {result.test_name}{dur}{msg}")
         total_passed += suite.passed_count
@@ -936,7 +936,7 @@ def _plugin_configure(args):
     if getattr(args, "show", False):
         config = mgr.get_full_config(args.name)
         if config:
-            print(f"\n   📋 Config for {args.name}:")
+            print(f"\n   [LIST] Config for {args.name}:")
             for k, v in sorted(config.items()):
                 print(f"      {k} = {v}")
         else:
@@ -944,7 +944,7 @@ def _plugin_configure(args):
 
     elif getattr(args, "reset", False):
         if mgr.delete_config(args.name):
-            print(f"\n   ✅ Config reset to defaults: {args.name}")
+            print(f"\n   [OK] Config reset to defaults: {args.name}")
         else:
             print(f"\n   No config file to reset: {args.name}")
 
@@ -952,11 +952,11 @@ def _plugin_configure(args):
         config = mgr.load_config(args.name)
         errors = mgr.validate_config(args.name, config)
         if errors:
-            print(f"\n   ❌ Config validation errors:")
+            print(f"\n   [ERROR] Config validation errors:")
             for e in errors:
                 print(f"      {e}")
         else:
-            print(f"\n   ✅ Config valid: {args.name}")
+            print(f"\n   [OK] Config valid: {args.name}")
 
     elif getattr(args, "set", None):
         config = mgr.load_config(args.name)
@@ -978,9 +978,9 @@ def _plugin_configure(args):
                             pass
                 config[k] = v
         if mgr.save_config(args.name, config):
-            print(f"\n   ✅ Config saved: {args.name}")
+            print(f"\n   [OK] Config saved: {args.name}")
         else:
-            print(f"\n   ❌ Failed to save config: {args.name}")
+            print(f"\n   [ERROR] Failed to save config: {args.name}")
 
     else:
         print("Usage: tokenade plugin configure <name> [--show|--reset|--validate|--set KEY=VALUE ...]")
@@ -1006,7 +1006,7 @@ def cmd_profile(args):
                 tags=tags,
                 notes=args.notes or "",
             )
-            print(f"\n✅ Created profile: {profile.name}")
+            print(f"\n[OK] Created profile: {profile.name}")
             print(f"   Browser: {profile.browser} | OS: {profile.os}")
             print(f"   ID: {profile.id}")
             if profile.fingerprint.get("navigator"):
@@ -1017,7 +1017,7 @@ def cmd_profile(args):
                 print(f"   GPU: {gl.get('renderer', '?')}")
             print()
         except ValueError as e:
-            print(f"\n❌ {e}\n")
+            print(f"\n[ERROR] {e}\n")
 
     elif args.profile_command == "list":
         profiles = manager.list_profiles(browser=args.browser, tag=args.tag)
@@ -1040,7 +1040,7 @@ def cmd_profile(args):
     elif args.profile_command == "get":
         profile = manager.get_profile(args.name)
         if not profile:
-            print(f"\n❌ Profile not found: {args.name}\n")
+            print(f"\n[ERROR] Profile not found: {args.name}\n")
             return
         print(f"\n{'=' * 60}")
         print(f"TOKENADE - Profile: {profile.name}")
@@ -1072,23 +1072,23 @@ def cmd_profile(args):
 
     elif args.profile_command == "delete":
         if manager.delete_profile(args.name):
-            print(f"\n✅ Deleted profile: {args.name}\n")
+            print(f"\n[OK] Deleted profile: {args.name}\n")
         else:
-            print(f"\n❌ Profile not found: {args.name}\n")
+            print(f"\n[ERROR] Profile not found: {args.name}\n")
 
     elif args.profile_command == "export":
         try:
             path = manager.export_profile(args.name, args.output or f"{args.name}.zip")
-            print(f"\n✅ Exported profile: {path}\n")
+            print(f"\n[OK] Exported profile: {path}\n")
         except FileNotFoundError as e:
-            print(f"\n❌ {e}\n")
+            print(f"\n[ERROR] {e}\n")
 
     elif args.profile_command == "import":
         try:
             profile = manager.import_profile(args.archive, name=args.name)
-            print(f"\n✅ Imported profile: {profile.name}\n")
+            print(f"\n[OK] Imported profile: {profile.name}\n")
         except (FileNotFoundError, ValueError) as e:
-            print(f"\n❌ {e}\n")
+            print(f"\n[ERROR] {e}\n")
 
     elif args.profile_command == "recent":
         profiles = manager.get_recent_profiles(limit=args.limit)
@@ -1098,7 +1098,7 @@ def cmd_profile(args):
         print(f"\nRecently used profiles:")
         for i, p in enumerate(profiles, 1):
             last_used = time.strftime("%Y-%m-%d %H:%M", time.localtime(p.last_used)) if p.last_used else "never"
-            print(f"  {i}. {p.name} ({p.browser}/{p.os}) — last used: {last_used}")
+            print(f"  {i}. {p.name} ({p.browser}/{p.os}) - last used: {last_used}")
         print()
 
     elif args.profile_command == "stats":
@@ -1121,7 +1121,7 @@ def cmd_stealth(args):
         from tokenade.core.browser.dashboard import generate_html_report, generate_json_report
 
         browser = args.browser
-        print(f"\n🔍 Running stealth tests ({browser})...")
+        print(f"\n[SEARCH] Running stealth tests ({browser})...")
         suite = StealthTestSuite(browser=browser, headless=True)
         report = asyncio.run(suite.run_all(url=args.url))
 
@@ -1132,7 +1132,7 @@ def cmd_stealth(args):
         print()
 
         for r in report.results:
-            icon = {"pass": "✅", "fail": "❌", "warn": "⚠️", "skip": "○"}[r.verdict.value]
+            icon = {"pass": "[OK]", "fail": "[ERROR]", "warn": "[WARN]", "skip": "o"}[r.verdict.value]
             print(f"  {icon} {r.name} ({r.score:.0f})")
 
         # Save reports
@@ -1140,20 +1140,20 @@ def cmd_stealth(args):
         generate_html_report(report, html_path)
         json_path = html_path.replace(".html", ".json")
         generate_json_report(report, json_path)
-        print(f"\n  📄 HTML report: {html_path}")
-        print(f"  📄 JSON report: {json_path}")
+        print(f"\n  [FILE] HTML report: {html_path}")
+        print(f"  [FILE] JSON report: {json_path}")
         print(f"{'=' * 60}\n")
 
     elif args.stealth_action == "report":
         import json
         from pathlib import Path
-        print(f"\n📊 Stealth Report")
+        print(f"\n[STATS] Stealth Report")
         manager = StealthManager()
         config = manager.get_config_dict()
         enabled = [k for k, v in config.items() if v is True and k.startswith("enable_")]
         print(f"   Enabled patches: {len(enabled)}")
         for patch in enabled:
-            print(f"     ✓ {patch.replace('enable_', '')}")
+            print(f"     [OK] {patch.replace('enable_', '')}")
         print(f"\n   WebGL vendor: {config['webgl_vendor']}")
         print(f"   WebGL renderer: {config['webgl_renderer']}")
         print(f"   Screen: {config['screen_width']}x{config['screen_height']}")
@@ -1166,18 +1166,18 @@ def cmd_stealth(args):
     elif args.stealth_action == "deps":
         checker = DependencyChecker()
         report = checker.get_report("chromium")
-        print(f"\n📦 System Dependencies ({report['system']})")
+        print(f"\n[PKG] System Dependencies ({report['system']})")
         print(f"   Package manager: {report['package_manager'] or 'not found'}")
         print(f"   Installed: {report['installed']}/{report['total']}")
         if report['missing_packages']:
             print(f"   Missing ({len(report['missing_packages'])}):")
             for pkg in report['missing_packages']:
-                print(f"     ❌ {pkg}")
+                print(f"     [ERROR] {pkg}")
         else:
-            print(f"   ✅ All dependencies installed")
+            print(f"   [OK] All dependencies installed")
 
     elif args.stealth_action == "deps-install":
-        print(f"\n📦 Installing missing dependencies...")
+        print(f"\n[PKG] Installing missing dependencies...")
         checker = DependencyChecker()
         results = checker.install_playwright_deps()
         installed = sum(1 for r in results if r.success)
@@ -1185,9 +1185,9 @@ def cmd_stealth(args):
         print(f"   Installed: {installed}, Failed: {failed}")
         for r in results:
             if r.success:
-                print(f"   ✅ {r.name}")
+                print(f"   [OK] {r.name}")
             else:
-                print(f"   ❌ {r.name}: {r.message}")
+                print(f"   [ERROR] {r.name}: {r.message}")
 
     elif args.stealth_action == "battle":
         from tokenade.core.browser.battle import BattleTestSuite, DETECTION_SITES
@@ -1196,11 +1196,11 @@ def cmd_stealth(args):
         sites = args.site if args.site else list(DETECTION_SITES.keys())
         timeout_ms = args.timeout * 1000
 
-        print(f"\n⚔️  Running battle tests ({browser})...")
+        print(f"\n  Running battle tests ({browser})...")
         print(f"   Sites: {len(sites)}")
         for s in sites:
             cfg = DETECTION_SITES.get(s, {})
-            print(f"     • {cfg.get('name', s)}")
+            print(f"     - {cfg.get('name', s)}")
         print()
 
         suite = BattleTestSuite(
@@ -1245,7 +1245,7 @@ def cmd_stealth(args):
             }
             with open(out, "w") as f:
                 json_mod.dump(data, f, indent=2)
-            print(f"\n  📄 JSON report: {args.output}")
+            print(f"\n  [FILE] JSON report: {args.output}")
 
         print(f"\n{'=' * 60}\n")
 
@@ -1262,27 +1262,27 @@ def cmd_deps(args):
     if args.deps_action == "check":
         browser = getattr(args, "browser", "chromium")
         report = checker.get_report(browser)
-        print(f"\n📦 System Dependencies ({report['system']})")
+        print(f"\n[PKG] System Dependencies ({report['system']})")
         print(f"   Package manager: {report['package_manager'] or 'not found'}")
         print(f"   Browser: {browser}")
         print(f"   Installed: {report['installed']}/{report['total']}")
         if report['missing_packages']:
             print(f"   Missing packages:")
             for pkg in report['missing_packages']:
-                print(f"     ❌ {pkg}")
+                print(f"     [ERROR] {pkg}")
             print(f"\n   Install: tokenade deps install")
         else:
-            print(f"   ✅ All dependencies installed")
+            print(f"   [OK] All dependencies installed")
 
     elif args.deps_action == "install":
         browser = getattr(args, "browser", "chromium")
         playwright_only = getattr(args, "playwright", False)
 
         if playwright_only:
-            print(f"\n📦 Installing Playwright dependencies...")
+            print(f"\n[PKG] Installing Playwright dependencies...")
             results = checker.install_playwright_deps()
         else:
-            print(f"\n📦 Installing {browser} dependencies...")
+            print(f"\n[PKG] Installing {browser} dependencies...")
             results = checker.install_missing(browser)
 
         installed = sum(1 for r in results if r.success)
@@ -1290,9 +1290,9 @@ def cmd_deps(args):
         print(f"   Installed: {installed}, Failed: {failed}")
         for r in results:
             if r.success:
-                print(f"   ✅ {r.name}")
+                print(f"   [OK] {r.name}")
             else:
-                print(f"   ❌ {r.name}: {r.message}")
+                print(f"   [ERROR] {r.name}: {r.message}")
 
     else:
         print("Usage: tokenade deps {check|install}")
@@ -1311,7 +1311,7 @@ def cmd_serve(args):
         cors_origins=args.cors.split(",") if args.cors else None,
     )
 
-    print(f"\n🚀 Starting Tokenade API server...")
+    print(f"\n[...] Starting Tokenade API server...")
     print(f"   Host: {config.host}")
     print(f"   Port: {config.port}")
     print(f"   Auth: {'API key required' if config.api_key else 'no authentication'}")
@@ -1323,9 +1323,9 @@ def cmd_serve(args):
     try:
         asyncio.run(server.start())
     except KeyboardInterrupt:
-        print("\n\n🛑 Server stopped")
+        print("\n\n[STOP] Server stopped")
     except Exception as e:
-        print(f"\n❌ Server error: {e}")
+        print(f"\n[ERROR] Server error: {e}")
 
 
 def cmd_recommend(args):
@@ -1485,7 +1485,10 @@ Commands:
 
     # Export
     export_parser = subparsers.add_parser("export", help="Export session from existing browser")
-    export_parser.add_argument("--browser-name", choices=["chrome", "firefox", "edge", "brave"], help="Browser name")
+    export_parser.add_argument(
+        "--browser-name",
+        help="Browser name (from profile discovery, e.g. chrome, firefox, vivaldi)",
+    )
     export_parser.add_argument("--browser-path", help="Custom path to browser profile")
     export_parser.add_argument("--profile", help="Profile name within browser")
     export_parser.add_argument("--site-config", help="Path to JSON site config file for filtering")
@@ -1623,7 +1626,7 @@ Commands:
                             default="health-weighted", help=help_text or "Rotation strategy (default: health-weighted)")
         parser.add_argument("--rotate-interval", type=int, default=300, help=help_text or "Rotation interval in seconds (default: 300)")
 
-    # Proxy — upstream proxy provider tooling. Legacy local/CDP behavior is hidden under `proxy legacy`.
+    # Proxy - upstream proxy provider tooling. Legacy local/CDP behavior is hidden under `proxy legacy`.
     proxy_parser = subparsers.add_parser("proxy", help="Resolve upstream proxy provider requests")
     add_legacy_proxy_arguments(proxy_parser, hidden=True)
     proxy_sub = proxy_parser.add_subparsers(dest="proxy_action")
@@ -1685,37 +1688,52 @@ Commands:
     unshare_parser.add_argument("session_id", help="Session ID to revoke")
     unshare_parser.add_argument("--list", action="store_true", help="List all active shares")
 
-    # Share URL (URL shortener with password protection)
-    share_url_parser = subparsers.add_parser("share-url", help="Share sessions via URL shortener with password protection")
+    # Share URL (password + full URL + optional Supabase short-id)
+    def _share_url_remote_flags(p):
+        p.add_argument("--supabase-url", help="Private Supabase URL (overrides public default)")
+        p.add_argument("--supabase-key", help="Private Supabase anon/publishable key")
+        p.add_argument("--no-remote", action="store_true", help="Embedded full URL only (no remote)")
+
+    share_url_parser = subparsers.add_parser(
+        "share-url",
+        help="Share sessions via password-protected URL (full URL + optional Supabase short-id)",
+    )
     share_url_subparsers = share_url_parser.add_subparsers(dest="share_action")
 
     share_url_create = share_url_subparsers.add_parser("create", help="Create password-protected share link")
     share_url_create.add_argument("session", help="Session file to share")
     share_url_create.add_argument("--password", required=True, help="Password for encryption (required)")
     share_url_create.add_argument("--expiry", type=int, default=24, help="Expiry in hours (default: 24)")
-    share_url_create.add_argument("--max-uses", type=int, default=0, help="Max uses (0=unlimited)")
+    share_url_create.add_argument("--max-uses", type=int, default=0, help="Max uses (0=server default on public)")
     share_url_create.add_argument("--backend", choices=["local", "bitly", "tinyurl"], default="local", help="URL shortener backend")
     share_url_create.add_argument("--api-key", help="API key for URL shortener (for bitly)")
     share_url_create.add_argument("--domain", help="Custom domain for shortener")
     share_url_create.add_argument("--password-min-length", type=int, default=8, help="Minimum password length")
     share_url_create.add_argument("--include-request", action="store_true", help="Include request.json in session")
     share_url_create.add_argument("--json", action="store_true", help="JSON output")
+    _share_url_remote_flags(share_url_create)
 
     share_url_retrieve = share_url_subparsers.add_parser("retrieve", help="Retrieve session with password")
-    share_url_retrieve.add_argument("share_url", help="Share URL or share ID")
+    share_url_retrieve.add_argument("share_url", help="Share URL, short id, or full tokenade:// URL")
     share_url_retrieve.add_argument("--password", required=True, help="Password for decryption (required)")
-    share_url_retrieve.add_argument("--output", help="Output file path")
+    share_url_retrieve.add_argument("-o", "--output", help="Output file path")
     share_url_retrieve.add_argument("--json", action="store_true", help="JSON output")
+    _share_url_remote_flags(share_url_retrieve)
 
     share_url_revoke = share_url_subparsers.add_parser("revoke", help="Revoke a share link")
     share_url_revoke.add_argument("share_id", help="Share ID to revoke")
     share_url_revoke.add_argument("--json", action="store_true", help="JSON output")
+    _share_url_remote_flags(share_url_revoke)
 
-    share_url_list = share_url_subparsers.add_parser("list", help="List active share links")
+    share_url_list = share_url_subparsers.add_parser("list", help="List local share links")
     share_url_list.add_argument("--json", action="store_true", help="JSON output")
 
-    share_url_cleanup = share_url_subparsers.add_parser("cleanup", help="Cleanup expired share links")
+    share_url_cleanup = share_url_subparsers.add_parser("cleanup", help="Cleanup expired local share links")
     share_url_cleanup.add_argument("--json", action="store_true", help="JSON output")
+
+    share_url_status = share_url_subparsers.add_parser("status", help="Show remote share (Supabase) config")
+    share_url_status.add_argument("--json", action="store_true", help="JSON output")
+    _share_url_remote_flags(share_url_status)
 
     # Import shared session
     import_parser = subparsers.add_parser("import", help="Import a shared session from URL")
@@ -1792,7 +1810,7 @@ Commands:
         "--sort",
         choices=["rating", "downloads", "name", "recent", "trending"],
         default="name",
-        help="Sort order (default: name — registry has no fake download/rating metrics)",
+        help="Sort order (default: name - registry has no fake download/rating metrics)",
     )
 
     # plugin categories
@@ -1838,7 +1856,7 @@ Commands:
 
     # plugin check-deps
     plugin_checkdeps_parser = plugin_sub.add_parser("check-deps", help="Check for missing/circular dependencies")
-    plugin_checkdeps_parser.add_argument("name", nargs="?", help="Plugin name (optional — checks all if omitted)")
+    plugin_checkdeps_parser.add_argument("name", nargs="?", help="Plugin name (optional - checks all if omitted)")
 
     # plugin configure
     plugin_configure_parser = plugin_sub.add_parser("configure", help="Configure plugin settings")
@@ -2064,7 +2082,17 @@ Commands:
     refresh_browser_parser.add_argument("--browser", "-b", default="cloak", help="Browser to use (cloak, firefox, brave, edge, vivaldi, chrome)")
     refresh_browser_parser.add_argument("--url", "-u", help="Target URL (auto-detected from cookies if not specified)")
     refresh_browser_parser.add_argument("--port", "-p", type=int, default=9222, help="CDP debugging port")
-    refresh_browser_parser.add_argument("--headless", action="store_true", help="Run headless (no window)")
+    refresh_browser_parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=True,
+        help="Run headless (default; always closes after login check)",
+    )
+    refresh_browser_parser.add_argument(
+        "--visible",
+        action="store_true",
+        help="Show browser window during refresh (still closes when done)",
+    )
     refresh_browser_parser.add_argument("--wait", "-w", type=int, default=8, help="Seconds to wait for session refresh (default: 8)")
     refresh_browser_parser.add_argument("--output", "-o", help="Output file (default: overwrite original)")
     refresh_browser_parser.add_argument("--plugin", help="Plugin to use for refresh (e.g., oauth2)")
@@ -2123,7 +2151,7 @@ Commands:
     accounts_refresh.add_argument("--proxy-strategy", choices=["round-robin", "random", "health-weighted", "sticky"],
                                   default="health-weighted", help="Rotation strategy (default: health-weighted)")
 
-    # ── Mobile Import ────────────────────────────────────────────
+    # -- Mobile Import --------------------------------------------
     mobile_import_parser = subparsers.add_parser("mobile-import", help=argparse.SUPPRESS)
     mobile_import_parser.add_argument("--auto", action="store_true", help="Auto-detect device and browser")
     mobile_import_parser.add_argument("--list-devices", action="store_true", help="List connected mobile devices")
@@ -2134,7 +2162,7 @@ Commands:
     mobile_import_parser.add_argument("--site-name", help="Site name override")
     mobile_import_parser.add_argument("--ios", action="store_true", help="Target iOS device (macOS only)")
 
-    # ── Daemon ──────────────────────────────────────────────────
+    # -- Daemon --------------------------------------------------
     daemon_parser = subparsers.add_parser("daemon", help="Auto-refresh daemon (background session refresh)")
     daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_action")
 
@@ -2175,7 +2203,7 @@ Commands:
     daemon_logs.add_argument("--lines", "-n", type=int, default=50, help="Number of lines to show")
     daemon_logs.add_argument("--follow", "-f", action="store_true", help="Follow log output (like tail -f)")
 
-    # ── Versions ────────────────────────────────────────────────
+    # -- Versions ------------------------------------------------
     versions_parser = subparsers.add_parser("versions", help="Session versioning (list/create/delete)")
     versions_subparsers = versions_parser.add_subparsers(dest="version_action")
 
@@ -2190,18 +2218,18 @@ Commands:
     versions_delete.add_argument("session", help="Session file")
     versions_delete.add_argument("version", type=int, help="Version number to delete")
 
-    # ── Rollback ────────────────────────────────────────────────
+    # -- Rollback ------------------------------------------------
     rollback_parser = subparsers.add_parser("rollback", help="Rollback session to a specific version")
     rollback_parser.add_argument("session", help="Session file")
     rollback_parser.add_argument("version", type=int, help="Version number to restore")
 
-    # ── Session Diff (version comparison) ───────────────────────
+    # -- Session Diff (version comparison) -----------------------
     session_diff_parser = subparsers.add_parser("session-diff", help="Compare two session versions")
     session_diff_parser.add_argument("session", help="Session file")
     session_diff_parser.add_argument("version_a", type=int, help="First version number")
     session_diff_parser.add_argument("version_b", type=int, help="Second version number")
 
-    # ── Logs ────────────────────────────────────────────────────
+    # -- Logs ----------------------------------------------------
     logs_parser = subparsers.add_parser("logs", help="View structured logs")
     logs_parser.add_argument("--lines", "-n", type=int, default=50, help="Number of recent lines to show (default: 50)")
     logs_parser.add_argument("--follow", "-f", action="store_true", help="Follow log output (like tail -f)")
@@ -2211,7 +2239,7 @@ Commands:
     logs_parser.add_argument("--list-files", action="store_true", help="List all log files")
     logs_parser.add_argument("--cleanup", type=int, metavar="DAYS", help="Remove log files older than N days")
 
-    # ── Clone Profile ──────────────────────────────────────────
+    # -- Clone Profile ------------------------------------------
     clone_parser = subparsers.add_parser("clone-profile", help="Clone a browser profile to a new directory")
     clone_parser.add_argument("source", nargs="?", help="Source profile directory (omit to use system default)")
     clone_parser.add_argument("--dest", "-d", required=True, help="Destination directory for the clone")
@@ -2581,15 +2609,15 @@ def main():
     try:
         commands[args.command](args)
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
+        print("\n\n[WARN] Interrupted by user")
         sys.exit(130)
     except Exception as e:
         from tokenade.core.errors import TokenadeError
         logger.exception("Command failed")
         if isinstance(e, TokenadeError):
-            print(f"\n❌ {e}")
+            print(f"\n[ERROR] {e}")
         else:
-            print(f"\n❌ Unexpected error: {e}")
+            print(f"\nUnexpected error: {e}")
             print("   Run with --verbose for full traceback")
             print("   Logs: ~/.tokenade/logs/")
         sys.exit(1)

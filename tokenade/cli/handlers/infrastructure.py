@@ -1,5 +1,5 @@
 """
-Infrastructure CLI commands — fleet, container, k8s.
+Infrastructure CLI commands - fleet, container, k8s.
 """
 
 import logging
@@ -9,7 +9,7 @@ logger = logging.getLogger("tokenade")
 
 
 def cmd_fleet(args):
-    """Fleet management — unified view across containers/pods."""
+    """Fleet management - unified view across containers/pods."""
     from tokenade.core.integration.fleet import FleetManager
 
     fleet_action = getattr(args, "fleet_action", "status")
@@ -32,13 +32,13 @@ def cmd_fleet(args):
             print(report.to_table())
 
     elif fleet_action == "refresh":
-        print("🔄 Refreshing sessions in all running containers...")
+        print("[SYNC] Refreshing sessions in all running containers...")
         results = manager.refresh_all()
         if not results:
             print("No running containers found")
             return
         for r in results:
-            icon = "✅" if r["success"] else "❌"
+            icon = "[OK]" if r["success"] else "[ERROR]"
             print(f"  {icon} {r['container']}")
             if r.get("error"):
                 print(f"      {r['error'][:200]}")
@@ -46,7 +46,7 @@ def cmd_fleet(args):
     elif fleet_action == "logs":
         container = getattr(args, "container", None)
         if not container:
-            print("❌ Specify container: tokenade fleet logs <container>")
+            print("[ERROR] Specify container: tokenade fleet logs <container>")
             return
         lines = getattr(args, "lines", 50)
         output = manager.logs(container, lines=lines)
@@ -92,21 +92,21 @@ def _container_start(args):
 
     docker = DockerSessionManager()
     if not docker.is_available():
-        print("❌ Docker is not available. Install Docker and try again.")
+        print("[ERROR] Docker is not available. Install Docker and try again.")
         return
 
     sessions_dir = Path(args.sessions_dir)
     session_files = list(sessions_dir.glob("*.tokenade"))
 
     if not session_files:
-        print(f"❌ No .tokenade files found in {sessions_dir}")
+        print(f"[ERROR] No .tokenade files found in {sessions_dir}")
         return
 
     print("\n" + "=" * 60)
     print("TOKENADE - Container Start")
     print("=" * 60)
-    print(f"\n📂 Sessions: {len(session_files)}")
-    print(f"🔌 Proxy port: {args.proxy_port}")
+    print(f"\n[DIR] Sessions: {len(session_files)}")
+    print(f"[CDP] Proxy port: {args.proxy_port}")
 
     # Create network
     docker.create_network()
@@ -118,12 +118,12 @@ def _container_start(args):
     )
 
     for r in results:
-        status = "✅" if r["status"] == "running" else "❌"
+        status = "[OK]" if r["status"] == "running" else "[ERROR]"
         print(f"   {status} {r['name']} (port {r['port']})")
 
     # Start API server if requested
     if not args.no_api:
-        print(f"\n🌐 Starting API server on port {args.api_port}...")
+        print(f"\n[NET] Starting API server on port {args.api_port}...")
         import subprocess
         try:
             subprocess.run([
@@ -137,9 +137,9 @@ def _container_start(args):
                 "python", "-c",
                 "from tokenade.core.api.server import TokenadeAPIServer; import asyncio; s=TokenadeAPIServer(); asyncio.run(s.start())",
             ], capture_output=True, text=True, check=True, timeout=30)
-            print(f"   ✅ API server started")
+            print(f"   [OK] API server started")
         except Exception as e:
-            print(f"   ❌ API server failed: {e}")
+            print(f"   [ERROR] API server failed: {e}")
 
     print(f"\n{'=' * 60}\n")
 
@@ -150,18 +150,18 @@ def _container_stop(args):
 
     docker = DockerSessionManager()
     if not docker.is_available():
-        print("❌ Docker is not available")
+        print("[ERROR] Docker is not available")
         return
 
     name = getattr(args, "name", None)
     if name:
         if docker.stop_container(name):
-            print(f"✅ Stopped {name}")
+            print(f"[OK] Stopped {name}")
         else:
-            print(f"❌ Failed to stop {name}")
+            print(f"[ERROR] Failed to stop {name}")
     else:
         count = docker.cleanup(remove_all=False)
-        print(f"✅ Stopped {count} container(s)")
+        print(f"[OK] Stopped {count} container(s)")
 
 
 def _container_restart(args):
@@ -173,9 +173,9 @@ def _container_restart(args):
 
     for h in health_list:
         if orch.restart_container(h.name):
-            print(f"✅ Restarted {h.name}")
+            print(f"[OK] Restarted {h.name}")
         else:
-            print(f"❌ Failed to restart {h.name}")
+            print(f"[ERROR] Failed to restart {h.name}")
 
 
 def _container_status(args):
@@ -188,10 +188,10 @@ def _container_status(args):
     print("\n" + "=" * 60)
     print("TOKENADE - Container Status")
     print("=" * 60)
-    print(f"\n📊 Total: {summary['total']} | Healthy: {summary['healthy']} | Unhealthy: {summary['unhealthy']} | Stopped: {summary['stopped']}")
+    print(f"\n[STATS] Total: {summary['total']} | Healthy: {summary['healthy']} | Unhealthy: {summary['unhealthy']} | Stopped: {summary['stopped']}")
 
     for c in summary["containers"]:
-        icon = "🟢" if c["healthy"] else ("🔴" if c["status"] == "running" else "⚫")
+        icon = "[+]" if c["healthy"] else ("[!]" if c["status"] == "running" else "")
         print(f"\n   {icon} {c['name']}")
         print(f"      Status: {c['status']}")
         print(f"      Restarts: {c['restart_count']}")
@@ -215,7 +215,7 @@ def _container_logs(args):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"❌ Failed to get logs: {e}")
+        print(f"[ERROR] Failed to get logs: {e}")
 
 
 def _container_refresh(args):
@@ -227,9 +227,9 @@ def _container_refresh(args):
 
     for r in results:
         if r.get("success"):
-            print(f"✅ {r.get('session', 'unknown')}: refreshed")
+            print(f"[OK] {r.get('session', 'unknown')}: refreshed")
         else:
-            print(f"❌ {r.get('session', 'unknown')}: {r.get('error', 'failed')}")
+            print(f"[ERROR] {r.get('session', 'unknown')}: {r.get('error', 'failed')}")
 
 
 def _container_scale(args):
@@ -239,14 +239,14 @@ def _container_scale(args):
 
     docker = DockerSessionManager()
     if not docker.is_available():
-        print("❌ Docker is not available")
+        print("[ERROR] Docker is not available")
         return
 
     sessions_dir = Path(args.sessions_dir)
     session_files = list(sessions_dir.glob("*.tokenade"))[:args.replicas]
 
     if not session_files:
-        print(f"❌ No .tokenade files found")
+        print(f"[ERROR] No .tokenade files found")
         return
 
     # Stop existing
@@ -259,7 +259,7 @@ def _container_scale(args):
     )
 
     running = sum(1 for r in results if r["status"] == "running")
-    print(f"✅ Scaled to {running}/{args.replicas} containers")
+    print(f"[OK] Scaled to {running}/{args.replicas} containers")
 
 
 def _container_cleanup(args):
@@ -268,11 +268,11 @@ def _container_cleanup(args):
 
     docker = DockerSessionManager()
     if not docker.is_available():
-        print("❌ Docker is not available")
+        print("[ERROR] Docker is not available")
         return
 
     count = docker.cleanup(remove_all=True)
-    print(f"✅ Cleaned up {count} container(s)")
+    print(f"[OK] Cleaned up {count} container(s)")
 
 
 def _container_health(args):
@@ -282,7 +282,7 @@ def _container_health(args):
     orch = ContainerOrchestrator()
 
     if args.watch:
-        print(f"🔍 Monitoring containers (interval: {args.interval}s, max restarts: {args.max_restarts})")
+        print(f"[SEARCH] Monitoring containers (interval: {args.interval}s, max restarts: {args.max_restarts})")
         print("   Press Ctrl+C to stop\n")
         try:
             orch.auto_restart_unhealthy(
@@ -291,13 +291,13 @@ def _container_health(args):
             )
         except KeyboardInterrupt:
             orch.stop()
-            print("\n✅ Monitor stopped")
+            print("\n[OK] Monitor stopped")
     else:
         summary = orch.get_status_summary()
-        print(f"\n📊 {summary['total']} containers: {summary['healthy']} healthy, {summary['unhealthy']} unhealthy")
+        print(f"\n[STATS] {summary['total']} containers: {summary['healthy']} healthy, {summary['unhealthy']} unhealthy")
         for c in summary["containers"]:
-            icon = "🟢" if c["healthy"] else "🔴"
-            print(f"   {icon} {c['name']} — {c['status']}")
+            icon = "[+]" if c["healthy"] else "[!]"
+            print(f"   {icon} {c['name']} - {c['status']}")
 
 
 def _container_generate(args):
@@ -309,7 +309,7 @@ def _container_generate(args):
     session_files = [f.name for f in sessions_dir.glob("*.tokenade")]
 
     if not session_files:
-        print(f"❌ No .tokenade files found in {sessions_dir}")
+        print(f"[ERROR] No .tokenade files found in {sessions_dir}")
         return
 
     yaml_content = generate_compose_override(
@@ -319,7 +319,7 @@ def _container_generate(args):
 
     if args.output:
         Path(args.output).write_text(yaml_content)
-        print(f"✅ Generated {args.output}")
+        print(f"[OK] Generated {args.output}")
     else:
         print(yaml_content)
 
@@ -367,16 +367,16 @@ def _k8s_deploy(args):
     if args.dry_run or args.output:
         if args.output:
             Path(args.output).write_text(full_yaml)
-            print(f"✅ Generated {args.output}")
+            print(f"[OK] Generated {args.output}")
         else:
             print(full_yaml)
         return
 
-    print("\n🚀 Deploying to Kubernetes...")
+    print("\n[...] Deploying to Kubernetes...")
     if k8s.apply_manifests(full_yaml):
-        print("✅ Applied successfully")
+        print("[OK] Applied successfully")
     else:
-        print("❌ Failed to apply manifests")
+        print("[ERROR] Failed to apply manifests")
 
 
 def _k8s_status(args):
@@ -388,13 +388,13 @@ def _k8s_status(args):
 
     status = k8s.get_deployment_status()
     if not status.get("available"):
-        print(f"❌ {status.get('error', 'Deployment not found')}")
+        print(f"[ERROR] {status.get('error', 'Deployment not found')}")
         return
 
-    print(f"\n📊 Deployment: {status['name']}")
+    print(f"\n[STATS] Deployment: {status['name']}")
     print(f"   Replicas: {status['ready_replicas']}/{status['replicas']} ready")
     for c in status.get("conditions", []):
-        print(f"   {c['type']}: {c['status']} — {c['message']}")
+        print(f"   {c['type']}: {c['status']} - {c['message']}")
 
 
 def _k8s_scale(args):
@@ -405,9 +405,9 @@ def _k8s_scale(args):
     k8s = KubernetesManager(config)
 
     if k8s.scale_deployment(args.replicas):
-        print(f"✅ Scaled to {args.replicas} replicas")
+        print(f"[OK] Scaled to {args.replicas} replicas")
     else:
-        print("❌ Failed to scale")
+        print("[ERROR] Failed to scale")
 
 
 def _k8s_logs(args):
@@ -432,9 +432,9 @@ def _k8s_delete(args):
     k8s = KubernetesManager(config)
 
     if k8s.delete_deployment():
-        print("✅ Deleted deployment and service")
+        print("[OK] Deleted deployment and service")
     else:
-        print("❌ Failed to delete")
+        print("[ERROR] Failed to delete")
 
 
 def _k8s_pods(args):
@@ -450,5 +450,5 @@ def _k8s_pods(args):
         return
 
     for pod in pods:
-        status_icon = "🟢" if pod["status"] == "Running" else "🔴"
-        print(f"   {status_icon} {pod['name']} — {pod['status']} (restarts: {pod['restart_count']})")
+        status_icon = "[+]" if pod["status"] == "Running" else "[!]"
+        print(f"   {status_icon} {pod['name']} - {pod['status']} (restarts: {pod['restart_count']})")

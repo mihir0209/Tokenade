@@ -358,17 +358,37 @@ class TestCloakBackendMethods:
         call_kwargs = mock_cb.launch.call_args
         assert "--fingerprint=42069" in call_kwargs[1]["args"]
 
+    @patch("tokenade.core.browser.stealth.cloak.get_binary_info")
     @patch("tokenade.core.browser.stealth.cloak._cloakbrowser")
     @patch("tokenade.core.browser.stealth.cloak._CLOAKBROWSER_AVAILABLE", True)
-    def test_serve_cdp(self, mock_cb):
-        mock_cb.binary_info.return_value = {"installed": True}
+    def test_serve_cdp(self, mock_cb, mock_info, tmp_path):
+        binary = tmp_path / "chrome"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+        mock_info.return_value = {
+            "installed": True,
+            "binary_path": str(binary),
+        }
+        mock_cb.binary_info.return_value = mock_info.return_value
 
         backend = CloakBrowserBackend()
-        with patch("subprocess.Popen") as mock_popen:
-            mock_popen.return_value = MagicMock(pid=12345)
-            with patch("time.sleep"):
-                proc = backend.serve_cdp(port=9222)
-                assert proc.pid == 12345
+        mock_proc = MagicMock(pid=12345)
+        mock_proc.poll.return_value = None
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            with patch("urllib.request.urlopen", return_value=mock_resp):
+                with patch("time.sleep"):
+                    proc = backend.serve_cdp(port=9222, headless=True)
+        assert proc.pid == 12345
+        cmd = mock_popen.call_args[0][0]
+        assert str(binary) in cmd
+        assert "--remote-debugging-port=9222" in cmd
+        assert "--headless=new" in cmd
+        assert "--no-sandbox" in cmd
 
 
 # ─── Stealth Backend Detection Tests ────────────────────────

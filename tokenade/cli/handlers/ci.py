@@ -1,5 +1,5 @@
 """
-CI/CD CLI commands — cicd, ci, autopsy.
+CI/CD CLI commands - cicd, ci, autopsy.
 """
 
 import json
@@ -22,10 +22,10 @@ def cmd_cicd(args):
     print("=" * 80)
 
     if args.generate_all:
-        print(f"\n📂 Sessions directory: {args.sessions_dir}")
-        print(f"⏰ Refresh interval: {args.interval_hours} hours")
-        print(f"🌐 Source browser: {args.source_browser}")
-        print(f"📁 Output directory: {args.output_dir}")
+        print(f"\n[DIR] Sessions directory: {args.sessions_dir}")
+        print(f"[TIME] Refresh interval: {args.interval_hours} hours")
+        print(f"[NET] Source browser: {args.source_browser}")
+        print(f"[DIR] Output directory: {args.output_dir}")
 
         workflows = generate_all_workflows(
             sessions_dir=args.sessions_dir,
@@ -34,14 +34,14 @@ def cmd_cicd(args):
             output_dir=args.output_dir,
         )
 
-        print(f"\n✅ Generated {len(workflows)} workflow files:")
+        print(f"\n[OK] Generated {len(workflows)} workflow files:")
         for filename in workflows:
-            print(f"   • {args.output_dir}/{filename}")
+            print(f"   - {args.output_dir}/{filename}")
 
-        print(f"\n📖 Next steps:")
+        print(f"\n Next steps:")
         print(f"   1. Copy .github/workflows/ to your repository")
         print(f"   2. Add your .tokenade files to {args.sessions_dir}/")
-        print(f"   3. Push to GitHub — workflows will run automatically")
+        print(f"   3. Push to GitHub - workflows will run automatically")
         return
 
     if args.workflow_type == "github":
@@ -54,7 +54,7 @@ def cmd_cicd(args):
         workflow = generator.generate_github_actions(config)
         output_path = args.output or ".github/workflows/refresh-sessions.yml"
         generator.save(workflow, output_path)
-        print(f"\n✅ Generated GitHub Actions workflow: {output_path}")
+        print(f"\n[OK] Generated GitHub Actions workflow: {output_path}")
 
     elif args.workflow_type == "gitlab":
         config = WorkflowConfig(
@@ -66,7 +66,7 @@ def cmd_cicd(args):
         workflow = generator.generate_gitlab_ci(config)
         output_path = args.output or ".gitlab-ci.yml"
         generator.save(workflow, output_path)
-        print(f"\n✅ Generated GitLab CI pipeline: {output_path}")
+        print(f"\n[OK] Generated GitLab CI pipeline: {output_path}")
 
     elif args.workflow_type == "cron":
         config = WorkflowConfig(
@@ -78,13 +78,13 @@ def cmd_cicd(args):
         script = generator.generate_cron_script(config)
         output_path = args.output or f"{args.sessions_dir}/refresh.sh"
         generator.save(script, output_path)
-        print(f"\n✅ Generated cron script: {output_path}")
-        print(f"\n📖 Add to crontab:")
+        print(f"\n[OK] Generated cron script: {output_path}")
+        print(f"\n Add to crontab:")
         print(f"   0 */{args.interval_hours} * * * {output_path}")
 
 
 def cmd_ci(args):
-    """Session CI runner — read tokenade.yml and run validation."""
+    """Session CI runner - read tokenade.yml and run validation."""
     from tokenade.core.cicd.runner import (
         CIConfig, CIRunner, DEFAULT_TEMPLATE,
     )
@@ -94,11 +94,11 @@ def cmd_ci(args):
     if ci_action == "init":
         config_path = getattr(args, "config", "tokenade.yml")
         if os.path.exists(config_path):
-            print(f"❌ {config_path} already exists")
+            print(f"[ERROR] {config_path} already exists")
             return
         with open(config_path, "w") as f:
             f.write(DEFAULT_TEMPLATE)
-        print(f"✅ Created {config_path}")
+        print(f"[OK] Created {config_path}")
         print("   Edit the file, then run: tokenade ci run")
         return
 
@@ -108,15 +108,15 @@ def cmd_ci(args):
             config = CIConfig.from_file(config_path)
             errors = config.validate_config()
             if errors:
-                print(f"❌ Config has {len(errors)} error(s):")
+                print(f"[ERROR] Config has {len(errors)} error(s):")
                 for e in errors:
-                    print(f"   • {e}")
+                    print(f"   - {e}")
             else:
-                print(f"✅ Config is valid ({len(config.sessions)} sessions)")
+                print(f"[OK] Config is valid ({len(config.sessions)} sessions)")
         except FileNotFoundError:
-            print(f"❌ Config not found: {config_path}")
+            print(f"[ERROR] Config not found: {config_path}")
         except Exception as e:
-            print(f"❌ Config error: {e}")
+            print(f"[ERROR] Config error: {e}")
         return
 
     if ci_action == "lint":
@@ -148,18 +148,18 @@ def cmd_ci(args):
     try:
         config = CIConfig.from_file(config_path)
     except FileNotFoundError:
-        print(f"❌ Config not found: {config_path}")
+        print(f"[ERROR] Config not found: {config_path}")
         print("   Create one with: tokenade ci init")
         return
     except Exception as e:
-        print(f"❌ Config error: {e}")
+        print(f"[ERROR] Config error: {e}")
         return
 
     errors = config.validate_config()
     if errors:
-        print(f"❌ Config has {len(errors)} error(s):")
+        print(f"[ERROR] Config has {len(errors)} error(s):")
         for e in errors:
-            print(f"   • {e}")
+            print(f"   - {e}")
         return
 
     fmt = getattr(args, "format", None)
@@ -184,7 +184,7 @@ def cmd_ci(args):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w") as f:
             f.write(output)
-        print(f"\n  📄 Report saved: {config.output.path}")
+        print(f"\n  [FILE] Report saved: {config.output.path}")
 
     if report.overall_status == "fail":
         if config.on_failure.action == "webhook" and config.on_failure.webhook:
@@ -199,7 +199,7 @@ def _send_ci_webhook(url: str, report):
         import requests
         payload = {
             "text": (
-                f"Tokenade CI: {report.overall_status.upper()} — "
+                f"Tokenade CI: {report.overall_status.upper()} - "
                 f"{report.failed}/{len(report.session_results)} sessions failed"
             ),
         }
@@ -209,16 +209,16 @@ def _send_ci_webhook(url: str, report):
 
 
 def cmd_autopsy(args):
-    """Session forensics — analyze why a session died."""
+    """Session forensics - analyze why a session died."""
     from tokenade.core.forensics.autopsy import SessionAutopsy
 
     session_file = args.session
     if not session_file:
-        print("❌ Specify session: tokenade autopsy -s <session.tokenade>")
+        print("[ERROR] Specify session: tokenade autopsy -s <session.tokenade>")
         return
 
     if not os.path.exists(session_file):
-        print(f"❌ File not found: {session_file}")
+        print(f"[ERROR] File not found: {session_file}")
         return
 
     autopsy = SessionAutopsy(session_file)
@@ -301,21 +301,21 @@ def cmd_cloak(args):
 
     elif cloak_action == "install":
         if not is_cloakbrowser_available():
-            print("❌ cloakbrowser package not installed")
+            print("[ERROR] cloakbrowser package not installed")
             print("   Install with: pip install cloakbrowser")
             return
         print("Downloading CloakBrowser binary...")
         if ensure_binary():
             info = get_binary_info()
-            print(f"✅ CloakBrowser installed: v{info.get('version', '?')}")
+            print(f"[OK] CloakBrowser installed: v{info.get('version', '?')}")
             print(f"   Platform: {info.get('platform', '?')}")
             print(f"   Tier: {info.get('tier', '?')}")
         else:
-            print("❌ Failed to download CloakBrowser binary")
+            print("[ERROR] Failed to download CloakBrowser binary")
 
     elif cloak_action == "serve":
         if not is_cloakbrowser_available():
-            print("❌ cloakbrowser package not installed")
+            print("[ERROR] cloakbrowser package not installed")
             return
         port = getattr(args, "port", 9222)
         proxy = getattr(args, "proxy", None)
@@ -331,7 +331,7 @@ def cmd_cloak(args):
                 headless=headless,
                 idle_timeout=idle_timeout,
             )
-            print(f"✅ CloakBrowser CDP server running on port {port}")
+            print(f"[OK] CloakBrowser CDP server running on port {port}")
             print(f"   PID: {proc.pid}")
             print(f"   Connect: http://127.0.0.1:{port}")
             print()
@@ -342,7 +342,7 @@ def cmd_cloak(args):
                 proc.terminate()
                 print("\nStopped.")
         except Exception as e:
-            print(f"❌ Failed to start server: {e}")
+            print(f"[ERROR] Failed to start server: {e}")
 
     else:
         print("Usage: tokenade cloak {info|install|serve}")

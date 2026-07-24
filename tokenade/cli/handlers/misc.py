@@ -1,5 +1,5 @@
 """
-Misc CLI commands — tui, daemon, analytics, monitor.
+Misc CLI commands - tui, daemon, analytics, monitor.
 """
 
 import json
@@ -15,11 +15,11 @@ def _health_bar(score: float, width: int = 20) -> str:
     filled = int(score / 100 * width)
     empty = width - filled
     if score >= 80:
-        char = "█"
+        char = "#"
     elif score >= 50:
-        char = "▓"
+        char = "#"
     else:
-        char = "░"
+        char = "-"
     return f"[{char * filled}{'.' * empty}]"
 
 
@@ -40,7 +40,7 @@ def cmd_monitor(args):
     elif action == "predict":
         _monitor_predict(args)
     else:
-        print("❌ Specify a monitor subcommand: status, start, stop, history, predict")
+        print("[ERROR] Specify a monitor subcommand: status, start, stop, history, predict")
 
 
 def _monitor_start(args):
@@ -57,31 +57,31 @@ def _monitor_start(args):
     if session:
         session_id = monitor.register_session_file(session)
         if session_id:
-            print(f"✅ Monitoring session: {session_id}")
+            print(f"[OK] Monitoring session: {session_id}")
         else:
-            print(f"❌ Failed to register: {session}")
+            print(f"[ERROR] Failed to register: {session}")
             return
     elif sessions_dir:
         config.sessions_dir = sessions_dir
         monitor = SessionMonitor(config)
         registered = monitor.scan_sessions_dir()
         if registered:
-            print(f"✅ Monitoring {len(registered)} sessions")
+            print(f"[OK] Monitoring {len(registered)} sessions")
         else:
-            print(f"❌ No sessions found in {sessions_dir}")
+            print(f"[ERROR] No sessions found in {sessions_dir}")
             return
     else:
-        print("❌ Specify --session or --sessions-dir")
+        print("[ERROR] Specify --session or --sessions-dir")
         return
 
     monitor.start()
-    print("✅ Monitor started (Ctrl+C to stop)")
+    print("[OK] Monitor started (Ctrl+C to stop)")
     try:
         while True:
             time.sleep(interval)
     except KeyboardInterrupt:
         monitor.stop()
-        print("\n✅ Monitor stopped")
+        print("\n[OK] Monitor stopped")
 
 
 def _monitor_stop():
@@ -90,16 +90,16 @@ def _monitor_stop():
     import signal
     pid_file = Path("~/.tokenade/monitor.pid").expanduser()
     if not pid_file.exists():
-        print("❌ No monitor process found (no PID file)")
+        print("[ERROR] No monitor process found (no PID file)")
         return
 
     try:
         pid = int(pid_file.read_text().strip())
         os.kill(pid, signal.SIGTERM)
-        print(f"✅ Sent stop signal to monitor (PID: {pid})")
+        print(f"[OK] Sent stop signal to monitor (PID: {pid})")
         pid_file.unlink(missing_ok=True)
     except (ProcessLookupError, ValueError) as e:
-        print(f"❌ Failed to stop monitor: {e}")
+        print(f"[ERROR] Failed to stop monitor: {e}")
         pid_file.unlink(missing_ok=True)
 
 
@@ -127,28 +127,28 @@ def _monitor_status(args):
         if status:
             site = status.site_name or session_id
             bar = _health_bar(status.health_score)
-            print(f"\n📊 {site}")
+            print(f"\n[STATS] {site}")
             print(f"   Health: {bar}")
             print(f"   Cookies: {status.cookie_count}")
             print(f"   Expired: {status.expired_cookies}")
         else:
-            print(f"❌ No status for: {session}")
+            print(f"[ERROR] No status for: {session}")
     elif sessions_dir:
         registered = monitor.scan_sessions_dir()
         if not registered:
-            print(f"📂 No sessions found in {sessions_dir}")
+            print(f"[DIR] No sessions found in {sessions_dir}")
         else:
             statuses = monitor.get_all_statuses()
-            print(f"\n📂 {len(statuses)} sessions in {sessions_dir}\n")
+            print(f"\n[DIR] {len(statuses)} sessions in {sessions_dir}\n")
             for s in statuses:
                 bar = _health_bar(s.health_score)
                 print(f"  {s.session_id}: {bar}")
     else:
         statuses = monitor.get_all_statuses()
         if not statuses:
-            print("❌ No sessions registered. Use --session or --sessions-dir")
+            print("[ERROR] No sessions registered. Use --session or --sessions-dir")
         else:
-            print(f"\n📊 {len(statuses)} monitored sessions\n")
+            print(f"\n[STATS] {len(statuses)} monitored sessions\n")
             for s in statuses:
                 bar = _health_bar(s.health_score)
                 print(f"  {s.session_id}: {bar}")
@@ -163,7 +163,7 @@ def _monitor_history():
     if not history:
         print("No monitor events recorded yet")
         return
-    print(f"\n📋 Last {min(10, len(history))} events:\n")
+    print(f"\n[LIST] Last {min(10, len(history))} events:\n")
     for event in history[-10:]:
         print(f"  {event}")
 
@@ -178,7 +178,7 @@ def _monitor_predict(args):
     if session:
         status = monitor.get_status(session)
         if status and status.predicted_expiry:
-            print(f"⏰ {session}: predicted expiry in {status.predicted_expiry}")
+            print(f"[TIME] {session}: predicted expiry in {status.predicted_expiry}")
         else:
             print("insufficient data for prediction")
     else:
@@ -197,7 +197,7 @@ def cmd_analytics(args):
         print(json.dumps(report, indent=2))
     elif args.analytics_command == "cleanup":
         analytics.cleanup()
-        print("✅ Analytics data cleaned up")
+        print("[OK] Analytics data cleaned up")
     else:
         print("Usage: tokenade analytics {report|cleanup}")
         print("Usage: tokenade analytics {report|cleanup}")
@@ -211,10 +211,10 @@ def cmd_daemon(args):
 
     if args.daemon_action == "start":
         daemon.start()
-        print("✅ Daemon started")
+        print("[OK] Daemon started")
     elif args.daemon_action == "stop":
         daemon.stop()
-        print("✅ Daemon stopped")
+        print("[OK] Daemon stopped")
     elif args.daemon_action == "status":
         import json
         status = daemon.status()

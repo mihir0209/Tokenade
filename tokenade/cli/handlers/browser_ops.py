@@ -1,4 +1,4 @@
-"""Browser ops CLI — launch, refresh-browser, accounts."""
+"""Browser ops CLI - launch, refresh-browser, accounts."""
 import json
 import logging
 import os
@@ -85,33 +85,66 @@ def cmd_launch(args):
     # Resolve upstream proxy
     upstream_proxy = _resolve_upstream_proxy(args)
     if upstream_proxy:
-        print(f"🔀 Upstream proxy: {upstream_proxy}")
+        print(f"[PROXY] Upstream proxy: {upstream_proxy}")
 
     try:
         # --- CloakBrowser path (project default) ---
         if browser_name == "cloak" and not getattr(args, "no_cloak", False):
-            from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
+            from tokenade.core.browser.stealth.cloak import (
+                CloakBrowserBackend,
+                is_cloakbrowser_available,
+            )
             backend = CloakBrowserBackend()
             if not backend.is_available():
-                print("❌ CloakBrowser not available. Install: pip install cloakbrowser && tokenade cloak install")
-                print("   Or use: tokenade launch --browser firefox|brave|edge|chrome")
-                return
-            print(f"\n🌐 Browser: cloak (CloakBrowser)")
-            print(f"🔌 CDP Port: {args.port}")
-            print(f"👁️  Visible: {args.visible}")
+                if is_cloakbrowser_available():
+                    print("[...] CloakBrowser binary missing - downloading...")
+                    if not backend.ensure_ready():
+                        print(
+                            "[ERROR] CloakBrowser download failed. "
+                            "Retry: tokenade cloak install"
+                        )
+                        print("   Or use: tokenade launch --browser firefox|brave|edge|chrome")
+                        raise SystemExit(1)
+                    print("[OK] CloakBrowser installed - launching...")
+                else:
+                    print(
+                        "[ERROR] cloakbrowser package not installed. "
+                        "Run: pip install cloakbrowser && tokenade cloak install"
+                    )
+                    print("   Or use: tokenade launch --browser firefox|brave|edge|chrome")
+                    raise SystemExit(1)
+            print(f"\n[NET] Browser: cloak (CloakBrowser)")
+            print(f"[CDP] CDP Port: {args.port}")
+            print(f"[UI] Visible: {args.visible}")
+            import tempfile
             profile_dir = args.profile_dir or ""
-            if args.session and not profile_dir:
-                import tempfile
+            if not profile_dir:
                 profile_dir = tempfile.mkdtemp(prefix="tokenade_cloak_clean_")
-                print(f"   📁 Clean profile (session inject): {profile_dir}")
+                print(f"   [DIR] Clean profile (session inject): {profile_dir}")
+            else:
+                print(f"   [DIR] Profile: {profile_dir}")
+            # Pick a free port if default is busy
+            cdp_port = int(args.port or 9222)
+            try:
+                import socket
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+                    if _s.connect_ex(("127.0.0.1", cdp_port)) == 0:
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s2:
+                            _s2.bind(("127.0.0.1", 0))
+                            cdp_port = _s2.getsockname()[1]
+                        print(f"   [WARN] Port {args.port} busy - using {cdp_port}")
+                        args.port = cdp_port
+            except Exception:
+                pass
             proc = backend.serve_cdp(
-                port=args.port,
+                port=cdp_port,
                 proxy=upstream_proxy,
                 headless=not args.visible,
+                user_data_dir=profile_dir,
             )
             browser = BrowserProcess(
                 process=proc,
-                port=args.port,
+                port=cdp_port,
                 profile_dir=profile_dir or "(cloak)",
                 browser_name="cloak",
             )
@@ -126,17 +159,17 @@ def cmd_launch(args):
 
             browser_path = getattr(args, "browser_path", None) or launcher.find_browser(system_browser)
             if not browser_path:
-                print(f"❌ {system_browser} not found. Install it or specify --browser-path")
+                print(f"[ERROR] {system_browser} not found. Install it or specify --browser-path")
                 return
 
-            print(f"\n🌐 Browser: {system_browser} ({browser_path})")
-            print(f"🔌 CDP Port: {args.port}")
-            print(f"👁️  Visible: {args.visible}")
+            print(f"\n[NET] Browser: {system_browser} ({browser_path})")
+            print(f"[CDP] CDP Port: {args.port}")
+            print(f"[UI] Visible: {args.visible}")
 
             # Profile lock only matters when directly reusing a real system profile.
             using_original_profile = bool(getattr(args, "use_original_profile", False))
             if using_original_profile and bool(getattr(args, "copy_profile", False)):
-                print("❌ Use either --copy-profile or --use-original-profile, not both.")
+                print("[ERROR] Use either --copy-profile or --use-original-profile, not both.")
                 return
             using_isolated_profile = bool(args.profile_dir or args.session or not using_original_profile)
             if not using_isolated_profile:
@@ -150,7 +183,7 @@ def cmd_launch(args):
                     elif platform.system() == "Windows" and system_browser.lower() in _running.stdout.lower():
                         _is_running = True
                     if _is_running:
-                        print(f"   ⚠️  {system_browser} is already running. Default profile is locked.")
+                        print(f"   [WARN] {system_browser} is already running. Default profile is locked.")
                         print(f"   Close all {system_browser} windows first, then retry.")
                         print(f"   Or omit --use-original-profile to launch an isolated profile copy.")
                         return
@@ -161,7 +194,7 @@ def cmd_launch(args):
             selected_profile = None
             profile_name = getattr(args, "profile", None)
             if profile_name and profile_dir:
-                print("❌ Use either --profile NAME or --profile-dir PATH, not both.")
+                print("[ERROR] Use either --profile NAME or --profile-dir PATH, not both.")
                 return
             if profile_name or (not profile_dir and not args.session):
                 selected_profile = _resolve_launch_profile(
@@ -170,30 +203,48 @@ def cmd_launch(args):
                     refresh_profiles=bool(getattr(args, "refresh_profiles", False)),
                 )
                 if profile_name and not selected_profile:
-                    print(f"❌ Profile '{profile_name}' not found for {system_browser}")
+                    print(f"[ERROR] Profile '{profile_name}' not found for {system_browser}")
                     print("   Run 'tokenade export --list-profiles' to refresh and inspect profiles.")
                     return
 
             if args.session and not profile_dir:
                 import tempfile
-                profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_clean_")
-                print(f"   📁 Clean profile (session inject): {profile_dir}")
-                print(f"   💡 Pass --profile-dir PATH to reuse or pin a profile directory.")
+                if selected_profile and selected_profile.path:
+                    profile_dir = tempfile.mkdtemp(
+                        prefix=f"tokenade_{system_browser}_{selected_profile.name}_"
+                    )
+                    print(
+                        f"   [DIR] Copying profile '{selected_profile.name}' "
+                        f"for session inject from: {selected_profile.path}"
+                    )
+                    if _copy_launch_profile(selected_profile.path, profile_dir):
+                        print(f"   [OK] Profile copied to: {profile_dir}")
+                    else:
+                        print("   [WARN] Profile copy failed, using fresh clean profile")
+                        profile_dir = tempfile.mkdtemp(
+                            prefix=f"tokenade_{system_browser}_clean_"
+                        )
+                else:
+                    profile_dir = tempfile.mkdtemp(
+                        prefix=f"tokenade_{system_browser}_clean_"
+                    )
+                    print(f"   [DIR] Clean profile (session inject): {profile_dir}")
+                    print("   [TIP] Pass --profile NAME to base inject on a discovered profile.")
             elif not profile_dir and not args.session:
                 real_dir = selected_profile.path if selected_profile else launcher._get_default_profile_dir(system_browser)
                 if real_dir and using_original_profile:
                     profile_dir = real_dir
                     label = selected_profile.name if selected_profile else "default"
-                    print(f"   📁 Using original profile: {label} ({real_dir})")
+                    print(f"   [DIR] Using original profile: {label} ({real_dir})")
                 elif real_dir:
                     import tempfile
                     profile_dir = tempfile.mkdtemp(prefix=f"tokenade_{system_browser}_")
                     label = selected_profile.name if selected_profile else "default"
-                    print(f"   📁 Copying profile '{label}' from: {real_dir}")
+                    print(f"   [DIR] Copying profile '{label}' from: {real_dir}")
                     if _copy_launch_profile(real_dir, profile_dir):
-                        print(f"   ✅ Profile copied to: {profile_dir}")
+                        print(f"   [OK] Profile copied to: {profile_dir}")
                     else:
-                        print(f"   ⚠️  Profile copy failed, using fresh profile")
+                        print(f"   [WARN] Profile copy failed, using fresh profile")
 
             browser = launcher.launch(
                 browser=system_browser,
@@ -204,13 +255,13 @@ def cmd_launch(args):
                 upstream_proxy=upstream_proxy,
             )
 
-        print(f"\n✅ Browser launched (PID: {browser.pid})")
+        print(f"\n[OK] Browser launched (PID: {browser.pid})")
         print(f"   CDP URL: {browser.cdp_url}")
         print(f"   Profile: {browser.profile_dir}")
 
-        # Inject session if provided — session file is ALWAYS authoritative
+        # Inject session if provided - session file is ALWAYS authoritative
         if args.session:
-            print(f"\n📂 Loading session: {args.session}")
+            print(f"\n[DIR] Loading session: {args.session}")
 
             session_path = args.session
             decrypt_password = getattr(args, 'decrypt_password', None)
@@ -224,9 +275,9 @@ def cmd_launch(args):
                     with open(temp_path, 'w') as f:
                         json.dump(session, f)
                     session_path = temp_path
-                    print(f"   🔓 Decrypted with password")
+                    print(f"    Decrypted with password")
                 except Exception as e:
-                    print(f"❌ Decryption failed: {e}")
+                    print(f"[ERROR] Decryption failed: {e}")
                     return
 
             packager = SessionPackager()
@@ -234,57 +285,91 @@ def cmd_launch(args):
 
             cookies = session.get("cookies", [])
             source_browser = session.get("source_device", {}).get("browser", "unknown")
+            if isinstance(source_browser, dict):
+                source_browser = source_browser.get("name") or source_browser.get("browser") or "unknown"
             print(f"   Cookies: {len(cookies)} (from {source_browser})")
 
             # Site-handler plugin override: domains, dashboard URL, cookie filter
             site_handler = None
             site_hint = ""
+            cookie_domains = list({
+                (c.get("domain") or "").lstrip(".")
+                for c in cookies
+                if c.get("domain")
+            })
             if not getattr(args, "no_plugin", False):
                 try:
                     from tokenade.core.importer.plugin_export import PluginExporter
                     exporter = PluginExporter()
                     force_plugin = getattr(args, "plugin", None)
-                    cookie_domains = list({
-                        (c.get("domain") or "").lstrip(".")
-                        for c in cookies
-                        if c.get("domain")
-                    })
                     site_name = str(session.get("site_name") or session.get("site") or "")
                     domain_guess = cookie_domains or ([site_name] if site_name else [])
                     if force_plugin:
                         exporter._load_handlers()
                         site_handler = exporter._handlers.get(force_plugin)
                         if not site_handler:
-                            print(f"   ⚠️  Plugin not found: {force_plugin} (using default launch path)")
+                            print(f"   [WARN] Plugin not found: {force_plugin} (using default launch path)")
                     elif domain_guess:
                         site_handler = exporter.find_handler(domain_guess)
 
                     if site_handler:
                         hname = getattr(site_handler, "name", type(site_handler).__name__)
-                        print(f"   🔌 Site handler: {hname} (overrides default site worker)")
-                        # Prefer plugin dashboard URL when user did not pass --url
-                        if not args.url and hasattr(site_handler, "get_dashboard_url"):
-                            dash = site_handler.get_dashboard_url()
-                            if dash:
-                                args.url = dash
-                                print(f"   🔗 URL from plugin: {dash}")
-                        # Prefer plugin cookie filter when available
-                        if hasattr(site_handler, "get_critical_cookies") or hname:
+                        # session-backup is a generic helper, not a real site handler
+                        if "session-backup" in str(hname).lower() or "backup" == str(hname).lower():
+                            site_handler = None
+                        else:
+                            print(f"   [CDP] Site handler: {hname}")
+                            # Prefer plugin dashboard URL when user did not pass --url
+                            if not args.url and hasattr(site_handler, "get_dashboard_url"):
+                                dash = site_handler.get_dashboard_url()
+                                if dash:
+                                    args.url = dash
+                                    print(f"   [URL] URL from plugin: {dash}")
+                            # Prefer plugin cookie filter when available
                             try:
-                                # google-handler style: filter via private helper if present
                                 if hasattr(site_handler, "_is_google_cookie"):
                                     filtered = [c for c in cookies if site_handler._is_google_cookie(c)]
                                     if filtered:
                                         cookies = filtered
-                                        print(f"   🎯 Plugin-filtered cookies: {len(cookies)}")
+                                        print(f"   [HIT] Plugin-filtered cookies: {len(cookies)}")
                             except Exception:
                                 pass
-                        if "google" in hname.lower() or any(
-                            "google" in (d or "") for d in cookie_domains
-                        ):
-                            site_hint = "google"
+                            if "google" in hname.lower() or any(
+                                "google" in (d or "") for d in cookie_domains
+                            ):
+                                site_hint = "google"
                 except Exception as e:
                     logger.debug("Site handler resolution failed: %s", e)
+
+            # Always auto-detect destination URL when user did not pass --url
+            # (prevents stuck about:blank after cookie inject)
+            if not getattr(args, "url", None):
+                detected = _detect_url_from_cookies(cookies)
+                if not detected:
+                    site_name = str(session.get("site_name") or session.get("site") or "").strip()
+                    if site_name and "." in site_name:
+                        detected = f"https://{site_name.lstrip('.')}"
+                    elif site_name:
+                        # common short names
+                        _name_map = {
+                            "spotify": "https://open.spotify.com",
+                            "google": "https://mail.google.com",
+                            "gmail": "https://mail.google.com",
+                            "github": "https://github.com",
+                            "linkedin": "https://www.linkedin.com",
+                            "reddit": "https://www.reddit.com",
+                            "amazon": "https://www.amazon.com",
+                            "facebook": "https://www.facebook.com",
+                            "twitter": "https://x.com",
+                            "x": "https://x.com",
+                        }
+                        detected = _name_map.get(site_name.lower())
+                if detected:
+                    args.url = detected
+                    print(f"   [URL] Auto URL: {detected}")
+                else:
+                    print("   [WARN] No destination URL detected - staying on about:blank")
+                    print("      Pass --url https://example.com to navigate after inject")
 
             if not site_hint:
                 _site = str(session.get("site_name") or session.get("site") or "").lower()
@@ -320,15 +405,15 @@ def cmd_launch(args):
                 "chrome", "chromium", "chrome-canary", "chrome-beta", "google-chrome",
             )
             if site_hint == "google":
-                print(f"   💡 Google recipe: donor + target should be Firefox/Brave/Edge (not Chrome).")
-                print(f"   ✅ Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
-                print(f"   🧭 Open the product URL (mail.google.com) — avoid bouncing through accounts.google.com after inject.")
+                print(f"   [TIP] Google recipe: donor + target should be Firefox/Brave/Edge (not Chrome).")
+                print(f"   [OK] Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
+                print(f"   [NAV] Open the product URL (mail.google.com) - avoid bouncing through accounts.google.com after inject.")
             if site_hint == "google" and chrome_like:
-                print(f"   ⚠️  Target is {args.browser}: Google usually rejects portable sessions in Chrome-family browsers.")
-                print(f"   ➡️  Prefer: tokenade launch --browser brave --session {args.session} --profile-dir /tmp/tokenade-brave-clean --visible")
+                print(f"   [WARN] Target is {args.browser}: Google usually rejects portable sessions in Chrome-family browsers.")
+                print(f"   ->  Prefer: tokenade launch --browser brave --session {args.session} --profile-dir /tmp/tokenade-brave-clean --visible")
 
             if source_browser != "unknown" and source_browser != args.browser:
-                print(f"   ⚠️  Cross-browser: {source_browser} → {args.browser}")
+                print(f"   [WARN] Cross-browser: {source_browser} -> {args.browser}")
             # Connect via CDP and inject (use actual port from browser)
             actual_port = browser.port
 
@@ -344,7 +429,7 @@ def cmd_launch(args):
                 _tab_ws_url = _new_tab.get("webSocketDebuggerUrl")
                 _tab_id = _new_tab.get("id")
             except Exception as e:
-                print(f"❌ Failed to create new tab: {e}")
+                print(f"[ERROR] Failed to create new tab: {e}")
                 _tab_ws_url = None
                 _tab_id = None
 
@@ -377,7 +462,7 @@ def cmd_launch(args):
                     raise RuntimeError(f"CDP timeout: {method}")
 
                 if not _tab_ws_url:
-                    print("❌ Failed to create tab")
+                    print("[ERROR] Failed to create tab")
                     return
 
                 print(f"   Tab: {_tab_id}")
@@ -393,7 +478,7 @@ def cmd_launch(args):
                 print("   Connected.")
 
                 # Step 3: Inject stealth FIRST (before page load)
-                # Vivaldi/some forks can hang on Page.enable — do not abort cookie inject.
+                # Vivaldi/some forks can hang on Page.enable - do not abort cookie inject.
                 print("   Injecting stealth script...", flush=True)
                 stealth_script = get_undetectable_stealth_script()
                 try:
@@ -404,9 +489,9 @@ def cmd_launch(args):
                         {"source": stealth_script},
                     )
                 except Exception as _stealth_err:
-                    print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
+                    print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing cookies")
 
-                # Step 4: Inject cookies (per-cookie — batch setCookies fails hard on one bad field)
+                # Step 4: Inject cookies (per-cookie - batch setCookies fails hard on one bad field)
                 print(f"   Injecting {len(cookies)} cookies...", flush=True)
                 cdp_cookies = []
                 for cookie in cookies:
@@ -449,7 +534,7 @@ def cmd_launch(args):
                     except (TypeError, ValueError):
                         exp = 0
                     if exp > 0:
-                        # ms → s
+                        # ms -> s
                         if exp > 1262304000000:
                             exp = exp // 1000
                         # skip already-expired (Chrome can reject)
@@ -481,7 +566,7 @@ def cmd_launch(args):
                     await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
                     injected = len(cdp_cookies)
                 except Exception as batch_err:
-                    print(f"   ⚠️  Batch cookie inject failed ({batch_err}); retrying per-cookie...", flush=True)
+                    print(f"   [WARN] Batch cookie inject failed ({batch_err}); retrying per-cookie...", flush=True)
                     for cdp_cookie in cdp_cookies:
                         try:
                             await cdp_cmd(tab_ws, "Network.setCookie", cdp_cookie)
@@ -545,8 +630,8 @@ def cmd_launch(args):
                     )
                     url = url_result.get("result", {}).get("value", "")
 
-                    print(f"\n   📄 Page: {title}")
-                    print(f"   🔗 URL: {url}")
+                    print(f"\n   [FILE] Page: {title}")
+                    print(f"   [URL] URL: {url}")
 
                 # Post-load tips + failure heuristics for Google
                 if site_hint == "google" or "google" in str(args.session).lower() or "gmail" in str(args.session).lower():
@@ -558,15 +643,15 @@ def cmd_launch(args):
                     page_url = locals().get("url") or ""
                     page_url_l = str(page_url).lower()
                     if any(x in page_url_l for x in ("accountchooser", "servicelogin", "/signin")):
-                        print("   ⚠️  Looks signed-out / account chooser — Chrome-family targets often fail.")
-                        print("   ➡️  Retry with Brave/Edge/Firefox + a fresh --profile-dir.")
+                        print("   [WARN] Looks signed-out / account chooser - Chrome-family targets often fail.")
+                        print("   ->  Retry with Brave/Edge/Firefox + a fresh --profile-dir.")
 
                 await tab_ws.close()
 
             asyncio.run(inject())
 
         elif args.url:
-            # Just navigate to URL — same PUT /json/new approach
+            # Just navigate to URL - same PUT /json/new approach
             actual_port = browser.port
 
             async def navigate_only():
@@ -606,7 +691,7 @@ def cmd_launch(args):
                     new_tab = await asyncio.to_thread(_create_tab)
                     tab_ws_url = new_tab.get("webSocketDebuggerUrl")
                 except Exception as e:
-                    print(f"❌ Failed to create tab: {e}")
+                    print(f"[ERROR] Failed to create tab: {e}")
                     return
 
                 tab_ws = await websockets.connect(
@@ -614,7 +699,7 @@ def cmd_launch(args):
                     ping_interval=30, ping_timeout=10,
                 )
 
-                # Inject stealth (best-effort — some browsers hang on Page.enable)
+                # Inject stealth (best-effort - some browsers hang on Page.enable)
                 stealth_script = get_undetectable_stealth_script()
                 try:
                     await cdp_cmd(tab_ws, "Page.enable")
@@ -624,7 +709,7 @@ def cmd_launch(args):
                         {"source": stealth_script},
                     )
                 except Exception as _stealth_err:
-                    print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing")
+                    print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing")
 
                 # Navigate
                 print(f"\n   Navigating to: {args.url}")
@@ -637,8 +722,8 @@ def cmd_launch(args):
                 url_result = await cdp_cmd(tab_ws, "Runtime.evaluate", {"expression": "window.location.href", "returnByValue": True})
                 url = url_result.get("result", {}).get("value", "")
 
-                print(f"\n   📄 Page: {title}")
-                print(f"   🔗 URL: {url}")
+                print(f"\n   [FILE] Page: {title}")
+                print(f"   [URL] URL: {url}")
 
                 await tab_ws.close()
 
@@ -660,208 +745,320 @@ def cmd_launch(args):
         try:
             browser.process.wait()
         except KeyboardInterrupt:
-            print("\n⏹️  Closing browser...")
+            print("\n[STOP] Closing browser...")
             browser.close()
 
     except RuntimeError as e:
-        print(f"\n❌ {e}")
+        print(f"\n[ERROR] {e}")
     except Exception as e:
         logger.error(f"Launch failed: {e}", exc_info=True)
-        print(f"\n❌ Launch failed: {e}")
+        print(f"\n[ERROR] Launch failed: {e}")
+
+
+def _unwrap_refresh_result(result, original_session):
+    """Normalize plugin refresh() return value to a plain session dict.
+
+    Plugins return PluginResult; older code returned a bare dict. Never pass
+    PluginResult into SessionPackager.save (not JSON-serializable -> 0-byte files).
+    """
+    if result is None:
+        raise ValueError("plugin refresh returned None")
+    # PluginResult dataclass / duck-type
+    if hasattr(result, "success") and hasattr(result, "data"):
+        if not getattr(result, "success", False):
+            err = getattr(result, "error", None) or "plugin refresh failed"
+            raise ValueError(err)
+        data = getattr(result, "data", None) or {}
+        if isinstance(data, dict):
+            if isinstance(data.get("session"), dict):
+                return data["session"]
+            # some plugins put cookies at top level of data
+            if "cookies" in data:
+                merged = dict(original_session)
+                merged.update(data)
+                return merged
+        raise ValueError("plugin refresh succeeded but returned no session data")
+    if isinstance(result, dict):
+        if "cookies" in result or "site_name" in result:
+            return result
+        if isinstance(result.get("session"), dict):
+            return result["session"]
+    raise TypeError(f"plugin refresh returned unsupported type: {type(result)!r}")
+
+
+def _refresh_logged_in_heuristic(page_url: str, page_title: str, cookies) -> bool:
+    """Best-effort login check after browser refresh."""
+    url_l = (page_url or "").lower()
+    title_l = (page_title or "").lower()
+    signin_markers = (
+        "accountchooser", "servicelogin", "/signin", "/login", "login?",
+        "accounts.google.com/v3/signin", "oauth/authorize",
+    )
+    if any(m in url_l for m in signin_markers):
+        return False
+    if any(x in title_l for x in ("sign in", "log in", "login")):
+        return False
+    if not cookies:
+        return False
+    return True
 
 
 def cmd_refresh_browser(args):
-    """Refresh session by launching undetectable browser, injecting cookies, navigating, and extracting fresh cookies."""
+    """Refresh session: inject -> navigate -> extract -> login-check -> exit.
+
+    Exit 0 = logged in / refreshed OK. Exit 1 = failed / signed out.
+    Browser is always closed when the command finishes.
+    """
     from tokenade.core.importer.session_packager import SessionPackager
-    from tokenade.core.browser.undetectable import SystemBrowserLauncher
+    from tokenade.core.browser.undetectable import SystemBrowserLauncher, BrowserProcess
 
     print("\n" + "=" * 80)
     print("TOKENADE - Cookie-Based Session Refresh")
     print("=" * 80)
 
-    # 1. Load existing session
+    exit_ok = False
+    browser = None
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
-        return
+        print(f"[ERROR] Session file not found: {args.session}")
+        raise SystemExit(1)
 
     packager = SessionPackager()
     try:
         session = packager.load(str(session_file))
     except Exception as e:
-        print(f"❌ Failed to load session: {e}")
-        return
+        print(f"[ERROR] Failed to load session: {e}")
+        raise SystemExit(1)
 
     cookies = session.get("cookies", [])
     site_name = session.get("site_name", "unknown")
     source_browser = session.get("source_device", {}).get("browser", "unknown")
 
     if not cookies:
-        print("❌ No cookies in session file")
-        return
+        print("[ERROR] No cookies in session file")
+        raise SystemExit(1)
 
     # 2. Try plugin refresh first (auto-discover unless --no-plugin)
     plugin_name = getattr(args, "plugin", None)
     no_plugin = getattr(args, "no_plugin", False)
-    plugin_args_list = getattr(args, "plugin_arg", [])
+    plugin_args_list = getattr(args, "plugin_arg", None) or []
     output = getattr(args, "output", None)
 
-    # Auto-discover refresher via loader.get_refresher_for_session(session)
-    # when no explicit plugin is given and not explicitly excluded.
+    # Prefer real site refreshers over catch-all plugins (auto-refresh, session-share, ...)
+    _GENERIC_REFRESHERS = {
+        "auto-refresh", "session-share", "session-encrypt", "proxy-rotate",
+        "session-backup", "session-merge", "session-expiry-alert",
+    }
     auto_refresher = None
     if not plugin_name and not no_plugin:
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
             _loader = PluginLoader()
             _loader.load_all()
-            auto_refresher = _loader.get_refresher_for_session(session)
-            if auto_refresher:
-                plugin_name = getattr(auto_refresher, "name", None) or plugin_name
-                if plugin_name:
-                    print(f"\n🔌 Auto-discovered refresher: {plugin_name} v{getattr(auto_refresher, 'version', '?')}")
+            # Prefer non-generic first
+            for name, refresher in (_loader.list_refreshers() or {}).items():
+                try:
+                    if name in _GENERIC_REFRESHERS:
+                        continue
+                    if refresher.can_refresh(session):
+                        auto_refresher = refresher
+                        plugin_name = name
+                        break
+                except Exception:
+                    continue
+            if not auto_refresher:
+                # only use generic if explicitly the only option and can_refresh
+                auto_refresher = None  # skip generic auto-refresh for CLI browser path
+            if plugin_name:
+                print(f"\n[CDP] Auto-discovered refresher: {plugin_name} v{getattr(auto_refresher, 'version', '?')}")
         except Exception as e:
             logger.debug("Auto-discovery of refresher failed: %s", e)
 
     if plugin_name and not no_plugin:
         plugin_creds = {}
-        for key, value in plugin_args_list:
-            plugin_creds[key] = value
+        for item in plugin_args_list:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                plugin_creds[item[0]] = item[1]
 
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
             loader = PluginLoader()
             loader.load_all()
 
-            # Prefer auto-discovered refresher; fall back to explicit lookup by name.
-            if auto_refresher and (not args.plugin or getattr(auto_refresher, "name", None) == plugin_name):
+            if auto_refresher and (
+                not getattr(args, "plugin", None)
+                or getattr(auto_refresher, "name", None) == plugin_name
+            ):
                 refresher = auto_refresher
             else:
                 refresher = loader.get_refresher(plugin_name)
             if not refresher:
-                print(f"⚠️  Plugin not found: {plugin_name}. Proceeding with browser refresh.")
+                print(f"[WARN] Plugin not found: {plugin_name}. Proceeding with browser refresh.")
             elif not refresher.can_refresh(session):
-                print(f"⚠️  Plugin '{plugin_name}' cannot refresh this session. Proceeding with browser refresh.")
+                print(f"[WARN] Plugin '{plugin_name}' cannot refresh this session. Proceeding with browser refresh.")
             else:
-                print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
+                print(f"\n[CDP] Using plugin: {plugin_name} v{getattr(refresher, 'version', '?')}")
 
-                # Collect credentials from plugin args if not provided
                 if hasattr(refresher, "get_credentials_args"):
                     for cred_arg in refresher.get_credentials_args():
                         arg_name = cred_arg["name"].lstrip("-").replace("-", "_")
                         if arg_name not in plugin_creds and cred_arg.get("required"):
-                            print(f"❌ Missing required plugin credential: {cred_arg['name']}")
+                            print(f"[ERROR] Missing required plugin credential: {cred_arg['name']}")
                             print(f"   Use: --plugin-arg {arg_name} <value>")
-                            return
+                            raise SystemExit(1)
 
                 try:
-                    session = refresher.refresh(session, plugin_creds)
+                    raw = refresher.refresh(session, plugin_creds)
+                    session = _unwrap_refresh_result(raw, session)
 
-                    # Save updated session
                     save_path = output or str(session_file)
                     packager.save(session, save_path)
-                    print(f"✅ Session refreshed via plugin: {save_path}")
-
-                    # Run post-refresh plugins (webhooks, etc.)
+                    print(f"[OK] Session refreshed via plugin: {save_path}")
                     _run_post_refresh_plugins(loader, session)
-
-                    return
+                    print("\n[OK] REFRESH PASS (plugin)")
+                    raise SystemExit(0)
+                except SystemExit:
+                    raise
                 except Exception as e:
-                    print(f"⚠️  Plugin refresh failed: {e}")
+                    print(f"[WARN] Plugin refresh failed: {e}")
                     print("   Falling back to browser-based refresh...")
+        except SystemExit:
+            raise
         except ImportError:
-            print(f"⚠️  Plugin system not available. Proceeding with browser refresh.")
+            print("[WARN] Plugin system not available. Proceeding with browser refresh.")
         except Exception as e:
-            print(f"⚠️  Plugin error: {e}. Proceeding with browser refresh.")
+            print(f"[WARN] Plugin error: {e}. Proceeding with browser refresh.")
 
     # Determine target URL
-    target_url = args.url
+    target_url = getattr(args, "url", None)
     if not target_url:
-        # Try to infer from cookies
-        domains = {c.get("domain", "").lstrip(".") for c in cookies}
-        if "google.com" in domains or "gmail.com" in domains:
-            target_url = "https://mail.google.com"
-        elif "github.com" in domains:
-            target_url = "https://github.com"
-        elif "twitter.com" in domains or "x.com" in domains:
-            target_url = "https://x.com"
-        elif "linkedin.com" in domains:
-            target_url = "https://www.linkedin.com"
-        else:
-            # Use the first non-empty domain
-            for d in sorted(domains):
-                if d and "." in d:
-                    target_url = f"https://{d}"
-                    break
+        target_url = _detect_url_from_cookies(cookies)
         if not target_url:
-            print("❌ Could not determine target URL. Use --url to specify.")
-            return
+            sn = str(site_name or "").strip()
+            if sn and "." in sn:
+                target_url = f"https://{sn.lstrip('.')}"
+            elif sn and sn not in ("unknown", "session-backup"):
+                _name_map = {
+                    "spotify": "https://open.spotify.com",
+                    "google": "https://myaccount.google.com",
+                    "gmail": "https://mail.google.com",
+                    "github": "https://github.com",
+                    "linkedin": "https://www.linkedin.com",
+                    "reddit": "https://www.reddit.com",
+                    "twitter": "https://x.com",
+                    "x": "https://x.com",
+                    "youtube": "https://www.youtube.com",
+                    "amazon": "https://www.amazon.com",
+                }
+                target_url = _name_map.get(sn.lower())
+        if not target_url:
+            print("[ERROR] Could not determine target URL. Use --url to specify.")
+            raise SystemExit(1)
 
-    print(f"\n📂 Session: {args.session}")
+    browser_name = (getattr(args, "browser", None) or "cloak").lower()
+    # Default headless=True; --visible forces a window (still closes at end)
+    headless = True
+    if getattr(args, "visible", False):
+        headless = False
+    elif getattr(args, "headless", None) is False:
+        headless = False
+    elif getattr(args, "headless", True):
+        headless = True
+
+    print(f"\n[DIR] Session: {args.session}")
     print(f"   Site: {site_name}")
     print(f"   Cookies: {len(cookies)}")
     print(f"   Source: {source_browser}")
-    print(f"\n🌐 Target: {target_url}")
-    print(f"   Browser: {args.browser}")
+    print(f"\n[NET] Target: {target_url}")
+    print(f"   Browser: {browser_name}")
 
-    # 2. Check if browser is already running
-    import subprocess as _sp
-    _ps_cmd = ["pgrep", "-c", args.browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {args.browser}.exe"]
+    port = int(getattr(args, "port", None) or 9222)
     try:
-        _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
-        _is_running = False
-        if platform.system() != "Windows" and _running.returncode == 0:
-            _is_running = int(_running.stdout.strip()) > 0
-        elif platform.system() == "Windows" and args.browser.lower() in _running.stdout.lower():
-            _is_running = True
-        if _is_running:
-            print(f"\n   ⚠️  {args.browser} is already running. Close it first or use a different port.")
-            return
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+            if _s.connect_ex(("127.0.0.1", port)) == 0:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s2:
+                    _s2.bind(("127.0.0.1", 0))
+                    port = _s2.getsockname()[1]
+                print(f"   [WARN] Port busy - using {port}")
     except Exception:
         pass
 
-    # 3. Launch undetectable browser (headless for refresh)
-    launcher = SystemBrowserLauncher()
-    port = args.port
-    browser = None
-
-    # Resolve upstream proxy using ProxyManager
     from tokenade.core.proxy.manager import ProxyManager
-    proxy_mgr = ProxyManager(
-        cli_proxy=getattr(args, "proxy", None),
-    )
+    proxy_mgr = ProxyManager(cli_proxy=getattr(args, "proxy", None))
     proxy = proxy_mgr.get_proxy(session_id=args.session, mode="sticky")
     upstream_proxy = proxy.server_url if proxy else None
     if upstream_proxy:
-        print(f"   🔀 Upstream proxy: {upstream_proxy}")
+        print(f"   [PROXY] Upstream proxy: {upstream_proxy}")
 
     try:
-        print(f"\n🚀 Launching {args.browser} (headless={args.headless})...")
-        browser = launcher.launch(
-            browser=args.browser,
-            visible=not args.headless,
-            port=port,
-            upstream_proxy=upstream_proxy,
-        )
-        print(f"   ✅ Browser ready (PID: {browser.pid}, CDP: {browser.cdp_url})")
+        import tempfile
+        profile_dir = tempfile.mkdtemp(prefix="tokenade_refresh_")
 
-        # 4. Inject cookies via CDP
+        if browser_name in ("cloak", "cloakbrowser"):
+            from tokenade.core.browser.stealth.cloak import (
+                CloakBrowserBackend,
+                is_cloakbrowser_available,
+            )
+            print(f"\n[...] Launching cloak (headless={headless})...")
+            backend = CloakBrowserBackend()
+            if not backend.is_available():
+                if is_cloakbrowser_available():
+                    print("   [...] CloakBrowser binary missing - downloading...")
+                    if not backend.ensure_ready():
+                        print("[ERROR] CloakBrowser download failed. Retry: tokenade cloak install")
+                        raise SystemExit(1)
+                    print("   [OK] CloakBrowser installed - continuing...")
+                else:
+                    print(
+                        "[ERROR] cloakbrowser package not installed. "
+                        "Run: pip install cloakbrowser && tokenade cloak install"
+                    )
+                    raise SystemExit(1)
+            proc = backend.serve_cdp(
+                port=port,
+                proxy=upstream_proxy,
+                headless=headless,
+                user_data_dir=profile_dir,
+            )
+            browser = BrowserProcess(
+                process=proc,
+                port=port,
+                profile_dir=profile_dir,
+                browser_name="cloak",
+            )
+        else:
+            # Don't refuse refresh just because a desktop browser is open
+            launcher = SystemBrowserLauncher()
+            print(f"\n[...] Launching {browser_name} (headless={headless})...")
+            browser = launcher.launch(
+                browser=browser_name,
+                visible=not headless,
+                port=port,
+                upstream_proxy=upstream_proxy,
+                profile_dir=profile_dir,
+            )
+            port = getattr(browser, "port", port) or port
+
+        print(f"   [OK] Browser ready (PID: {getattr(browser, 'pid', '?')}, CDP: {port})")
+
         import asyncio
         import websockets
-
-        # Create new tab
         import urllib.request as _urllib_req
+
         _req = _urllib_req.Request(
             f"http://127.0.0.1:{port}/json/new?about:blank",
             method="PUT",
         )
         _resp = _urllib_req.urlopen(_req, timeout=10)
         _tab_info = json.loads(_resp.read().decode())
-        _tab_id = _tab_info.get("id")
         _tab_ws_url = _tab_info.get("webSocketDebuggerUrl")
-
         if not _tab_ws_url:
-            print("❌ Failed to create tab")
-            return
+            print("[ERROR] Failed to create tab")
+            raise SystemExit(1)
+
+        page_url_holder = [""]
+        page_title_holder = [""]
 
         async def refresh():
             msg_id_counter = [0]
@@ -895,148 +1092,209 @@ def cmd_refresh_browser(args):
                 ping_interval=30,
                 ping_timeout=10,
             )
-
-            # Inject stealth (best-effort — some browsers hang on Page.enable)
-            from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
-            stealth_script = get_undetectable_stealth_script()
             try:
-                await cdp_cmd(tab_ws, "Page.enable")
-                await cdp_cmd(
-                    tab_ws,
-                    "Page.addScriptToEvaluateOnNewDocument",
-                    {"source": stealth_script},
+                from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
+                stealth_script = get_undetectable_stealth_script()
+                try:
+                    await cdp_cmd(tab_ws, "Page.enable")
+                    await cdp_cmd(
+                        tab_ws,
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {"source": stealth_script},
+                    )
+                except Exception as _stealth_err:
+                    print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing cookies")
+
+                print(f"\n Injecting {len(cookies)} cookies...")
+                cdp_cookies = []
+                for cookie in cookies:
+                    cdp_cookie = {
+                        "name": cookie.get("name", ""),
+                        "value": cookie.get("value", ""),
+                        "domain": cookie.get("domain", ""),
+                        "path": cookie.get("path", "/"),
+                    }
+                    if cookie.get("secure"):
+                        cdp_cookie["secure"] = True
+                    if cookie.get("httpOnly"):
+                        cdp_cookie["httpOnly"] = True
+                    if cookie.get("sameSite"):
+                        same_site = cookie["sameSite"]
+                        if same_site in ("Strict", "Lax", "None"):
+                            cdp_cookie["sameSite"] = same_site
+                    expires = cookie.get("expires", 0)
+                    if expires and int(expires) > 0:
+                        exp = int(expires)
+                        if exp > 1262304000000:
+                            exp = exp // 1000
+                        cdp_cookie["expires"] = exp
+                    if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                        cdp_cookie["secure"] = True
+                    cdp_cookies.append(cdp_cookie)
+
+                await cdp_cmd(tab_ws, "Network.enable")
+                await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+                print("   [OK] Cookies injected")
+
+                print(f"\n[NET] Navigating to: {target_url}")
+                await cdp_cmd(tab_ws, "Page.navigate", {"url": target_url})
+
+                wait_time = int(getattr(args, "wait", None) or 8)
+                print(f"   [WAIT] Waiting {wait_time}s for session refresh...")
+                await asyncio.sleep(wait_time)
+
+                title_result = await cdp_cmd(
+                    tab_ws, "Runtime.evaluate",
+                    {"expression": "document.title", "returnByValue": True},
                 )
-            except Exception as _stealth_err:
-                print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
+                page_title_holder[0] = title_result.get("result", {}).get("value", "") or ""
+                url_result = await cdp_cmd(
+                    tab_ws, "Runtime.evaluate",
+                    {"expression": "window.location.href", "returnByValue": True},
+                )
+                page_url_holder[0] = url_result.get("result", {}).get("value", "") or ""
+                print(f"   [FILE] Page: {page_title_holder[0]}")
+                print(f"   [URL] URL: {page_url_holder[0]}")
 
-            # Inject cookies
-            print(f"\n🍪 Injecting {len(cookies)} cookies...")
-            cdp_cookies = []
-            for cookie in cookies:
-                cdp_cookie = {
-                    "name": cookie.get("name", ""),
-                    "value": cookie.get("value", ""),
-                    "domain": cookie.get("domain", ""),
-                    "path": cookie.get("path", "/"),
-                }
-                if cookie.get("secure"):
-                    cdp_cookie["secure"] = True
-                if cookie.get("httpOnly"):
-                    cdp_cookie["httpOnly"] = True
-                if cookie.get("sameSite"):
-                    same_site = cookie["sameSite"]
+                print("\n[SYNC] Extracting refreshed cookies...")
+                # Use the open tab WS - avoid nested asyncio.run(_extract_via_cdp)
+                all_ck = await cdp_cmd(tab_ws, "Network.getAllCookies")
+                raw_cookies = (all_ck or {}).get("cookies") or []
+                fresh_cookies = []
+                for c in raw_cookies:
+                    cookie = {
+                        "name": c.get("name", ""),
+                        "value": c.get("value", ""),
+                        "domain": c.get("domain", ""),
+                        "path": c.get("path", "/"),
+                        "secure": c.get("secure", False),
+                        "httpOnly": c.get("httpOnly", False),
+                    }
+                    same_site = c.get("sameSite", "None")
                     if same_site in ("Strict", "Lax", "None"):
-                        cdp_cookie["sameSite"] = same_site
-                expires = cookie.get("expires", 0)
-                if expires and int(expires) > 0:
-                    exp = int(expires)
-                    if exp > 1262304000000:
-                        exp = exp // 1000
-                    cdp_cookie["expires"] = exp
-                if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
-                    cdp_cookie["secure"] = True
-                cdp_cookies.append(cdp_cookie)
+                        cookie["sameSite"] = same_site
+                    expires = c.get("expires", -1)
+                    if expires and expires > 0:
+                        cookie["expires"] = int(expires)
+                    fresh_cookies.append(cookie)
 
-            await cdp_cmd(tab_ws, "Network.enable")
-            await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
-            print(f"   ✅ Cookies injected")
+                fresh_ls, fresh_ss = {}, {}
+                try:
+                    ls_r = await cdp_cmd(
+                        tab_ws, "Runtime.evaluate",
+                        {
+                            "expression": "JSON.stringify(Object.entries(localStorage||{}))",
+                            "returnByValue": True,
+                        },
+                    )
+                    ss_r = await cdp_cmd(
+                        tab_ws, "Runtime.evaluate",
+                        {
+                            "expression": "JSON.stringify(Object.entries(sessionStorage||{}))",
+                            "returnByValue": True,
+                        },
+                    )
+                    import json as _json
+                    ls_raw = (ls_r.get("result") or {}).get("value") or "[]"
+                    ss_raw = (ss_r.get("result") or {}).get("value") or "[]"
+                    for k, v in _json.loads(ls_raw):
+                        fresh_ls[k] = v
+                    for k, v in _json.loads(ss_raw):
+                        fresh_ss[k] = v
+                except Exception as _st_err:
+                    print(f"   [WARN] storage extract skipped: {_st_err}")
 
-            # Navigate to target
-            print(f"\n🌐 Navigating to: {target_url}")
-            await cdp_cmd(tab_ws, "Page.navigate", {"url": target_url})
-
-            # Wait for page load and "warm up" the session
-            wait_time = args.wait
-            print(f"   ⏳ Waiting {wait_time}s for session refresh...")
-            await asyncio.sleep(wait_time)
-
-            # Get page info
-            title_result = await cdp_cmd(
-                tab_ws, "Runtime.evaluate",
-                {"expression": "document.title", "returnByValue": True},
-            )
-            title = title_result.get("result", {}).get("value", "")
-            print(f"   📄 Page: {title}")
-
-            # Extract fresh cookies
-            print(f"\n🔄 Extracting refreshed cookies...")
-            from tokenade.cli.session import _extract_via_cdp
-            session_state = _extract_via_cdp(port, domain_filter=None)
-            fresh_cookies = session_state["cookies"]
-            fresh_ls = session_state.get("local_storage", {})
-            fresh_ss = session_state.get("session_storage", {})
-
-            await tab_ws.close()
-            return fresh_cookies, fresh_ls, fresh_ss
+                return fresh_cookies, fresh_ls, fresh_ss
+            finally:
+                try:
+                    await tab_ws.close()
+                except Exception:
+                    pass
 
         fresh_cookies, fresh_ls, fresh_ss = asyncio.run(refresh())
 
+        logged_in = _refresh_logged_in_heuristic(
+            page_url_holder[0], page_title_holder[0], fresh_cookies or cookies
+        )
+
         if not fresh_cookies:
-            print("\n❌ No cookies extracted after refresh. Session may be expired.")
-            return
+            print("\n[ERROR] No cookies extracted after refresh. Session may be expired.")
+            print("\n[ERROR] REFRESH FAIL (no cookies)")
+            raise SystemExit(1)
 
-        print(f"\n   ✅ Extracted {len(fresh_cookies)} fresh cookies")
+        print(f"\n   [OK] Extracted {len(fresh_cookies)} fresh cookies")
         if fresh_ls:
-            print(f"   ✅ Extracted {len(fresh_ls)} localStorage entries")
+            print(f"   [OK] Extracted {len(fresh_ls)} localStorage entries")
         if fresh_ss:
-            print(f"   ✅ Extracted {len(fresh_ss)} sessionStorage entries")
+            print(f"   [OK] Extracted {len(fresh_ss)} sessionStorage entries")
 
-        # 5. Compare old vs new
         old_names = {c.get("name") for c in cookies}
         new_names = {c.get("name") for c in fresh_cookies}
         added = new_names - old_names
         removed = old_names - new_names
         kept = old_names & new_names
 
-        print(f"\n📊 Cookie changes:")
+        print("\n[STATS] Cookie changes:")
         print(f"   Kept: {len(kept)}")
         if added:
-            print(f"   Added: {len(added)} ({', '.join(sorted(added)[:5])}{'...' if len(added) > 5 else ''})")
+            print(f"   Added: {len(added)} ({', '.join(sorted(str(a) for a in added if a)[:5])}{'...' if len(added) > 5 else ''})")
         if removed:
-            print(f"   Removed: {len(removed)} ({', '.join(sorted(removed)[:5])}{'...' if len(removed) > 5 else ''})")
+            print(f"   Removed: {len(removed)} ({', '.join(sorted(str(a) for a in removed if a)[:5])}{'...' if len(removed) > 5 else ''})")
 
-        # 6. Update session file
+        # Only overwrite session when still logged in
+        if not logged_in:
+            print("\n[ERROR] Login check failed (signed-out / login page).")
+            print("   Session file left unchanged.")
+            print("\n[ERROR] REFRESH FAIL (not logged in)")
+            raise SystemExit(1)
+
         session["cookies"] = fresh_cookies
         if fresh_ls:
             session["local_storage"] = fresh_ls
         if fresh_ss:
             session["session_storage"] = fresh_ss
-
-        # Update metadata
-        if "metadata" not in session:
+        if "metadata" not in session or not isinstance(session.get("metadata"), dict):
             session["metadata"] = {}
         session["metadata"]["cookie_count"] = len(fresh_cookies)
         session["metadata"]["local_storage_count"] = len(fresh_ls) if fresh_ls else 0
         session["metadata"]["session_storage_count"] = len(fresh_ss) if fresh_ss else 0
-
         from datetime import datetime, timezone
         session["metadata"]["last_refreshed"] = datetime.now(timezone.utc).isoformat()
+        session["auth_status"] = "authenticated"
 
-        # Save
-        output = args.output or str(session_file)
-        packager.save(session, output)
-        print(f"\n💾 Session saved: {output}")
+        out_path = output or str(session_file)
+        packager.save(session, out_path)
+        print(f"\n[SAVE] Session saved: {out_path}")
         print(f"   Cookies: {len(fresh_cookies)}")
-        if fresh_ls:
-            print(f"   localStorage: {len(fresh_ls)} entries")
-        if fresh_ss:
-            print(f"   sessionStorage: {len(fresh_ss)} entries")
+        print("\n[OK] REFRESH PASS (logged in)")
+        exit_ok = True
 
-        print(f"\n✅ Session refreshed successfully!")
-
+    except SystemExit:
+        raise
     except Exception as e:
-        print(f"\n❌ Refresh failed: {e}")
+        print(f"\n[ERROR] Refresh failed: {e}")
         logger.error(f"Refresh failed: {e}", exc_info=True)
+        print("\n[ERROR] REFRESH FAIL")
+        exit_ok = False
     finally:
         if browser:
             try:
                 browser.close()
             except Exception:
                 pass
+            print("   [LOCK] Browser closed")
+        # Ensure process tree for cloak is gone
+        try:
+            import shutil
+            # profile_dir may still exist; leave OS tmp cleaner
+        except Exception:
+            pass
+
+    raise SystemExit(0 if exit_ok else 1)
 
 
 def cmd_accounts(args):
-    """Multi-account orchestration — list, status, refresh multiple sessions."""
+    """Multi-account orchestration - list, status, refresh multiple sessions."""
     from tokenade.core.importer.session_manager import SessionManager
 
     sessions_dir = args.sessions_dir or "."
@@ -1051,7 +1309,7 @@ def cmd_accounts(args):
     elif subcommand == "refresh":
         _accounts_refresh(manager, args)
     else:
-        print(f"❌ Unknown action: {subcommand}")
+        print(f"[ERROR] Unknown action: {subcommand}")
         print("   Use: list, status, or refresh")
 
 
@@ -1060,7 +1318,7 @@ def _accounts_list(manager, args):
     sessions = manager.list_sessions()
 
     if not sessions:
-        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        print(f"\n[DIR] No .tokenade files found in {manager.sessions_dir}")
         return
 
     # Filter by site if specified
@@ -1111,7 +1369,7 @@ def _accounts_status(manager, args):
     sessions = manager.list_sessions()
 
     if not sessions:
-        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        print(f"\n[DIR] No .tokenade files found in {manager.sessions_dir}")
         return
 
     if args.site:
@@ -1147,42 +1405,42 @@ def _accounts_status(manager, args):
                     age_hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
                     if age_hours < 1:
                         last_display = f"{int(age_hours * 60)}m ago"
-                        status = "🟢 FRESH"
+                        status = "[+] FRESH"
                         healthy += 1
                     elif age_hours < 24:
                         last_display = f"{int(age_hours)}h ago"
-                        status = "🟡 OK"
+                        status = "[~] OK"
                         healthy += 1
                     elif age_hours < 72:
                         last_display = f"{int(age_hours / 24)}d ago"
-                        status = "🟠 STALE"
+                        status = " STALE"
                         expiring += 1
                     else:
                         last_display = f"{int(age_hours / 24)}d ago"
-                        status = "🔴 OLD"
+                        status = "[!] OLD"
                         expired += 1
                 except (ValueError, TypeError):
                     last_display = last_refreshed
-                    status = "❓ UNKNOWN"
+                    status = "? UNKNOWN"
             else:
                 last_display = "never"
-                status = "⚪ UNUSED"
+                status = " UNUSED"
 
             print(f"{s.site_name:<15} {len(cookies):<10} {auth_status:<12} {critical:<10} {last_display:<20} {status}")
 
         except Exception as e:
-            print(f"{s.site_name:<15} {'?':<10} {'?':<12} {'?':<10} {'?':<20} ❌ ERROR: {e}")
+            print(f"{s.site_name:<15} {'?':<10} {'?':<12} {'?':<10} {'?':<20} [ERROR] ERROR: {e}")
 
-    print(f"\n   🟢 Fresh: {healthy}  🟠 Stale: {expiring}  🔴 Old: {expired}")
-    print(f"   💡 Run 'tokenade accounts refresh' to refresh stale sessions")
+    print(f"\n   [+] Fresh: {healthy}   Stale: {expiring}  [!] Old: {expired}")
+    print(f"   [TIP] Run 'tokenade accounts refresh' to refresh stale sessions")
 
 
 def _accounts_refresh(manager, args):
-    """Refresh sessions — uses refresh-browser for each, with optional plugin support."""
+    """Refresh sessions - uses refresh-browser for each, with optional plugin support."""
     sessions = manager.list_sessions()
 
     if not sessions:
-        print(f"\n📂 No .tokenade files found in {manager.sessions_dir}")
+        print(f"\n[DIR] No .tokenade files found in {manager.sessions_dir}")
         return
 
     if args.site:
@@ -1205,10 +1463,10 @@ def _accounts_refresh(manager, args):
     print(f"{'=' * 80}")
 
     for s in sessions:
-        print(f"   • {s.site_name} ({s.cookie_count} cookies) — {Path(s.path).name}")
+        print(f"   - {s.site_name} ({s.cookie_count} cookies) - {Path(s.path).name}")
 
     if not args.yes:
-        response = input(f"\n🔄 Refresh all {len(sessions)} sessions? [y/N]: ").strip().lower()
+        response = input(f"\n[SYNC] Refresh all {len(sessions)} sessions? [y/N]: ").strip().lower()
         if response != "y":
             print("Cancelled")
             return
@@ -1222,13 +1480,18 @@ def _accounts_refresh(manager, args):
     # Load plugin if specified, or auto-discover unless --no-plugin
     plugin_name = getattr(args, "plugin", None)
     no_plugin = getattr(args, "no_plugin", False)
-    plugin_args_list = getattr(args, "plugin_arg", [])
+    plugin_args_list = getattr(args, "plugin_arg", None) or []
     plugin_creds = {}
-    for key, value in plugin_args_list:
-        plugin_creds[key] = value
+    for item in plugin_args_list:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            plugin_creds[item[0]] = item[1]
 
     plugin_loader = None
     refresher = None
+    _GENERIC_REFRESHERS = {
+        "auto-refresh", "session-share", "session-encrypt", "proxy-rotate",
+        "session-backup", "session-merge", "session-expiry-alert",
+    }
     if not no_plugin:
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
@@ -1237,48 +1500,38 @@ def _accounts_refresh(manager, args):
             if plugin_name:
                 refresher = plugin_loader.get_refresher(plugin_name)
                 if refresher:
-                    print(f"\n🔌 Using plugin: {plugin_name} v{refresher.version}")
+                    print(f"\n[CDP] Using plugin: {plugin_name} v{getattr(refresher, 'version', '?')}")
                 else:
-                    print(f"\n⚠️  Plugin not found: {plugin_name}. Will auto-discover per session.")
+                    print(f"\n[WARN] Plugin not found: {plugin_name}. Will auto-discover per session.")
             if not refresher and sessions:
-                # Auto-discover using the first session as a hint
                 try:
                     from tokenade.core.importer.session_packager import SessionPackager
                     _pkgr = SessionPackager()
                     _first_session = _pkgr.load(sessions[0].path)
-                    refresher = plugin_loader.get_refresher_for_session(_first_session)
+                    for name, cand in (plugin_loader.list_refreshers() or {}).items():
+                        if name in _GENERIC_REFRESHERS:
+                            continue
+                        try:
+                            if cand.can_refresh(_first_session):
+                                refresher = cand
+                                plugin_name = name
+                                break
+                        except Exception:
+                            continue
                     if refresher:
-                        _auto_name = getattr(refresher, "name", "auto")
-                        print(f"\n🔌 Auto-discovered refresher: {_auto_name} v{getattr(refresher, 'version', '?')}")
+                        print(f"\n[CDP] Auto-discovered refresher: {plugin_name} v{getattr(refresher, 'version', '?')}")
                 except Exception as _ae:
                     logger.debug("Auto-discovery in accounts refresh failed: %s", _ae)
         except Exception as e:
-            print(f"\n⚠️  Plugin error: {e}. Using browser refresh only.")
+            print(f"\n[WARN] Plugin error: {e}. Using browser refresh only.")
 
     succeeded = 0
     failed = 0
     skipped = 0
 
     for i, s in enumerate(sessions):
-        print(f"\n{'─' * 60}")
+        print(f"\n{'-' * 60}")
         print(f"[{i + 1}/{len(sessions)}] Refreshing: {s.site_name} ({Path(s.path).name})")
-
-        # Check if browser is already running
-        import subprocess as _sp
-        _ps_cmd = ["pgrep", "-c", browser] if platform.system() != "Windows" else ["tasklist", "/fi", f"imagename eq {browser}.exe"]
-        try:
-            _running = _sp.run(_ps_cmd, capture_output=True, text=True, timeout=3)
-            _is_running = False
-            if platform.system() != "Windows" and _running.returncode == 0:
-                _is_running = int(_running.stdout.strip()) > 0
-            elif platform.system() == "Windows" and browser.lower() in _running.stdout.lower():
-                _is_running = True
-            if _is_running:
-                print(f"   ⚠️  {browser} is running. Close it first or use --port for next session.")
-                skipped += 1
-                continue
-        except Exception:
-            pass
 
         try:
             # Try plugin refresh first
@@ -1288,77 +1541,45 @@ def _accounts_refresh(manager, args):
                     packager = _SP()
                     session = packager.load(s.path)
                     if refresher.can_refresh(session):
-                        print(f"   🔌 Trying plugin {plugin_name}...")
-                        session = refresher.refresh(session, plugin_creds)
-                        __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().save(session, s.path)
-                        print(f"   ✅ Plugin refresh: {s.site_name}")
+                        print(f"   [CDP] Trying plugin {plugin_name}...")
+                        raw = refresher.refresh(session, plugin_creds)
+                        session = _unwrap_refresh_result(raw, session)
+                        packager.save(session, s.path)
+                        print(f"   [OK] Plugin refresh: {s.site_name}")
                         succeeded += 1
                         _run_post_refresh_plugins(plugin_loader, session)
                         continue
                     else:
-                        print(f"   ⚠️  Plugin can't handle this session, falling back to browser")
+                        print(f"   [WARN] Plugin can't handle this session, falling back to browser")
                 except Exception as e:
-                    print(f"   ⚠️  Plugin refresh failed: {e}, falling back to browser")
+                    print(f"   [WARN] Plugin refresh failed: {e}, falling back to browser")
 
-            # Browser-based refresh (existing logic)
-            from tokenade.core.browser.undetectable import SystemBrowserLauncher
-
-            session = packager = __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().load(s.path)
-            cookies = session.get("cookies", [])
-
-            if not cookies:
-                print(f"   ⚠️  No cookies, skipping")
-                skipped += 1
-                continue
-
-            # Auto-detect URL
-            target_url = _detect_url_from_cookies(cookies)
-            if not target_url:
-                print(f"   ⚠️  Could not detect URL, skipping")
-                skipped += 1
-                continue
-
-            # Use unique port per session to avoid conflicts
-            session_port = port + i
-
-            launcher = SystemBrowserLauncher()
-            browser_proc = launcher.launch(
+            # Browser-based refresh via the single-session path (closes browser)
+            from types import SimpleNamespace
+            sub = SimpleNamespace(
+                session=s.path,
                 browser=browser,
-                visible=not headless,
-                port=session_port,
-                upstream_proxy=_resolve_upstream_proxy(args),
+                url=None,
+                port=port + i,
+                headless=headless,
+                wait=wait,
+                output=None,
+                plugin=None,
+                no_plugin=True,
+                plugin_arg=[],
+                proxy=getattr(args, "proxy", None),
             )
-
-            # Inject → navigate → extract → save
-            fresh_cookies, fresh_ls, fresh_ss = _refresh_session_cookies(
-                browser_proc, session_port, cookies, target_url, wait
-            )
-
-            browser_proc.close()
-
-            if fresh_cookies:
-                session["cookies"] = fresh_cookies
-                if fresh_ls:
-                    session["local_storage"] = fresh_ls
-                if fresh_ss:
-                    session["session_storage"] = fresh_ss
-
-                if "metadata" not in session:
-                    session["metadata"] = {}
-                session["metadata"]["cookie_count"] = len(fresh_cookies)
-                session["metadata"]["last_refreshed"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-
-                __import__("tokenade.core.importer.session_packager", fromlist=["SessionPackager"]).SessionPackager().save(session, s.path)
-                print(f"   ✅ Refreshed: {len(fresh_cookies)} cookies")
+            try:
+                cmd_refresh_browser(sub)
                 succeeded += 1
-                if plugin_loader:
-                    _run_post_refresh_plugins(plugin_loader, session)
-            else:
-                print(f"   ❌ No cookies extracted")
-                failed += 1
+            except SystemExit as se:
+                if int(getattr(se, "code", 1) or 1) == 0:
+                    succeeded += 1
+                else:
+                    failed += 1
 
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"   [ERROR] Failed: {e}")
             logger.error(f"Refresh failed for {s.path}: {e}", exc_info=True)
             failed += 1
 
@@ -1366,37 +1587,45 @@ def _accounts_refresh(manager, args):
     print(f"\n{'=' * 80}")
     print(f"REFRESH COMPLETE")
     print(f"{'=' * 80}")
-    print(f"   ✅ Succeeded: {succeeded}")
-    print(f"   ❌ Failed: {failed}")
-    print(f"   ⏭️  Skipped: {skipped}")
+    print(f"   [OK] Succeeded: {succeeded}")
+    print(f"   [ERROR] Failed: {failed}")
+    print(f"   [SKIP] Skipped: {skipped}")
     print(f"   Total: {len(sessions)}")
 
 
 def _detect_url_from_cookies(cookies):
     """Auto-detect target URL from cookie domains."""
-    domains = {c.get("domain", "").lstrip(".") for c in cookies}
+    domains = {str(c.get("domain", "")).lstrip(".").lower() for c in cookies if c.get("domain")}
+    domains.discard("")
 
-    if "google.com" in domains or "gmail.com" in domains:
-        return "https://mail.google.com"
-    elif "github.com" in domains:
-        return "https://github.com"
-    elif "twitter.com" in domains or "x.com" in domains:
-        return "https://x.com"
-    elif "linkedin.com" in domains:
-        return "https://www.linkedin.com"
-    elif "reddit.com" in domains:
-        return "https://www.reddit.com"
-    elif "facebook.com" in domains:
-        return "https://www.facebook.com"
-    elif "instagram.com" in domains:
-        return "https://www.instagram.com"
-    elif "slack.com" in domains:
-        return "https://slack.com"
+    # Prefer known product URLs (order matters)
+    rules = [
+        (("mail.google.com", "gmail.com"), "https://mail.google.com"),
+        (("accounts.google.com", "google.com", "youtube.com"), "https://myaccount.google.com"),
+        (("github.com",), "https://github.com"),
+        (("twitter.com", "x.com"), "https://x.com"),
+        (("linkedin.com",), "https://www.linkedin.com"),
+        (("reddit.com",), "https://www.reddit.com"),
+        (("facebook.com", "fb.com"), "https://www.facebook.com"),
+        (("instagram.com",), "https://www.instagram.com"),
+        (("slack.com",), "https://slack.com"),
+        (("open.spotify.com", "spotify.com"), "https://open.spotify.com"),
+        (("amazon.com", "amazon."), "https://www.amazon.com"),
+        (("netflix.com",), "https://www.netflix.com"),
+        (("discord.com", "discordapp.com"), "https://discord.com/channels/@me"),
+    ]
+    joined = " ".join(sorted(domains))
+    for keys, url in rules:
+        if any(k in joined or any(d == k or d.endswith("." + k) for d in domains) for k in keys):
+            return url
 
-    # Fallback: use first non-empty domain
-    for d in sorted(domains):
-        if d and "." in d:
-            return f"https://{d}"
+    # Fallback: most specific (longest) domain
+    ranked = sorted((d for d in domains if "." in d), key=len, reverse=True)
+    for d in ranked:
+        # skip pure trackers
+        if any(x in d for x in ("doubleclick", "googleadservices", "analytics", "hotjar")):
+            continue
+        return f"https://{d}"
     return None
 
 
@@ -1452,7 +1681,7 @@ def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time)
             ping_timeout=10,
         )
 
-        # Inject stealth (best-effort — some browsers hang on Page.enable)
+        # Inject stealth (best-effort - some browsers hang on Page.enable)
         from tokenade.core.browser.cdp_connection import get_undetectable_stealth_script
         stealth_script = get_undetectable_stealth_script()
         try:
@@ -1463,7 +1692,7 @@ def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time)
                 {"source": stealth_script},
             )
         except Exception as _stealth_err:
-            print(f"   ⚠️  Stealth inject skipped ({_stealth_err}); continuing cookies")
+            print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing cookies")
 
         # Inject cookies
         cdp_cookies = []
@@ -1508,4 +1737,4 @@ def _refresh_session_cookies(browser_proc, port, cookies, target_url, wait_time)
 
     return asyncio.run(_do_refresh())
 
-# ── Daemon Commands ─────────────────────────────────────────────
+# -- Daemon Commands ---------------------------------------------

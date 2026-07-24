@@ -97,7 +97,7 @@ def cmd_proxy_legacy(args):
             from tokenade.core.runtime.tls_matcher import require_curl_cffi
             require_curl_cffi()
         except DependencyError as e:
-            print(f"❌ {e}")
+            print(f"[ERROR] {e}")
             raise SystemExit(2) from e
 
     packager = SessionPackager()
@@ -117,7 +117,7 @@ def cmd_proxy_legacy(args):
                         logger.warning(f"Failed to load {f}: {e}", exc_info=True)
 
         if not sessions:
-            print("❌ No session files found")
+            print("[ERROR] No session files found")
             return
 
         # Session rotation mode
@@ -147,11 +147,11 @@ def cmd_proxy_legacy(args):
                 while True:
                     session_path = rotator.next()
                     if not session_path:
-                        print("❌ No available sessions")
+                        print("[ERROR] No available sessions")
                         break
                     try:
                         session = packager.load(session_path)
-                        print(f"\n🔄 Rotating to: {Path(session_path).name} "
+                        print(f"\n[SYNC] Rotating to: {Path(session_path).name} "
                               f"({session.get('site_name', 'unknown')})")
                     except Exception as e:
                         logger.warning(f"Failed to load {session_path}: {e}")
@@ -160,12 +160,12 @@ def cmd_proxy_legacy(args):
                         ) and Path(session_path).stem or "")
                     time.sleep(args.rotate_interval)
 
-            print("\n🔄 Starting rotation loop...")
+            print("\n[SYNC] Starting rotation loop...")
             print("   Press Ctrl+C to stop\n")
             try:
                 run_rotation()
             except KeyboardInterrupt:
-                print("\n\n⚠️  Rotation stopped by user")
+                print("\n\n[WARN] Rotation stopped by user")
             return
 
         print(f"\n{'=' * 60}")
@@ -178,12 +178,12 @@ def cmd_proxy_legacy(args):
         return
 
     if not args.session:
-        print("❌ --session required (or use --all for multi-site mode)")
+        print("[ERROR] --session required (or use --all for multi-site mode)")
         return
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
     # Decrypt if password provided
@@ -197,18 +197,18 @@ def cmd_proxy_legacy(args):
             with open(temp_path, 'w') as f:
                 json.dump(session_data, f)
             session_file = temp_path
-            print(f"🔓 Decrypted session with password")
+            print(f" Decrypted session with password")
         except Exception as e:
-            print(f"❌ Decryption failed: {e}")
+            print(f"[ERROR] Decryption failed: {e}")
             return
 
     print("\n" + "=" * 80)
     print("TOKENADE - Fingerprint Proxy Server")
     print("=" * 80)
-    print(f"\n📂 Session: {args.session}")
-    print(f"🔌 Port: {args.port}")
-    print(f"🔧 Mode: {args.mode}")
-    print(f"🌐 Host: {args.host}")
+    print(f"\n[DIR] Session: {args.session}")
+    print(f"[CDP] Port: {args.port}")
+    print(f" Mode: {args.mode}")
+    print(f"[NET] Host: {args.host}")
 
     if args.host == "0.0.0.0":
         import socket
@@ -219,19 +219,19 @@ def cmd_proxy_legacy(args):
             s.close()
         except Exception:
             external_ip = "<your-ip>"
-        print(f"\n   📡 MULTI-DEVICE ACCESS:")
+        print(f"\n    MULTI-DEVICE ACCESS:")
         print(f"   Other devices can access this proxy at:")
-        print(f"   → http://{external_ip}:{args.port}")
-        print(f"\n   ⚠️  All traffic routes through THIS machine's IP.")
+        print(f"   -> http://{external_ip}:{args.port}")
+        print(f"\n   [WARN] All traffic routes through THIS machine's IP.")
         print(f"   Sessions stay valid because cookies never leave this device.")
 
     if args.mode == "forward":
         print(f"   Configure browser: HTTP_PROXY=http://{args.host}:{args.port}")
 
     if args.mode != "forward":
-        print(f"🧠 Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
+        print(f" Engine: {'CDP (Playwright)' if not args.legacy else 'Legacy (SW)'}")
         if not args.legacy:
-            print(f"🔐 Fingerprint: {'curl-cffi TLS matching' if args.fingerprint else 'Native browser (cookies only)'}")
+            print(f"[KEY] Fingerprint: {'curl-cffi TLS matching' if args.fingerprint else 'Native browser (cookies only)'}")
 
     try:
         if args.mode == "forward":
@@ -243,7 +243,7 @@ def cmd_proxy_legacy(args):
                     time.sleep(2)
                     webbrowser.open(f"http://{args.host if args.host != '0.0.0.0' else '127.0.0.1'}:{args.port}")
                 threading.Thread(target=open_browser_thread, daemon=True).start()
-            print("\n🚀 Starting proxy server...")
+            print("\n[...] Starting proxy server...")
             # ForwardProxy.start() blocks until cancelled; do not call proxy.run()
             asyncio.run(proxy.start())
             return
@@ -273,7 +273,7 @@ def cmd_proxy_legacy(args):
             # Set impersonate target for TLS matching
             if args.impersonate:
                 proxy._auto_refresh_config["impersonate"] = args.impersonate
-                print(f"🔒 TLS Impersonation: {args.impersonate}")
+                print(f"[LOCK] TLS Impersonation: {args.impersonate}")
 
             if args.auto_refresh:
                 proxy._auto_refresh_config["auto_refresh"] = True
@@ -281,13 +281,13 @@ def cmd_proxy_legacy(args):
                     proxy._auto_refresh_config["source_browser"] = args.source_browser
                 if args.source_profile:
                     proxy._auto_refresh_config["source_profile"] = args.source_profile
-                print(f"🔄 Auto-refresh enabled from {args.source_browser or 'source browser'}")
+                print(f"[SYNC] Auto-refresh enabled from {args.source_browser or 'source browser'}")
 
             # Set auto-navigate URL
             if args.auto_navigate or args.target_url:
                 target = args.target_url or proxy._get_site_url()
                 proxy._auto_refresh_config["target_url"] = target
-                print(f"🌐 Auto-navigate: {target}")
+                print(f"[NET] Auto-navigate: {target}")
 
         if not args.no_open_browser:
             def open_browser_thread():
@@ -313,7 +313,7 @@ def cmd_proxy_legacy(args):
 
             threading.Thread(target=open_browser_thread, daemon=True).start()
 
-        print("\n🚀 Starting proxy server...")
+        print("\n[...] Starting proxy server...")
         if hasattr(proxy, "run"):
             proxy.run()
         elif hasattr(proxy, "start"):
@@ -328,28 +328,28 @@ def cmd_proxy_legacy(args):
             raise RuntimeError(f"Proxy type {type(proxy).__name__} has no run/start method")
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  Proxy stopped by user")
+        print("\n\n[WARN] Proxy stopped by user")
     except Exception as e:
         from tokenade.core.errors import DependencyError, ProxyError, TokenadeError
         logger.error("Proxy failed: %s", e, exc_info=True)
         error_str = str(e).lower()
         if isinstance(e, DependencyError):
-            print(f"❌ {e}")
+            print(f"[ERROR] {e}")
         elif "address already in use" in error_str or "eaddrinuse" in error_str:
-            print(f"❌ Port {args.port} is already in use.")
+            print(f"[ERROR] Port {args.port} is already in use.")
             print(f"   Try: tokenade proxy -s {args.session} --port {args.port + 1}")
             print(f"   Or kill the existing process: lsof -ti:{args.port} | xargs kill")
         elif "session" in error_str and ("not found" in error_str or "no such file" in error_str):
-            print(f"❌ Session file not found: {args.session}")
+            print(f"[ERROR] Session file not found: {args.session}")
             print("   Export one first: tokenade export --browser-name firefox --domains 'example.com' -o session.tokenade")
         elif "playwright" in error_str or "chromium" in error_str or "executable" in error_str:
-            print("❌ Chromium browser not found.")
+            print("[ERROR] Chromium browser not found.")
             print("   Install: playwright install chromium")
         elif "permission" in error_str or "access" in error_str:
-            print("❌ Permission denied — check file and directory permissions")
+            print("[ERROR] Permission denied - check file and directory permissions")
         elif isinstance(e, (ProxyError, TokenadeError)):
-            print(f"❌ {e}")
+            print(f"[ERROR] {e}")
         else:
-            print(f"❌ Proxy failed: {e}")
+            print(f"[ERROR] Proxy failed: {e}")
             print("   Check logs for details: ~/.tokenade/logs/")
         raise SystemExit(1) from e

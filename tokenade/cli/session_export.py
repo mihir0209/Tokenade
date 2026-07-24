@@ -44,16 +44,16 @@ def cmd_export(args):
     print("=" * 80)
 
     if args.list_profiles:
-        print("\n🔍 Discovering browser profiles...")
+        print("\n[SEARCH] Discovering browser profiles...")
         discovery = BrowserProfileDiscovery()
         profiles = discovery.refresh_cache()
         total_profiles = sum(len(browser_profiles) for browser_profiles in profiles.values())
 
         if total_profiles == 0:
-            print("   ❌ No browser profiles found")
+            print("   [ERROR] No browser profiles found")
             return
 
-        print(f"\n📁 Found {total_profiles} profile(s):\n")
+        print(f"\n[DIR] Found {total_profiles} profile(s):\n")
         for browser_name, browser_profiles in profiles.items():
             for p in browser_profiles:
                 print(f"   Browser: {p.browser}")
@@ -71,9 +71,9 @@ def cmd_export(args):
             print("   No site handler plugins installed.")
             print("   Install one: tokenade plugin install generic-handler")
         else:
-            print(f"\n🔌 Available site handlers ({len(handlers)}):\n")
+            print(f"\n[CDP] Available site handlers ({len(handlers)}):\n")
             for h in handlers:
-                print(f"   {h['name']} v{h['version']} — {h['description']}")
+                print(f"   {h['name']} v{h['version']} - {h['description']}")
         return
 
     browser_path = args.browser_path
@@ -87,7 +87,7 @@ def cmd_export(args):
     if not args.profile:
         args.profile = config.get("default_profile")
 
-    # CDP export talks to a running browser — no local profile required
+    # CDP export talks to a running browser - no local profile required
     if not cdp_port:
         if not browser_path and browser_name:
             discovery = BrowserProfileDiscovery()
@@ -97,16 +97,16 @@ def cmd_export(args):
                 matching = [p for p in matching if p.name.lower() == wanted or os.path.basename(str(p.path)).lower() == wanted]
             if matching:
                 browser_path = str(matching[0].path)
-                print(f"📁 Using profile: {matching[0].name}")
+                print(f"[DIR] Using profile: {matching[0].name}")
             else:
-                print(f"❌ No profile found for '{browser_name}'")
+                print(f"[ERROR] No profile found for '{browser_name}'")
                 print("   Run 'tokenade export --list-profiles' to see available profiles")
                 if args.profile:
-                    print(f"   Profile '{args.profile}' not found — check spelling and try again")
+                    print(f"   Profile '{args.profile}' not found - check spelling and try again")
                 return
 
         if not browser_path:
-            print("❌ No browser path specified.")
+            print("[ERROR] No browser path specified.")
             print("   Use --browser-name (e.g., --browser-name firefox) or --browser-path /path/to/profile")
             print("   Or use --cdp-port N to extract from a running browser")
             print("   Run 'tokenade export --list-profiles' to discover available profiles")
@@ -117,7 +117,7 @@ def cmd_export(args):
         import urllib.request as _urllib_req
         try:
             _urllib_req.urlopen(f"http://127.0.0.1:{cdp_port}/json/version", timeout=2)
-            print(f"\n🔌 Connected to existing browser on port {cdp_port}")
+            print(f"\n[CDP] Connected to existing browser on port {cdp_port}")
         except Exception:
             import subprocess
             import platform
@@ -126,19 +126,19 @@ def cmd_export(args):
             try:
                 _running = subprocess.run(_ps_cmd, capture_output=True, text=True, timeout=3)
                 if platform.system() != "Windows" and _running.returncode == 0 and int(_running.stdout.strip()) > 0:
-                    print(f"   ⚠️  {browser_name} is already running. Profile is locked.")
+                    print(f"   [WARN] {browser_name} is already running. Profile is locked.")
                     print(f"   Close all {browser_name} windows first, then retry.")
                     print(f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}")
                     return
                 elif platform.system() == "Windows" and browser_name.lower() in _running.stdout.lower():
-                    print(f"   ⚠️  {browser_name} is already running. Profile is locked.")
+                    print(f"   [WARN] {browser_name} is already running. Profile is locked.")
                     print(f"   Close all {browser_name} windows first, then retry.")
                     print(f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}")
                     return
             except Exception:
                 pass
 
-            print(f"\n🚀 Launching {browser_name} with CDP on port {cdp_port}...")
+            print(f"\n[...] Launching {browser_name} with CDP on port {cdp_port}...")
             from tokenade.core.browser.undetectable import SystemBrowserLauncher
             launcher = SystemBrowserLauncher()
             try:
@@ -149,11 +149,11 @@ def cmd_export(args):
                     port=cdp_port,
                     profile_dir=real_profile,
                 )
-                print(f"   ✅ Browser launched (PID: {launched_browser.pid})")
+                print(f"   [OK] Browser launched (PID: {launched_browser.pid})")
                 import time as _time
                 _time.sleep(3)
             except RuntimeError as e:
-                print(f"❌ Failed to launch browser: {e}")
+                print(f"[ERROR] Failed to launch browser: {e}")
                 return
 
         session_state = _extract_via_cdp(cdp_port, domain_filter=getattr(args, 'domains', None))
@@ -168,15 +168,15 @@ def cmd_export(args):
                 pass
 
         if not cookies:
-            print("❌ No cookies extracted via CDP")
+            print("[ERROR] No cookies extracted via CDP")
             return
-        print(f"   ✅ Extracted {len(cookies)} cookies via CDP")
+        print(f"   [OK] Extracted {len(cookies)} cookies via CDP")
         if local_storage:
-            print(f"   ✅ Extracted {len(local_storage)} localStorage entries")
+            print(f"   [OK] Extracted {len(local_storage)} localStorage entries")
         if session_storage:
-            print(f"   ✅ Extracted {len(session_storage)} sessionStorage entries")
+            print(f"   [OK] Extracted {len(session_storage)} sessionStorage entries")
     else:
-        print(f"\n🍪 Extracting cookies from: {browser_path}")
+        print(f"\n Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)
 
     domain_filter = None
@@ -207,35 +207,35 @@ def cmd_export(args):
         if plugin_name:
             site_handler = exporter.get_handler(plugin_name)
             if site_handler:
-                print(f"   🔌 Using plugin: {plugin_name} (overrides default export worker)")
+                print(f"   [CDP] Using plugin: {plugin_name} (overrides default export worker)")
                 if hasattr(site_handler, "get_site_config"):
                     try:
                         sc = site_handler.get_site_config() or {}
                         if sc.get("domains"):
-                            print(f"   📄 site_config.json: {sc.get('name', '?')} ({len(sc.get('domains') or [])} domains)")
+                            print(f"   [FILE] site_config.json: {sc.get('name', '?')} ({len(sc.get('domains') or [])} domains)")
                     except Exception:
                         pass
             else:
-                print(f"   ⚠️  Plugin not found: {plugin_name} — falling back to default extraction")
-                print(f"   ➡️  Install: tokenade plugin install {plugin_name}")
+                print(f"   [WARN] Plugin not found: {plugin_name} - falling back to default extraction")
+                print(f"   ->  Install: tokenade plugin install {plugin_name}")
         elif domain_filter:
             site_handler = exporter.find_handler(domain_filter)
             if site_handler:
                 site_handler_auto_discovered = True
-                print(f"   🔌 Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
+                print(f"   [CDP] Auto-discovered handler: {getattr(site_handler, 'name', '?')} (overrides default)")
             else:
-                print("   ℹ️  No handler found for domains, using default extraction")
+                print("   [i] No handler found for domains, using default extraction")
                 # Consult the unified recommend() engine for a smarter hint.
                 try:
                     from tokenade.core.recommend import recommend
                     rec = recommend(domains=domain_filter)
                     if rec.plugin:
-                        print(f"   💡 Suggestion: --plugin {rec.plugin}")
+                        print(f"   [TIP] Suggestion: --plugin {rec.plugin}")
                 except Exception:
                     pass
         else:
-            print("   ℹ️  No --domains / --plugin: exporting unfiltered cookies from the profile.")
-            print("   💡 Prefer a site plugin (domains from site_config.json):")
+            print("   [i] No --domains / --plugin: exporting unfiltered cookies from the profile.")
+            print("   [TIP] Prefer a site plugin (domains from site_config.json):")
             print("      tokenade export --list-handlers")
             print("      tokenade recommend --url https://your-site.com   # then --plugin <suggested>")
 
@@ -244,7 +244,7 @@ def cmd_export(args):
                 plugin_domains = site_handler.get_export_domains() or []
                 if plugin_domains:
                     domain_filter = list(plugin_domains)
-                    print(f"   🎯 Plugin export domains: {', '.join(domain_filter)}")
+                    print(f"   [HIT] Plugin export domains: {', '.join(domain_filter)}")
             except Exception as e:
                 logger.debug(f"get_export_domains failed: {e}")
 
@@ -255,13 +255,13 @@ def cmd_export(args):
 
     def _progress(current, total, stage):
         if stage == "copying_database":
-            print("   📋 Copying cookie database...")
+            print("   [LIST] Copying cookie database...")
         elif stage == "extracting_cookies":
             if total > 0:
                 pct = int((current / total) * 100)
-                print(f"\r   ⏳ Extracting cookies... {current}/{total} ({pct}%)", end="", flush=True)
+                print(f"\r   [WAIT] Extracting cookies... {current}/{total} ({pct}%)", end="", flush=True)
         elif stage == "complete":
-            print("\r   ✅ Cookie extraction complete                    ", flush=True)
+            print("\r   [OK] Cookie extraction complete                    ", flush=True)
 
     if not cdp_port and not args.file_path and browser_name and browser_name != "unknown":
         try:
@@ -280,16 +280,16 @@ def cmd_export(args):
                 if _r.returncode != 0 and _pat == "brave":
                     _r = _sp.run(["pgrep", "-x", "brave-browser"], capture_output=True, text=True, timeout=3)
                 if _r.returncode == 0 and (_r.stdout or "").strip():
-                    print(f"   ⚠️  {browser_name} appears to be running — cookie DB may be locked.")
-                    print(f"   ➡️  Fully quit {browser_name} (check system tray / process list), then re-run export.")
+                    print(f"   [WARN] {browser_name} appears to be running - cookie DB may be locked.")
+                    print(f"   ->  Fully quit {browser_name} (check system tray / process list), then re-run export.")
             else:
                 _r = _sp.run(
                     ["tasklist", "/fi", f"imagename eq {browser_name}.exe"],
                     capture_output=True, text=True, timeout=3,
                 )
                 if browser_name.lower() in (_r.stdout or "").lower():
-                    print(f"   ⚠️  {browser_name} appears to be running — cookie DB may be locked.")
-                    print(f"   ➡️  Fully quit {browser_name} (Task Manager), then re-run export.")
+                    print(f"   [WARN] {browser_name} appears to be running - cookie DB may be locked.")
+                    print(f"   ->  Fully quit {browser_name} (Task Manager), then re-run export.")
         except Exception:
             pass
 
@@ -303,17 +303,17 @@ def cmd_export(args):
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)
         err = str(e).lower()
-        print("❌ Extraction failed")
+        print("[ERROR] Extraction failed")
         if "locked" in err or "busy" in err or "sqlite" in err:
             print("   Cookie database is locked (browser still open or crashed with lock held).")
-            print(f"   ➡️  Fully quit {browser_name}, wait a few seconds, then retry export.")
-            print("   ➡️  On Linux/macOS: ensure no leftover browser processes remain.")
+            print(f"   ->  Fully quit {browser_name}, wait a few seconds, then retry export.")
+            print("   ->  On Linux/macOS: ensure no leftover browser processes remain.")
         else:
             print("   Check browser profile is accessible and you have read permission.")
             print(f"   Detail: {e}")
         raise SystemExit(1) from e
 
-    print(f"   📊 Total cookies: {len(cookies)}")
+    print(f"   [STATS] Total cookies: {len(cookies)}")
 
     if domain_filter and not args.file_path:
         filtered = []
@@ -329,7 +329,7 @@ def cmd_export(args):
                         filtered.append(c)
                         break
         cookies = filtered
-        print(f"   🎯 Filtered to {len(cookies)} cookies for domains: {', '.join(domain_filter)}")
+        print(f"   [HIT] Filtered to {len(cookies)} cookies for domains: {', '.join(domain_filter)}")
 
     elif site_config and not args.file_path:
         configs = site_config if isinstance(site_config, list) else [site_config]
@@ -350,7 +350,7 @@ def cmd_export(args):
                             filtered.append(c)
                             break
             cookies = filtered
-            print(f"   🎯 Filtered to {len(cookies)} cookies for domains: {', '.join(domains)}")
+            print(f"   [HIT] Filtered to {len(cookies)} cookies for domains: {', '.join(domains)}")
 
     local_storage = {}
     session_storage = {}
@@ -366,7 +366,7 @@ def cmd_export(args):
     )
 
     if do_extract_storage:
-        print(f"\n💾 Extracting localStorage from: {browser_path}")
+        print(f"\n[SAVE] Extracting localStorage from: {browser_path}")
         ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
 
         try:
@@ -384,15 +384,15 @@ def cmd_export(args):
                     for entries in storage["local"].values()
                     for key, value in entries.items()
                 }
-                print(f"   📊 Extracted {len(local_storage)} localStorage entries for plugin origins")
+                print(f"   [STATS] Extracted {len(local_storage)} localStorage entries for plugin origins")
             elif args.local_storage_origin:
                 local_storage = ls_extractor.extract(origin_filter=args.local_storage_origin)
                 storage["local"][args.local_storage_origin] = local_storage
-                print(f"   📊 localStorage entries for {args.local_storage_origin}: {len(local_storage)}")
+                print(f"   [STATS] localStorage entries for {args.local_storage_origin}: {len(local_storage)}")
             else:
                 origins = ls_extractor.list_origins()
                 if origins:
-                    print(f"   📋 Found {len(origins)} origin(s) with localStorage")
+                    print(f"   [LIST] Found {len(origins)} origin(s) with localStorage")
                     for origin in origins:
                         try:
                             origin_data = ls_extractor.extract(origin_filter=origin)
@@ -400,12 +400,12 @@ def cmd_export(args):
                             storage["local"][origin] = origin_data
                         except Exception:
                             pass
-                    print(f"   📊 Extracted {len(local_storage)} localStorage entries total")
+                    print(f"   [STATS] Extracted {len(local_storage)} localStorage entries total")
                 else:
-                    print("   ⚠️  No localStorage data found")
+                    print("   [WARN] No localStorage data found")
         except Exception as e:
             logger.warning(f"localStorage extraction failed: {e}", exc_info=True)
-            print("   ⚠️  localStorage extraction skipped — browser may be running")
+            print("   [WARN] localStorage extraction skipped - browser may be running")
     else:
         try:
             ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
@@ -417,13 +417,13 @@ def cmd_export(args):
                     if any(d in o for d in cookie_domains)
                 ]
                 if matching_origins:
-                    print(f"\n💾 Found localStorage for {len(matching_origins)} cookie domain(s): {', '.join(matching_origins)}")
-                    print("   💡 Re-run with --extract-local-storage to include it")
+                    print(f"\n[SAVE] Found localStorage for {len(matching_origins)} cookie domain(s): {', '.join(matching_origins)}")
+                    print("   [TIP] Re-run with --extract-local-storage to include it")
         except Exception:
             pass
 
     if not cookies and not local_storage and not session_storage and not storage["local"]:
-        print("❌ No cookies or localStorage to export")
+        print("[ERROR] No cookies or localStorage to export")
         return
 
     packager = SessionPackager()
@@ -445,9 +445,9 @@ def cmd_export(args):
             export_metadata["source_network"] = capture_source_network(
                 include_source_ip=bool(getattr(args, 'include_source_ip', False))
             )
-            print("   🌐 Source network stamp captured")
+            print("   [NET] Source network stamp captured")
         except SourceNetworkError as e:
-            print(f"❌ Source network stamp failed: {e}")
+            print(f"[ERROR] Source network stamp failed: {e}")
             raise SystemExit(1) from e
 
     proxy_plugin = getattr(args, 'proxy_plugin', None)
@@ -457,7 +457,7 @@ def cmd_export(args):
             "export_traffic_routed": False,
             "note": "Provider metadata only; export traffic is not routed through this proxy plugin.",
         }
-        print(f"   🔌 Proxy provider metadata recorded: {proxy_plugin} (export traffic not routed)")
+        print(f"   [CDP] Proxy provider metadata recorded: {proxy_plugin} (export traffic not routed)")
 
     extra_cookies = []
     if cookies:
@@ -501,10 +501,10 @@ def cmd_export(args):
         encryptor = SessionEncryptor()
         encryptor.encrypt_file(saved_path, saved_path + ".enc", encrypt_password)
         os.rename(saved_path + ".enc", saved_path)
-        print(f"\n🔒 Encrypted and exported: {saved_path}")
+        print(f"\n[LOCK] Encrypted and exported: {saved_path}")
     else:
         saved_path = packager.save(package, output)
-        print(f"\n💾 Exported: {saved_path}")
+        print(f"\n[SAVE] Exported: {saved_path}")
 
     print(f"   Site: {package['site_name']}")
     print(f"   Auth: {package['auth_status']}")

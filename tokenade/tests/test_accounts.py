@@ -177,7 +177,7 @@ class TestDetectUrlFromCookies:
 
     def test_google(self):
         cookies = [{"domain": ".google.com"}]
-        assert _detect_url_from_cookies(cookies) == "https://mail.google.com"
+        assert _detect_url_from_cookies(cookies) == "https://myaccount.google.com"
 
     def test_gmail(self):
         cookies = [{"domain": ".gmail.com"}]

@@ -46,6 +46,13 @@ DEFAULTS = {
     "upstream_proxy_file": None,
     "upstream_proxy_rotate": False,
     "upstream_proxy_strategy": "health-weighted",
+    # Remote share store (ciphertext only; password never stored).
+    # Empty url/key + supabase_use_default=True → baked public project.
+    # Set url+key for a private Supabase project; set use_default=False to disable remote.
+    "supabase_url": None,
+    "supabase_anon_key": None,
+    "supabase_table": "tokenade_shares",
+    "supabase_use_default": True,
 }
 
 

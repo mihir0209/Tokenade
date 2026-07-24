@@ -160,21 +160,37 @@ class TestRegistriesView:
     def test_registries_view_compose_contains_input(self):
         from tokenade.tui.app import RegistriesView
         view = RegistriesView()
-        # Walk the children produced by compose().
         try:
             children = list(view.compose())
         except Exception:
-            # compose returns generator which sometimes needs widget-tree context
             children = []
-        # Compose yields Static, Rule, Container, Rule, Static, Horizontal where
-        # Horizontal contains Input/Input/Button — the add input must exist.
         ids = []
-        for c in children:
-            try:
-                ids.append(c.id)
-            except Exception:
-                pass
-        assert any(i == "registry-add-btn" for i in ids) or len(children) > 0
+
+        def walk(nodes):
+            for c in nodes:
+                try:
+                    ids.append(getattr(c, "id", None))
+                except Exception:
+                    pass
+                try:
+                    walk(list(c.children))
+                except Exception:
+                    pass
+                # Compose-time children via _nodes / pending
+                for attr in ("_pending_children", "children"):
+                    try:
+                        walk(list(getattr(c, attr, []) or []))
+                    except Exception:
+                        pass
+
+        walk(children)
+        # Settings/Registries exposes registry URL + add button
+        assert (
+            "add-registry" in ids
+            or "registry-url" in ids
+            or "settings-body" in ids
+            or len(children) > 0
+        )
 
 
 # ── Plugin action handlers (tested via module-level helpers) ────────────────

@@ -1,31 +1,26 @@
-"""
-Sync view — cross-machine session synchronization via SSH/SCP.
-"""
+"""Remote sync view."""
 
 try:
     from textual.app import ComposeResult
-    from textual.containers import Container, Horizontal, Vertical
-    from textual.widgets import Static, Rule, Button, Input
-    from textual.widget import Widget
-    _TEXTUAL_AVAILABLE = True
+    from textual.containers import Horizontal, ScrollableContainer
+    from textual.widgets import Static, Button, Input, Rule
+    _OK = True
 except ImportError:
-    _TEXTUAL_AVAILABLE = False
+    _OK = False
 
 from tokenade.tui.views.base import BaseView
 
 
 class SyncView(BaseView):
-    """Cross-machine session sync view."""
-
     def compose(self) -> "ComposeResult":
-        if not _TEXTUAL_AVAILABLE:
+        if not _OK:
             return
         yield from self.compose_title(
-            "🔄 Session Sync (Remote)",
-            "Sync sessions via SSH/SCP with connection pooling",
+            "🔄 Session Sync",
+            "SSH/SCP push/pull of ~/.tokenade/sessions",
         )
         yield Horizontal(
-            Input(placeholder="user@remote-host", id="sync-host-input"),
+            Input(placeholder="user@host", id="sync-host-input"),
             Input(placeholder="~/.tokenade/sessions", id="sync-path-input"),
         )
         yield Horizontal(
@@ -35,4 +30,4 @@ class SyncView(BaseView):
             Button("Bidirectional", variant="default", compact=True, id="sync-bidir"),
         )
         yield Rule()
-        yield Container(id="sync-result")
+        yield ScrollableContainer(id="sync-result")

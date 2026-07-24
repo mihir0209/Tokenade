@@ -253,11 +253,17 @@ class SessionURLShortener:
     - Support for request.json in session files
     """
     
-    def __init__(self, config: Optional[URLShortenerConfig] = None):
+    def __init__(
+        self,
+        config: Optional[URLShortenerConfig] = None,
+        *,
+        supabase_config: Any = None,
+    ):
         self.config = config or URLShortenerConfig()
         self._backend = self._get_backend()
         self._urls: Dict[str, ShortenedURL] = {}
         self._url_store = Path("~/.tokenade/shortened_urls.json").expanduser()
+        self._supabase_config = supabase_config
         self._load_urls()
     
     def create_share(
@@ -294,115 +300,372 @@ class SessionURLShortener:
             session_data = f.read()
         
         session_json = self._parse_session(session_data)
+
+        # Preserve original basename for receiver default output path
+        file_name = session_path.name
+        if not file_name.endswith(".tokenade"):
+            file_name = f"{session_path.stem}.tokenade"
+        meta = session_json.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            session_json["metadata"] = meta
+        meta["file_name"] = file_name
         
         if include_request_json:
             request_json = self._load_request_json(session_path.parent)
             if request_json:
                 session_json["_request_config"] = request_json
-        
+
+        from tokenade.core.sharing.supabase_store import (
+            MAX_CIPHERTEXT_CHARS,
+            MAX_EMBEDDED_URL_CHARS,
+            SupabaseShareStore,
+            SupabaseConfig,
+        )
+
+        # Shrink full-profile dumps so remote share stays under RPC limit
+        session_json, prune_note = self._fit_session_for_remote_share(session_json)
+
         encrypted = self._encrypt_with_password(
-            json.dumps(session_json).encode(),
+            json.dumps(session_json, separators=(",", ":")).encode(),
             password,
         )
+        ct_len = len(encrypted)
         
         short_id = secrets.token_urlsafe(16)
         expiry = expiry_hours or self.config.expiry_hours
         expires_at = time.time() + (expiry * 3600) if expiry > 0 else 0
         
         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        
-        original_url = f"tokenade://share/{short_id}?data={encrypted}"
-        short_url = self._backend.shorten(original_url)
-        
+
+        # Embed payload only when small enough for local store / paste
+        can_embed = ct_len <= MAX_EMBEDDED_URL_CHARS
+        original_url = (
+            f"tokenade://share/{short_id}?data={encrypted}"
+            if can_embed
+            else f"tokenade://share/{short_id}"
+        )
+        local_ref = f"tokenade://share/{short_id}"
+
+        remote = None
+        remote_error = ""
+        remote_source = ""
+        remote_code = ""
+        try:
+            sb_cfg = getattr(self, "_supabase_config", None) or SupabaseConfig.from_env()
+            store = SupabaseShareStore(sb_cfg)
+            if store.available:
+                if ct_len > MAX_CIPHERTEXT_CHARS:
+                    remote_error = (
+                        f"ciphertext too large ({ct_len} chars; max {MAX_CIPHERTEXT_CHARS}). "
+                        "Export a site-scoped session or transfer the .tokenade file directly."
+                    )
+                    remote_code = "payload_too_large"
+                else:
+                    remote = store.put_share(
+                        short_id,
+                        encrypted,
+                        expires_at=expires_at,
+                        max_uses=max_uses or self.config.max_uses,
+                    )
+                    remote_source = store.config.source
+                    if remote and remote.get("success"):
+                        logger.info(
+                            "Uploaded share %s to Supabase (%s)", short_id, remote_source
+                        )
+                    else:
+                        remote_error = str((remote or {}).get("error") or remote)
+                        remote_code = str((remote or {}).get("code") or "")
+                        remote = None
+        except Exception as e:
+            remote_error = str(e)
+            logger.warning("Supabase upload failed: %s", e)
+
+        short_url = None
+        try:
+            if remote and remote.get("success"):
+                short_url = local_ref
+            elif self._backend.__class__.__name__ == "LocalURLShortener":
+                short_url = local_ref
+            elif can_embed:
+                short_url = self._backend.shorten(original_url)
+        except Exception as e:
+            logger.debug("shorten failed: %s", e)
+            short_url = None
+
         if not short_url:
-            short_url = original_url
-        
+            short_url = local_ref
+
+        # Never persist multi-MB ?data= blobs into shortened_urls.json
+        store_original = original_url if can_embed else local_ref
         url_entry = ShortenedURL(
             short_id=short_id,
-            original_url=original_url,
+            original_url=store_original,
             short_url=short_url,
             created_at=time.time(),
             expires_at=expires_at,
             password_hash=password_hash,
             max_uses=max_uses or self.config.max_uses,
         )
-        
+
         self._urls[short_id] = url_entry
         self._save_urls()
-        
+
+        transport = "supabase" if remote and remote.get("success") else "embedded"
+        if transport == "embedded" and not can_embed:
+            # Large payload, remote failed — share id alone cannot retrieve
+            transport = "local-ref-only"
+
+        msg = (
+            f"Share created via {transport}"
+            + (f" ({remote_source})" if remote_source and transport == "supabase" else "")
+            + ". Password is never uploaded. "
+            "Receiver: python3 -m tokenade share-url retrieve <short_id|full_url> "
+            f"--password '...' -o {file_name}"
+        )
+        if prune_note:
+            msg += f" [{prune_note}]"
+        if remote_error and transport != "supabase":
+            msg += f" (remote unavailable: {remote_error[:160]})"
+        if transport == "local-ref-only":
+            msg += (
+                " WARNING: payload too large for remote and embedded URL; "
+                "copy the .tokenade file instead or re-export with domain filter."
+            )
+            return {
+                "success": False,
+                "error": remote_error or "payload too large for share",
+                "code": remote_code or "payload_too_large",
+                "short_id": short_id,
+                "short_url": short_url,
+                "ciphertext_chars": ct_len,
+                "max_chars": MAX_CIPHERTEXT_CHARS,
+                "file_name": file_name,
+                "message": msg,
+            }
+
         return {
             "success": True,
             "short_url": short_url,
             "short_id": short_id,
+            "original_url": original_url if can_embed else local_ref,
+            "full_url": original_url if can_embed else local_ref,
             "expires_at": expires_at,
             "requires_password": True,
-            "message": "Share link created. Receiver must enter password to decrypt.",
+            "transport": transport,
+            "remote": bool(remote and remote.get("success")),
+            "remote_source": remote_source or None,
+            "file_name": file_name,
+            "ciphertext_chars": ct_len,
+            "pruned": bool(prune_note),
+            "message": msg,
         }
     
+    @staticmethod
+    def session_file_name(session_json: Any) -> str:
+        """Basename from share metadata, or received.tokenade fallback."""
+        if not isinstance(session_json, dict):
+            return "received.tokenade"
+        meta = session_json.get("metadata") if isinstance(session_json.get("metadata"), dict) else {}
+        name = meta.get("file_name") or session_json.get("file_name") or ""
+        name = Path(str(name)).name.strip() if name else ""
+        if not name:
+            return "received.tokenade"
+        if not name.endswith(".tokenade"):
+            name = f"{Path(name).stem}.tokenade"
+        # Stay within basename only (no path traversal)
+        return Path(name).name
+
+    @staticmethod
+    def resolve_output_path(
+        session_json: Any,
+        output_path: Optional[str] = None,
+        *,
+        default_dir: Optional[str] = None,
+    ) -> str:
+        """Pick write path: explicit -o, else metadata file_name under default_dir."""
+        if output_path and str(output_path).strip():
+            path = Path(str(output_path).strip()).expanduser()
+            if path.parent and str(path.parent) not in (".", ""):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            return str(path)
+
+        base_dir = Path(default_dir).expanduser() if default_dir else Path.cwd()
+        base_dir.mkdir(parents=True, exist_ok=True)
+        name = SessionURLShortener.session_file_name(session_json)
+        candidate = base_dir / name
+        if not candidate.exists():
+            return str(candidate)
+        stem = candidate.stem
+        suffix = candidate.suffix or ".tokenade"
+        for i in range(2, 1000):
+            alt = base_dir / f"{stem}-{i}{suffix}"
+            if not alt.exists():
+                return str(alt)
+        return str(base_dir / f"{stem}-{int(time.time())}{suffix}")
+
+    def _write_retrieved(
+        self,
+        session_json: dict,
+        output_path: Optional[str],
+        *,
+        default_dir: Optional[str] = None,
+    ) -> str:
+        path = self.resolve_output_path(
+            session_json, output_path, default_dir=default_dir
+        )
+        Path(path).write_text(json.dumps(session_json, indent=2), encoding="utf-8")
+        return path
+
     def retrieve_session(
         self,
         short_url: str,
         password: str,
         output_path: Optional[str] = None,
+        *,
+        default_dir: Optional[str] = None,
+        write_file: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Retrieve session from a shortened URL with password.
-        
-        Args:
-            short_url: The shortened URL or share ID
-            password: Password for decryption
-            output_path: Optional path to save session
-            
-        Returns:
-            Dictionary with session data or error
+
+        KISS peer path: if the URL embeds ``?data=`` ciphertext, decrypt it
+        directly — no local share store required. Otherwise resolve short_id
+        against the local shortened_urls.json store (same machine / synced).
+
+        Writes a file when ``output_path`` or ``default_dir`` is set (or
+        ``write_file=True``). Without ``output_path``, uses
+        ``metadata.file_name`` under ``default_dir`` (or cwd), with
+        ``name-2.tokenade`` style de-dupe on collision.
         """
-        short_id = self._extract_short_id(short_url)
-        
-        if not short_id:
+        raw = (short_url or "").strip()
+        if not raw:
             return {"success": False, "error": "Invalid share URL"}
-        
-        url_entry = self._urls.get(short_id)
-        if not url_entry:
-            return {"success": False, "error": "Share not found"}
-        
-        if not url_entry.is_valid:
-            return {"success": False, "error": "Share expired or revoked"}
-        
-        if not url_entry.password_hash:
-            return {"success": False, "error": "Share has no password protection"}
-        
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if password_hash != url_entry.password_hash:
-            return {"success": False, "error": "Invalid password"}
-        
-        try:
-            encrypted_data = self._extract_encrypted_data(url_entry.original_url)
-            if not encrypted_data:
-                return {"success": False, "error": "No encrypted data in share"}
-            
-            decrypted = self._decrypt_with_password(encrypted_data, password)
-            session_json = json.loads(decrypted)
-            
-            url_entry.current_uses += 1
-            self._save_urls()
-            
-            if output_path:
-                output = Path(output_path)
-                output.write_text(json.dumps(session_json, indent=2))
-            
-            return {
+
+        do_write = (
+            write_file
+            if write_file is not None
+            else bool(output_path or default_dir)
+        )
+
+        def _finish(session_json, *, remaining=None, source="embedded", **extra):
+            out = None
+            if do_write:
+                out = self._write_retrieved(
+                    session_json, output_path, default_dir=default_dir
+                )
+            result = {
                 "success": True,
                 "session": session_json,
-                "output_path": output_path,
-                "remaining_uses": (
+                "output_path": out,
+                "file_name": self.session_file_name(session_json),
+                "remaining_uses": remaining,
+                "source": source,
+            }
+            result.update(extra)
+            return result
+
+        # 1) Self-contained full URL — payload travels with the link
+        embedded = self._extract_encrypted_data(raw)
+        if embedded:
+            try:
+                decrypted = self._decrypt_with_password(embedded, password)
+                session_json = json.loads(decrypted)
+                # Best-effort use accounting if this id is in local store
+                short_id = self._extract_short_id(raw)
+                url_entry = self._urls.get(short_id) if short_id else None
+                remaining = None
+                if url_entry and url_entry.is_valid:
+                    url_entry.current_uses += 1
+                    self._save_urls()
+                    if url_entry.max_uses > 0:
+                        remaining = url_entry.max_uses - url_entry.current_uses
+                return _finish(session_json, remaining=remaining, source="embedded")
+            except Exception as e:
+                return {"success": False, "error": f"Decryption failed: {e}"}
+
+        # 2) Short id — try local store, then Supabase remote
+        short_id = self._extract_short_id(raw)
+        if not short_id:
+            return {"success": False, "error": "Invalid share URL"}
+
+        url_entry = self._urls.get(short_id)
+        if url_entry:
+            if not url_entry.is_valid:
+                return {"success": False, "error": "Share expired or revoked"}
+            if not url_entry.password_hash:
+                return {"success": False, "error": "Share has no password protection"}
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            if password_hash != url_entry.password_hash:
+                return {"success": False, "error": "Invalid password"}
+            try:
+                encrypted_data = self._extract_encrypted_data(url_entry.original_url)
+                if not encrypted_data:
+                    return {"success": False, "error": "No encrypted data in share"}
+                decrypted = self._decrypt_with_password(encrypted_data, password)
+                session_json = json.loads(decrypted)
+                url_entry.current_uses += 1
+                self._save_urls()
+                remaining = (
                     url_entry.max_uses - url_entry.current_uses
                     if url_entry.max_uses > 0
                     else None
-                ),
-            }
-            
+                )
+                return _finish(session_json, remaining=remaining, source="store")
+            except Exception as e:
+                return {"success": False, "error": f"Decryption failed: {e}"}
+
+        # 3) Supabase remote (password never stored — only ciphertext)
+        #    RPC consumes one use server-side on successful fetch.
+        try:
+            from tokenade.core.sharing.supabase_store import (
+                SupabaseShareStore,
+                SupabaseConfig,
+            )
+            sb_cfg = getattr(self, "_supabase_config", None) or SupabaseConfig.from_env()
+            store = SupabaseShareStore(sb_cfg)
+            if store.available:
+                row = store.get_share(short_id)
+                if row:
+                    err = row.get("error")
+                    if err == "revoked" or row.get("revoked"):
+                        return {"success": False, "error": "Share revoked"}
+                    if err == "expired":
+                        return {"success": False, "error": "Share expired"}
+                    if err == "max_uses":
+                        return {"success": False, "error": "Share max uses reached"}
+                    if err:
+                        return {"success": False, "error": f"Share unavailable ({err})"}
+                    ciphertext = row.get("ciphertext") or ""
+                    if not ciphertext:
+                        return {"success": False, "error": "Empty remote ciphertext"}
+                    try:
+                        decrypted = self._decrypt_with_password(ciphertext, password)
+                        session_json = json.loads(decrypted)
+                    except Exception as e:
+                        return {"success": False, "error": f"Decryption failed: {e}"}
+                    remaining = row.get("remaining_uses")
+                    if remaining is None:
+                        max_uses = int(row.get("max_uses") or 0)
+                        cur = int(row.get("current_uses") or 0)
+                        remaining = (max_uses - cur) if max_uses > 0 else None
+                    return _finish(
+                        session_json,
+                        remaining=remaining,
+                        source="supabase",
+                        remote_source=store.config.source,
+                    )
         except Exception as e:
-            return {"success": False, "error": f"Decryption failed: {e}"}
+            logger.debug("Supabase retrieve failed: %s", e)
+
+        return {
+            "success": False,
+            "error": (
+                "Share not found (local or remote). "
+                "Paste the full URL (with ?data=) or use the public/default "
+                "Supabase project (or your private TOKENADE_SUPABASE_* override)."
+            ),
+        }
     
     def revoke(self, short_id: str) -> bool:
         """Revoke a share link."""
@@ -436,6 +699,60 @@ class SessionURLShortener:
             self._save_urls()
         
         return len(expired)
+
+    # Strip embedded ?data= payloads larger than this from local store
+    MAX_STORED_ORIGINAL_URL = 50_000
+
+    @classmethod
+    def _strip_embedded_data(cls, url: str) -> str:
+        """Drop ?data=... payload from tokenade:// share URLs (keep short ref)."""
+        if not url or "?data=" not in url:
+            return url
+        base, _, _rest = url.partition("?data=")
+        return base or url
+
+    def prune_oversized_embeds(self, *, max_url_chars: Optional[int] = None) -> Dict[str, int]:
+        """Strip huge embedded payloads from local shortened_urls.json.
+
+        Full-profile shares used to write multi‑MB ``?data=`` blobs into the
+        local store. Keep short_id refs; remote retrieve still works if uploaded.
+        """
+        limit = int(max_url_chars or self.MAX_STORED_ORIGINAL_URL)
+        stripped = 0
+        removed = 0
+        changed = False
+        for sid, entry in list(self._urls.items()):
+            orig = entry.original_url or ""
+            if len(orig) <= limit:
+                continue
+            if "?data=" in orig:
+                entry.original_url = self._strip_embedded_data(orig)
+                # Prefer compact short_url too
+                if entry.short_url and "?data=" in entry.short_url:
+                    entry.short_url = self._strip_embedded_data(entry.short_url)
+                if not entry.short_url or len(entry.short_url) > limit:
+                    entry.short_url = f"tokenade://share/{sid}"
+                stripped += 1
+                changed = True
+            elif len(orig) > limit * 2:
+                # Unusable giant non-embed entry — drop
+                del self._urls[sid]
+                removed += 1
+                changed = True
+        if changed:
+            self._save_urls()
+        return {"stripped": stripped, "removed": removed, "remaining": len(self._urls)}
+
+    def cleanup_local_store(self) -> Dict[str, int]:
+        """Expired + oversized embed prune. Safe default for ``share-url cleanup``."""
+        expired = self.cleanup_expired()
+        pruned = self.prune_oversized_embeds()
+        return {
+            "expired": expired,
+            "stripped": pruned.get("stripped", 0),
+            "removed": pruned.get("removed", 0),
+            "remaining": pruned.get("remaining", len(self._urls)),
+        }
     
     def _get_backend(self) -> URLShortenerBackend:
         """Get the URL shortener backend."""
@@ -471,6 +788,153 @@ class SessionURLShortener:
                 return parts[1].split("&")[0]
         return None
     
+    @staticmethod
+    def _origin_matches_needles(origin: str, needles: List[str]) -> bool:
+        o = (origin or "").lower()
+        return any(n in o for n in needles)
+
+    @classmethod
+    def _site_storage_needles(cls, session: Dict[str, Any]) -> List[str]:
+        """Domain fragments used to keep only relevant storage origins."""
+        site = str(session.get("site_name") or session.get("site") or "").lower()
+        needles: List[str] = []
+        if site and site not in ("unknown", "session-backup", "backup"):
+            needles.append(site)
+            if "." not in site:
+                needles.append(f"{site}.com")
+        # Cookie domains always count
+        for c in session.get("cookies") or []:
+            if not isinstance(c, dict):
+                continue
+            d = str(c.get("domain") or "").lower().lstrip(".")
+            if d and d not in needles:
+                needles.append(d)
+                # bare registrable-ish token
+                parts = d.split(".")
+                if len(parts) >= 2 and parts[-2] not in needles:
+                    needles.append(parts[-2])
+        # Common aliases
+        if any(n in ("google", "gmail", "youtube") or "google" in n for n in needles):
+            for extra in (
+                "google.",
+                "gmail.",
+                "youtube.",
+                "gstatic.",
+                "googleapis.",
+                "accounts.google",
+                "mail.google",
+            ):
+                if extra not in needles:
+                    needles.append(extra)
+        return [n for n in needles if n]
+
+    @classmethod
+    def _filter_storage_dict(
+        cls, storage: Any, needles: List[str]
+    ) -> tuple[Any, int, int]:
+        """Return (filtered_storage, kept_origins, dropped_origins)."""
+        if not isinstance(storage, dict) or not needles:
+            return storage, 0, 0
+        kept_o = dropped_o = 0
+
+        def _filter_map(m: Any) -> Dict[str, Any]:
+            nonlocal kept_o, dropped_o
+            if not isinstance(m, dict):
+                return m
+            out: Dict[str, Any] = {}
+            for origin, val in m.items():
+                if cls._origin_matches_needles(str(origin), needles):
+                    out[str(origin)] = val
+                    kept_o += 1
+                else:
+                    dropped_o += 1
+            return out
+
+        # v3 shape: {local: {origin: {...}}, session: {...}}
+        if "local" in storage or "session" in storage:
+            filtered = dict(storage)
+            if "local" in storage:
+                filtered["local"] = _filter_map(storage.get("local"))
+            if "session" in storage:
+                filtered["session"] = _filter_map(storage.get("session"))
+            return filtered, kept_o, dropped_o
+        # flat origin map
+        return _filter_map(storage), kept_o, dropped_o
+
+    @classmethod
+    def _estimate_ciphertext_chars(cls, session: Dict[str, Any]) -> int:
+        """Rough upper bound: json size * 4/3 (b64) + fernet overhead."""
+        try:
+            n = len(json.dumps(session, separators=(",", ":")))
+        except Exception:
+            n = 0
+        return int(n * 1.4) + 256
+
+    @classmethod
+    def _fit_session_for_remote_share(
+        cls, session: Dict[str, Any]
+    ) -> tuple[Dict[str, Any], str]:
+        """Prune bulk storage so encrypted payload can fit Supabase max.
+
+        Full-profile dumps (1000+ origins) exceed the 2MB ciphertext cap.
+        Keeps cookies/tokens and site-relevant storage when possible.
+        """
+        from tokenade.core.sharing.supabase_store import MAX_CIPHERTEXT_CHARS
+
+        if not isinstance(session, dict):
+            return session, ""
+
+        notes: List[str] = []
+        data = session
+        est = cls._estimate_ciphertext_chars(data)
+        if est <= MAX_CIPHERTEXT_CHARS:
+            return data, ""
+
+        # 1) Filter storage to site/cookie-related origins
+        needles = cls._site_storage_needles(data)
+        if needles and isinstance(data.get("storage"), dict):
+            data = dict(data)
+            filtered, kept, dropped = cls._filter_storage_dict(
+                data.get("storage"), needles
+            )
+            data["storage"] = filtered
+            meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+            meta = dict(meta)
+            meta["share_storage_filtered"] = True
+            meta["share_storage_kept_origins"] = kept
+            meta["share_storage_dropped_origins"] = dropped
+            data["metadata"] = meta
+            notes.append(f"storage filtered to site origins (kept {kept}, dropped {dropped})")
+            est = cls._estimate_ciphertext_chars(data)
+            if est <= MAX_CIPHERTEXT_CHARS:
+                return data, "; ".join(notes)
+
+        # 2) Drop all web storage — cookies + tokens usually enough for login
+        if isinstance(data.get("storage"), dict) and data.get("storage"):
+            data = dict(data)
+            data["storage"] = {"local": {}, "session": {}}
+            meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+            meta = dict(meta)
+            meta["share_storage_stripped"] = True
+            data["metadata"] = meta
+            notes.append("storage stripped (cookies/tokens only)")
+            est = cls._estimate_ciphertext_chars(data)
+            if est <= MAX_CIPHERTEXT_CHARS:
+                return data, "; ".join(notes)
+
+        # 3) Drop fingerprint / tls bulk if still huge
+        for bulky in ("fingerprint", "tls_profile", "source_device", "oauth_config"):
+            if bulky in data and data[bulky]:
+                data = dict(data)
+                data.pop(bulky, None)
+                notes.append(f"dropped {bulky}")
+        est = cls._estimate_ciphertext_chars(data)
+        if est > MAX_CIPHERTEXT_CHARS:
+            notes.append(
+                f"still ~{est} chars estimated (max {MAX_CIPHERTEXT_CHARS}); remote may fail"
+            )
+        return data, "; ".join(notes)
+
     def _parse_session(self, data: bytes) -> Dict[str, Any]:
         """Parse session data."""
         try:
@@ -546,14 +1010,61 @@ class SessionURLShortener:
         """Load URLs from storage."""
         if self._url_store.exists():
             try:
+                # Auto-heal multi‑MB stores from old full-embed shares
+                try:
+                    size = self._url_store.stat().st_size
+                except OSError:
+                    size = 0
                 with open(self._url_store) as f:
                     data = json.load(f)
                 
                 for url_data in data:
                     # Remove is_valid if present (it's a computed property)
                     url_data.pop("is_valid", None)
-                    url_entry = ShortenedURL(**url_data)
+                    # Strip giant embeds on load so memory stays small
+                    orig = url_data.get("original_url") or ""
+                    if isinstance(orig, str) and len(orig) > self.MAX_STORED_ORIGINAL_URL:
+                        url_data["original_url"] = self._strip_embedded_data(orig)
+                    short = url_data.get("short_url") or ""
+                    if isinstance(short, str) and len(short) > self.MAX_STORED_ORIGINAL_URL:
+                        sid = url_data.get("short_id") or ""
+                        url_data["short_url"] = (
+                            self._strip_embedded_data(short)
+                            if "?data=" in short
+                            else (f"tokenade://share/{sid}" if sid else short[:200])
+                        )
+                    try:
+                        url_entry = ShortenedURL(**url_data)
+                    except TypeError:
+                        # tolerate extra keys from older formats
+                        known = {
+                            k: url_data[k]
+                            for k in (
+                                "short_id",
+                                "original_url",
+                                "short_url",
+                                "created_at",
+                                "expires_at",
+                                "password_hash",
+                                "max_uses",
+                                "current_uses",
+                                "revoked",
+                            )
+                            if k in url_data
+                        }
+                        url_entry = ShortenedURL(**known)
                     self._urls[url_entry.short_id] = url_entry
+
+                if size > 1_000_000:
+                    # Rewrite compact file after load
+                    try:
+                        self._save_urls()
+                        logger.info(
+                            "Compacted oversized shortened_urls.json (%s bytes → rewritten)",
+                            size,
+                        )
+                    except Exception:
+                        pass
                     
             except Exception as e:
                 logger.warning(f"Failed to load shortened URLs: {e}")
@@ -563,7 +1074,19 @@ class SessionURLShortener:
         try:
             self._url_store.parent.mkdir(parents=True, exist_ok=True)
             
-            data = [url_entry.to_dict() for url_entry in self._urls.values()]
+            data = []
+            for url_entry in self._urls.values():
+                row = url_entry.to_dict()
+                # Never rewrite multi‑MB embeds
+                orig = row.get("original_url") or ""
+                if isinstance(orig, str) and len(orig) > self.MAX_STORED_ORIGINAL_URL:
+                    row["original_url"] = self._strip_embedded_data(orig)
+                short = row.get("short_url") or ""
+                if isinstance(short, str) and len(short) > self.MAX_STORED_ORIGINAL_URL:
+                    row["short_url"] = self._strip_embedded_data(short) or (
+                        f"tokenade://share/{row.get('short_id')}"
+                    )
+                data.append(row)
             
             with open(self._url_store, "w") as f:
                 json.dump(data, f, indent=2)

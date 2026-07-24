@@ -39,7 +39,7 @@ def _container_build(args: argparse.Namespace) -> None:
 
     dockerfile = Path(args.dockerfile) if args.dockerfile else Path("Dockerfile")
     if not dockerfile.exists():
-        print(f"❌ Dockerfile not found: {dockerfile}")
+        print(f"[ERROR] Dockerfile not found: {dockerfile}")
         sys.exit(1)
 
     tag = args.tag or "tokenade:latest"
@@ -48,14 +48,14 @@ def _container_build(args: argparse.Namespace) -> None:
     if args.no_cache:
         cmd.append("--no-cache")
 
-    print(f"🔨 Building image: {tag}")
-    print(f"📁 Context: {Path('.').absolute()}")
+    print(f" Building image: {tag}")
+    print(f"[DIR] Context: {Path('.').absolute()}")
 
     try:
         result = subprocess.run(cmd, check=True)
-        print(f"\n✅ Image built successfully: {tag}")
+        print(f"\n[OK] Image built successfully: {tag}")
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Build failed: {e}")
+        print(f"\n[ERROR] Build failed: {e}")
         sys.exit(1)
 
 
@@ -92,15 +92,15 @@ def _container_run(args: argparse.Namespace) -> None:
     if args.command:
         cmd.extend(args.command)
 
-    print(f"🐳 Running container: {tag}")
-    print(f"📦 Image: {image}")
+    print(f" Running container: {tag}")
+    print(f"[PKG] Image: {image}")
 
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print(f"\n✅ Container started: {tag}")
+        print(f"\n[OK] Container started: {tag}")
         print(f"   ID: {result.stdout.strip()[:12]}")
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Failed to start container: {e}")
+        print(f"\n[ERROR] Failed to start container: {e}")
         sys.exit(1)
 
 
@@ -113,9 +113,9 @@ def _container_stop(args: argparse.Namespace) -> None:
 
     try:
         subprocess.run(cmd, check=True, capture_output=True)
-        print(f"✅ Container stopped: {container}")
+        print(f"[OK] Container stopped: {container}")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to stop container: {e}")
+        print(f"[ERROR] Failed to stop container: {e}")
         sys.exit(1)
 
 
@@ -129,7 +129,7 @@ def _container_status(args: argparse.Namespace) -> None:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(result.stdout)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to get status: {e}")
+        print(f"[ERROR] Failed to get status: {e}")
         sys.exit(1)
 
 
@@ -141,7 +141,7 @@ def _container_logs(args: argparse.Namespace) -> None:
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to get logs: {e}")
+        print(f"[ERROR] Failed to get logs: {e}")
         sys.exit(1)
 
 
@@ -153,7 +153,7 @@ def _container_shell(args: argparse.Namespace) -> None:
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to open shell: {e}")
+        print(f"[ERROR] Failed to open shell: {e}")
         sys.exit(1)
 
 

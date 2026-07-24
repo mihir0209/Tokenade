@@ -1,6 +1,6 @@
 """Session management CLI commands.
 
-P1: thin facade — implementations live in tokenade.cli.handlers.*.
+P1: thin facade - implementations live in tokenade.cli.handlers.*.
 External imports of tokenade.cli.management.cmd_* remain valid.
 
 Modules re-exported below so existing tests can patch
@@ -10,7 +10,7 @@ import json  # noqa: F401
 import logging
 import os  # noqa: F401
 import sys  # noqa: F401
-import time  # noqa: F401 — patched by tests as management.time
+import time  # noqa: F401 - patched by tests as management.time
 from typing import Optional
 
 logger = logging.getLogger("tokenade")

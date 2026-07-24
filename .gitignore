@@ -1,4 +1,7 @@
-# Service Account Keys - DO NOT COMMIT!
+# Service Account Keys / local secrets - DO NOT COMMIT!
+.env
+.env.*
+!.env.example
 *.json
 temp-acc-*.json
 !tokenade/handlers/site_configs/*.json

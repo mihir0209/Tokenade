@@ -221,33 +221,92 @@ class CloakBrowserBackend:
         proxy: Optional[str] = None,
         headless: bool = True,
         idle_timeout: Optional[int] = None,
+        user_data_dir: Optional[str] = None,
+        extra_args: Optional[List[str]] = None,
+        ready_timeout: float = 20.0,
     ) -> subprocess.Popen:
-        """Start a CloakBrowser CDP server (cloakserve).
+        """Start CloakBrowser Chromium with remote debugging (CDP).
 
-        Args:
-            port: Port to listen on.
-            proxy: Proxy URL.
-            headless: Run headless.
-            idle_timeout: Seconds before idle browsers are reaped.
-
-        Returns:
-            subprocess.Popen for the server process.
+        Newer cloakbrowser packages dropped ``python -m cloakbrowser serve``.
+        We launch the patched Chromium binary directly with
+        ``--remote-debugging-port`` so Tokenade can inject cookies via CDP.
         """
-        cmd = ["python", "-m", "cloakbrowser", "serve", "--port", str(port)]
-        if not headless:
-            cmd.append("--headless=false")
-        if proxy:
-            cmd.extend(["--proxy-server", proxy])
-        if idle_timeout:
-            cmd.extend(["--idle-timeout", str(idle_timeout)])
+        import os
+        import tempfile
+        import urllib.request
 
+        if not self.ensure_ready():
+            raise RuntimeError("CloakBrowser not available")
+
+        info = get_binary_info()
+        binary = info.get("binary_path")
+        if not binary or not os.path.isfile(binary):
+            raise RuntimeError(f"CloakBrowser binary missing: {binary}")
+
+        profile = user_data_dir or tempfile.mkdtemp(prefix="tokenade_cloak_cdp_")
+        os.makedirs(profile, exist_ok=True)
+
+        cmd = [
+            binary,
+            f"--remote-debugging-port={int(port)}",
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-features=Translate,MediaRouter",
+            # Required on many modern Linux distros (AppArmor userns restrictions)
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "about:blank",
+        ]
+        if headless:
+            cmd.insert(1, "--headless=new")
+        if proxy:
+            cmd.append(f"--proxy-server={proxy}")
+        if extra_args:
+            cmd.extend(list(extra_args))
+
+        logger.info("CloakBrowser CDP: %s", " ".join(cmd[:4]) + " ...")
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            start_new_session=True,
         )
-        time.sleep(2)  # Give server time to start
-        return proc
+
+        # Wait until CDP answers
+        deadline = time.time() + max(2.0, float(ready_timeout))
+        last_err = None
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                err = b""
+                try:
+                    err = proc.stderr.read() if proc.stderr else b""
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"CloakBrowser exited early (code={proc.returncode}): "
+                    f"{err.decode(errors='replace')[:400]}"
+                )
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{int(port)}/json/version",
+                    timeout=1,
+                ) as resp:
+                    if resp.status == 200:
+                        return proc
+            except Exception as e:
+                last_err = e
+            time.sleep(0.25)
+
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"CloakBrowser CDP not ready on port {port} within {ready_timeout}s: {last_err}"
+        )
 
     def get_info(self) -> Dict[str, Any]:
         """Get full CloakBrowser status info."""

@@ -149,6 +149,32 @@ class TestSignatureDiscovery:
         assert actual["brave"] == [str(brave.resolve())], actual
         assert actual["vivaldi"] == [str(vivaldi.resolve())], actual
 
+    def test_classifies_windows_edge_user_data_layout(self, tmp_path):
+        """Windows: .../Microsoft/Edge/User Data/Default (not 'Microsoft Edge')."""
+        edge = _chromium_profile(
+            tmp_path / "AppData" / "Local" / "Microsoft" / "Edge" / "User Data" / "Default"
+        )
+        edge_beta = _chromium_profile(
+            tmp_path
+            / "AppData"
+            / "Local"
+            / "Microsoft"
+            / "Edge Beta"
+            / "User Data"
+            / "Default",
+            "Beta",
+        )
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        profiles = d.discover_all(use_cache=False)
+        paths = {p.path for p in profiles.get("edge") or []}
+        assert str(edge.resolve()) in paths, profiles
+        assert str(edge_beta.resolve()) in paths, profiles
+        # Must not swallow Edge as chrome
+        chrome_paths = {p.path for p in profiles.get("chrome") or []}
+        assert str(edge.resolve()) not in chrome_paths
+        assert any(v == "edge" for _, v in d.list_launch_browsers(use_cache=False))
+        assert any(v == "edge" for _, v in d.list_export_browsers(use_cache=False))
+
     def test_env_scan_roots(self, tmp_path):
         profile_dir = _firefox_profile(tmp_path / "nested" / "abc.default")
         with patch.dict(os.environ, {BrowserProfileDiscovery.SCAN_ROOTS_ENV: str(tmp_path)}):
@@ -178,6 +204,34 @@ class TestSignatureDiscovery:
         d = BrowserProfileDiscovery(scan_roots=[tmp_path])
 
         assert d.discover_chrome_profiles() == []
+
+    def test_filters_ebwebview_and_temp_cloak_profiles(self, tmp_path):
+        """Windows EBWebView + temp cloak copies must not appear as chrome."""
+        real = _chromium_profile(
+            tmp_path / "AppData" / "Local" / "Google" / "Chrome" / "User Data" / "Default"
+        )
+        eb = _chromium_profile(
+            tmp_path
+            / "AppData"
+            / "Local"
+            / "Packages"
+            / "MicrosoftWindows.Client.CBS_cw5n1h2txyewy"
+            / "LocalState"
+            / "EBWebView"
+            / "Default"
+        )
+        cloak = _chromium_profile(
+            tmp_path / "AppData" / "Local" / "Temp" / "tokenade_cloak_clean_abc123" / "Default"
+        )
+        d = BrowserProfileDiscovery(scan_roots=[tmp_path])
+        profiles = d.discover_all(use_cache=False)
+        chrome_paths = {p.path for p in profiles.get("chrome") or []}
+        assert str(real.resolve()) in chrome_paths
+        assert str(eb.resolve()) not in chrome_paths
+        assert str(cloak.resolve()) not in chrome_paths
+        assert BrowserProfileDiscovery._is_junk_profile_path(eb) is True
+        assert BrowserProfileDiscovery._is_junk_profile_path(cloak) is True
+        assert BrowserProfileDiscovery._is_junk_profile_path(real) is False
 
 
 class TestPersistentCache:

@@ -1,5 +1,5 @@
 """
-CLI Output Formatter — Colored output, JSON mode, progress indicators.
+CLI Output Formatter - Colored output, JSON mode, progress indicators.
 """
 import sys
 import json
@@ -49,28 +49,28 @@ class OutputFormatter:
         if self.json_mode:
             self._pending_json.append({"status": "success", "message": message})
         else:
-            print(f"  {self._c('green', '✓')} {message}")
+            print(f"  {self._c('green', '[OK]')} {message}")
 
     def error(self, message: str):
         """Print an error message."""
         if self.json_mode:
             self._pending_json.append({"status": "error", "message": message})
         else:
-            print(f"  {self._c('red', '✗')} {message}")
+            print(f"  {self._c('red', '[X]')} {message}")
 
     def warning(self, message: str):
         """Print a warning message."""
         if self.json_mode:
             self._pending_json.append({"status": "warning", "message": message})
         else:
-            print(f"  {self._c('yellow', '⚠')} {message}")
+            print(f"  {self._c('yellow', '[WARN]')} {message}")
 
     def info(self, message: str):
         """Print an info message."""
         if self.json_mode:
             self._pending_json.append({"status": "info", "message": message})
         else:
-            print(f"  {self._c('blue', 'ℹ')} {message}")
+            print(f"  {self._c('blue', '[i]')} {message}")
 
     def header(self, title: str, width: int = 70):
         """Print a section header."""
@@ -110,7 +110,7 @@ class OutputFormatter:
         pct = (current / total * 100) if total > 0 else 0
         bar_width = 20
         filled = int(pct / 100 * bar_width)
-        bar = "█" * filled + "." * (bar_width - filled)
+        bar = "#" * filled + "." * (bar_width - filled)
         label_str = f" {label}" if label else ""
         print(f"\r  [{bar}] {pct:.0f}%{label_str}", end="", flush=True)
         if current >= total:

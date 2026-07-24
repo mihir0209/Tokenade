@@ -463,34 +463,45 @@ Conflict resolution strategies:
 
 ### `tokenade share-url`
 
-Create password-protected share links for sessions.
+Create password-protected share links for sessions. Password never leaves the
+machine; ciphertext may be stored on the public Supabase project (or your own)
+for short-id retrieve. Full URL always embeds `?data=` for offline peer share.
+`tokenade://` is CLI-only (not a browser protocol).
 
 ```bash
-# Create a password-protected share link
+# Create (uses public remote by default; full URL always offline-capable)
 tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!"
 
-# Create with expiry
+# Create with expiry / max uses
 tokenade share-url create /path/to/session.tokenade --password "MySecurePassword123!" --expiry-hours 24
 
-# Retrieve a shared session
-tokenade share-url retrieve <share_id> --password "MySecurePassword123!" --output session.tokenade
+# Status of remote (limits, public vs private)
+tokenade share-url status
 
-# List active shares
+# Offline-only create (no Supabase)
+tokenade share-url create session.tokenade --password "..." --no-remote
+
+# Private project override
+tokenade share-url create session.tokenade --password "..." \
+  --supabase-url https://xxxx.supabase.co --supabase-key sb_publishable_...
+
+# Retrieve (short id or full URL)
+tokenade share-url retrieve <share_id> --password "MySecurePassword123!" -o session.tokenade
+
+# List / revoke / cleanup (local share index)
 tokenade share-url list
-
-# Revoke a share
 tokenade share-url revoke <share_id>
-
-# Cleanup expired shares
 tokenade share-url cleanup
 ```
 
+Private Supabase setup (OSS): copy `.env.example` → `.env`, set `DATABASE_URL`,
+then `python3 scripts/apply_supabase_schema.py` and optionally `--verify`.
+
 Features:
-- Password-protected encrypted sharing
-- URL shortener integration (local, Bitly, TinyURL)
-- Automatic expiration
-- Use limits
-- PBKDF2 + AES-256-GCM encryption
+- Password-protected encrypted sharing (PBKDF2 + AES-256-GCM)
+- Short-id via Supabase RPCs (public default or private project)
+- Full URL offline embed (`?data=`)
+- Automatic expiration and use limits
 
 ### Enterprise Features
 

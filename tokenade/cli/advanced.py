@@ -34,16 +34,16 @@ def cmd_batch_export(args):
 
     try:
         sites = load_batch_config(args.site_config)
-        print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
+        print(f"\n[LIST] Loaded {len(sites)} site(s) from: {args.site_config}")
     except Exception as e:
         logger.error(f"Failed to load site config: {e}", exc_info=True)
-        print("❌ Failed to load site config — verify JSON format is valid")
+        print("[ERROR] Failed to load site config - verify JSON format is valid")
         return
 
     output_dir = args.output or "sessions_batch"
 
-    print(f"\n🌐 Browser: {args.browser}")
-    print(f"📁 Output: {output_dir}")
+    print(f"\n[NET] Browser: {args.browser}")
+    print(f"[DIR] Output: {output_dir}")
 
     try:
         exporter = BatchExporter()
@@ -59,13 +59,13 @@ def cmd_batch_export(args):
         print("\n" + generate_batch_report(result))
 
         if result.success:
-            print("\n✅ Batch export completed successfully")
+            print("\n[OK] Batch export completed successfully")
         else:
-            print("\n⚠️  Batch export completed with errors")
+            print("\n[WARN] Batch export completed with errors")
 
     except Exception as e:
         logger.error(f"Batch export failed: {e}", exc_info=True)
-        print("❌ Batch export failed — check browser profile and output directory")
+        print("[ERROR] Batch export failed - check browser profile and output directory")
 
 
 def cmd_batch_load(args):
@@ -80,13 +80,13 @@ def cmd_batch_load(args):
     if args.site_config:
         try:
             sites = load_batch_config(args.site_config)
-            print(f"\n📋 Loaded {len(sites)} site(s) from: {args.site_config}")
+            print(f"\n[LIST] Loaded {len(sites)} site(s) from: {args.site_config}")
         except Exception as e:
             logger.error(f"Failed to load site config: {e}", exc_info=True)
-            print("⚠️  Failed to load site config — verify JSON format")
+            print("[WARN] Failed to load site config - verify JSON format")
 
-    print(f"\n📂 Sessions: {args.sessions_dir}")
-    print(f"🌐 Target: {args.target_browser}")
+    print(f"\n[DIR] Sessions: {args.sessions_dir}")
+    print(f"[NET] Target: {args.target_browser}")
 
     try:
         loader = BatchLoader()
@@ -102,13 +102,13 @@ def cmd_batch_load(args):
         print("\n" + generate_batch_report(result))
 
         if result.success:
-            print("\n✅ Batch load completed successfully")
+            print("\n[OK] Batch load completed successfully")
         else:
-            print("\n⚠️  Batch load completed with errors")
+            print("\n[WARN] Batch load completed with errors")
 
     except Exception as e:
         logger.error(f"Batch load failed: {e}", exc_info=True)
-        print("❌ Batch load failed — check sessions directory and target browser")
+        print("[ERROR] Batch load failed - check sessions directory and target browser")
 
 
 def cmd_validate(args):
@@ -119,7 +119,7 @@ def cmd_validate(args):
 
     sessions_dir = Path(args.sessions_dir)
     if not sessions_dir.exists():
-        print(f"❌ Directory not found: {args.sessions_dir}")
+        print(f"[ERROR] Directory not found: {args.sessions_dir}")
         return
 
     valid = 0
@@ -130,12 +130,12 @@ def cmd_validate(args):
         set(sessions_dir.glob("*.tokenade")) | set(sessions_dir.glob("*.json"))
     )
     if not session_files:
-        print(f"\n⚠️  No .tokenade or .json sessions in {sessions_dir}")
-        print("📊 Summary: 0 valid, 0 invalid")
+        print(f"\n[WARN] No .tokenade or .json sessions in {sessions_dir}")
+        print("[STATS] Summary: 0 valid, 0 invalid")
         return
 
     for session_file in session_files:
-        print(f"\n📁 Checking: {session_file.name}")
+        print(f"\n[DIR] Checking: {session_file.name}")
 
         try:
             with open(session_file) as f:
@@ -152,34 +152,34 @@ def cmd_validate(args):
                 missing.append("auth_status|auth_state")
 
             if missing:
-                print(f"   ❌ Missing fields: {missing}")
+                print(f"   [ERROR] Missing fields: {missing}")
                 invalid += 1
                 continue
 
             cookies = data.get("cookies", [])
             if not cookies:
-                print("   ⚠️  No cookies")
+                print("   [WARN] No cookies")
             else:
-                print(f"   ✅ {len(cookies)} cookies")
+                print(f"   [OK] {len(cookies)} cookies")
 
             tokens = data.get("tokens", [])
             if tokens:
-                print(f"   ✅ {len(tokens)} tokens")
+                print(f"   [OK] {len(tokens)} tokens")
 
             status = data.get("auth_status") or data.get("auth_state") or "unknown"
             if status == "logged_in":
-                print("   ✅ Status: logged_in")
+                print("   [OK] Status: logged_in")
                 valid += 1
             else:
-                print(f"   ⚠️  Status: {status}")
+                print(f"   [WARN] Status: {status}")
                 invalid += 1
 
         except Exception as e:
             logger.debug(f"Validation error: {e}", exc_info=True)
-            print("   ❌ Validation error — session may be corrupted")
+            print("   [ERROR] Validation error - session may be corrupted")
             invalid += 1
 
-    print(f"\n📊 Summary: {valid} valid, {invalid} invalid")
+    print(f"\n[STATS] Summary: {valid} valid, {invalid} invalid")
 
 
 def cmd_validate_rules(args):
@@ -189,12 +189,12 @@ def cmd_validate_rules(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
     rules_file = Path(args.rules)
     if not rules_file.exists():
-        print(f"❌ Rules file not found: {args.rules}")
+        print(f"[ERROR] Rules file not found: {args.rules}")
         return
 
     packager = SessionPackager()
@@ -205,8 +205,8 @@ def cmd_validate_rules(args):
     print("\n" + "=" * 60)
     print("TOKENADE - Advanced Validation")
     print("=" * 60)
-    print(f"\n📂 Session: {args.session}")
-    print(f"📋 Rules: {len(rules)}")
+    print(f"\n[DIR] Session: {args.session}")
+    print(f"[LIST] Rules: {len(rules)}")
 
     validator = AdvancedValidator()
 
@@ -221,7 +221,7 @@ def cmd_validate_rules(args):
 
     print(f"\n{'=' * 60}")
     for result in results:
-        status = "✅" if result.passed else "❌"
+        status = "[OK]" if result.passed else "[ERROR]"
         duration = f" ({result.duration_ms:.0f}ms)" if result.duration_ms else ""
         print(f"{status} {result.rule_name}: {result.message}{duration}")
         if result.details and not result.passed:
@@ -243,7 +243,7 @@ def cmd_diff(args):
 
     for path in (args.session_a, args.session_b):
         if not Path(path).exists():
-            print(f"❌ File not found: {path}")
+            print(f"[ERROR] File not found: {path}")
             return
 
     comparator = SessionComparator()
@@ -256,10 +256,10 @@ def cmd_diff(args):
     print(f"  B: {args.session_b}")
 
     if not result.has_changes:
-        print("\n  ✅ Sessions are identical")
+        print("\n  [OK] Sessions are identical")
         return
 
-    print(f"\n  {'─' * 50}")
+    print(f"\n  {'-' * 50}")
     print(result.summary())
 
     if args.verbose:
@@ -305,12 +305,12 @@ def cmd_fingerprint(args):
     fp_manager = FingerprintManager()
 
     if args.action == "list":
-        print("\n📋 Stored fingerprints:")
+        print("\n[LIST] Stored fingerprints:")
         for name in fp_manager.list():
-            print(f"   • {name}")
+            print(f"   - {name}")
 
     elif args.action == "collect":
-        print("\n🚀 Launching browser to collect fingerprint...")
+        print("\n[...] Launching browser to collect fingerprint...")
 
         config = BrowserConfig(
             headless=False,
@@ -323,7 +323,7 @@ def cmd_fingerprint(args):
             browser.launch()
             fp = FingerprintCollector.collect_from_browser(browser)
             path = fp_manager.save(args.name, fp)
-            print(f"✅ Fingerprint saved: {path}")
+            print(f"[OK] Fingerprint saved: {path}")
             print(f"\n   User Agent: {fp.user_agent[:80]}...")
             print(f"   Screen: {fp.screen_width}x{fp.screen_height}")
             print(f"   Platform: {fp.platform}")
@@ -333,7 +333,7 @@ def cmd_fingerprint(args):
     elif args.action == "show":
         fp = fp_manager.load(args.name)
         if fp:
-            print(f"\n🔍 Fingerprint: {args.name}")
+            print(f"\n[SEARCH] Fingerprint: {args.name}")
             print(f"   User Agent: {fp.user_agent}")
             print(f"   Screen: {fp.screen_width}x{fp.screen_height}")
             print(f"   Viewport: {fp.viewport_width}x{fp.viewport_height}")
@@ -342,13 +342,13 @@ def cmd_fingerprint(args):
             print(f"   Timezone: {fp.timezone}")
             print(f"   Hardware: {fp.hardware_concurrency} cores, {fp.device_memory}GB RAM")
         else:
-            print(f"❌ Fingerprint not found: {args.name}")
+            print(f"[ERROR] Fingerprint not found: {args.name}")
 
     elif args.action == "delete":
         if fp_manager.delete(args.name):
-            print(f"✅ Deleted: {args.name}")
+            print(f"[OK] Deleted: {args.name}")
         else:
-            print(f"❌ Not found: {args.name}")
+            print(f"[ERROR] Not found: {args.name}")
 
 
 def cmd_test(args):
@@ -365,7 +365,7 @@ def cmd_test(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         raise SystemExit(1)
 
     with open(session_file) as f:
@@ -378,28 +378,28 @@ def cmd_test(args):
 
     handler_class = resolve_legacy_handler_class_for_session(session_data)
     if handler_class is None:
-        print(f"❌ No handler found for '{session_data.get('site_name', 'unknown')}'. Install from tokenade-plugins marketplace.")
+        print(f"[ERROR] No handler found for '{session_data.get('site_name', 'unknown')}'. Install from tokenade-plugins marketplace.")
         raise SystemExit(1)
     hname = getattr(handler_class, "__name__", str(handler_class))
     print(
-        f"\n⚠️  Using legacy handler {hname} "
+        f"\n[WARN] Using legacy handler {hname} "
         f"(prefer site plugins + site_config.json for new work)"
     )
 
     fp_manager = FingerprintManager()
     tester = PortabilityTester(BrowserFactory, fp_manager)
 
-    print(f"\n🛡️  Stealth level: {args.stealth_level}")
+    print(f"\n[STEALTH] Stealth level: {args.stealth_level}")
 
     if args.variations:
-        print("\n🧪 Testing fingerprint variations...")
+        print("\n[TEST] Testing fingerprint variations...")
         tester.test_fingerprint_variations(
             session_data=session_data,
             base_fp_name=args.source_fp or "default",
             handler_class=handler_class,
         )
     else:
-        print(f"\n🧪 Testing transfer to: {args.target_fp}")
+        print(f"\n[TEST] Testing transfer to: {args.target_fp}")
 
         fp = fp_manager.load(args.target_fp)
         if fp:
@@ -416,7 +416,7 @@ def cmd_test(args):
         [result]
 
         if args.validate_stealth and fp:
-            print("\n🔍 Validating stealth injection...")
+            print("\n[SEARCH] Validating stealth injection...")
             config = BrowserConfig(
                 headless=True,
                 fingerprint=fp.to_dict(),
@@ -427,9 +427,9 @@ def cmd_test(args):
                 browser.launch()
                 result = validate_injection(browser)
                 if result["valid"]:
-                    print("   ✅ Stealth injection verified")
+                    print("   [OK] Stealth injection verified")
                 else:
-                    print("   ⚠️  Stealth injection may not be fully active")
+                    print("   [WARN] Stealth injection may not be fully active")
             finally:
                 browser.close()
 
@@ -458,27 +458,27 @@ def cmd_setup(args):
     accounts = manager.load_accounts()
 
     if accounts:
-        print(f"\n📋 Found {len(accounts)} existing account(s)")
+        print(f"\n[LIST] Found {len(accounts)} existing account(s)")
 
     while True:
         choice = input("\nAdd account? (yes/no): ").strip().lower()
         if choice not in ("yes", "y"):
             break
 
-        email = input("📧 Email: ").strip()
+        email = input(" Email: ").strip()
         if not email:
-            print("❌ Email and password required")
+            print("[ERROR] Email and password required")
             continue
-        password = getpass.getpass("🔒 Password: ")
+        password = getpass.getpass("[LOCK] Password: ")
         if not password:
-            print("❌ Email and password required")
+            print("[ERROR] Email and password required")
             continue
-        site = input("🌐 Site [google]: ").strip() or "google"
+        site = input("[NET] Site [google]: ").strip() or "google"
 
         account_num = len(accounts) + 1
         profile_dir = f"browser_data/{account_num}"
 
-        print(f"\n🚀 Setting up account #{account_num}...")
+        print(f"\n[...] Setting up account #{account_num}...")
 
         config = BrowserConfig(
             headless=False,
@@ -492,7 +492,7 @@ def cmd_setup(args):
             site_resolved = site or _recommend_site_fallback()
             handler_cls = resolve_legacy_handler_class(site_resolved)
             if handler_cls is None:
-                print(f"❌ No handler found for '{site_resolved}'. Install from tokenade-plugins marketplace.")
+                print(f"[ERROR] No handler found for '{site_resolved}'. Install from tokenade-plugins marketplace.")
                 continue
             handler = handler_cls(browser)
             hname = getattr(handler_cls, "__name__", str(handler_cls))
@@ -511,14 +511,14 @@ def cmd_setup(args):
                 accounts.append(account)
                 manager.save_accounts(accounts, use_keyring=True, encrypt_file=False)
 
-                print(f"✅ Account #{account_num} setup complete")
+                print(f"[OK] Account #{account_num} setup complete")
                 print("   Password stored in system keyring" if manager._keyring_available
-                      else "   ⚠️  Keyring unavailable — run 'tokenade setup --encrypt' for secure storage")
+                      else "   [WARN] Keyring unavailable - run 'tokenade setup --encrypt' for secure storage")
             else:
-                print(f"❌ Login failed for account #{account_num}")
+                print(f"[ERROR] Login failed for account #{account_num}")
 
         finally:
             browser.close()
 
-    print(f"\n📊 Total accounts: {len(accounts)}")
+    print(f"\n[STATS] Total accounts: {len(accounts)}")
     print("\nNext: run 'tokenade extract' to collect tokens")

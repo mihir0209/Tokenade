@@ -28,21 +28,21 @@ def cmd_batch_export(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n📊 Results:")
+        print(f"\n[STATS] Results:")
         print(f"   Total: {result.total}")
-        print(f"   ✅ Success: {len(result.successes)}")
-        print(f"   ❌ Failed: {len(result.failures)}")
-        print(f"   ⏱️  Duration: {result.duration:.1f}s")
+        print(f"   [OK] Success: {len(result.successes)}")
+        print(f"   [ERROR] Failed: {len(result.failures)}")
+        print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n✅ Successful exports:")
+            print(f"\n[OK] Successful exports:")
             for item in result.successes:
-                print(f"   • {item['browser']} → {item.get('session_file', 'unknown')}")
+                print(f"   - {item['browser']} -> {item.get('session_file', 'unknown')}")
 
         if result.failures:
-            print(f"\n❌ Failed exports:")
+            print(f"\n[ERROR] Failed exports:")
             for item in result.failures:
-                print(f"   • {item['item']['browser']}: {item['error']}")
+                print(f"   - {item['item']['browser']}: {item['error']}")
 
     sys.exit(0 if result.failures == 0 else 1)
 
@@ -65,21 +65,21 @@ def cmd_batch_load(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n📊 Results:")
+        print(f"\n[STATS] Results:")
         print(f"   Total: {result.total}")
-        print(f"   ✅ Success: {len(result.successes)}")
-        print(f"   ❌ Failed: {len(result.failures)}")
-        print(f"   ⏱️  Duration: {result.duration:.1f}s")
+        print(f"   [OK] Success: {len(result.successes)}")
+        print(f"   [ERROR] Failed: {len(result.failures)}")
+        print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n✅ Successful loads:")
+            print(f"\n[OK] Successful loads:")
             for item in result.successes:
-                print(f"   • {item['session_file']} → {item['browser']}")
+                print(f"   - {item['session_file']} -> {item['browser']}")
 
         if result.failures:
-            print(f"\n❌ Failed loads:")
+            print(f"\n[ERROR] Failed loads:")
             for item in result.failures:
-                print(f"   • {item['item']['session_file']}: {item['error']}")
+                print(f"   - {item['item']['session_file']}: {item['error']}")
 
     sys.exit(0 if result.failures == 0 else 1)
 
@@ -101,21 +101,21 @@ def cmd_batch_refresh(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n📊 Results:")
+        print(f"\n[STATS] Results:")
         print(f"   Total: {result.total}")
-        print(f"   ✅ Success: {len(result.successes)}")
-        print(f"   ❌ Failed: {len(result.failures)}")
-        print(f"   ⏱️  Duration: {result.duration:.1f}s")
+        print(f"   [OK] Success: {len(result.successes)}")
+        print(f"   [ERROR] Failed: {len(result.failures)}")
+        print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n✅ Successful refreshes:")
+            print(f"\n[OK] Successful refreshes:")
             for item in result.successes:
-                print(f"   • {item['original']} → {item['refreshed']}")
+                print(f"   - {item['original']} -> {item['refreshed']}")
 
         if result.failures:
-            print(f"\n❌ Failed refreshes:")
+            print(f"\n[ERROR] Failed refreshes:")
             for item in result.failures:
-                print(f"   • {item['item']['session_file']}: {item['error']}")
+                print(f"   - {item['item']['session_file']}: {item['error']}")
 
     sys.exit(0 if result.failures == 0 else 1)
 

@@ -24,15 +24,15 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
         # List connected devices
         devices = importer.detect_devices()
         if not devices:
-            print("\n❌ No mobile devices detected")
-            print("\n💡 Tips:")
-            print("   • Android: Enable USB debugging and connect via USB")
-            print("   • iOS: Use iTunes backup or jailbreak for direct access")
+            print("\n[ERROR] No mobile devices detected")
+            print("\n[TIP] Tips:")
+            print("   - Android: Enable USB debugging and connect via USB")
+            print("   - iOS: Use iTunes backup or jailbreak for direct access")
             sys.exit(1)
 
-        print(f"\n📱 Found {len(devices)} device(s):")
+        print(f"\n[MOBILE] Found {len(devices)} device(s):")
         for i, device in enumerate(devices):
-            status = "✅ Connected" if device.connected else "❌ Disconnected"
+            status = "[OK] Connected" if device.connected else "[ERROR] Disconnected"
             print(f"   {i+1}. {device.name} ({device.platform}) - {status}")
 
         if args.json:
@@ -53,21 +53,21 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
             )
 
             output_file = importer.export_to_tokenade(session, args.output_dir or ".")
-            print(f"\n✅ Session imported successfully")
+            print(f"\n[OK] Session imported successfully")
             print(f"   Output: {output_file}")
             print(f"   Site: {session.site_name}")
             print(f"   Cookies: {len(session.cookies)}")
             print(f"   Platform: {session.platform}")
 
         except MobileImportError as e:
-            print(f"\n❌ Import failed: {e}")
+            print(f"\n[ERROR] Import failed: {e}")
             sys.exit(1)
 
     else:
         # Import from connected device
         devices = importer.detect_devices()
         if not devices:
-            print("\n❌ No mobile devices detected")
+            print("\n[ERROR] No mobile devices detected")
             sys.exit(1)
 
         device = devices[0]  # Use first connected device
@@ -76,7 +76,7 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
             if 0 <= idx < len(devices):
                 device = devices[idx]
             else:
-                print(f"\n❌ Invalid device index: {args.device_index}")
+                print(f"\n[ERROR] Invalid device index: {args.device_index}")
                 sys.exit(1)
 
         try:
@@ -87,14 +87,14 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
             )
 
             output_file = importer.export_to_tokenade(session, args.output_dir or ".")
-            print(f"\n✅ Session imported successfully")
+            print(f"\n[OK] Session imported successfully")
             print(f"   Output: {output_file}")
             print(f"   Device: {device.name}")
             print(f"   Site: {session.site_name}")
             print(f"   Cookies: {len(session.cookies)}")
 
         except MobileImportError as e:
-            print(f"\n❌ Import failed: {e}")
+            print(f"\n[ERROR] Import failed: {e}")
             sys.exit(1)
 
 

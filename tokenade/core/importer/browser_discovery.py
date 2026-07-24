@@ -161,6 +161,8 @@ class BrowserProfileDiscovery:
                 return None
             if not path.exists() or not path.is_dir():
                 return None
+            if self._is_junk_profile_path(path):
+                return None
             return BrowserProfile(
                 name=str(item.get("name") or path.name),
                 path=str(path),
@@ -400,18 +402,45 @@ class BrowserProfileDiscovery:
         if path.joinpath("cookies.sqlite").exists() or path.joinpath("prefs.js").exists():
             return "firefox"
 
-        tokens = [part.lower() for part in path.parts[-3:]]
-        joined = "/".join(tokens)
-        if "brave" in joined:
+        # Full path: Windows is .../Microsoft/Edge/User Data/Default (last-3
+        # tokens alone miss "Microsoft" and never match "microsoft edge").
+        # Match whole path components only — never substring-scan joined paths
+        # (pytest tmp dirs like test_classifies_edge_brave_* would false-hit).
+        parts_l = [p.lower() for p in path.parts]
+
+        def _is_component(name: str) -> bool:
+            return name in parts_l
+
+        def _component_startswith(prefix: str) -> bool:
+            return any(p == prefix or p.startswith(prefix + " ") for p in parts_l)
+
+        # Brave: BraveSoftware/... or a path component named brave
+        if _is_component("bravesoftware") or _is_component("brave-browser"):
             return "brave"
-        if "microsoft edge" in joined or "microsoft-edge" in joined or "/edge/" in joined:
-            return "edge"
-        if "vivaldi" in joined:
+        if _is_component("brave"):
+            return "brave"
+
+        for i, p in enumerate(parts_l):
+            if p in ("microsoft-edge", "microsoft-edge-dev", "microsoft-edge-beta"):
+                return "edge"
+            if p == "microsoft edge" or p.startswith("microsoft edge "):
+                return "edge"
+            if p == "microsoft" and i + 1 < len(parts_l):
+                nxt = parts_l[i + 1]
+                # Edge, Edge Beta, Edge Dev, Edge SxS
+                if nxt == "edge" or nxt.startswith("edge "):
+                    return "edge"
+
+        if _is_component("vivaldi") or _component_startswith("vivaldi"):
             return "vivaldi"
-        if "chromium" in joined:
+        if _is_component("chromium"):
             return "chrome"
-        if "chrome" in joined or "google" in joined:
+        if _is_component("chrome") or _is_component("google-chrome") or _is_component("google"):
             return "chrome"
+        # "Google/Chrome" style
+        for i, p in enumerate(parts_l):
+            if p == "google" and i + 1 < len(parts_l) and parts_l[i + 1] == "chrome":
+                return "chrome"
         return "chrome"
 
     def _profile_name(self, path: Path, browser: str, firefox_ini: Dict[str, Tuple[str, bool]]) -> str:
@@ -442,6 +471,39 @@ class BrowserProfileDiscovery:
             return firefox_ini[key][1]
         return path.name.lower() in {"default", "default-release"} or "default" in path.name.lower()
 
+    @staticmethod
+    def _is_junk_profile_path(path: Path) -> bool:
+        """Skip embedded WebViews, temp cloak copies, automation sandboxes."""
+        try:
+            parts = [p.lower() for p in path.parts]
+        except Exception:
+            parts = []
+        joined = "/".join(parts)
+        # Windows WebView2 / system shell host (not a real Chrome install)
+        junk_components = (
+            "ebwebview",
+            "webview2",
+            "msedgewebview2",
+            "tokenade_cloak_clean",
+            "tokenade_profile",
+            "playwright",
+            "ms-playwright",
+            "puppeteer",
+        )
+        for part in parts:
+            if part in junk_components or part.startswith("tokenade_cloak"):
+                return True
+        # Temp cloak clean profiles: .../Temp/.../tokenade_cloak_clean_*/
+        if "temp" in parts or "tmp" in parts:
+            if "tokenade" in joined and ("cloak" in joined or "clean" in joined):
+                return True
+        # Packages\*\LocalState\EBWebView
+        if "packages" in parts and "ebwebview" in joined:
+            return True
+        if "localstate" in parts and "ebwebview" in joined:
+            return True
+        return False
+
     def _scan_profiles(
         self,
         roots: Optional[Iterable[Path]] = None,
@@ -451,6 +513,8 @@ class BrowserProfileDiscovery:
         profiles: List[BrowserProfile] = []
         seen: Set[Tuple[str, str]] = set()
         for path in self._walk_profile_candidates(roots=roots, max_depth=max_depth):
+            if self._is_junk_profile_path(path):
+                continue
             browser = self._classify_browser(path)
             if browser not in self.SUPPORTED_BROWSERS:
                 continue
@@ -557,6 +621,118 @@ class BrowserProfileDiscovery:
             if profile.is_default:
                 return profile
         return profiles[0] if profiles else None
+
+    def list_launch_browsers(self, use_cache: bool = True) -> List[Tuple[str, str]]:
+        """Build browser Select options from one cached profile scan (+ cloak).
+
+        Labels are plain browser names. Profiles are listed separately via
+        ``list_profiles_for_browser``. Cloak is always first.
+        """
+        options: List[Tuple[str, str]] = []
+        try:
+            from tokenade.core.browser.stealth.cloak import (
+                is_binary_installed,
+                is_cloakbrowser_available,
+            )
+            if is_cloakbrowser_available():
+                if is_binary_installed():
+                    options.append(("cloak", "cloak"))
+                else:
+                    options.append(("cloak (install on launch)", "cloak"))
+            else:
+                options.append(("cloak (pip install)", "cloak"))
+        except Exception:
+            options.append(("cloak", "cloak"))
+
+        profiles_by_browser = self.discover_all(use_cache=use_cache)
+        for browser in self.SUPPORTED_BROWSERS:
+            profiles = profiles_by_browser.get(browser) or []
+            if profiles:
+                options.append((browser, browser))
+        # Any extra keys discovery may return beyond SUPPORTED_BROWSERS
+        for browser, profiles in sorted(profiles_by_browser.items()):
+            if not profiles:
+                continue
+            key = (browser or "").lower()
+            if key in ("", "cloak", "cloakbrowser"):
+                continue
+            if any(v == key for _, v in options):
+                continue
+            options.append((key, key))
+
+        seen: Set[str] = set()
+        out: List[Tuple[str, str]] = []
+        for label, value in options:
+            if value in seen:
+                continue
+            seen.add(value)
+            out.append((label, value))
+        return out or [("cloak", "cloak")]
+
+    def list_export_browsers(self, use_cache: bool = True) -> List[Tuple[str, str]]:
+        """Browsers with on-disk profiles suitable for ``tokenade export``.
+
+        Dynamic from ``discover_all`` — no cloak. Label includes profile count.
+        Value is the browser key for ``--browser-name``.
+        """
+        profiles_by_browser = self.discover_all(use_cache=use_cache)
+        options: List[Tuple[str, str]] = []
+        seen: Set[str] = set()
+        # Prefer known order, then any other discovered keys
+        ordered = list(self.SUPPORTED_BROWSERS)
+        for browser in profiles_by_browser:
+            key = (browser or "").lower()
+            if key and key not in ordered and key not in ("cloak", "cloakbrowser"):
+                ordered.append(key)
+        for browser in ordered:
+            profiles = profiles_by_browser.get(browser) or []
+            if not profiles:
+                continue
+            key = (browser or "").lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            n = len(profiles)
+            label = f"{key} ({n} profile{'s' if n != 1 else ''})"
+            options.append((label, key))
+        return options
+
+    CLEAN_PROFILE_VALUE = "__clean__"
+
+    def list_profiles_for_browser(
+        self, browser: str, use_cache: bool = True
+    ) -> List[Tuple[str, str]]:
+        """Profile Select options for a browser: (label, profile_name).
+
+        Cloak has no system profiles — returns a single clean-profile option.
+        Clean profile value is ``CLEAN_PROFILE_VALUE`` (not a real profile name).
+        """
+        clean = self.CLEAN_PROFILE_VALUE
+        key = (browser or "").lower()
+        if key in ("cloak", "cloakbrowser", ""):
+            return [("clean profile", clean)]
+        profiles = self.discover_browser(key, use_cache=use_cache)
+        if not profiles:
+            return [("clean profile", clean)]
+        opts: List[Tuple[str, str]] = [("clean profile", clean)]
+        for p in profiles:
+            folder = Path(p.path).name
+            display = (p.name or "").strip() or folder
+            # Firefox dirs often look like "xxxxxxxx.Profile Name" when ini Name missed
+            if display == folder and "." in folder:
+                head, _, tail = folder.partition(".")
+                if len(head) >= 6 and head.isalnum() and tail.strip():
+                    display = tail.strip()
+            # Friendly name first; technical folder id in brackets when different
+            if display and folder and display != folder:
+                label = f"{display} ({folder})"
+            else:
+                label = display or folder or "profile"
+            if p.is_default:
+                label = f"{label} · default"
+            # value stays the discovery name so --profile still resolves
+            opts.append((label, p.name))
+        return opts
 
     def list_profiles_text(self) -> str:
         """Generate a text listing of all profiles."""

@@ -1,28 +1,24 @@
-"""
-Analytics view — session usage analytics and reports.
-"""
+"""Analytics view."""
 
 try:
     from textual.app import ComposeResult
-    from textual.containers import Container, Horizontal, Vertical
-    from textual.widgets import Static, Rule, Button
-    from textual.widget import Widget
-    _TEXTUAL_AVAILABLE = True
+    from textual.containers import Horizontal, ScrollableContainer
+    from textual.widgets import Static, Button, Rule
+    _OK = True
 except ImportError:
-    _TEXTUAL_AVAILABLE = False
+    _OK = False
 
+from tokenade.tui.config import ANALYTICS_DIR
 from tokenade.tui.views.base import BaseView
 
 
 class AnalyticsView(BaseView):
-    """Session usage analytics view."""
-
     def compose(self) -> "ComposeResult":
-        if not _TEXTUAL_AVAILABLE:
+        if not _OK:
             return
         yield from self.compose_title(
-            "📊 Session Analytics",
-            "Usage patterns, health trends, and insights",
+            "📊 Analytics",
+            f"Data: {ANALYTICS_DIR}",
         )
         yield Horizontal(
             Button("Report", variant="primary", compact=True, id="analytics-report"),
@@ -30,4 +26,4 @@ class AnalyticsView(BaseView):
             Button("Cleanup", variant="warning", compact=True, id="analytics-cleanup"),
         )
         yield Rule()
-        yield Container(id="analytics-result")
+        yield ScrollableContainer(id="analytics-result")

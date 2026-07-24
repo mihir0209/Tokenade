@@ -1,4 +1,4 @@
-"""Session management CLI ops — list/health/refresh/share/sync/versions/mobile."""
+"""Session management CLI ops - list/health/refresh/share/sync/versions/mobile."""
 import json
 import logging
 import os
@@ -50,7 +50,7 @@ def cmd_sessions(args):
     elif args.sessions_command == "merge":
         for f in args.files:
             if not Path(f).exists():
-                print(f"❌ File not found: {f}")
+                print(f"[ERROR] File not found: {f}")
                 return
 
         output = manager.merge_sessions(
@@ -59,12 +59,12 @@ def cmd_sessions(args):
             site_name=args.site_name,
         )
 
-        print(f"✅ Merged {len(args.files)} sessions into: {output}")
+        print(f"[OK] Merged {len(args.files)} sessions into: {output}")
 
     elif args.sessions_command == "rotate":
         for f in args.files:
             if not Path(f).exists():
-                print(f"❌ File not found: {f}")
+                print(f"[ERROR] File not found: {f}")
                 return
 
         selected = manager.rotate_session(
@@ -73,12 +73,12 @@ def cmd_sessions(args):
             state_file=args.state_file,
         )
 
-        print(f"🔄 Selected: {selected}")
+        print(f"[SYNC] Selected: {selected}")
 
     elif args.sessions_command == "stats":
         for f in args.files:
             if not Path(f).exists():
-                print(f"❌ File not found: {f}")
+                print(f"[ERROR] File not found: {f}")
                 return
 
         stats = manager.get_session_stats(args.files)
@@ -94,7 +94,7 @@ def cmd_sessions(args):
         print(f"{'=' * 60}\n")
 
     else:
-        print("❌ Specify a sessions subcommand: list, merge, rotate, stats")
+        print("[ERROR] Specify a sessions subcommand: list, merge, rotate, stats")
 
 
 def cmd_health(args):
@@ -112,7 +112,7 @@ def cmd_health(args):
     elif args.sessions_dir:
         sessions_path = Path(args.sessions_dir)
         if not sessions_path.exists():
-            print(f"❌ Directory not found: {args.sessions_dir}")
+            print(f"[ERROR] Directory not found: {args.sessions_dir}")
             return
         session_files = (
             [str(f) for f in sessions_path.glob("*.tokenade")]
@@ -121,7 +121,7 @@ def cmd_health(args):
         )
 
     if not session_files:
-        print("❌ No session files found")
+        print("[ERROR] No session files found")
         return
 
     checker = SessionHealthChecker()
@@ -130,7 +130,7 @@ def cmd_health(args):
     unhealthy_count = 0
 
     for session_file in session_files:
-        print(f"\n📁 Checking: {Path(session_file).name}")
+        print(f"\n[DIR] Checking: {Path(session_file).name}")
 
         health = checker.check_session(session_file)
 
@@ -173,9 +173,9 @@ def cmd_health_report(args):
     if webhook_url:
         sent = reporter.send_webhook(report, webhook_url)
         if sent:
-            print("\n📡 Report sent to webhook")
+            print("\n Report sent to webhook")
         else:
-            print("\n❌ Failed to send webhook")
+            print("\n[ERROR] Failed to send webhook")
 
     sys.exit(report.exit_code)
 
@@ -188,11 +188,11 @@ def cmd_refresh(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
-    print(f"\n📂 Session: {args.session}")
-    print(f"🌐 Source: {args.source_browser}")
+    print(f"\n[DIR] Session: {args.session}")
+    print(f"[NET] Source: {args.source_browser}")
 
     site_config = None
     if args.site_config:
@@ -214,16 +214,16 @@ def cmd_refresh(args):
         )
 
         if result.success:
-            print("\n✅ Refresh successful")
+            print("\n[OK] Refresh successful")
             print(f"   Refreshed: {result.cookies_refreshed}/{result.cookies_total} cookies")
         else:
-            print("\n❌ Refresh failed")
+            print("\n[ERROR] Refresh failed")
             if result.error:
                 print(f"   Error: {result.error}")
 
     except Exception as e:
         logger.error(f"Session refresh failed: {e}", exc_info=True)
-        print("❌ Refresh failed — check source browser is running and session is valid")
+        print("[ERROR] Refresh failed - check source browser is running and session is valid")
 
 
 def _resolve_upstream_proxy(args) -> Optional[str]:
@@ -277,7 +277,7 @@ def cmd_share(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
     packager = SessionPackager()
@@ -300,59 +300,59 @@ def cmd_share(args):
     print("\n" + "=" * 60)
     print("TOKENADE - Share Session")
     print("=" * 60)
-    print(f"\n📂 Session: {args.session}")
-    print(f"🔒 Expires: {args.expiry} hours")
+    print(f"\n[DIR] Session: {args.session}")
+    print(f"[LOCK] Expires: {args.expiry} hours")
     if args.max_uses:
-        print(f"🔢 Max uses: {args.max_uses}")
+        print(f" Max uses: {args.max_uses}")
     if args.password:
-        print("🔑 Password protected: Yes")
+        print("[KEY] Password protected: Yes")
     else:
-        print("⚠️  WARNING: No password — anyone with the URL can access this session!")
+        print("[WARN] WARNING: No password - anyone with the URL can access this session!")
         print("   Use --password to protect the share link.")
 
     # Warn about large payloads
     import json as _json
     size_kb = len(_json.dumps(session).encode()) / 1024
     if size_kb > 100:
-        print(f"⚠️  WARNING: Session is {size_kb:.0f} KB — URL may be too long for QR/messaging")
+        print(f"[WARN] WARNING: Session is {size_kb:.0f} KB - URL may be too long for QR/messaging")
 
     if args.format == "qr":
         output_path = args.output or f"{session_file.stem}_qr.png"
         sharer.create_qr_code(session, output_path, config)
-        print(f"\n📱 QR code saved to: {output_path}")
+        print(f"\n[MOBILE] QR code saved to: {output_path}")
     elif args.format == "html":
         output_path = args.output or f"{session_file.stem}_share.html"
         share_url, session_id = sharer.create_share_link(session, config)
         generate_share_html(session, output_path)
-        print(f"\n📄 Share page saved to: {output_path}")
-        print(f"⚠️  WARNING: HTML file contains session data in plaintext!")
-        print(f"🆔 Session ID: {session_id}")
+        print(f"\n[FILE] Share page saved to: {output_path}")
+        print(f"[WARN] WARNING: HTML file contains session data in plaintext!")
+        print(f" Session ID: {session_id}")
     else:
         share_url, session_id = sharer.create_share_link(session, config)
-        print(f"\n🔗 Share URL: {share_url}")
-        print(f"🆔 Session ID: {session_id}")
+        print(f"\n[URL] Share URL: {share_url}")
+        print(f" Session ID: {session_id}")
 
     # Email delivery
     if getattr(args, "email_to", None):
         recipients = [r.strip() for r in args.email_to.split(",")]
-        print(f"\n📧 Sending to: {', '.join(recipients)}")
+        print(f"\n Sending to: {', '.join(recipients)}")
         try:
             sharer.send_email(session, config, recipients)
-            print("   ✅ Email sent")
+            print("   [OK] Email sent")
         except Exception as e:
-            print(f"   ❌ Email failed: {e}")
+            print(f"   [ERROR] Email failed: {e}")
 
     # Webhook delivery
     if getattr(args, "webhook_url", None):
-        print(f"\n📡 Sending to webhook: {args.webhook_url}")
+        print(f"\n Sending to webhook: {args.webhook_url}")
         try:
             sent = sharer.send_webhook(session, config)
             if sent:
-                print("   ✅ Webhook sent")
+                print("   [OK] Webhook sent")
             else:
-                print("   ❌ Webhook failed")
+                print("   [ERROR] Webhook failed")
         except Exception as e:
-            print(f"   ❌ Webhook error: {e}")
+            print(f"   [ERROR] Webhook error: {e}")
 
     print(f"\n{'=' * 60}\n")
 
@@ -374,19 +374,19 @@ def cmd_unshare(args):
         print("=" * 60)
 
         for s in shares:
-            print(f"\n🆔 {s['session_id']}")
+            print(f"\n {s['session_id']}")
             print(f"   Created: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['created_at']))}")
             print(f"   Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['expires_at']))}")
-            print(f"   Uses: {s['use_count']}/{s['max_uses'] or '∞'}")
+            print(f"   Uses: {s['use_count']}/{s['max_uses'] or 'inf'}")
             print(f"   Password: {'Yes' if s['has_password'] else 'No'}")
 
         print(f"\n{'=' * 60}\n")
         return
 
     if sharer.revoke_share(args.session_id):
-        print(f"✅ Revoked shared session: {args.session_id}")
+        print(f"[OK] Revoked shared session: {args.session_id}")
     else:
-        print(f"❌ Failed to revoke session: {args.session_id}")
+        print(f"[ERROR] Failed to revoke session: {args.session_id}")
 
 
 def cmd_import(args):
@@ -403,27 +403,27 @@ def cmd_import(args):
     print("=" * 60)
 
     if not url.startswith("tokenade://share/"):
-        print(f"❌ Invalid share URL (must start with tokenade://share/)")
+        print(f"[ERROR] Invalid share URL (must start with tokenade://share/)")
         return
 
-    print(f"\n🔗 URL: {url[:60]}...")
+    print(f"\n[URL] URL: {url[:60]}...")
     if password:
-        print("🔑 Password: provided")
+        print("[KEY] Password: provided")
 
     sharer = SessionSharer()
 
     try:
         session = sharer.load_from_url(url, password=password)
     except ValueError as e:
-        print(f"\n❌ Import failed: {e}")
+        print(f"\n[ERROR] Import failed: {e}")
         return
     except Exception as e:
-        print(f"\n❌ Import failed: {e}")
+        print(f"\n[ERROR] Import failed: {e}")
         return
 
     cookies = session.get("cookies", [])
     site_name = session.get("site_name", "unknown")
-    print(f"\n✅ Session loaded successfully")
+    print(f"\n[OK] Session loaded successfully")
     print(f"   Site: {site_name}")
     print(f"   Cookies: {len(cookies)}")
 
@@ -448,7 +448,7 @@ def cmd_sync(args):
 
     if args.sync_command == "add":
         if not args.name or not args.domains:
-            print("❌ --name and --domains are required")
+            print("[ERROR] --name and --domains are required")
             return
 
         domains = [d.strip() for d in args.domains.split(",")]
@@ -461,18 +461,18 @@ def cmd_sync(args):
         )
         daemon.add_target(target)
         daemon.save_config()
-        print(f"✅ Sync target added: {target.name}")
+        print(f"[OK] Sync target added: {target.name}")
         print(f"   Browser: {target.browser}")
         print(f"   Domains: {', '.join(target.domains)}")
         print(f"   Output: {target.output_dir}")
 
     elif args.sync_command == "remove":
         if not args.name:
-            print("❌ --name is required")
+            print("[ERROR] --name is required")
             return
         daemon.remove_target(args.name)
         daemon.save_config()
-        print(f"✅ Sync target removed: {args.name}")
+        print(f"[OK] Sync target removed: {args.name}")
 
     elif args.sync_command == "list":
         statuses = daemon.get_status()
@@ -483,7 +483,7 @@ def cmd_sync(args):
         print("Session Sync Targets")
         print(f"{'=' * 60}")
         for s in statuses:
-            print(f"\n📁 {s['name']}")
+            print(f"\n[DIR] {s['name']}")
             print(f"   Browser: {s['browser']}")
             print(f"   Domains: {', '.join(s['domains'])}")
             print(f"   Last sync: {s['last_sync'] or 'never'}")
@@ -494,22 +494,22 @@ def cmd_sync(args):
         print(f"\n{'=' * 60}\n")
 
     elif args.sync_command == "once":
-        print("🔄 Running one-time sync...")
+        print("[SYNC] Running one-time sync...")
         results = daemon.check_once()
         for name, changed in results.items():
-            status = "✅ synced" if changed else "⏭️  unchanged"
+            status = "[OK] synced" if changed else "[SKIP] unchanged"
             print(f"   {name}: {status}")
 
     elif args.sync_command == "start":
         interval = args.interval or 60
-        print(f"🔄 Starting sync daemon (interval: {interval}s)...")
+        print(f"[SYNC] Starting sync daemon (interval: {interval}s)...")
         print(f"   Targets: {len(daemon._targets)}")
         print("   Press Ctrl+C to stop\n")
         try:
             daemon.start(interval=interval)
         except KeyboardInterrupt:
             daemon.stop()
-            print("\n⏹️  Daemon stopped")
+            print("\n[STOP] Daemon stopped")
 
 
 def cmd_validate_session(args):
@@ -554,7 +554,7 @@ def cmd_validate_session(args):
         sys.exit(1 if failed > 0 else 0)
 
     else:
-        print("❌ Specify --session or --sessions-dir")
+        print("[ERROR] Specify --session or --sessions-dir")
         sys.exit(1)
 
 
@@ -567,7 +567,7 @@ def cmd_encrypted_refresh(args):
     print("=" * 80)
 
     if args.sessions_dir:
-        print(f"\n📂 Batch refreshing: {args.sessions_dir}")
+        print(f"\n[DIR] Batch refreshing: {args.sessions_dir}")
         results = batch_encrypted_refresh(
             sessions_dir=args.sessions_dir,
             password=args.password,
@@ -577,7 +577,7 @@ def cmd_encrypted_refresh(args):
         )
 
         for name, result in results.items():
-            status = "✅" if result.success else "❌"
+            status = "[OK]" if result.success else "[ERROR]"
             method = f"[{result.method}]" if result.success else ""
             encrypted = "(encrypted)" if result.was_encrypted else ""
             print(f"  {status} {name} {method} {encrypted}")
@@ -598,17 +598,17 @@ def cmd_encrypted_refresh(args):
         )
 
         if result.success:
-            print(f"\n✅ Refresh successful")
+            print(f"\n[OK] Refresh successful")
             print(f"   Method: {result.method}")
             print(f"   Encrypted: {result.was_encrypted}")
             print(f"   Duration: {result.duration_ms:.0f}ms")
         else:
-            print(f"\n❌ Refresh failed")
+            print(f"\n[ERROR] Refresh failed")
             if result.error:
                 print(f"   Error: {result.error}")
 
     else:
-        print("❌ Specify --session or --sessions-dir")
+        print("[ERROR] Specify --session or --sessions-dir")
 
 
 def cmd_refresh_oauth(args):
@@ -619,10 +619,10 @@ def cmd_refresh_oauth(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
-    print(f"\n📂 Session: {args.session}")
+    print(f"\n[DIR] Session: {args.session}")
 
     try:
         from tokenade.core.refresh.oauth_refresh import SessionOAuthManager
@@ -630,43 +630,43 @@ def cmd_refresh_oauth(args):
         manager = SessionOAuthManager(str(session_file))
 
         status = manager.get_status()
-        print(f"🌐 Site: {status['site_name']}")
-        print(f"🔑 Has OAuth config: {status['has_oauth_config']}")
-        print(f"🔄 Has refresh token: {status['has_refresh_token']}")
-        print(f"🎟️  Has access token: {status['has_access_token']}")
+        print(f"[NET] Site: {status['site_name']}")
+        print(f"[KEY] Has OAuth config: {status['has_oauth_config']}")
+        print(f"[SYNC] Has refresh token: {status['has_refresh_token']}")
+        print(f"  Has access token: {status['has_access_token']}")
 
         if status["access_token_expired"]:
-            print("⚠️  Access token is expired")
+            print("[WARN] Access token is expired")
         elif status["expires_in"] is not None:
-            print(f"⏰ Expires in: {status['expires_in']}s")
+            print(f"[TIME] Expires in: {status['expires_in']}s")
 
         if not manager.has_oauth_config():
-            print("\n❌ No OAuth config in session")
+            print("\n[ERROR] No OAuth config in session")
             print("   Run: tokenade oauth-config --session <file> --client-id <id> --token-endpoint <url>")
             return
 
         if not manager.get_refresh_token():
-            print("\n❌ No refresh token in session")
+            print("\n[ERROR] No refresh token in session")
             print("   Re-export session with OAuth tokens")
             return
 
-        print("\n🔄 Refreshing token...")
+        print("\n[SYNC] Refreshing token...")
         result = manager.refresh()
 
         if result.success:
-            print("\n✅ Token refreshed successfully")
+            print("\n[OK] Token refreshed successfully")
             print(f"   New access token: {result.tokens.access_token[:20]}...")
             if result.tokens.expires_in:
                 print(f"   Expires in: {result.tokens.expires_in}s")
             print(f"   Duration: {result.duration_ms:.0f}ms")
         else:
-            print("\n❌ Token refresh failed")
+            print("\n[ERROR] Token refresh failed")
             if result.error:
                 print(f"   Error: {result.error}")
 
     except Exception as e:
         logger.error(f"OAuth refresh failed: {e}", exc_info=True)
-        print("❌ Refresh failed — check OAuth configuration")
+        print("[ERROR] Refresh failed - check OAuth configuration")
 
 
 def cmd_oauth_config(args):
@@ -675,7 +675,7 @@ def cmd_oauth_config(args):
 
     session_file = Path(args.session)
     if not session_file.exists():
-        print(f"❌ Session file not found: {args.session}")
+        print(f"[ERROR] Session file not found: {args.session}")
         return
 
     manager = SessionOAuthManager(str(session_file))
@@ -697,7 +697,7 @@ def cmd_oauth_config(args):
         return
 
     if not args.client_id or not args.token_endpoint:
-        print("❌ --client-id and --token-endpoint are required")
+        print("[ERROR] --client-id and --token-endpoint are required")
         return
 
     config = OAuthConfig(
@@ -710,7 +710,7 @@ def cmd_oauth_config(args):
     manager.set_oauth_config(config)
     manager.save()
 
-    print(f"\n✅ OAuth config saved for: {args.session}")
+    print(f"\n[OK] OAuth config saved for: {args.session}")
     print(f"   Token Endpoint: {config.token_endpoint}")
     print(f"   Client ID: {config.client_id[:20]}...")
     print(f"   Scopes: {', '.join(config.scopes)}")
@@ -733,22 +733,22 @@ def cmd_batch_refresh(args):
     )
 
     sessions = batch.discover_sessions()
-    print(f"\n📂 Found {len(sessions)} sessions in {args.sessions_dir}")
+    print(f"\n[DIR] Found {len(sessions)} sessions in {args.sessions_dir}")
 
     if not sessions:
         print("   No .tokenade files found")
         return
 
     for s in sessions:
-        print(f"   • {s.name}")
+        print(f"   - {s.name}")
 
     if not args.yes:
-        response = input("\n🔄 Refresh all sessions? [y/N]: ").strip().lower()
+        response = input("\n[SYNC] Refresh all sessions? [y/N]: ").strip().lower()
         if response != "y":
             print("Cancelled")
             return
 
-    print(f"\n🔄 Refreshing with {args.max_workers} workers...")
+    print(f"\n[SYNC] Refreshing with {args.max_workers} workers...")
     report = batch.refresh_all(force=args.force)
 
     print("\n" + report.summary())
@@ -794,7 +794,7 @@ def _versions_list(args):
     versions = mgr.list_versions(session_path)
 
     if not versions:
-        print(f"📂 No versions for {Path(session_path).name}")
+        print(f"[DIR] No versions for {Path(session_path).name}")
         print(f"   Create one: tokenade versions create {session_path}")
         return
 
@@ -817,12 +817,12 @@ def _versions_create(args):
     description = getattr(args, "description", "") or ""
 
     if not Path(session_path).exists():
-        print(f"❌ Session file not found: {session_path}")
+        print(f"[ERROR] Session file not found: {session_path}")
         return
 
     mgr = SessionVersionManager()
     version = mgr.create_version(session_path, description)
-    print(f"✅ Created version {version.version} of {Path(session_path).name}")
+    print(f"[OK] Created version {version.version} of {Path(session_path).name}")
     print(f"   Cookies: {version.cookie_count} | Size: {version.size_bytes} bytes")
 
 
@@ -835,9 +835,9 @@ def _versions_delete(args):
 
     mgr = SessionVersionManager()
     if mgr.delete_version(session_path, version):
-        print(f"✅ Deleted version {version}")
+        print(f"[OK] Deleted version {version}")
     else:
-        print(f"❌ Version {version} not found")
+        print(f"[ERROR] Version {version} not found")
 
 
 def cmd_rollback(args):
@@ -848,7 +848,7 @@ def cmd_rollback(args):
     version = args.version
 
     if not Path(session_path).exists():
-        print(f"❌ Session file not found: {session_path}")
+        print(f"[ERROR] Session file not found: {session_path}")
         return
 
     mgr = SessionVersionManager()
@@ -862,16 +862,16 @@ def cmd_rollback(args):
             break
 
     if not target:
-        print(f"❌ Version {version} not found")
+        print(f"[ERROR] Version {version} not found")
         return
 
-    print(f"🔄 Rolling back {Path(session_path).name} to version {version}")
+    print(f"[SYNC] Rolling back {Path(session_path).name} to version {version}")
     print(f"   {target.cookie_count} cookies | {target.created_at[:19]}")
 
     if mgr.rollback(session_path, version):
-        print(f"✅ Rollback complete")
+        print(f"[OK] Rollback complete")
     else:
-        print(f"❌ Rollback failed")
+        print(f"[ERROR] Rollback failed")
 
 
 def cmd_session_diff(args):
@@ -886,7 +886,7 @@ def cmd_session_diff(args):
     diff = mgr.diff(session_path, version_a, version_b)
 
     print(f"\n{'=' * 70}")
-    print(f"TOKENADE - Diff: v{diff.version_a} → v{diff.version_b}")
+    print(f"TOKENADE - Diff: v{diff.version_a} -> v{diff.version_b}")
     print(f"{'=' * 70}")
 
     if not diff.has_changes and not diff.storage_changes:
@@ -917,7 +917,7 @@ def cmd_session_diff(args):
     print()
 
 
-# ── Logs Command ────────────────────────────────────────────────
+# -- Logs Command ------------------------------------------------
 
 def cmd_logs(args):
     """View structured logs."""
@@ -994,7 +994,7 @@ def _parse_log_line(line):
         return {"raw": line}
 
 
-# ── Mobile Import ────────────────────────────────────────────────
+# -- Mobile Import ------------------------------------------------
 
 def cmd_mobile_import(args):
     """Import sessions from mobile devices (Android/iOS)."""
@@ -1003,7 +1003,7 @@ def cmd_mobile_import(args):
     manager = MobileImportManager()
 
     if not manager.is_available():
-        print("❌ No mobile extraction method available")
+        print("[ERROR] No mobile extraction method available")
         if platform.system() != "Darwin":
             print("   Install ADB: https://developer.android.com/tools/adb")
             print("   Or use macOS for iOS extraction")
@@ -1025,10 +1025,10 @@ def cmd_mobile_import(args):
     # Specific device
     device_serial = getattr(args, "device", None)
     if not device_serial:
-        # No device specified — list and prompt
+        # No device specified - list and prompt
         devices = manager.list_devices()
         if not devices:
-            print("❌ No mobile devices connected")
+            print("[ERROR] No mobile devices connected")
             print("   Connect a device via USB and enable USB debugging (Android)")
             return
         if len(devices) == 1:
@@ -1036,7 +1036,7 @@ def cmd_mobile_import(args):
         else:
             print("Multiple devices found:")
             for i, d in enumerate(devices):
-                print(f"  [{i + 1}] {d.model} ({d.serial}) — {d.platform}")
+                print(f"  [{i + 1}] {d.model} ({d.serial}) - {d.platform}")
             print("  Specify --device <serial> to choose")
             return
     else:
@@ -1048,10 +1048,10 @@ def cmd_mobile_import(args):
                 device = d
                 break
         if not device:
-            print(f"❌ Device not found: {device_serial}")
+            print(f"[ERROR] Device not found: {device_serial}")
             print("   Connected devices:")
             for d in devices:
-                print(f"     {d.serial} — {d.model}")
+                print(f"     {d.serial} - {d.model}")
             return
 
     browser = getattr(args, "browser", "auto")
@@ -1075,7 +1075,7 @@ def cmd_mobile_import(args):
         browser = device.available_browsers[0]
         print(f"   Auto-selected browser: {browser}")
 
-    print(f"\n🔄 Extracting cookies...")
+    print(f"\n[SYNC] Extracting cookies...")
 
     result = manager.extract(
         device=device,
@@ -1086,7 +1086,7 @@ def cmd_mobile_import(args):
     )
 
     if result.success:
-        print(f"\n✅ Extraction successful")
+        print(f"\n[OK] Extraction successful")
         print(f"   Browser: {result.browser}")
         print(f"   Cookies: {result.cookie_count}")
         print(f"   Site: {result.site_name}")
@@ -1095,7 +1095,7 @@ def cmd_mobile_import(args):
         if result.session_file:
             print(f"   Saved: {result.session_file}")
     else:
-        print(f"\n❌ Extraction failed: {result.error}")
+        print(f"\n[ERROR] Extraction failed: {result.error}")
         if "ADB" in str(result.error):
             print("   Ensure USB debugging is enabled and device is authorized")
 
@@ -1115,7 +1115,7 @@ def _mobile_list_devices(manager):
         return
 
     for d in devices:
-        print(f"\n   📱 {d.model} ({d.platform.upper()})")
+        print(f"\n   [MOBILE] {d.model} ({d.platform.upper()})")
         print(f"      Serial: {d.serial}")
         print(f"      OS: {d.os_version}")
         if d.available_browsers:
@@ -1133,7 +1133,7 @@ def _mobile_auto_extract(manager, args):
     devices = manager.list_devices()
 
     if not devices:
-        print("❌ No mobile devices connected")
+        print("[ERROR] No mobile devices connected")
         return
 
     device = devices[0]
@@ -1152,11 +1152,11 @@ def _mobile_auto_extract(manager, args):
     )
 
     if result.success:
-        print(f"✅ Extracted {result.cookie_count} cookies from {result.browser}")
+        print(f"[OK] Extracted {result.cookie_count} cookies from {result.browser}")
         if result.session_file:
             print(f"   Saved: {result.session_file}")
     else:
-        print(f"❌ Failed: {result.error}")
+        print(f"[ERROR] Failed: {result.error}")
 
 
 def cmd_clone_profile(args):
@@ -1178,7 +1178,7 @@ def cmd_clone_profile(args):
     profile_name = getattr(args, "profile", None)
 
     if not dest:
-        print("❌ --dest is required")
+        print("[ERROR] --dest is required")
         return
 
     print(f"\n{'=' * 60}")
@@ -1204,7 +1204,7 @@ def cmd_clone_profile(args):
         result = cloner.clone_default_profile(dest, browser, profile_name, session)
 
     if result.success:
-        print(f"\n✅ Profile cloned successfully")
+        print(f"\n[OK] Profile cloned successfully")
         print(f"   Files: {result.files_copied}")
         print(f"   Size: {result.size_bytes / (1024 * 1024):.1f} MB")
         if result.session_injected:
@@ -1213,7 +1213,7 @@ def cmd_clone_profile(args):
         print(f"\n   Launch with:")
         print(f"   tokenade launch --browser {browser} --profile-dir {result.dest_path}")
     else:
-        print(f"\n❌ Clone failed:")
+        print(f"\n[ERROR] Clone failed:")
         for err in result.errors:
             print(f"   {err}")
 
@@ -1251,122 +1251,8 @@ def _clone_list_profiles(cloner, args):
 
 def cmd_share_url(args):
     """Share sessions via URL shortener with password protection."""
-    from tokenade.core.sharing.url_shortener import SessionURLShortener, URLShortenerConfig
-
-    if not hasattr(args, "share_action"):
-        print("Usage: tokenade share-url <action> [options]", file=sys.stderr)
-        sys.exit(1)
-
-    config = URLShortenerConfig(
-        backend=getattr(args, "backend", None) or "local",
-        api_key=getattr(args, "api_key", None),
-        custom_domain=getattr(args, "domain", None),
-        expiry_hours=getattr(args, "expiry", None) or 24,
-        require_password=True,
-        password_min_length=getattr(args, "password_min_length", None) or 8,
-        max_uses=getattr(args, "max_uses", None) or 0,
-    )
-
-    shortener = SessionURLShortener(config)
-
-    if args.share_action == "create":
-        if not getattr(args, "password", None):
-            print("Error: --password is required for URL shortener sharing", file=sys.stderr)
-            sys.exit(1)
-
-        result = shortener.create_share(
-            session_file=args.session,
-            password=args.password,
-            expiry_hours=getattr(args, "expiry", None),
-            max_uses=getattr(args, "max_uses", None),
-            include_request_json=getattr(args, "include_request", False),
-        )
-
-        if getattr(args, "json", False):
-            print(json.dumps(result, indent=2))
-        else:
-            if result.get("success"):
-                print("\n" + "=" * 60)
-                print("TOKENADE - URL Shortener Share")
-                print("=" * 60)
-                print(f"\n🔗 Share URL: {result['short_url']}")
-                print(f"🆔 Share ID: {result['short_id']}")
-                print(f"🔒 Requires Password: Yes")
-                if result.get("expires_at"):
-                    print(f"⏰ Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(result['expires_at']))}")
-                print("\n⚠️  IMPORTANT: Send this URL to the receiver.")
-                print("   They will be asked for the password to decrypt the session.")
-                print(f"\n{'=' * 60}\n")
-            else:
-                print(f"Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
-                sys.exit(1)
-
-    elif args.share_action == "retrieve":
-        if not getattr(args, "password", None):
-            print("Error: --password is required to retrieve session", file=sys.stderr)
-            sys.exit(1)
-
-        result = shortener.retrieve_session(
-            short_url=args.share_url,
-            password=args.password,
-            output_path=getattr(args, "output", None),
-        )
-
-        if getattr(args, "json", False):
-            print(json.dumps(result, indent=2))
-        else:
-            if result.get("success"):
-                print("\n" + "=" * 60)
-                print("TOKENADE - Session Retrieved")
-                print("=" * 60)
-                if getattr(args, "output", None):
-                    print(f"\n✅ Session saved to: {args.output}")
-                remaining = result.get("remaining_uses")
-                if remaining is not None:
-                    print(f"📊 Remaining uses: {remaining}")
-                print(f"\n{'=' * 60}\n")
-            else:
-                print(f"Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
-                sys.exit(1)
-
-    elif args.share_action == "revoke":
-        success = shortener.revoke(args.share_id)
-        if getattr(args, "json", False):
-            print(json.dumps({"success": success}, indent=2))
-        else:
-            if success:
-                print(f"✅ Revoked share: {args.share_id}")
-            else:
-                print(f"❌ Share not found: {args.share_id}")
-
-    elif args.share_action == "list":
-        shares = shortener.list_shares()
-        if getattr(args, "json", False):
-            print(json.dumps(shares, indent=2))
-        else:
-            if not shares:
-                print("No active shares")
-            else:
-                print("\n" + "=" * 60)
-                print("Active URL Shortener Shares")
-                print("=" * 60)
-                for share in shares:
-                    print(f"\n🆔 {share['short_id']}")
-                    print(f"   URL: {share['short_url']}")
-                    print(f"   Expires: {share['expires_at']}")
-                    print(f"   Uses: {share['current_uses']}/{share['max_uses']}")
-                print(f"\n{'=' * 60}\n")
-
-    elif args.share_action == "cleanup":
-        count = shortener.cleanup_expired()
-        if getattr(args, "json", False):
-            print(json.dumps({"cleaned": count}, indent=2))
-        else:
-            print(f"✅ Cleaned up {count} expired shares")
-
-    else:
-        print(f"Unknown share-url action: {args.share_action}", file=sys.stderr)
-        sys.exit(1)
+    from tokenade.cli.share import cmd_share_url as _impl
+    return _impl(args)
 
 
 # ---------------------------------------------------------------------------

@@ -328,8 +328,28 @@ class SessionPackager:
             except ValueError as e:
                 logger.warning(f"Encryption failed, saving plaintext: {e}")
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(package, f, indent=2, ensure_ascii=False)
+        # Atomic write: never truncate the real file until JSON serializes cleanly.
+        # (A failed dump used to leave 0-byte .tokenade files → sessions "vanished".)
+        import os
+        import tempfile
+
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=str(path.parent),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(package, f, indent=2, ensure_ascii=False, default=str)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
         # Update cache
         if self._cache is not None:

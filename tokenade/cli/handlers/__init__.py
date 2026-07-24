@@ -1,5 +1,5 @@
 """
-CLI Command Handlers — organized by category.
+CLI Command Handlers - organized by category.
 
 Implementations live here; tokenade.cli.management re-exports for
 backward-compatible imports.
