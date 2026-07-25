@@ -1,7 +1,7 @@
 # Tokenade
 
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="Tokenade — portable browser sessions" width="920"/>
+  <img src="docs/assets/banner.png" alt="Tokenade — portable browser sessions" width="920"/>
 </p>
 
 **Portable browser sessions.** Export cookies (and storage) from a real browser into a `.tokenade` file, then launch or proxy on another machine as that session — with TLS fingerprint matching where it matters.
@@ -21,7 +21,7 @@ tokenade plugin sync
 > **Not a Multilogin / AdsPower replacement.** Tokenade is session **portability** (export → package → inject / proxy), not a full anti-detect browser product. Stealth is best-effort and measured — never “undetectable.”
 
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Tokenade logo" width="96"/>
+  <img src="docs/assets/logo.png" alt="Tokenade logo" width="120"/>
 </p>
 
 ---
