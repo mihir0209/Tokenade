@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-label="Tokenade — portable browser sessions">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="400" fill="url(#bg)"/>
+  <!-- soft grid -->
+  <g stroke="#334155" stroke-width="1" opacity="0.35">
+    <path d="M0 80h1280M0 160h1280M0 240h1280M0 320h1280"/>
+    <path d="M160 0v400M320 0v400M480 0v400M640 0v400M800 0v400M960 0v400M1120 0v400"/>
+  </g>
+  <!-- logo mark -->
+  <g transform="translate(96,88)">
+    <circle cx="112" cy="112" r="96" fill="none" stroke="url(#accent)" stroke-width="10"/>
+    <circle cx="112" cy="112" r="96" fill="none" stroke="#22d3ee" stroke-width="3" stroke-dasharray="16 12" opacity="0.5"/>
+    <rect x="56" y="82" width="112" height="60" rx="14" fill="url(#chip)"/>
+    <rect x="70" y="98" width="40" height="10" rx="5" fill="#020617" opacity="0.85"/>
+    <rect x="70" y="116" width="62" height="8" rx="4" fill="#020617" opacity="0.4"/>
+    <path d="M20 112h28M176 112h28" stroke="#22d3ee" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <!-- wordmark + tagline -->
+  <text x="360" y="175" fill="#f8fafc" font-family="ui-sans-serif, system-ui, Segoe UI, sans-serif" font-size="88" font-weight="700">Tokenade</text>
+  <text x="360" y="240" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, sans-serif" font-size="34">Portable browser sessions</text>
+  <text x="360" y="290" fill="#64748b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22">export → .tokenade → launch · proxy · share</text>
+  <!-- accent bar -->
+  <rect x="360" y="318" width="220" height="6" rx="3" fill="url(#accent)"/>
+</svg>

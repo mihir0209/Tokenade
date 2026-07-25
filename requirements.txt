@@ -12,8 +12,8 @@ PyYAML>=6.0
 packaging>=21.0
 
 # Platform-specific (install as needed)
-# Windows: pywin32>=306
-# Linux: secretstorage>=3.3.3
+# Platform cookie backends ship via pyproject environment markers on `pip install tokenade`
+# (pywin32 on win32, secretstorage on linux). Optional aliases: tokenade[windows] / tokenade[linux]
 
 # Development
 pytest>=7.0.0

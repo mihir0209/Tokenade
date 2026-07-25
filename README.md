@@ -1,11 +1,15 @@
 # Tokenade
 
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="Tokenade — portable browser sessions" width="920"/>
+</p>
+
 **Portable browser sessions.** Export cookies (and storage) from a real browser into a `.tokenade` file, then launch or proxy on another machine as that session — with TLS fingerprint matching where it matters.
 
 [![PyPI version](https://img.shields.io/pypi/v/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Downloads](https://static.pepy.tech/badge/tokenade/month)](https://pepy.tech/projects/tokenade)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/tokenade)](https://pypistats.org/packages/tokenade)
 [![CI](https://img.shields.io/github/actions/workflow/status/mihir0209/tokenade/ci.yml?branch=main&label=CI)](https://github.com/mihir0209/tokenade/actions)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -15,6 +19,25 @@ tokenade plugin sync
 ```
 
 > **Not a Multilogin / AdsPower replacement.** Tokenade is session **portability** (export → package → inject / proxy), not a full anti-detect browser product. Stealth is best-effort and measured — never “undetectable.”
+
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Tokenade logo" width="96"/>
+</p>
+
+---
+
+## Screenshots
+
+| TUI · Sessions | TUI · Share |
+|:---:|:---:|
+| ![Sessions](docs/assets/screenshots/tui-sessions.svg) | ![Share](docs/assets/screenshots/tui-share.svg) |
+| **TUI · Marketplace** | **TUI · Settings** |
+| ![Marketplace](docs/assets/screenshots/tui-marketplace.svg) | ![Settings](docs/assets/screenshots/tui-settings.svg) |
+
+```bash
+pip install 'tokenade[tui]'
+tokenade tui
+```
 
 ---
 
@@ -66,7 +89,9 @@ pip install tokenade
 # Python 3.10+
 ```
 
-Optional extras: `tokenade[tui]` (Textual UI), `tokenade[linux]`, `tokenade[enterprise]` (LDAP — experimental).
+Optional extras: `tokenade[tui]` (Textual UI), `tokenade[enterprise]` (LDAP — experimental).
+
+Platform cookie backends (`pywin32` on Windows, `secretstorage` on Linux) install automatically with the core package via environment markers — no `[windows]` / `[linux]` extra required (those extras remain as no-op aliases for older scripts).
 
 ### 2. Install site plugins + export a session
 
