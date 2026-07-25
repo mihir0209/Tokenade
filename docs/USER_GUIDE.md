@@ -6,6 +6,8 @@ Browser session portability — extract, transfer, and inject logged-in states a
 
 ```bash
 pip install tokenade
+# Optional interactive UI:
+pip install 'tokenade[tui]'
 ```
 
 Verify:
@@ -15,12 +17,12 @@ tokenade --version
 # tokenade 1.1.77
 ```
 
-This guide was verified against the published PyPI package `tokenade==1.1.77`, not an editable source checkout.
+This guide tracks the published PyPI line around `tokenade==1.1.77` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install.
 
 ## Quick Start
 
 ```bash
-# 1. Export from Firefox
+# 1. Export from Firefox (quit browser first if cookie DB is locked)
 tokenade export --browser-name firefox --domains "google.com,accounts.google.com" -o google.tokenade
 
 # 2. Transfer the .tokenade file to another machine
@@ -30,7 +32,65 @@ scp google.tokenade user@newmachine:~/
 tokenade load --file google.tokenade
 ```
 
+**Other entry points (honest):**
+
+```bash
+# Interactive TUI (requires tokenade[tui])
+tokenade tui
+
+# Cookie-Editor / Playwright / HAR / Netscape → .tokenade
+tokenade convert -i cookies.json -o session.tokenade
+
+# Live browser still open → load unpacked extension/ (default format .tokenade)
+# See extension/README.md — no TLS fingerprint in extension exports
+```
+
 ## Commands
+
+### `tokenade tui`
+
+Full-screen terminal UI (Textual). Same operations as CLI via `python -m tokenade …` under the hood.
+
+```bash
+pip install 'tokenade[tui]'
+tokenade tui
+```
+
+If Textual is missing:
+
+```text
+[ERROR] Tokenade TUI is not available — Textual is not installed.
+  pip install 'tokenade[tui]'
+```
+
+Exit code is non-zero. CLI commands still work without the extra.
+
+| Key | Tab | Notes |
+|-----|-----|--------|
+| `1` | Export | Browser/profile discovery, domains, site handlers, encrypt password |
+| `2` | Sessions | Launch / load / health / share selected jars |
+| `3` | Share | share-url create & receive; password never leaves the machine |
+| `4` | Convert | Embedded directory tree + multi-format → `.tokenade` |
+| `5`–`9`, `0` | Vault, Sync, Analytics, Plugins, Marketplace, Settings | Depth varies; some panes are thinner than Export/Share |
+
+**Copy / quit:** Mouse-select text in logs and labels. **Ctrl+C does nothing harmful** (hint only: use **Ctrl+Shift+C** to copy selection, **Ctrl+Q** or **q** to quit). Terminal-native copy still works.
+
+**Status:** TUI is **usable and experimental** — under active polish (layout, Windows terminals, analytics). Core export/load/share-url are the production-hardened paths.
+
+### `tokenade convert`
+
+Turn industry cookie / storage dumps into a `.tokenade` session (default goal format).
+
+```bash
+tokenade convert -i dump.json -o session.tokenade
+tokenade convert -i cookies.txt --format netscape -o session.tokenade
+tokenade convert -i capture.har -o session.tokenade
+tokenade convert -i header.txt --format header --domain .example.com -o session.tokenade
+```
+
+**Formats:** `auto`, `json`, `netscape`, `curl`, `playwright`, `puppeteer`, `cookie-editor` / `editthiscookie`, `cypress`, `selenium`, `header`, `set-cookie`, `har`, `csv`.
+
+Does not read a live browser profile — use `export` or the extension for that.
 
 ### `tokenade export`
 
@@ -693,7 +753,14 @@ This tells you which plugin to install.
 **Textual not installed (TUI):**
 ```bash
 pip install 'tokenade[tui]'
+# same interpreter as tokenade:
+python3 -m pip install 'tokenade[tui]'
+tokenade tui
 ```
+`tokenade tui` exits with code 1 and prints the install line if Textual is missing.
+
+**Database is locked on export:**
+Fully quit the browser **or** use the browser extension / CDP export path. Extension exports omit TLS fingerprint — see `extension/README.md`.
 
 **CloakBrowser not found:**
 ```bash

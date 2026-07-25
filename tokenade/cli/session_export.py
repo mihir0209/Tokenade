@@ -2,13 +2,59 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
 from tokenade.core.importer.cookie_extractor import CookieExtractor
+from tokenade.core.importer.format_importer import FormatImporter
 from tokenade.core.importer.local_storage_extractor import LocalStorageExtractor
 from tokenade.core.importer.session_packager import SessionPackager
 
 logger = logging.getLogger("tokenade")
+
+
+def cmd_convert(args):
+    """Convert a cookie file (JSON / Netscape / Playwright) into a .tokenade session."""
+    input_path = getattr(args, "input", None) or getattr(args, "file", None)
+    if not input_path:
+        print("[ERROR] --input is required")
+        raise SystemExit(2)
+
+    out = getattr(args, "output", None)
+    if not out:
+        stem = Path(input_path).expanduser().stem or "converted"
+        sessions_dir = Path.home() / ".tokenade" / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        out = str(sessions_dir / f"{stem}.tokenade")
+
+    fmt = getattr(args, "format", None) or "auto"
+    encrypt = bool(getattr(args, "encrypt", False))
+    # encrypt-password implies encrypt; SessionPackager.save uses at-rest config
+    # for passwordless encrypt; password path is separate (export --encrypt-password).
+    if getattr(args, "encrypt_password", None):
+        encrypt = True
+        os.environ.setdefault("TOKENADE_ENCRYPT_PASSWORD", args.encrypt_password)
+
+    print(f"\n[CONVERT] {input_path}")
+    print(f"   format: {fmt}")
+    print(f"   output: {out}")
+
+    domain = getattr(args, "domain", None) or ""
+    result = FormatImporter.convert_file(
+        input_path,
+        out,
+        format_hint=fmt,
+        encrypt=encrypt,
+        domain=domain,
+    )
+    if not result.get("success"):
+        print(f"[ERROR] {result.get('error') or 'convert failed'}")
+        raise SystemExit(1)
+
+    print(f"   [OK] site={result.get('site_name')} cookies={result.get('cookie_count')}")
+    print(f"   [OK] format={result.get('format')} auth={result.get('auth_status')}")
+    print(f"   [OK] saved: {result.get('output_path')}")
+    return result
 
 
 def _site_handler_metadata(site_handler, *, explicit_plugin=None, auto_discovered=False):

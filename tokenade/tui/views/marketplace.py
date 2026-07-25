@@ -10,17 +10,40 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class Widget: pass
-    class ComposeResult: pass
-    class Grid: pass
-    class Horizontal: pass
-    class ScrollableContainer: pass
-    class Vertical: pass
-    class Static: pass
-    class Rule: pass
-    class Button: pass
-    class Input: pass
-    class Label: pass
+
+    class Widget:
+        pass
+
+    class ComposeResult:
+        pass
+
+    class Grid:
+        pass
+
+    class Horizontal:
+        pass
+
+    class ScrollableContainer:
+        pass
+
+    class Vertical:
+        pass
+
+    class Static:
+        pass
+
+    class Rule:
+        pass
+
+    class Button:
+        pass
+
+    class Input:
+        pass
+
+    class Label:
+        pass
+
 
 from tokenade.tui.views.base import BaseView
 
@@ -169,7 +192,7 @@ def format_plugin_detail(plugin: Dict[str, Any]) -> List[str]:
         f"Type:        {p.get('type') or '—'}",
         f"Category:    {p.get('category') or '—'}",
         f"Tags:        {tags_s}",
-        f"Entry:       {p.get('entry_point') or '—'} / {p.get('entry_class') or '—'}",
+        f"Entry:       {p.get('entry_point') or '—'} | {p.get('entry_class') or '—'}",
         f"API version: {p.get('api_version') or '—'}",
         f"Min Tokenade:{p.get('min_version') or '—'}",
         f"Verified:    {'yes' if p.get('verified') else 'no'}",

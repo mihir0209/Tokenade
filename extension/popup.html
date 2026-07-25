@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 350px;
+      width: 360px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #1a1a2e;
       color: #e0e0e0;
@@ -15,8 +15,8 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
       border-bottom: 1px solid #333;
     }
     .header h1 {
@@ -33,7 +33,7 @@
       background: #16213e;
       border-radius: 8px;
       padding: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .site-info .domain {
       font-size: 14px;
@@ -48,28 +48,46 @@
     }
     .stats {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 12px;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
     }
     .stat {
       background: #16213e;
       border-radius: 6px;
-      padding: 8px;
+      padding: 8px 4px;
       text-align: center;
     }
     .stat .value {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
       color: #00d4ff;
     }
     .stat .label {
-      font-size: 10px;
+      font-size: 9px;
       color: #888;
       text-transform: uppercase;
     }
     .stat.warn .value { color: #ffd700; }
     .stat.error .value { color: #ff4444; }
+    .field {
+      margin-bottom: 10px;
+    }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .field select {
+      width: 100%;
+      background: #16213e;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+    }
     .buttons {
       display: flex;
       flex-direction: column;
@@ -86,9 +104,7 @@
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
     }
-    .btn:hover { transform: translateY(-1px); }
     .btn-primary {
       background: linear-gradient(135deg, #00d4ff, #0099cc);
       color: #000;
@@ -98,17 +114,12 @@
       color: #e0e0e0;
       border: 1px solid #444;
     }
-    .btn-danger {
-      background: #4a1a1a;
-      color: #ff6666;
-      border: 1px solid #662222;
-    }
     .btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
     .status {
-      margin-top: 12px;
+      margin-top: 10px;
       padding: 8px;
       border-radius: 6px;
       font-size: 12px;
@@ -118,28 +129,36 @@
     .status.error { display: block; background: #3a1a1a; color: #ff6666; }
     .status.loading { display: block; background: #1a1a3a; color: #66aaff; }
     .options {
-      margin-top: 12px;
-      padding-top: 12px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid #333;
     }
     .options label {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
       font-size: 12px;
-      color: #888;
+      color: #aaa;
       cursor: pointer;
+      margin-bottom: 8px;
     }
     .options input[type="checkbox"] {
       accent-color: #00d4ff;
+      margin-top: 2px;
+    }
+    .caveat {
+      margin-top: 10px;
+      font-size: 10px;
+      color: #666;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <span style="font-size:24px">🔐</span>
+    <span style="font-size:22px">🔐</span>
     <h1>Tokenade</h1>
-    <span class="version">v1.0</span>
+    <span class="version">ext 1.1</span>
   </div>
 
   <div class="site-info">
@@ -150,7 +169,7 @@
   <div class="stats">
     <div class="stat" id="stat-total">
       <div class="value" id="total-value">-</div>
-      <div class="label">Total</div>
+      <div class="label">Cookies</div>
     </div>
     <div class="stat" id="stat-expired">
       <div class="value" id="expired-value">-</div>
@@ -160,25 +179,48 @@
       <div class="value" id="health-value">-</div>
       <div class="label">Health</div>
     </div>
+    <div class="stat" id="stat-storage">
+      <div class="value" id="storage-value">-</div>
+      <div class="label">LS keys</div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="opt-format">Export format (default = richest)</label>
+    <select id="opt-format">
+      <option value="tokenade" selected>.tokenade (recommended)</option>
+      <option value="cookie-editor">Cookie-Editor / EditThisCookie JSON</option>
+      <option value="netscape">Netscape cookie jar</option>
+    </select>
   </div>
 
   <div class="buttons">
     <button class="btn btn-primary" id="btn-download" disabled>
-      📥 Download .tokenade
+      Download export
     </button>
     <button class="btn btn-secondary" id="btn-clipboard" disabled>
-      📋 Copy to Clipboard
+      Copy to clipboard
     </button>
   </div>
 
   <div class="options">
     <label>
       <input type="checkbox" id="opt-all-domains">
-      Export all domains (not just current site)
+      <span>All domains (not just this site)</span>
+    </label>
+    <label>
+      <input type="checkbox" id="opt-local-storage" checked>
+      <span>Include page localStorage (current tab origin)</span>
     </label>
   </div>
 
   <div class="status" id="status"></div>
+
+  <p class="caveat">
+    Works while the browser is open (no SQLite lock). Does <strong>not</strong> capture
+    donor TLS fingerprint — use CLI <code>export --collect-fingerprint</code> when you need that.
+    Import other tools’ dumps via TUI Convert or <code>tokenade convert</code>.
+  </p>
 
   <script src="popup.js"></script>
 </body>

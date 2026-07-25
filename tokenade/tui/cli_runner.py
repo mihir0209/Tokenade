@@ -7,6 +7,7 @@ KISS: TUI never reimplements CLI logic — it builds argv and runs
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -41,7 +42,23 @@ class CliResult:
 
     @property
     def cmdline(self) -> str:
-        return " ".join(shlex.quote(a) for a in self.argv)
+        """Display command with double-quoted args that need shell escaping."""
+        return format_cli_display(self.argv)
+
+
+def shell_double_quote(arg: str) -> str:
+    """Quote for display/copy: prefer double quotes (TUI-friendly)."""
+    s = str(arg)
+    if not s:
+        return '""'
+    # Safe bare token
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,-]+", s):
+        return s
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def format_cli_display(argv: Sequence[str]) -> str:
+    return " ".join(shell_double_quote(a) for a in argv)
 
 
 def tokenade_argv(*args: str) -> List[str]:
@@ -81,7 +98,7 @@ def run_tokenade(
         log_path = _bg_log_dir() / f"{int(time.time())}_{args[0] if args else 'cmd'}.log"
         try:
             log_f = open(log_path, "w", buffering=1)
-            log_f.write(f"$ {' '.join(shlex.quote(a) for a in argv)}\n\n")
+            log_f.write(f"$ {format_cli_display(argv)}\n\n")
             log_f.flush()
             proc = subprocess.Popen(
                 argv,
@@ -296,6 +313,30 @@ def cmd_export(
         args.append("--no-plugin")
     if collect_fingerprint:
         args.append("--collect-fingerprint")
+    return args
+
+
+def cmd_convert(
+    *,
+    input_path: str,
+    output: str = "",
+    format_hint: str = "auto",
+    encrypt_password: str = "",
+    encrypt: bool = False,
+    domain: str = "",
+) -> List[str]:
+    """Build convert argv: cookie file → .tokenade."""
+    args: List[str] = ["convert", "--input", input_path]
+    if output:
+        args.extend(["--output", output])
+    if format_hint and format_hint != "auto":
+        args.extend(["--format", format_hint])
+    if encrypt:
+        args.append("--encrypt")
+    if encrypt_password:
+        args.extend(["--encrypt-password", encrypt_password])
+    if domain:
+        args.extend(["--domain", domain])
     return args
 
 

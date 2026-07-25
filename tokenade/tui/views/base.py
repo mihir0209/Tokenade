@@ -6,9 +6,15 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class Vertical: pass
-    class Static: pass
-    class Rule: pass
+
+    class Vertical:
+        pass
+
+    class Static:
+        pass
+
+    class Rule:
+        pass
 
 
 class BaseView(Vertical if _OK else object):

@@ -145,7 +145,11 @@ rm -f ~/.config/google-chrome/Default/Cookies-journal
 rm -f ~/.config/google-chrome/Default/Cookies.lock
 ```
 
-**Prevention:** Close the target browser before exporting cookies.
+**Prevention / alternatives:**
+- Fully quit the target browser before CLI SQLite export, **or**
+- Use the **browser extension** (live cookies, default `.tokenade`; no TLS fingerprint), **or**
+- Export via **CDP** from a browser started with a remote debugging port, **or**
+- Import an existing dump with `tokenade convert`.
 
 ---
 

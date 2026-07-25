@@ -1,58 +1,70 @@
-# Tokenade Session Exporter — Chrome Extension
+# Tokenade browser extension (experimental)
 
-Export browser sessions as `.tokenade` files for cross-device portability.
+Export the **active tab’s** cookies (and optional page `localStorage`) as a portable session file.
 
-## Installation
+**Default format: `.tokenade`** — the same JSON session jar the CLI uses (richest option we ship).  
+You can also export Cookie-Editor-style JSON or a Netscape jar for other tools.
 
-### From Source (Developer Mode)
+## Status (honest)
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode" (top right)
-3. Click "Load unpacked"
-4. Select this `extension/` directory
-5. The Tokenade icon appears in your toolbar
+| Capability | Status |
+|------------|--------|
+| Cookies for current site / all sites | **Works** (Chrome `cookies` API, includes HttpOnly) |
+| Optional `localStorage` for the **current tab origin** | **Works** when enabled (`scripting` + active tab) |
+| Download / clipboard | **Works** |
+| Default export = `.tokenade` v3-shaped | **Works** |
+| Cookie-Editor / Netscape alternate formats | **Works** |
+| Donor **TLS fingerprint** / JA3 | **Not available** in an extension — use CLI `tokenade export --collect-fingerprint` |
+| Full multi-origin storage map like CLI `--full` + site handlers | **Partial** — only the open tab’s origin unless you visit others |
+| Firefox / Safari store listing | **Not shipped** — load unpacked Chromium-family for now |
+| Chrome Web Store | **Not published** |
 
-### From Chrome Web Store
+This path is under active polish (~days, not a finished product surface). Prefer CLI/TUI export when you need fingerprints, multi-profile SQLite dumps, or site-handler storage origins.
 
-Coming soon.
+## Why use the extension vs CLI?
+
+| | Extension | CLI `tokenade export` |
+|--|-----------|------------------------|
+| Browser must be quit? | **No** — reads live cookies | **Usually yes** — SQLite lock if browser holds the DB |
+| Fingerprint in jar | **No** | Optional (`--collect-fingerprint`) |
+| Site-handler origins | **No** | **Yes** (`--plugin …`) |
+| Best when… | Quick grab while logged in | Full portable jar + stealth/TLS later |
+
+Convert foreign dumps (Cookie-Editor, Playwright, HAR, …) with:
+
+```bash
+tokenade convert -i cookies.json -o session.tokenade
+# or TUI → Convert tab
+```
+
+## Install (developer mode)
+
+1. Chromium / Chrome / Brave / Edge → `chrome://extensions/`
+2. Enable **Developer mode**
+3. **Load unpacked** → select this `extension/` directory
+4. Pin the Tokenade icon; open a normal https tab (not `chrome://`)
 
 ## Usage
 
-1. Navigate to any website where you're logged in
-2. Click the Tokenade extension icon
-3. See cookie count, expired count, and health score
-4. Click "Download .tokenade" to save the session file
-5. Transfer the file to another device
-6. Use `tokenade proxy -s <file>` or `tokenade launch -s <file>` to browse
-
-## Features
-
-- **One-click export** — Click icon, download session
-- **Domain filtering** — Auto-detects relevant cookies
-- **Health scoring** — Shows cookie health (expired vs valid)
-- **All-domains mode** — Option to export all cookies
-- **Clipboard copy** — Copy .tokenade JSON to clipboard
+1. Log into the site in a normal tab  
+2. Click the extension icon  
+3. Leave format on **`.tokenade (recommended)`** unless you need another tool’s format  
+4. Optionally enable **all domains** or **localStorage**  
+5. **Download** or **Copy**  
+6. On another machine: `tokenade load --file site.tokenade` or `tokenade launch -s site.tokenade`
 
 ## Permissions
 
 | Permission | Why |
-|-----------|-----|
-| `cookies` | Read cookies for export |
-| `activeTab` | Get current tab URL |
-| `storage` | Store settings |
-| `downloads` | Save .tokenade files |
+|------------|-----|
+| `cookies` | Read cookies (including HttpOnly) |
+| `activeTab` | Current tab URL / scripting |
+| `scripting` | Optional `localStorage` from the page |
+| `storage` | Reserved for settings |
+| `downloads` | Save export files |
 
 ## Development
 
-```bash
-# Load in Chrome
-1. chrome://extensions/
-2. Enable Developer mode
-3. Load unpacked → select this directory
+Reload the extension from `chrome://extensions` after edits. No build step.
 
-# Test
-1. Navigate to any site
-2. Click extension icon
-3. Verify cookie count
-4. Download and verify .tokenade format
-```
+Related CLI: `tokenade convert`, `tokenade tui` (Convert tab), `docs/USER_GUIDE.md`.

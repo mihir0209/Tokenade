@@ -573,7 +573,7 @@ daemon.start(interval=60)
 | Issue | Solution |
 |-------|----------|
 | `No profile found` | Run the target browser at least once |
-| `Extraction failed` | Close the browser or use a copy of the profile |
+| `Extraction failed` | Quit browser (SQLite lock), use extension, CDP, or `tokenade convert` |
 | Cookies not updating | Check that the browser is writing to the expected profile |
 
 ---
@@ -1093,7 +1093,7 @@ In the extension settings:
 |-------|----------|
 | Extension not connecting | Ensure the proxy is running on `127.0.0.1` |
 | WebSocket error | Check port `9224` is not blocked |
-| Export fails | Close the browser tab being exported and try again |
+| Export fails | Quit browser for CLI SQLite export; or use extension / `convert` |
 
 ---
 

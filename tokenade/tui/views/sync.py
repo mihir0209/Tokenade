@@ -8,6 +8,7 @@ try:
 except ImportError:
     _OK = False
 
+
 from tokenade.tui.views.base import BaseView
 
 

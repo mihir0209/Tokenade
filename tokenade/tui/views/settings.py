@@ -7,20 +7,44 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class ComposeResult: pass
-    class Horizontal: pass
-    class ScrollableContainer: pass
-    class Vertical: pass
-    class Static: pass
-    class Button: pass
-    class Input: pass
-    class Rule: pass
-    class Select: pass
-    class Label: pass
-    class Switch: pass
+
+    class ComposeResult:
+        pass
+
+    class Horizontal:
+        pass
+
+    class ScrollableContainer:
+        pass
+
+    class Vertical:
+        pass
+
+    class Static:
+        pass
+
+    class Button:
+        pass
+
+    class Input:
+        pass
+
+    class Rule:
+        pass
+
+    class Select:
+        pass
+
+    class Label:
+        pass
+
+    class Switch:
+        pass
+
 
 from tokenade.tui.config import TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, ANALYTICS_DIR, PLUGINS_DIR
 from tokenade.tui.views.base import BaseView
+
 
 def _browser_options() -> list:
     try:
@@ -36,6 +60,7 @@ def _browser_options() -> list:
         return out or [("cloak (recommended)", "cloak")]
     except Exception:
         return [("cloak (recommended)", "cloak")]
+
 
 STEALTH_OPTIONS = [
     ("maximum", "maximum"),
@@ -145,7 +170,7 @@ class SettingsView(BaseView):
             ),
             Rule(),
             Static("Local proxy", classes="card-title"),
-            Label("Proxy host / port", classes="field-label"),
+            Label("Proxy host | port", classes="field-label"),
             Horizontal(
                 Input(placeholder="127.0.0.1", id="settings-proxy-host"),
                 Input(placeholder="9223", id="settings-proxy-port"),
@@ -166,7 +191,7 @@ class SettingsView(BaseView):
             ),
             Label("Private Supabase URL (optional override)", classes="field-label"),
             Input(placeholder="https://xxxx.supabase.co", id="settings-supabase-url"),
-            Label("Private anon / publishable key", classes="field-label"),
+            Label("Private anon | publishable key", classes="field-label"),
             Input(placeholder="sb_publishable_… or eyJ…", password=True, id="settings-supabase-key"),
             Static("", id="settings-supabase-status", classes="path-line"),
             Rule(),

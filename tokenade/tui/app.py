@@ -101,6 +101,7 @@ from tokenade.tui.config import (
     APP_TITLE, APP_SUBTITLE, MAX_SESSIONS_DISPLAY,
 )
 from tokenade.tui.views.export import ExportView
+from tokenade.tui.views.convert import ConvertView
 from tokenade.tui.views.marketplace import (
     MarketplaceView, PluginCard, format_plugin_detail,
 )
@@ -119,6 +120,8 @@ from tokenade.tui.cli_runner import (
     cmd_load,
     cmd_refresh_browser,
     cmd_export,
+    cmd_convert,
+    format_cli_display,
     format_receive_help,
     copy_text,
 )
@@ -218,7 +221,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     TabPane { align: left top; }
     #plugin-list, #installed-list, #sessions-list,
     #vault-list, #sync-result, #share-result, #analytics-result,
-    #settings-body, #export-cli-log {
+    #settings-body, #export-cli-log, #convert-cli-log {
         height: 1fr; overflow-y: auto; padding: 0;
         align: left top;
     }
@@ -235,19 +238,34 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     .status-unknown { color: $text-muted; }
     """
 
+    # Text is selectable app-wide (Textual ALLOW_SELECT). Terminal copy is usually
+    # Ctrl+Shift+C; we also bind that. Ctrl+C never quits — only shows a hint.
+    ALLOW_SELECT = True
+
     BINDINGS = [
         Binding("1", "show_export", "Export"),
         Binding("2", "show_sessions", "Sessions"),
         Binding("3", "show_share", "Share"),
-        Binding("4", "show_vault", "Vault"),
-        Binding("5", "show_sync", "Sync"),
-        Binding("6", "show_analytics", "Analytics"),
-        Binding("7", "show_installed", "Plugins"),
-        Binding("8", "show_marketplace", "Marketplace"),
-        Binding("9", "show_settings", "Settings"),
+        Binding("4", "show_convert", "Convert"),
+        Binding("5", "show_vault", "Vault"),
+        Binding("6", "show_sync", "Sync"),
+        Binding("7", "show_analytics", "Analytics"),
+        Binding("8", "show_installed", "Plugins"),
+        Binding("9", "show_marketplace", "Marketplace"),
+        Binding("0", "show_settings", "Settings"),
         Binding("q", "quit", "Quit"),
+        Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("question_mark", "help", "Help"),
         Binding("r", "refresh", "Refresh"),
+        Binding(
+            "ctrl+shift+c",
+            "copy_selection",
+            "Copy",
+            show=False,
+            priority=True,
+        ),
+        # Override Textual's ctrl+c help_quit: never quit; show copy/quit hint only
+        Binding("ctrl+c", "copy_hint", "Copy hint", show=False, priority=True),
     ]
 
     def __init__(self, **kwargs):
@@ -267,6 +285,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             yield TabPane("Export", ExportView(), id="tab-export")
             yield TabPane("Sessions", SessionsView(), id="tab-sessions")
             yield TabPane("Share", ShareView(), id="tab-share")
+            yield TabPane("Convert", ConvertView(), id="tab-convert")
             yield TabPane("Vault", VaultView(), id="tab-vault")
             yield TabPane("Sync", SyncView(), id="tab-sync")
             yield TabPane("Analytics", AnalyticsView(), id="tab-analytics")
@@ -1011,6 +1030,19 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._export_list_handlers()
         elif btn_id == "export-refresh":
             self._export_refresh()
+        elif btn_id == "convert-run":
+            self._convert_run()
+        elif btn_id == "convert-detect":
+            self._convert_detect()
+        elif btn_id == "convert-clear-log":
+            self._convert_clear_log()
+        elif btn_id == "convert-root-go":
+            self._convert_set_root()
+        elif btn_id == "convert-root-home":
+            self._convert_set_root(str(Path.home()))
+        elif btn_id == "convert-root-downloads":
+            dl = Path.home() / "Downloads"
+            self._convert_set_root(str(dl if dl.is_dir() else Path.home()))
         elif btn_id == "share-copy-full":
             self._share_copy("full")
         elif btn_id == "share-copy-id":
@@ -1290,7 +1322,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     f"Session:  {path.name}",
                     f"Error:    {err}",
                     f"Code:     {result.get('code') or '?'}",
-                    f"Size:     {result.get('ciphertext_chars', '?')} / "
+                    f"Size:     {result.get('ciphertext_chars', '?')} | "
                     f"{result.get('max_chars', '?')} chars",
                     "",
                     result.get("message") or "",
@@ -1994,7 +2026,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             logger.debug("Export profile select refresh failed: %s", e)
 
     def _run_export_cli(self, args: List[str], *, title: str = ""):
-        cmdline = " ".join(args)
+        cmdline = format_cli_display(args)
         self._export_cli_log(f"$ python3 -m tokenade {cmdline}")
         self.notify(f"Running {title or args[0]}…", timeout=2)
 
@@ -2013,7 +2045,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self._export_cli_log(out[-4000:] if len(out) > 4000 else out)
                 if result.log_path:
                     self._export_cli_log(f"(full log: {result.log_path})")
-                if result.ok and args and args[0] == "export" and "--list-profiles" not in args and "--list-handlers" not in args:
+                if result.ok and args and args[0] in ("export", "convert") and "--list-profiles" not in args and "--list-handlers" not in args:
                     try:
                         self._load_sessions()
                         self._update_sessions()
@@ -2067,6 +2099,166 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _export_list_handlers(self):
         self._run_export_cli(cmd_export(list_handlers=True), title="list-handlers")
+
+    # ── Convert tab ───────────────────────────────────────────
+
+    def _convert_field(self, wid: str) -> str:
+        try:
+            w = self.query_one(wid)
+            val = getattr(w, "value", "")
+            if val is None:
+                return ""
+            s = str(val).strip()
+            if s in ("Select.BLANK", "__none__"):
+                return ""
+            return s
+        except Exception:
+            return ""
+
+    def _convert_switch(self, wid: str, default: bool = False) -> bool:
+        try:
+            return bool(self.query_one(wid).value)
+        except Exception:
+            return default
+
+    def _convert_cli_log(self, text: str):
+        try:
+            log = self.query_one("#convert-cli-log")
+            for line in (text or "").splitlines() or [text]:
+                log.write(line)
+        except Exception:
+            pass
+
+    def _convert_clear_log(self):
+        try:
+            self.query_one("#convert-cli-log").clear()
+        except Exception:
+            pass
+
+    def _convert_set_root(self, path: str | None = None):
+        root = path if path is not None else self._convert_field("#convert-root-input")
+        root = str(Path(root).expanduser()) if root else str(Path.home())
+        p = Path(root)
+        if not p.is_dir():
+            self.notify(f"Not a directory: {root}", severity="warning")
+            return
+        try:
+            self.query_one("#convert-root-input").value = root
+        except Exception:
+            pass
+        try:
+            tree = self.query_one("#convert-tree")
+            tree.path = root
+            if hasattr(tree, "reload"):
+                tree.reload()
+        except Exception as e:
+            self.notify(f"Picker update failed: {e}", severity="error")
+
+    def _on_convert_file_selected(self, path: str):
+        try:
+            self.query_one("#convert-input-path").value = path
+        except Exception:
+            pass
+        stem = Path(path).stem or "converted"
+        try:
+            out_w = self.query_one("#convert-output-input")
+            out_w.value = str(SESSIONS_DIR / f"{stem}.tokenade")
+        except Exception:
+            pass
+        # auto-detect format label in log
+        try:
+            from tokenade.core.importer.format_importer import FormatImporter
+
+            fmt = FormatImporter.detect_format(path)
+            self._convert_cli_log(f"selected: {path}")
+            self._convert_cli_log(f"detected format: {fmt}")
+            if fmt and fmt != "unknown":
+                try:
+                    sel = self.query_one("#convert-format-select")
+                    # keep auto unless user wants lock-in — only hint in log
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _convert_detect(self):
+        path = self._convert_field("#convert-input-path")
+        if not path:
+            self.notify("Select or enter an input file", severity="warning")
+            return
+        path = str(Path(path).expanduser())
+        try:
+            from tokenade.core.importer.format_importer import FormatImporter
+
+            fmt = FormatImporter.detect_format(path)
+            self._convert_cli_log(f"detect {path} → {fmt}")
+            self.notify(f"Format: {fmt}", timeout=3)
+            if fmt and fmt not in ("unknown", "auto"):
+                try:
+                    self.query_one("#convert-format-select").value = (
+                        fmt if fmt in {
+                            "json", "netscape", "curl", "playwright", "puppeteer",
+                            "cookie-editor", "cypress", "selenium", "header",
+                            "set-cookie", "har", "csv", "auto",
+                        } else "auto"
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            self.notify(str(e), severity="error")
+
+    def _convert_run(self):
+        cookie_file = self._convert_field("#convert-input-path")
+        if not cookie_file:
+            self.notify("Select or enter an input file", severity="warning")
+            return
+        cookie_file = str(Path(cookie_file).expanduser())
+        output = self._convert_field("#convert-output-input")
+        if not output:
+            stem = Path(cookie_file).stem or "converted"
+            output = str(SESSIONS_DIR / f"{stem}.tokenade")
+        fmt = self._convert_field("#convert-format-select") or "auto"
+        password = self._convert_field("#convert-password-input")
+        encrypt = self._convert_switch("#convert-encrypt-switch", False) or bool(password)
+        domain = self._convert_field("#convert-domain-input")
+        args = cmd_convert(
+            input_path=cookie_file,
+            output=output,
+            format_hint=fmt,
+            encrypt_password=password,
+            encrypt=encrypt and not password,
+            domain=domain,
+        )
+        cmdline = format_cli_display(args)
+        self._convert_cli_log(f"$ python3 -m tokenade {cmdline}")
+        self.notify("Converting…", timeout=2)
+
+        def _done(result):
+            def _ui():
+                if result.ok:
+                    self.notify("convert OK", timeout=3)
+                else:
+                    self.notify(
+                        f"convert failed (exit {result.returncode})",
+                        severity="error",
+                        timeout=5,
+                    )
+                out = result.output or result.stdout or "(no output)"
+                self._convert_cli_log(out[-4000:] if len(out) > 4000 else out)
+                if result.ok:
+                    try:
+                        self._load_sessions()
+                        self._update_sessions()
+                        self._refresh_share_sessions()
+                    except Exception:
+                        pass
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        run_tokenade_async(args, on_done=_done, timeout=120)
 
     def _refresh_export_plugin_selects(self):
         try:
@@ -2126,6 +2318,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._activate_tab("tab-share")
         self.call_after_refresh(self._update_share_remote_status)
 
+    def action_show_convert(self):
+        self._activate_tab("tab-convert")
+
     def action_show_analytics(self):
         self._activate_tab("tab-analytics")
 
@@ -2141,14 +2336,90 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self.notify("Refreshed", timeout=2)
 
     def action_help(self):
-        self.notify("1-9: tabs  r: refresh  q: quit", timeout=5)
+        self.notify(
+            "tabs 1-9/0 · r refresh · select text then Ctrl+Shift+C · Ctrl+Q or q quit",
+            timeout=6,
+        )
+
+    def action_copy_hint(self) -> None:
+        """Ctrl+C: do not quit. Nudge toward terminal copy / real quit keys."""
+        self.notify(
+            "Ctrl+Shift+C to copy selection · Ctrl+Q (or q) to quit",
+            title="Copy / quit",
+            timeout=5,
+        )
+
+    def action_copy_selection(self) -> None:
+        """Ctrl+Shift+C: copy screen selection (or focused Input) to clipboard."""
+        text = ""
+        try:
+            screen = self.screen
+            if screen is not None and hasattr(screen, "get_selected_text"):
+                text = screen.get_selected_text() or ""
+        except Exception:
+            text = ""
+        if not text:
+            try:
+                focused = self.focused
+                if focused is not None:
+                    sel = getattr(focused, "selected_text", None)
+                    if sel:
+                        text = str(sel)
+                    elif hasattr(focused, "value") and not getattr(focused, "password", False):
+                        # No selection — don't dump whole password fields
+                        pass
+            except Exception:
+                pass
+        if not text:
+            self.notify(
+                "Select text first, then Ctrl+Shift+C (or your terminal copy)",
+                severity="warning",
+                timeout=4,
+            )
+            return
+        ok = self._copy_to_clipboard(text, label="Copied selection")
+        if not ok:
+            self.notify("Clipboard copy failed — use terminal select+copy", severity="warning")
+
+    def action_help_quit(self) -> None:
+        """Override Textual default: Ctrl+C never quits."""
+        self.action_copy_hint()
+
+    def on_directory_tree_file_selected(self, event) -> None:
+        """File picked in Convert tab DirectoryTree."""
+        try:
+            path = str(getattr(event, "path", "") or "")
+            if not path:
+                return
+            # Only handle convert tree
+            ctrl = getattr(event, "control", None) or getattr(event, "tree", None)
+            cid = getattr(ctrl, "id", None) if ctrl is not None else None
+            if cid and cid != "convert-tree":
+                return
+            self._on_convert_file_selected(path)
+        except Exception:
+            pass
 
 
 def run_tui(mode: str = "full"):
     """Launch the TUI application."""
     if not _TEXTUAL_AVAILABLE:
-        print("TUI requires textual: pip install 'tokenade[tui]'")
-        return
+        print(
+            "\n".join(
+                [
+                    "[ERROR] Tokenade TUI needs the Textual package.",
+                    "",
+                    "  pip install 'tokenade[tui]'",
+                    "",
+                    "Or with the same interpreter:",
+                    f"  {__import__('sys').executable} -m pip install 'tokenade[tui]'",
+                    "",
+                    "Then:  tokenade tui",
+                    "CLI without TUI still works (export, load, share-url, …).",
+                ]
+            )
+        )
+        raise SystemExit(1)
     TokenadeTUI().run()
 
 

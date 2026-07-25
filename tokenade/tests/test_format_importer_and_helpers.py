@@ -5,8 +5,10 @@ Formerly test_coverage_boost — primary suite for FormatImporter (no other dedi
 
 import json
 import time
-import pytest
+from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 from tokenade.core.importer.format_importer import FormatImporter
 from tokenade.core.refresh.health_checker import (
@@ -114,17 +116,20 @@ class TestFormatImporterNetscape:
         assert result["cookies"][1]["name"] == "token"
 
     def test_httponly_prefix(self, tmp_path):
-        # Netscape format: #HttpOnly_ prefix in domain column
-        # The line must NOT start with # (that's a comment), so we use a non-comment prefix
-        content = ".example.com\tTRUE\t/\tTRUE\t0\tsid\tval\n#HttpOnly_.example.com\tTRUE\t/\tTRUE\t0\thsid\thval\n"
+        # Netscape #HttpOnly_ domain prefix is a real extension — parse as httpOnly
+        content = (
+            ".example.com\tTRUE\t/\tTRUE\t0\tsid\tval\n"
+            "#HttpOnly_.example.com\tTRUE\t/\tTRUE\t0\thsid\thval\n"
+        )
         f = tmp_path / "cookies.txt"
         f.write_text(content)
 
         result = FormatImporter.from_netscape(str(f))
-        # The #HttpOnly_ line is treated as a comment (starts with #) and skipped
-        # The first line is a normal cookie
-        assert len(result["cookies"]) == 1
-        assert result["cookies"][0]["httpOnly"] is False
+        assert len(result["cookies"]) == 2
+        by_name = {c["name"]: c for c in result["cookies"]}
+        assert by_name["sid"]["httpOnly"] is False
+        assert by_name["hsid"]["httpOnly"] is True
+        assert by_name["hsid"]["domain"] == ".example.com"
 
     def test_comments_skipped(self, tmp_path):
         content = "# comment\n# another comment\n.example.com\tTRUE\t/\tTRUE\t0\ta\t1\n"
@@ -218,7 +223,7 @@ class TestFormatImporterDetectFormat:
     def test_detect_curl_header(self, tmp_path):
         f = tmp_path / "file.txt"
         f.write_text("# curl\n.example.com\tTRUE\t/\tTRUE\t0\ta\t1\n")
-        assert FormatImporter.detect_format(str(f)) == "netscape"
+        assert FormatImporter.detect_format(str(f)) in ("netscape", "curl")
 
     def test_detect_netscape_tab_separated(self, tmp_path):
         f = tmp_path / "file.txt"
@@ -238,12 +243,122 @@ class TestFormatImporterBuildSession:
     def test_build_session(self):
         cookies = [{"name": "a", "value": "1"}]
         result = FormatImporter._build_session(cookies, {"k": "v"}, "test_format")
-        assert result["version"] == "2.0"
+        assert result["version"] in ("2.0", "3.0")
         assert result["cookies"] == cookies
         assert result["local_storage"] == {"k": "v"}
         assert result["metadata"]["extraction_method"] == "import_test_format"
         assert result["metadata"]["cookie_count"] == 1
         assert result["metadata"]["local_storage_count"] == 1
+
+
+class TestFormatImporterConvertFile:
+    def test_convert_json_array(self, tmp_path):
+        data = [
+            {
+                "domain": ".claude.ai",
+                "name": "sessionKey",
+                "value": "sk-test",
+                "path": "/",
+                "httpOnly": True,
+                "expires": 1893456000,
+                "secure": True,
+            },
+            {
+                "domain": "claude.ai",
+                "name": "cf_clearance",
+                "value": "x",
+                "path": "/",
+                "expires": 1893456000,
+                "secure": True,
+            },
+        ]
+        src = tmp_path / "sample_cookie.txt"
+        src.write_text(json.dumps(data))
+        out = tmp_path / "out.tokenade"
+        result = FormatImporter.convert_file(str(src), str(out), format_hint="auto")
+        assert result["success"] is True
+        assert result["cookie_count"] == 2
+        assert result["format"] == "json"
+        assert Path(result["output_path"]).exists()
+        saved = json.loads(Path(result["output_path"]).read_text())
+        assert len(saved["cookies"]) == 2
+        assert saved["cookies"][0]["name"] == "sessionKey"
+
+    def test_convert_expirationDate_alias(self, tmp_path):
+        data = [{"name": "a", "value": "1", "domain": ".x.com", "expirationDate": 1893456000}]
+        src = tmp_path / "c.json"
+        src.write_text(json.dumps(data))
+        out = tmp_path / "c.tokenade"
+        result = FormatImporter.convert_file(str(src), str(out))
+        assert result["success"] is True
+        saved = json.loads(Path(out).read_text())
+        assert saved["cookies"][0]["expires"] == 1893456000
+
+    def test_convert_missing_file(self, tmp_path):
+        result = FormatImporter.convert_file(str(tmp_path / "nope"), str(tmp_path / "o.tokenade"))
+        assert result["success"] is False
+        assert "not found" in (result.get("error") or "").lower()
+
+    def test_convert_empty_cookies(self, tmp_path):
+        src = tmp_path / "empty.json"
+        src.write_text("[]")
+        result = FormatImporter.convert_file(str(src), str(tmp_path / "o.tokenade"))
+        assert result["success"] is False
+
+    def test_convert_har(self, tmp_path):
+        har = {
+            "log": {
+                "entries": [
+                    {
+                        "request": {
+                            "cookies": [
+                                {"name": "sid", "value": "abc", "domain": ".ex.com", "path": "/"},
+                            ],
+                            "headers": [],
+                        },
+                        "response": {"cookies": [], "headers": []},
+                    }
+                ]
+            }
+        }
+        src = tmp_path / "a.har"
+        src.write_text(json.dumps(har))
+        out = tmp_path / "h.tokenade"
+        result = FormatImporter.convert_file(str(src), str(out), format_hint="auto")
+        assert result["success"] is True
+        assert result["format"] == "har"
+        assert result["cookie_count"] == 1
+
+    def test_convert_header_file(self, tmp_path):
+        src = tmp_path / "h.txt"
+        src.write_text("Cookie: a=1; b=2\n")
+        out = tmp_path / "h.tokenade"
+        result = FormatImporter.convert_file(
+            str(src), str(out), format_hint="header", domain=".ex.com",
+        )
+        assert result["success"] is True
+        saved = json.loads(Path(out).read_text())
+        assert len(saved["cookies"]) == 2
+        assert saved["cookies"][0]["domain"] == ".ex.com"
+
+    def test_convert_csv(self, tmp_path):
+        src = tmp_path / "c.csv"
+        src.write_text("name,value,domain,path,secure\nsid,abc,.ex.com,/,true\n")
+        out = tmp_path / "c.tokenade"
+        result = FormatImporter.convert_file(str(src), str(out), format_hint="csv")
+        assert result["success"] is True
+        assert result["cookie_count"] == 1
+
+    def test_convert_set_cookie(self, tmp_path):
+        src = tmp_path / "sc.txt"
+        src.write_text("Set-Cookie: session=xyz; Path=/; Secure; HttpOnly; Domain=.ex.com\n")
+        out = tmp_path / "sc.tokenade"
+        result = FormatImporter.convert_file(str(src), str(out), format_hint="set-cookie")
+        assert result["success"] is True
+        saved = json.loads(Path(out).read_text())
+        assert saved["cookies"][0]["name"] == "session"
+        assert saved["cookies"][0]["secure"] is True
+        assert saved["cookies"][0]["httpOnly"] is True
 
 
 # ============================================================

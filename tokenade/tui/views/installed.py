@@ -10,13 +10,28 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class Widget: pass
-    class ComposeResult: pass
-    class Horizontal: pass
-    class ScrollableContainer: pass
-    class Vertical: pass
-    class Static: pass
-    class Button: pass
+
+    class Widget:
+        pass
+
+    class ComposeResult:
+        pass
+
+    class Horizontal:
+        pass
+
+    class ScrollableContainer:
+        pass
+
+    class Vertical:
+        pass
+
+    class Static:
+        pass
+
+    class Button:
+        pass
+
 
 from tokenade.tui.views.base import BaseView
 

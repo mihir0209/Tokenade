@@ -11,6 +11,58 @@ from tokenade.tui import run_tui, _check_textual
 _textual_available = _check_textual()
 
 
+# ─── CLI runner display / convert ──────────────────────────
+
+class TestCliRunnerDisplay:
+    def test_shell_double_quote_spaces(self):
+        from tokenade.tui.cli_runner import shell_double_quote, format_cli_display, cmd_export
+
+        assert shell_double_quote("Your Vivaldi") == '"Your Vivaldi"'
+        assert shell_double_quote("plain") == "plain"
+        argv = cmd_export(browser_name="vivaldi", profile="Your Vivaldi", output="/tmp/out.tokenade")
+        display = format_cli_display(argv)
+        assert '--profile "Your Vivaldi"' in display or '--profile "Your Vivaldi"' in display
+        assert "Your Vivaldi" in display
+        assert "'" not in display.split("Your Vivaldi")[0][-3:]  # prefer double quotes
+
+    def test_cmd_convert_argv(self):
+        from tokenade.tui.cli_runner import cmd_convert
+
+        args = cmd_convert(
+            input_path="~/Downloads/sample_cookie.txt",
+            output="/tmp/x.tokenade",
+            domain=".example.com",
+        )
+        assert args[0] == "convert"
+        assert "--input" in args
+        assert "--output" in args
+        assert "--domain" in args
+
+    def test_convert_view_importable(self):
+        from tokenade.tui.views.convert import ConvertView, FORMAT_OPTIONS
+
+        assert ConvertView is not None
+        assert any(v == "har" for _, v in FORMAT_OPTIONS)
+        assert any(v == "playwright" for _, v in FORMAT_OPTIONS)
+
+    def test_tui_copy_bindings(self):
+        from tokenade.tui.app import TokenadeTUI
+
+        assert TokenadeTUI.ALLOW_SELECT is True
+        keys = {getattr(b, "key", "") for b in TokenadeTUI.BINDINGS}
+        assert "ctrl+c" in keys
+        assert "ctrl+shift+c" in keys
+        assert "ctrl+q" in keys
+
+    def test_cmd_tui_missing_textual_exits(self):
+        from tokenade.cli.handlers import ci
+
+        with patch("tokenade.tui._check_textual", return_value=False):
+            with pytest.raises(SystemExit) as ei:
+                ci.cmd_tui(type("A", (), {"tui_mode": "full"})())
+            assert ei.value.code == 1
+
+
 # ─── Module Tests ──────────────────────────────────────────
 
 class TestTUIModule:
@@ -20,10 +72,11 @@ class TestTUIModule:
         assert _check_textual() is True
 
     def test_run_tui_no_textual(self):
-        """Graceful fallback when textual not installed."""
-        with patch.dict("sys.modules", {"textual": None}):
-            # Should not raise, just print message
-            run_tui()
+        """Clear install hint + non-zero exit when textual missing."""
+        with patch("tokenade.tui.app._TEXTUAL_AVAILABLE", False):
+            with pytest.raises(SystemExit) as ei:
+                run_tui()
+            assert ei.value.code == 1
 
     def test_app_importable(self):
         """App module should be importable."""

@@ -178,7 +178,10 @@ class LocalStorageExtractor:
         Returns:
             Dictionary of {key: value}
         """
-        if self.browser in ("chrome", "chromium", "edge"):
+        chromium_like = (
+            "chrome", "chromium", "edge", "brave", "vivaldi", "opera", "arc",
+        )
+        if self.browser in chromium_like:
             return self.extract_chrome(origin_filter)
         elif self.browser == "firefox":
             return self.extract_firefox(origin_filter)
@@ -193,9 +196,12 @@ class LocalStorageExtractor:
         Returns:
             List of origin URLs
         """
+        chromium_like = (
+            "chrome", "chromium", "edge", "brave", "vivaldi", "opera", "arc",
+        )
         if self.browser == "firefox":
             return self._list_origins_firefox()
-        elif self.browser in ("chrome", "chromium", "edge"):
+        elif self.browser in chromium_like:
             return self._list_origins_chrome()
         else:
             return []

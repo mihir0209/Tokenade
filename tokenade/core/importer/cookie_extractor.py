@@ -372,10 +372,18 @@ class CookieExtractor:
 
     def extract_chrome(self, site_filter: Optional[SiteFilter] = None,
                        progress_callback=None) -> List[Dict]:
-        """Extract cookies from Chrome/Chromium/Edge."""
-        cookies_db = os.path.join(self.profile_path, "Cookies")
-        if not os.path.exists(cookies_db):
-            logger.warning(f"Chrome cookies DB not found: {cookies_db}")
+        """Extract cookies from Chrome/Chromium/Edge/Brave/Vivaldi/Opera."""
+        # Prefer Network/Cookies (Chrome 96+), fall back to profile-root Cookies
+        candidates = (
+            os.path.join(self.profile_path, "Network", "Cookies"),
+            os.path.join(self.profile_path, "Cookies"),
+        )
+        cookies_db = next((p for p in candidates if os.path.exists(p)), None)
+        if not cookies_db:
+            logger.warning(
+                "Chrome cookies DB not found under %s (Network/Cookies or Cookies)",
+                self.profile_path,
+            )
             return []
 
         if progress_callback:
@@ -625,12 +633,22 @@ class CookieExtractor:
         if progress_callback:
             progress_callback(0, 1, "starting")
 
-        if self.browser in ("chrome", "chromium", "edge", "brave"):
+        # Chromium forks share the same Cookies SQLite layout
+        chromium_like = (
+            "chrome",
+            "chromium",
+            "edge",
+            "brave",
+            "vivaldi",
+            "opera",
+            "arc",
+        )
+        if self.browser in chromium_like:
             cookies = self.extract_chrome(site_filter)
         elif self.browser == "firefox":
             cookies = self.extract_firefox(site_filter)
         else:
-            supported = "chrome, chromium, edge, brave, firefox"
+            supported = "chrome, chromium, edge, brave, vivaldi, opera, firefox"
             logger.error(
                 f"Unsupported browser: '{self.browser}'. "
                 f"Supported browsers: {supported}"

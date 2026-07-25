@@ -12,21 +12,52 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class ComposeResult: pass
-    class Horizontal: pass
-    class ScrollableContainer: pass
-    class Vertical: pass
-    class Widget: pass
-    class Static: pass
-    class Button: pass
-    class Input: pass
-    class Rule: pass
-    class Select: pass
-    class Label: pass
-    class Switch: pass
-    class MouseDown: pass
-    class MouseMove: pass
-    class MouseUp: pass
+
+    class ComposeResult:
+        pass
+
+    class Horizontal:
+        pass
+
+    class ScrollableContainer:
+        pass
+
+    class Vertical:
+        pass
+
+    class Widget:
+        pass
+
+    class Static:
+        pass
+
+    class Button:
+        pass
+
+    class Input:
+        pass
+
+    class Rule:
+        pass
+
+    class Select:
+        pass
+
+    class Label:
+        pass
+
+    class Switch:
+        pass
+
+    class MouseDown:
+        pass
+
+    class MouseMove:
+        pass
+
+    class MouseUp:
+        pass
+
 
 from tokenade.tui.config import SESSIONS_DIR
 from tokenade.tui.views.base import BaseView

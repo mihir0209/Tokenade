@@ -8,6 +8,7 @@ try:
 except ImportError:
     _OK = False
 
+
 from tokenade.tui.config import ANALYTICS_DIR
 from tokenade.tui.views.base import BaseView
 

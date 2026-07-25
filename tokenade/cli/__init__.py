@@ -7,7 +7,7 @@ import sys
 import time
 
 from tokenade.cli.session import cmd_extract, cmd_load, cmd_transfer, cmd_inject_profile
-from tokenade.cli.session_export import cmd_export
+from tokenade.cli.session_export import cmd_export, cmd_convert
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
 from tokenade.cli.management import (
@@ -34,6 +34,7 @@ VISIBLE_COMMANDS = (
     "fingerprint",
     "validate",
     "export",
+    "convert",
     "load",
     "encrypt",
     "decrypt",
@@ -1512,6 +1513,38 @@ Commands:
     export_parser.add_argument("--include-source-ip", action="store_true", help="Store raw source IP with --stamp-network")
     export_parser.add_argument("--proxy-plugin", help="Record intended proxy provider plugin metadata without routing export traffic")
 
+    # Convert cookie file → .tokenade
+    convert_parser = subparsers.add_parser(
+        "convert",
+        help="Convert cookie/storage file to .tokenade (JSON, Netscape, Playwright, HAR, …)",
+    )
+    convert_parser.add_argument(
+        "--input", "-i", required=True, help="Input cookie file path",
+    )
+    convert_parser.add_argument(
+        "--output", "-o", help="Output .tokenade path (default: ~/.tokenade/sessions/<stem>.tokenade)",
+    )
+    convert_parser.add_argument(
+        "--format",
+        choices=[
+            "auto", "json", "netscape", "curl", "playwright", "puppeteer",
+            "cookie-editor", "editthiscookie", "cypress", "selenium",
+            "header", "set-cookie", "har", "csv",
+        ],
+        default="auto",
+        help="Input format (default: auto-detect)",
+    )
+    convert_parser.add_argument(
+        "--domain",
+        help="Default cookie domain (header / set-cookie imports)",
+    )
+    convert_parser.add_argument(
+        "--encrypt", action="store_true", help="Encrypt output with at-rest settings",
+    )
+    convert_parser.add_argument(
+        "--encrypt-password", help="Encrypt output with this password",
+    )
+
     # Load
     load_parser = subparsers.add_parser("load", help="Load session file into browser")
     load_parser.add_argument("--file", "-", required=True, help="Path to session file")
@@ -2550,6 +2583,7 @@ def main():
         "fingerprint": cmd_fingerprint,
         "validate": cmd_validate,
         "export": cmd_export,
+        "convert": cmd_convert,
         "load": cmd_load,
         "inject-profile": cmd_inject_profile,
         "encrypt": cmd_encrypt,

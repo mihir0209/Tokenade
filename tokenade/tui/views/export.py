@@ -45,6 +45,7 @@ except ImportError:
     class Switch:
         pass
 
+
 from tokenade.tui.config import SESSIONS_DIR
 from tokenade.tui.views.base import BaseView
 
@@ -84,7 +85,7 @@ def export_profile_options(browser: str, *, refresh: bool = False) -> List[Tuple
 
 def export_handler_options() -> List[Tuple[str, str]]:
     """Site handler plugins from PluginExporter (same source as --list-handlers)."""
-    opts: List[Tuple[str, str]] = [("none (auto / default)", NONE_VALUE)]
+    opts: List[Tuple[str, str]] = [("none (auto | default)", NONE_VALUE)]
     try:
         from tokenade.core.importer.plugin_export import PluginExporter
 
@@ -224,7 +225,7 @@ class ExportView(BaseView):
         proxy_opts = export_proxy_plugin_options()
 
         with Vertical(id="export-form"):
-            yield Label("Browser / profile", classes="field-label")
+            yield Label("Browser | profile", classes="field-label")
             with Horizontal(classes="field-row"):
                 yield Select(
                     browser_opts,
@@ -239,7 +240,7 @@ class ExportView(BaseView):
                     allow_blank=False,
                 )
 
-            yield Label("Domains (comma-separated) / output path", classes="field-label")
+            yield Label("Domains (comma-separated) | output path", classes="field-label")
             with Horizontal(classes="field-row"):
                 yield Input(
                     placeholder="e.g. google.com,accounts.google.com (empty = all)",
@@ -252,7 +253,7 @@ class ExportView(BaseView):
                 )
 
             yield Label(
-                "Site handler / proxy plugin (optional)",
+                "Site handler | proxy plugin (optional)",
                 classes="field-label",
             )
             with Horizontal(classes="field-row"):
@@ -270,7 +271,7 @@ class ExportView(BaseView):
                 )
 
             yield Label(
-                "CDP port / encrypt password (--encrypt-password)",
+                "CDP port | encrypt password (--encrypt-password)",
                 classes="field-label",
             )
             with Horizontal(classes="field-row"):

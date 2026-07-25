@@ -95,7 +95,6 @@ class TestPathExists:
             assert d._path_exists("$TESTVAR/file") is False
 
 
-
 class TestSignatureDiscovery:
     def test_discovers_firefox_from_arbitrary_root(self, tmp_path):
         profile_dir = _firefox_profile(tmp_path / "somewhere" / "snap" / "firefox" / "abc.default")

@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/tokenade.svg)](https://pypi.org/project/tokenade/)
+[![Downloads](https://static.pepy.tech/badge/tokenade/month)](https://pepy.tech/projects/tokenade)
 [![CI](https://img.shields.io/github/actions/workflow/status/mihir0209/tokenade/ci.yml?branch=main&label=CI)](https://github.com/mihir0209/tokenade/actions)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -27,8 +27,33 @@ tokenade plugin sync
 | Match donor TLS on proxied traffic | CDP proxy + `curl-cffi` |
 | Encrypt session files at rest | AES-256-GCM (`encrypt` / export password) |
 | Extend behavior per site | Site-handler plugins (`--plugin google-handler`) |
+| Interactive terminal UI | `tokenade tui` (optional extra) |
+| Grab session while browser stays open | Browser extension (cookies; no fingerprint) |
+| Import Cookie-Editor / Playwright / HAR dumps | `tokenade convert` or TUI **Convert** tab |
 
 Self-hosted CLI. No cloud account required for the core loop.
+
+---
+
+## Work in progress (experimental · ~3–4 days)
+
+These surfaces **exist and run**, but are still being hardened. Expect rough edges; core CLI export/load/share remains the stable path.
+
+| Area | What’s real today | Still unfinished |
+|------|-------------------|------------------|
+| **TUI** (`tokenade tui`) | Export, Sessions, Share, Convert (file tree), Vault/Sync shells, plugins, Settings | Polish, analytics depth, broader QA on Windows terminals |
+| **Convert** | JSON, Netscape, curl, Playwright, Puppeteer, Cookie-Editor, Cypress, Selenium, Cookie/Set-Cookie headers, HAR, CSV → `.tokenade` | More exotic vendor dumps as they show up |
+| **Browser extension** (`extension/`) | Live cookie export, optional tab `localStorage`, default **`.tokenade`**, Cookie-Editor/Netscape alts | Store publish, Firefox packaging, multi-origin storage parity with CLI handlers |
+| **Chromium forks in CLI** | Vivaldi/Opera cookie path allowlisted | Full multi-profile battle-testing |
+
+Install TUI when you want it:
+
+```bash
+pip install 'tokenade[tui]'
+tokenade tui
+```
+
+If Textual is missing, `tokenade tui` exits with a clear `pip install 'tokenade[tui]'` message (non-zero exit).
 
 ---
 
@@ -41,22 +66,33 @@ pip install tokenade
 # Python 3.10+
 ```
 
-Optional extras: `tokenade[tui]`, `tokenade[linux]`, `tokenade[enterprise]` (LDAP — experimental).
+Optional extras: `tokenade[tui]` (Textual UI), `tokenade[linux]`, `tokenade[enterprise]` (LDAP — experimental).
 
-### 2. Install site plugins + quit the donor browser
+### 2. Install site plugins + export a session
 
 ```bash
 tokenade plugin sync
 tokenade export --list-handlers
+tokenade export --list-profiles
 ```
 
-Fully quit the browser first (see [Best practices](#best-practices)). A running browser locks the cookie database.
+**Three honest export paths** (pick one):
+
+| Path | When | Caveat |
+|------|------|--------|
+| **CLI SQLite** `tokenade export --browser-name …` | Full profile + optional fingerprint + site handlers | Prefer **fully quitting** the browser so the cookie DB is not locked |
+| **Extension** (`extension/`, load unpacked) | Browser stays open; quick `.tokenade` from the active tab | **No TLS fingerprint**; storage is current-tab origin only |
+| **Convert** `tokenade convert -i dump.json` | You already have Cookie-Editor / Playwright / HAR / Netscape | Quality depends on the dump; not a live browser read |
 
 ```bash
-tokenade export --list-profiles
-
-# Hard sites use dedicated handlers that export required storage origins.
+# CLI — hard sites use dedicated handlers (storage origins included)
 tokenade export --browser-name firefox --plugin discord-handler -o discord.tokenade
+
+# Foreign cookie dump → .tokenade
+tokenade convert -i ~/Downloads/cookies.json -o session.tokenade
+
+# Interactive UI (after pip install 'tokenade[tui]')
+tokenade tui
 ```
 
 ### 3. Use the session
@@ -95,15 +131,19 @@ Full command list: `tokenade --help` and `tokenade <command> -h`. Start with [`d
 
 | Capability | Status | Notes |
 |------------|--------|-------|
-| Cookie export (Chrome / Firefox / Brave / Edge) | **Works** | SQLite extraction; quit browser first |
+| Cookie export (Chrome / Firefox / Brave / Edge) | **Works** | SQLite; quit browser if DB locked |
+| Vivaldi / Opera cookie export | **Works** | Chromium-fork path; less field time than Chrome/Firefox |
 | Load + inject via CloakBrowser | **Works** | `tokenade load --file session.tokenade` |
 | Google: Firefox/Brave/Edge donor → non-Chrome target | **Works** | Multi-browser & multi-device verified (2026-07-10) |
 | Google → **Chrome / Chromium** target | **Fails** | Account chooser / signed out; avoid Google-owned browsers |
 | CDP proxy + session inject (Gmail, ChatGPT) | **Works** | Confirmed logged-in in real runs |
-| localStorage (Discord, Telegram Web) | **Works** | Handler-declared storage origins are exported automatically |
+| localStorage (Discord, Telegram Web) | **Works** | Handler-declared storage origins on CLI export |
 | AES-256-GCM session encryption | **Works** | Core encryptor, PBKDF2 |
 | Session health scoring | **Works** | Heuristic on cookies — not live auth proof |
 | TLS fingerprint matching (`curl-cffi`) | **Works** | Core dependency; use thoughtfully with `cf_clearance` |
+| `tokenade convert` multi-format → `.tokenade` | **Works** | Industry dumps; see `tokenade convert -h` |
+| TUI (`tokenade[tui]`) | **Works (experimental)** | Full tabs incl. Convert file picker; polish ongoing |
+| Browser extension → `.tokenade` | **Works (experimental)** | Live cookies; no fingerprint; see `extension/README.md` |
 | Hard bot labs / Cloudflare Turnstile | **Often fails** | Do not market as Grade A bypass |
 | Enterprise LDAP / fleet / K8s generators | **Code present** | Not production-hardened product surfaces |
 
@@ -134,13 +174,15 @@ These matter more than flag trivia. Follow them and most “broken session” re
 
 ### Export
 
-1. **Fully quit the donor browser before export.**
-   Chrome/Firefox/Brave hold exclusive locks on the cookies SQLite DB. “Quit” means no residual process in Task Manager / Activity Monitor / `pgrep`. Otherwise you get `database is locked` or a partial/stale dump.
-2. **Export only the domains you need** (`--domains` or a site plugin). Smaller jars are easier to reason about and safer to share.
+1. **Choose the right export path (honest tradeoffs).**
+   - **CLI SQLite export:** richest jar (handlers, multi-origin storage, optional `--collect-fingerprint`). **Quit the donor browser first** when the cookie DB is locked (`database is locked` / partial dump). “Quit” means no residual process (Task Manager / `pgrep`).
+   - **Browser extension:** best when you must stay logged-in in a live window. Default download is **`.tokenade`**. **Downside:** no donor TLS fingerprint and only the open tab’s `localStorage` (unless you broaden domains). For fingerprint-sensitive proxy later, re-export via CLI or accept missing `fingerprint` in metadata.
+   - **Convert:** use when cookies already left the browser (Cookie-Editor, Playwright `storageState`, HAR, Netscape). Default goal is still a `.tokenade` session file.
+2. **Export only the domains you need** (`--domains` or a site plugin). Smaller jars are easier to reason about and safer to share (and under share-url size caps).
 3. **Prefer a stable donor** for high-value accounts. For Google, prefer Firefox / Brave / Edge — not Google Chrome — so cookies are portable.
 4. **Use `--list-profiles`** when multiple profiles exist; export the one that is actually logged in.
 5. **Encrypt before sharing** (`encrypt` or `--encrypt-password`). Treat `.tokenade` like a password dump.
-6. **Need storage (Discord, Telegram, some SPAs)?** Prefer a site handler. Handlers can declare exact storage origins, so export captures the right localStorage automatically.
+6. **Need storage (Discord, Telegram, some SPAs)?** Prefer a **site handler** on CLI export. Handlers declare exact storage origins. The extension cannot match that map today.
 
 ### Launch & inject
 
@@ -321,12 +363,39 @@ Output is redacted by default. Use `--show-secrets` to reveal credentials.
 
 ---
 
+## Terminal UI (TUI)
+
+Optional, powerful front-end over the same CLI (subprocess argv — no parallel business logic).
+
+```bash
+pip install 'tokenade[tui]'
+tokenade tui
+```
+
+| Key | Tab |
+|-----|-----|
+| `1` | **Export** — browser/profile discovery, domains, handlers, encrypt |
+| `2` | **Sessions** — list jars, launch / load / health / share |
+| `3` | **Share** — password share-url create/receive (password never uploaded) |
+| `4` | **Convert** — DirectoryTree file picker + industry formats → `.tokenade` |
+| `5`–`9` / `0` | Vault, Sync, Analytics, Plugins, Marketplace, Settings |
+
+**Copy:** drag to select text in logs and labels. **Ctrl+C does not quit** (shows a hint). Use **Ctrl+Shift+C** (or your terminal’s copy) for selection; **Ctrl+Q** or **q** to quit.
+
+Without the extra: `tokenade tui` prints install instructions and exits `1`. Core CLI keeps working.
+
+## Browser extension
+
+Load unpacked from [`extension/`](extension/) (Chromium-family). See [`extension/README.md`](extension/README.md) for limits. Not on the Web Store yet.
+
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Commands, share-url, TUI, convert |
 | [`docs/TUTORIAL_GETTING_STARTED.md`](docs/TUTORIAL_GETTING_STARTED.md) | Gmail→Brave golden path + Windows |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Locked DB, decrypt errors, proxy issues |
+| [`extension/README.md`](extension/README.md) | Extension install + honest capability table |
 | [`docs/SITE_CONFIGS.md`](docs/SITE_CONFIGS.md) | Site configs live in plugins (`site_config.json`) |
 | [`docs/API.md`](docs/API.md) | Programmatic / server API |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Package layout and design |

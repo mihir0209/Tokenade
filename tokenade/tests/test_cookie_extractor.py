@@ -730,6 +730,43 @@ class TestCookieExtractorExtract:
         cookies = extractor.extract()
         assert len(cookies) == 1
 
+    def test_extract_vivaldi_browser(self, chrome_db):
+        extractor = CookieExtractor(chrome_db, browser="vivaldi")
+        cookies = extractor.extract()
+        assert len(cookies) == 1
+        assert cookies[0]["name"] == "session"
+
+    def test_extract_opera_browser(self, chrome_db):
+        extractor = CookieExtractor(chrome_db, browser="opera")
+        cookies = extractor.extract()
+        assert len(cookies) == 1
+
+    def test_extract_network_cookies_path(self, tmp_path):
+        """Chrome 96+ stores Cookies under Network/."""
+        net = tmp_path / "Network"
+        net.mkdir()
+        db_path = net / "Cookies"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE cookies (
+                host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB,
+                path TEXT, expires_utc INTEGER, is_secure INTEGER DEFAULT 0,
+                is_httponly INTEGER DEFAULT 0, samesite INTEGER DEFAULT -1,
+                creation_utc INTEGER DEFAULT 0, last_access_utc INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO cookies (host_key, name, value, path, expires_utc, is_secure, is_httponly)
+            VALUES ('.g.com', 'SID', 'netpath', '/', 0, 1, 1)
+        """)
+        conn.commit()
+        conn.close()
+        extractor = CookieExtractor(str(tmp_path), browser="vivaldi")
+        cookies = extractor.extract()
+        assert len(cookies) == 1
+        assert cookies[0]["value"] == "netpath"
+
     def test_extract_firefox_browser(self, firefox_db):
         """Lines 499-500: extract dispatches to extract_firefox."""
         extractor = CookieExtractor(firefox_db, browser="firefox")

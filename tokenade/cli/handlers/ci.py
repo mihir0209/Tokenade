@@ -350,12 +350,33 @@ def cmd_cloak(args):
 
 def cmd_tui(args):
     """Launch interactive terminal UI."""
+    import sys
+
     from tokenade.tui import run_tui, _check_textual
 
     if not _check_textual():
-        print("TUI requires textual: pip install 'tokenade[tui]'")
-        print("Or use: tokenade plugin browse (static HTML)")
-        return
+        print(
+            "\n".join(
+                [
+                    "[ERROR] Tokenade TUI is not available — Textual is not installed.",
+                    "",
+                    "Install the TUI extra (recommended):",
+                    "  pip install 'tokenade[tui]'",
+                    "",
+                    "Same Python that runs tokenade:",
+                    f"  {sys.executable} -m pip install 'tokenade[tui]'",
+                    "",
+                    "Then re-run:",
+                    "  tokenade tui",
+                    "",
+                    "Without TUI you can still use the full CLI:",
+                    "  tokenade export --help",
+                    "  tokenade convert --help",
+                    "  tokenade share-url --help",
+                ]
+            )
+        )
+        raise SystemExit(1)
 
     mode = getattr(args, "tui_mode", "full")
     run_tui(mode=mode)

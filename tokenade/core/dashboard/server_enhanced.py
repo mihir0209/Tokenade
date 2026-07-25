@@ -145,8 +145,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         username = data.get("username", "")
         password = data.get("password", "")
         
-        if (username == self.dashboard.config.username and 
-            password == self.dashboard.config.password):
+        if (
+            username == self.dashboard.config.username
+            and password == self.dashboard.config.password
+        ):
             
             token = secrets.token_urlsafe(32)
             self.dashboard._auth_tokens[token] = {
@@ -380,7 +382,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 <div class="session">
                     <div class="session-name">${{s.name}}</div>
                     <div class="session-meta">
-                        Size: ${{(s.size / 1024).toFixed(1)}} KB | 
+                        Size: ${{(s.size / 1024).toFixed(1)}} KB |
                         Modified: ${{new Date(s.modified * 1000).toLocaleString()}}
                     </div>
                 </div>

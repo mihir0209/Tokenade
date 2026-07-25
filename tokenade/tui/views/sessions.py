@@ -13,19 +13,46 @@ try:
     _OK = True
 except ImportError:
     _OK = False
-    class Widget: pass
-    class ComposeResult: pass
-    class Grid: pass
-    class Horizontal: pass
-    class ScrollableContainer: pass
-    class Vertical: pass
-    class Static: pass
-    class Button: pass
-    class Input: pass
-    class Select: pass
-    class Label: pass
-    class RichLog: pass
-    class Rule: pass
+
+    class Widget:
+        pass
+
+    class ComposeResult:
+        pass
+
+    class Grid:
+        pass
+
+    class Horizontal:
+        pass
+
+    class ScrollableContainer:
+        pass
+
+    class Vertical:
+        pass
+
+    class Static:
+        pass
+
+    class Button:
+        pass
+
+    class Input:
+        pass
+
+    class Select:
+        pass
+
+    class Label:
+        pass
+
+    class RichLog:
+        pass
+
+    class Rule:
+        pass
+
 
 from tokenade.tui.config import SESSIONS_DIR
 from tokenade.tui.views.base import BaseView
@@ -57,6 +84,7 @@ def launch_profile_options(browser: str, *, refresh: bool = False) -> List[Tuple
         from tokenade.core.importer.browser_discovery import BrowserProfileDiscovery
 
         return [("clean profile", BrowserProfileDiscovery.CLEAN_PROFILE_VALUE)]
+
 
 # Short site_name → product URL (when cookies alone are ambiguous)
 _SITE_URL_MAP = {
