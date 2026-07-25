@@ -4,16 +4,21 @@ Tokenade Python SDK.
 Programmatic interface for session management, extraction, and proxy.
 
 Usage:
-    from tokenade.sdk import TokenadeClient
+    from tokenade.sdk import TokenadeClient, SessionProxy
 
     client = TokenadeClient()
     session = client.extract(browser="chrome", domains=["github.com"])
-    client.proxy(session, port=9222)
+
+    # Background CDP proxy (no second CLI process)
+    with client.start_proxy(session.session_file, port=9222) as proxy:
+        print(proxy.base_url)
+        ...
 """
 import json
 import logging
+import threading
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -29,12 +34,211 @@ class ExtractionResult:
     error: Optional[str] = None
 
 
+class SessionProxy:
+    """In-process session reverse proxy (CDP by default).
+
+    Starts the same stack as ``tokenade proxy -s …`` without spawning a CLI
+    subprocess. Prefer as a context manager so shutdown is reliable::
+
+        with SessionProxy.from_file("gmail.tokenade", port=9222) as p:
+            requests.get(p.base_url)
+    """
+
+    def __init__(
+        self,
+        session: Union[str, Path, Dict],
+        *,
+        port: int = 9222,
+        host: str = "127.0.0.1",
+        mode: str = "cdp",
+        fingerprint: bool = False,
+        headless: bool = True,
+        timeout: int = 30,
+        impersonate: Optional[str] = None,
+        background: bool = True,
+    ):
+        self.session = session
+        self.port = port
+        self.host = host
+        self.mode = mode
+        self.fingerprint = fingerprint
+        self.headless = headless
+        self.timeout = timeout
+        self.impersonate = impersonate
+        self.background = background
+        self._proxy = None
+        self._thread: Optional[threading.Thread] = None
+        self._error: Optional[BaseException] = None
+        self._started = threading.Event()
+        self._stop = threading.Event()
+
+    @classmethod
+    def from_file(cls, path: Union[str, Path], **kwargs) -> "SessionProxy":
+        return cls(str(path), **kwargs)
+
+    @property
+    def base_url(self) -> str:
+        bind = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        return f"http://{bind}:{self.port}"
+
+    @property
+    def running(self) -> bool:
+        return self._started.is_set() and not self._stop.is_set()
+
+    def start(self, *, wait: float = 15.0) -> "SessionProxy":
+        """Start the proxy. Blocks briefly until the server is accepting, then
+        returns (background thread) or runs until stop (foreground)."""
+        if self._started.is_set():
+            return self
+
+        if self.mode == "forward":
+            self._start_forward(wait=wait)
+        elif self.mode in ("cdp", "gui"):
+            self._start_cdp(wait=wait)
+        else:
+            raise ValueError(f"Unsupported proxy mode: {self.mode!r} (use cdp|forward)")
+
+        return self
+
+    def _load_session(self) -> Dict:
+        if isinstance(self.session, dict):
+            return self.session
+        from tokenade.core.importer.session_packager import SessionPackager
+
+        return SessionPackager().load(str(self.session))
+
+    def _start_cdp(self, *, wait: float) -> None:
+        from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
+
+        if self.fingerprint:
+            from tokenade.core.runtime.tls_matcher import require_curl_cffi
+
+            require_curl_cffi()
+
+        config = CDPProxyConfig(
+            port=self.port,
+            host=self.host,
+            headless=self.headless,
+            timeout=self.timeout,
+            use_fingerprint=self.fingerprint,
+        )
+        self._proxy = CDPProxy(self._load_session(), config)
+        if self.impersonate:
+            self._proxy._auto_refresh_config["impersonate"] = self.impersonate
+
+        def _run():
+            try:
+                self._proxy.run()
+            except BaseException as exc:
+                self._error = exc
+                logger.error("SessionProxy CDP failed: %s", exc, exc_info=True)
+            finally:
+                self._stop.set()
+
+        if self.background:
+            self._thread = threading.Thread(target=_run, name="tokenade-session-proxy", daemon=True)
+            self._thread.start()
+            if not self._wait_port(wait):
+                raise RuntimeError(
+                    f"SessionProxy did not become ready on {self.base_url}"
+                    + (f": {self._error}" if self._error else "")
+                )
+            self._started.set()
+        else:
+            self._started.set()
+            _run()
+
+    def _start_forward(self, *, wait: float) -> None:
+        import asyncio
+        from tokenade.core.proxy.forward_proxy import ForwardProxy
+
+        proxy = ForwardProxy(self._load_session(), port=self.port, host=self.host)
+        self._proxy = proxy
+
+        def _run():
+            try:
+                asyncio.run(proxy.start())
+            except BaseException as exc:
+                self._error = exc
+                logger.error("SessionProxy forward failed: %s", exc, exc_info=True)
+            finally:
+                self._stop.set()
+
+        if self.background:
+            self._thread = threading.Thread(target=_run, name="tokenade-forward-proxy", daemon=True)
+            self._thread.start()
+            if not self._wait_port(wait):
+                raise RuntimeError(
+                    f"SessionProxy did not become ready on {self.base_url}"
+                    + (f": {self._error}" if self._error else "")
+                )
+            self._started.set()
+        else:
+            self._started.set()
+            _run()
+
+    def _wait_port(self, timeout: float) -> bool:
+        import socket
+        import time
+
+        deadline = time.time() + max(timeout, 0.1)
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        while time.time() < deadline:
+            if self._error is not None:
+                return False
+            try:
+                with socket.create_connection((host, self.port), timeout=0.25):
+                    return True
+            except OSError:
+                time.sleep(0.1)
+        return False
+
+    def stop(self, *, join_timeout: float = 5.0) -> None:
+        """Best-effort shutdown of the background proxy thread."""
+        self._stop.set()
+        proxy = self._proxy
+        if proxy is None:
+            return
+        try:
+            if hasattr(proxy, "stop"):
+                import asyncio
+
+                maybe = proxy.stop()
+                if asyncio.iscoroutine(maybe):
+                    try:
+                        loop = asyncio.new_event_loop()
+                        try:
+                            loop.run_until_complete(maybe)
+                        finally:
+                            loop.close()
+                    except Exception:
+                        logger.debug("SessionProxy async stop failed", exc_info=True)
+        except Exception:
+            logger.debug("SessionProxy stop failed", exc_info=True)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=join_timeout)
+        self._started.clear()
+
+    def __enter__(self) -> "SessionProxy":
+        return self.start()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop()
+
+    def __del__(self):
+        try:
+            self.stop(join_timeout=0.5)
+        except Exception:
+            pass
+
+
 class TokenadeClient:
     """Main SDK client for Tokenade operations."""
 
     def __init__(self, sessions_dir: Optional[str] = None):
         self.sessions_dir = Path(sessions_dir or "~/.tokenade/sessions").expanduser()
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._proxies: List[SessionProxy] = []
 
     def extract(self, browser: str = "chrome", domains: Optional[List[str]] = None,
                 profile: Optional[str] = None, output: Optional[str] = None) -> ExtractionResult:
@@ -255,3 +459,60 @@ class TokenadeClient:
         except Exception as e:
             logger.error(f"Export failed: {e}")
             return False
+
+    def start_proxy(
+        self,
+        session: Union[str, Path, Dict, ExtractionResult],
+        *,
+        port: int = 9222,
+        host: str = "127.0.0.1",
+        mode: str = "cdp",
+        fingerprint: bool = False,
+        headless: bool = True,
+        timeout: int = 30,
+        impersonate: Optional[str] = None,
+        background: bool = True,
+    ) -> SessionProxy:
+        """Start a session reverse proxy in-process (no CLI subprocess).
+
+        Equivalent intent to ``tokenade proxy -s session.tokenade`` for
+        automation wrappers. Returns a :class:`SessionProxy` that is already
+        started when ``background=True`` (default).
+
+        Example::
+
+            client = TokenadeClient()
+            with client.start_proxy("gmail.tokenade", port=9222) as proxy:
+                # point scrapers / browsers at proxy.base_url
+                ...
+        """
+        if isinstance(session, ExtractionResult):
+            if not session.success or not (session.session_file or session.session_data):
+                raise ValueError(session.error or "ExtractionResult has no session")
+            target: Union[str, Path, Dict] = session.session_file or session.session_data  # type: ignore[assignment]
+        else:
+            target = session
+
+        proxy = SessionProxy(
+            target,
+            port=port,
+            host=host,
+            mode=mode,
+            fingerprint=fingerprint,
+            headless=headless,
+            timeout=timeout,
+            impersonate=impersonate,
+            background=background,
+        )
+        proxy.start()
+        self._proxies.append(proxy)
+        return proxy
+
+    def stop_proxies(self) -> None:
+        """Stop all proxies started via :meth:`start_proxy`."""
+        while self._proxies:
+            proxy = self._proxies.pop()
+            try:
+                proxy.stop()
+            except Exception:
+                logger.debug("stop_proxies failed", exc_info=True)

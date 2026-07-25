@@ -28,9 +28,11 @@ tokenade plugin sync
 
 ## Screenshots
 
-| TUI · Sessions | TUI · Share |
+| TUI · Export | TUI · Sessions |
 |:---:|:---:|
-| ![Sessions](docs/assets/screenshots/tui-sessions.svg) | ![Share](docs/assets/screenshots/tui-share.svg) |
+| ![Export](docs/assets/screenshots/tui-export.svg) | ![Sessions](docs/assets/screenshots/tui-sessions.svg) |
+| **TUI · Share** | **TUI · Convert** |
+| ![Share](docs/assets/screenshots/tui-share.svg) | ![Convert](docs/assets/screenshots/tui-convert.svg) |
 | **TUI · Marketplace** | **TUI · Settings** |
 | ![Marketplace](docs/assets/screenshots/tui-marketplace.svg) | ![Settings](docs/assets/screenshots/tui-settings.svg) |
 

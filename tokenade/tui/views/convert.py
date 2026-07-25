@@ -181,7 +181,7 @@ class ConvertView(BaseView):
     /* Password field: 80% of form pane width (form pane is 60% of tab) */
     ConvertView #convert-password-input {
         width: 80%;
-        margin-right: 1%;
+        margin-right: 1;
     }
     ConvertView #convert-encrypt-switch {
         width: auto;

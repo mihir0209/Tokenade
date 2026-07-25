@@ -238,8 +238,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     .status-unknown { color: $text-muted; }
     """
 
-    # Text is selectable app-wide (Textual ALLOW_SELECT). Terminal copy is usually
-    # Ctrl+Shift+C; we also bind that. Ctrl+C never quits — only shows a hint.
+    # Text is selectable app-wide. Many terminals never deliver Ctrl+Shift+C to the
+    # app (they handle copy themselves). We bind several copy chords; Ctrl+C copies
+    # when there is a selection / focused field, else shows a short hint (never quits).
     ALLOW_SELECT = True
 
     BINDINGS = [
@@ -257,15 +258,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("question_mark", "help", "Help"),
         Binding("r", "refresh", "Refresh"),
-        Binding(
-            "ctrl+shift+c",
-            "copy_selection",
-            "Copy",
-            show=False,
-            priority=True,
-        ),
-        # Override Textual's ctrl+c help_quit: never quit; show copy/quit hint only
-        Binding("ctrl+c", "copy_hint", "Copy hint", show=False, priority=True),
+        Binding("ctrl+shift+c", "copy_selection", "Copy", show=False, priority=True),
+        Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True),
+        Binding("y", "copy_selection", "Yank/copy", show=False),
     ]
 
     def __init__(self, **kwargs):
@@ -775,16 +770,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             cfg = load_config()
             try:
                 self.query_one("#current-registry").update(
-                    "default: https://github.com/mihir0209/tokenade-plugins"
+                    "active: https://github.com/mihir0209/tokenade-plugins"
                 )
             except Exception:
                 pass
             for wid, val in (
-                ("#settings-tokenade-dir", f"home:      {TOKENADE_DIR}"),
-                ("#settings-sessions-dir", f"sessions:  {SESSIONS_DIR}"),
-                ("#settings-vault-dir", f"vault:     {VAULT_DIR}"),
-                ("#settings-analytics-dir", f"analytics: {ANALYTICS_DIR}"),
-                ("#settings-plugins-dir", f"plugins:   {PLUGINS_DIR}"),
+                ("#settings-tokenade-dir", f"home       {TOKENADE_DIR}"),
+                ("#settings-sessions-dir", f"sessions   {SESSIONS_DIR}"),
+                ("#settings-vault-dir", f"vault      {VAULT_DIR}"),
+                ("#settings-analytics-dir", f"analytics  {ANALYTICS_DIR}"),
+                ("#settings-plugins-dir", f"plugins    {PLUGINS_DIR}"),
             ):
                 try:
                     self.query_one(wid).update(val)
@@ -814,19 +809,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 except Exception:
                     pass
 
+            auto_b = cfg.get("automation_browser") or "cloak"
+            stealth = cfg.get("stealth_level") or "maximum"
+            proxy_host = cfg.get("proxy_host") or "127.0.0.1"
+            proxy_port = cfg.get("proxy_port") or 9222
             _set_select("#settings-default-browser", cfg.get("default_browser"))
-            _set_select(
-                "#settings-automation-browser",
-                cfg.get("automation_browser") or "cloak",
-            )
-            _set_select(
-                "#settings-stealth-level",
-                cfg.get("stealth_level") or "maximum",
-            )
+            _set_select("#settings-automation-browser", auto_b)
+            _set_select("#settings-stealth-level", stealth)
             _set_input("#settings-default-profile", cfg.get("default_profile") or "")
             _set_input("#settings-output-dir", cfg.get("output_dir") or "")
-            _set_input("#settings-proxy-host", cfg.get("proxy_host") or "127.0.0.1")
-            _set_input("#settings-proxy-port", cfg.get("proxy_port") or 9223)
+            _set_input("#settings-proxy-host", proxy_host)
+            _set_input("#settings-proxy-port", proxy_port)
             _set_switch("#settings-visible", bool(cfg.get("visible")))
             _set_switch("#settings-auto-validate", bool(cfg.get("auto_validate", True)))
             _set_switch("#settings-encrypt", bool(cfg.get("encrypt_by_default")))
@@ -836,16 +829,28 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 "#settings-supabase-use-default",
                 bool(cfg.get("supabase_use_default", True)),
             )
+            remote_line = "Remote share: unknown"
             try:
                 from tokenade.core.sharing.supabase_store import SupabaseConfig
                 sc = SupabaseConfig.from_env()
                 if not sc.enabled:
-                    status = "Remote share: OFF (full URL still works offline)"
+                    remote_line = "Remote share: OFF (full URL still works offline)"
                 elif sc.is_public_default:
-                    status = f"Remote share: ON — public default ({sc.url})"
+                    remote_line = f"Remote share: ON — public default ({sc.url})"
                 else:
-                    status = f"Remote share: ON — private ({sc.source}: {sc.url})"
-                self.query_one("#settings-supabase-status").update(status)
+                    remote_line = f"Remote share: ON — private ({sc.source}: {sc.url})"
+                self.query_one("#settings-supabase-status").update(remote_line)
+            except Exception:
+                pass
+            try:
+                exp = cfg.get("default_browser") or "auto-detect"
+                vis = "visible" if cfg.get("visible") else "headless"
+                enc = "encrypt-default" if cfg.get("encrypt_by_default") else "plaintext-default"
+                summary = (
+                    f"export={exp}  ·  load={auto_b}  ·  stealth={stealth}  ·  "
+                    f"proxy={proxy_host}:{proxy_port} ({vis})  ·  {enc}\n{remote_line}"
+                )
+                self.query_one("#settings-summary").update(summary)
             except Exception:
                 pass
         except Exception as e:
@@ -1879,11 +1884,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             out = _inp("#settings-output-dir")
             cfg.set("output_dir", out or None)
             cfg.set("proxy_host", _inp("#settings-proxy-host") or "127.0.0.1")
-            port_s = _inp("#settings-proxy-port") or "9223"
+            port_s = _inp("#settings-proxy-port") or "9222"
             try:
                 cfg.set("proxy_port", int(port_s))
             except ValueError:
-                cfg.set("proxy_port", 9223)
+                cfg.set("proxy_port", 9222)
             cfg.set("visible", _sw("#settings-visible", False))
             cfg.set("auto_validate", _sw("#settings-auto-validate", True))
             cfg.set("encrypt_by_default", _sw("#settings-encrypt", False))
@@ -2337,53 +2342,102 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def action_help(self):
         self.notify(
-            "tabs 1-9/0 · r refresh · select text then Ctrl+Shift+C · Ctrl+Q or q quit",
+            "tabs 1-9/0 · r refresh · select text then Ctrl+C / y · Ctrl+Q or q quit",
             timeout=6,
         )
 
-    def action_copy_hint(self) -> None:
-        """Ctrl+C: do not quit. Nudge toward terminal copy / real quit keys."""
-        self.notify(
-            "Ctrl+Shift+C to copy selection · Ctrl+Q (or q) to quit",
-            title="Copy / quit",
-            timeout=5,
-        )
-
-    def action_copy_selection(self) -> None:
-        """Ctrl+Shift+C: copy screen selection (or focused Input) to clipboard."""
+    def _selection_text(self) -> str:
+        """Best-effort selected / focused text for clipboard actions."""
         text = ""
         try:
             screen = self.screen
             if screen is not None and hasattr(screen, "get_selected_text"):
-                text = screen.get_selected_text() or ""
+                text = (screen.get_selected_text() or "").strip()
         except Exception:
             text = ""
+        if text:
+            return text
+        try:
+            focused = self.focused
+            if focused is None:
+                return ""
+            if getattr(focused, "password", False):
+                return ""
+            sel = getattr(focused, "selected_text", None)
+            if sel:
+                return str(sel).strip()
+            # Common copy targets: share URL fields, path inputs (not passwords)
+            fid = getattr(focused, "id", None) or ""
+            if fid and any(
+                k in fid
+                for k in (
+                    "share-",
+                    "path",
+                    "output",
+                    "url",
+                    "host",
+                    "registry",
+                    "input",
+                    "session",
+                )
+            ):
+                val = getattr(focused, "value", None)
+                if val:
+                    return str(val).strip()
+            # RichLog / Static selection sometimes exposes text property
+            for attr in ("text", "renderable"):
+                raw = getattr(focused, attr, None)
+                if raw and isinstance(raw, str) and len(raw) < 8000:
+                    # only if short enough and looks like a single URL/path line
+                    line = raw.strip().splitlines()[0] if raw.strip() else ""
+                    if line.startswith(("http://", "https://", "/", "~")):
+                        return line
+        except Exception:
+            pass
+        # Last share payload (buttons still preferred)
+        try:
+            full = (self._last_share or {}).get("full_url") or (self._last_share or {}).get("url")
+            if full:
+                return str(full).strip()
+        except Exception:
+            pass
+        return ""
+
+    def action_copy_hint(self) -> None:
+        """Nudge when there is nothing to copy."""
+        self.notify(
+            "Select text, focus a path/URL field, or use Copy buttons · y / Ctrl+C copies · Ctrl+Q quits",
+            title="Copy",
+            timeout=5,
+        )
+
+    def action_copy_or_hint(self) -> None:
+        """Ctrl+C: copy when possible; otherwise hint. Never quits."""
+        text = self._selection_text()
         if not text:
-            try:
-                focused = self.focused
-                if focused is not None:
-                    sel = getattr(focused, "selected_text", None)
-                    if sel:
-                        text = str(sel)
-                    elif hasattr(focused, "value") and not getattr(focused, "password", False):
-                        # No selection — don't dump whole password fields
-                        pass
-            except Exception:
-                pass
+            self.action_copy_hint()
+            return
+        ok = self._copy_to_clipboard(text, label="Copied")
+        if not ok:
+            self.notify("Clipboard failed — text is in the log panel", severity="warning")
+
+    def action_copy_selection(self) -> None:
+        """Copy selection / focused field / last share URL."""
+        text = self._selection_text()
         if not text:
             self.notify(
-                "Select text first, then Ctrl+Shift+C (or your terminal copy)",
+                "Nothing to copy — select text, focus a path/URL, or use a Copy button",
                 severity="warning",
                 timeout=4,
             )
             return
-        ok = self._copy_to_clipboard(text, label="Copied selection")
+        ok = self._copy_to_clipboard(text, label="Copied")
         if not ok:
             self.notify("Clipboard copy failed — use terminal select+copy", severity="warning")
 
     def action_help_quit(self) -> None:
         """Override Textual default: Ctrl+C never quits."""
-        self.action_copy_hint()
+        self.action_copy_or_hint()
 
     def on_directory_tree_file_selected(self, event) -> None:
         """File picked in Convert tab DirectoryTree."""

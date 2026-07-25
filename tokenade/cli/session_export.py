@@ -52,7 +52,12 @@ def cmd_convert(args):
         raise SystemExit(1)
 
     print(f"   [OK] site={result.get('site_name')} cookies={result.get('cookie_count')}")
-    print(f"   [OK] format={result.get('format')} auth={result.get('auth_status')}")
+    print(
+        f"   [OK] format={result.get('format')} auth={result.get('auth_status')} "
+        f"version={result.get('version') or '3.0'}"
+    )
+    if result.get("product_url"):
+        print(f"   [OK] product_url={result.get('product_url')}")
     print(f"   [OK] saved: {result.get('output_path')}")
     return result
 

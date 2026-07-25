@@ -52,7 +52,10 @@ class TestCliRunnerDisplay:
         keys = {getattr(b, "key", "") for b in TokenadeTUI.BINDINGS}
         assert "ctrl+c" in keys
         assert "ctrl+shift+c" in keys
+        assert "y" in keys
         assert "ctrl+q" in keys
+        actions = {getattr(b, "action", "") for b in TokenadeTUI.BINDINGS}
+        assert "copy_or_hint" in actions or "copy_selection" in actions
 
     def test_cmd_tui_missing_textual_exits(self):
         from tokenade.cli.handlers import ci

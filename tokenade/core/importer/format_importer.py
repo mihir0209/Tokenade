@@ -620,50 +620,130 @@ class FormatImporter:
         return "unknown"
 
     @staticmethod
+    def _storage_from_flat(local_storage: Dict, cookies: List[Dict]) -> Dict:
+        """Turn flat localStorage maps into v3 per-origin ``storage``."""
+        storage: Dict = {"local": {}, "session": {}}
+        if not local_storage:
+            return storage
+
+        # Already per-origin: {origin: {k: v}}
+        sample = next(iter(local_storage.values()), None)
+        if local_storage and all(isinstance(v, dict) for v in local_storage.values()):
+            storage["local"] = {str(k): dict(v) for k, v in local_storage.items()}
+            return storage
+
+        # Flat "domain:key" → value (Playwright-style importer)
+        by_origin: Dict[str, Dict[str, str]] = {}
+        plain: Dict[str, str] = {}
+        for key, value in local_storage.items():
+            ks = str(key)
+            if ":" in ks and not ks.startswith("http"):
+                domain, rest = ks.split(":", 1)
+                origin = domain if domain.startswith("http") else f"https://{domain.lstrip('.')}"
+                by_origin.setdefault(origin, {})[rest] = "" if value is None else str(value)
+            else:
+                plain[ks] = "" if value is None else str(value)
+        if by_origin:
+            storage["local"].update(by_origin)
+        if plain:
+            from tokenade.core.importer.session_packager import SessionPackager
+
+            origin = SessionPackager()._infer_origin(cookies)
+            storage["local"].setdefault(origin, {}).update(plain)
+        return storage
+
+    @staticmethod
+    def _product_url_for_site(site_name: str, cookies: List[Dict]) -> str:
+        """Best-effort product URL for launch/proxy (same map as TUI sessions)."""
+        try:
+            from tokenade.tui.views.sessions import _SITE_URL_MAP
+
+            if site_name and site_name in _SITE_URL_MAP:
+                return _SITE_URL_MAP[site_name]
+            mapped = _SITE_URL_MAP.get((site_name or "").lower())
+            if mapped:
+                return mapped
+        except Exception:
+            pass
+        for c in cookies or []:
+            domain = (c.get("domain") or "").lstrip(".")
+            if domain:
+                return f"https://{domain}"
+        return ""
+
+    @staticmethod
     def _build_session(cookies: List[Dict], local_storage: Dict, source_format: str) -> Dict:
-        """Build a .tokenade-compatible session via SessionPackager when possible."""
+        """Build a mature v3 .tokenade session via SessionPackager."""
         from datetime import datetime, timezone
 
+        cookies = [FormatImporter._normalize_cookie(c) for c in (cookies or [])]
+        cookies = [c for c in cookies if c.get("name")]
         ls = local_storage or {}
+        storage = FormatImporter._storage_from_flat(ls, cookies)
+
         try:
             from tokenade.core.importer.session_packager import SessionPackager
 
             packager = SessionPackager()
             package = packager.package(
                 cookies=cookies,
-                browser="import",
+                browser="converted",
                 profile=source_format,
-                local_storage=ls or None,
+                storage=storage if (storage.get("local") or storage.get("session")) else None,
+                local_storage=None,
                 metadata={
                     "extraction_method": f"import_{source_format}",
                     "source_format": source_format,
+                    "converted": True,
                 },
             )
-            package["local_storage"] = ls
+            site = package.get("site_name") or "unknown"
+            product_url = FormatImporter._product_url_for_site(site, cookies)
+            if product_url:
+                package.setdefault("metadata", {})["product_url"] = product_url
+            # v3 uses storage only — drop legacy top-level local_storage if empty
+            package.pop("local_storage", None)
+            package = packager._normalize_legacy(package)
+            # After normalize, keep storage canonical; strip empty legacy key
+            if not package.get("local_storage"):
+                package.pop("local_storage", None)
             return package
         except Exception:
             now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            site = "unknown"
+            try:
+                from tokenade.core.importer.session_packager import SessionPackager
+
+                site = SessionPackager().detect_site(cookies) or "unknown"
+            except Exception:
+                pass
+            product_url = FormatImporter._product_url_for_site(site, cookies)
             return {
-                "version": "2.0",
+                "version": "3.0",
                 "created_at": now,
                 "source_device": {
-                    "browser": "unknown",
-                    "profile": "unknown",
+                    "browser": "converted",
+                    "profile": source_format,
                     "platform": "unknown",
-                    "hostname": "unknown",
+                    "hostname": "anonymous",
                 },
-                "site_name": "unknown",
+                "site_name": site,
                 "auth_status": "unknown",
                 "cookies": cookies,
                 "tokens": [],
-                "local_storage": ls,
+                "storage": storage,
                 "fingerprint": None,
                 "tls_profile": None,
+                "oauth_config": None,
                 "metadata": {
                     "extraction_method": f"import_{source_format}",
+                    "source_format": source_format,
+                    "converted": True,
                     "cookie_count": len(cookies),
                     "critical_cookie_count": 0,
-                    "local_storage_count": len(ls),
+                    "local_storage_count": sum(len(v) for v in storage.get("local", {}).values()),
+                    "session_storage_count": 0,
+                    **({"product_url": product_url} if product_url else {}),
                 },
             }
 
@@ -765,13 +845,38 @@ class FormatImporter:
                 if not c.get("domain"):
                     c["domain"] = domain
 
+        # Re-package so convert always yields mature v3
+        try:
+            ls = None
+            if isinstance(session.get("storage"), dict):
+                ls = session["storage"].get("local")
+            if not ls:
+                ls = session.get("local_storage") or {}
+            session = cls._build_session(cookies, ls or {}, fmt)
+            session.setdefault("metadata", {})["source_format"] = fmt
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to package session: {e}",
+                "output_path": None,
+                "format": fmt,
+            }
+
         out = Path(output_path).expanduser()
         if not out.suffix:
             out = out.with_suffix(".tokenade")
         try:
             from tokenade.core.importer.session_packager import SessionPackager
 
-            saved = SessionPackager().save(session, str(out), encrypt=encrypt)
+            packager = SessionPackager()
+            if not packager.validate_format(session):
+                return {
+                    "success": False,
+                    "error": "Packaged session failed format validation",
+                    "output_path": None,
+                    "format": fmt,
+                }
+            saved = packager.save(session, str(out), encrypt=encrypt)
         except Exception as e:
             return {
                 "success": False,
@@ -784,8 +889,10 @@ class FormatImporter:
         return {
             "success": True,
             "output_path": saved,
-            "cookie_count": len(cookies),
+            "cookie_count": len(session.get("cookies") or cookies),
             "site_name": site,
             "format": fmt,
             "auth_status": session.get("auth_status"),
+            "version": session.get("version"),
+            "product_url": (session.get("metadata") or {}).get("product_url"),
         }

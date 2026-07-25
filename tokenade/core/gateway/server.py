@@ -124,6 +124,16 @@ class GatewayControlPlane:
         if state_file:
             self._load_state()
 
+        # Auto-rotation + health timers (must live on the instance, not inside webhook send)
+        self._auto_rotate_timer: Optional[threading.Timer] = None
+        self._auto_rotate_interval = routing_config.switch_interval_seconds
+        if self._auto_rotate_interval and self._auto_rotate_interval > 0:
+            self._start_auto_rotate_timer()
+
+        self._health_timer: Optional[threading.Timer] = None
+        if routing_config.health_check_interval_seconds:
+            self._start_health_monitor()
+
     def _fire_webhook(self, event: str, data: Dict[str, Any]):
         """Fire a webhook notification (async, fire-and-forget)."""
         if not self.webhooks.get(f"on_{event}"):
@@ -165,17 +175,6 @@ class GatewayControlPlane:
 
         thread = threading.Thread(target=_send, daemon=True)
         thread.start()
-
-        # Auto-rotation
-        self._auto_rotate_timer: Optional[threading.Timer] = None
-        self._auto_rotate_interval = routing_config.switch_interval_seconds
-        if self._auto_rotate_interval and self._auto_rotate_interval > 0:
-            self._start_auto_rotate_timer()
-
-        # Health monitoring
-        self._health_timer: Optional[threading.Timer] = None
-        if routing_config.health_check_interval_seconds:
-            self._start_health_monitor()
 
     def _start_auto_rotate_timer(self):
         """Start background timer for auto-rotation."""

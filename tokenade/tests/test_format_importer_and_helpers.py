@@ -85,7 +85,14 @@ class TestFormatImporterPlaywright:
         assert len(result["cookies"]) == 1
         assert result["cookies"][0]["name"] == "sid"
         assert result["cookies"][0]["expires"] == 1893456000
-        assert result["local_storage"]["test.com:key"] == "val"
+        # v3 mature jar: per-origin storage (not flat local_storage)
+        local = (result.get("storage") or {}).get("local") or {}
+        assert any(
+            entries.get("key") == "val"
+            for entries in local.values()
+            if isinstance(entries, dict)
+        )
+        assert result.get("version") == "3.0"
 
     def test_missing_expires(self, tmp_path):
         data = {"cookies": [{"name": "a", "value": "b", "domain": ".x.com"}]}
@@ -241,14 +248,18 @@ class TestFormatImporterDetectFormat:
 
 class TestFormatImporterBuildSession:
     def test_build_session(self):
-        cookies = [{"name": "a", "value": "1"}]
+        cookies = [{"name": "a", "value": "1", "domain": ".example.com", "path": "/"}]
         result = FormatImporter._build_session(cookies, {"k": "v"}, "test_format")
-        assert result["version"] in ("2.0", "3.0")
-        assert result["cookies"] == cookies
-        assert result["local_storage"] == {"k": "v"}
+        assert result["version"] == "3.0"
+        assert result["cookies"][0]["name"] == "a"
+        assert "storage" in result
         assert result["metadata"]["extraction_method"] == "import_test_format"
         assert result["metadata"]["cookie_count"] == 1
         assert result["metadata"]["local_storage_count"] == 1
+        assert result["metadata"].get("converted") is True
+        assert result["source_device"]["browser"] == "converted"
+        # Mature jar: no empty legacy local_storage required
+        assert result.get("tls_profile") is not None or "tls_profile" in result
 
 
 class TestFormatImporterConvertFile:
