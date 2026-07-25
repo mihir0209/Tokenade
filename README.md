@@ -9,7 +9,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/tokenade)](https://pypistats.org/packages/tokenade)
+[![Downloads](https://static.pepy.tech/badge/tokenade/month)](https://pepy.tech/projects/tokenade)
 [![CI](https://img.shields.io/github/actions/workflow/status/mihir0209/tokenade/ci.yml?branch=main&label=CI)](https://github.com/mihir0209/tokenade/actions)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -53,8 +53,25 @@ tokenade tui
 | Interactive terminal UI | `tokenade tui` (optional extra) |
 | Grab session while browser stays open | Browser extension (cookies; no fingerprint) |
 | Import Cookie-Editor / Playwright / HAR dumps | `tokenade convert` or TUI **Convert** tab |
+| Share a jar without a shared filesystem | `tokenade share-url` (password + optional short id) |
+| In-process proxy from Python | `TokenadeClient.start_proxy(...)` / `SessionProxy` |
 
 Self-hosted CLI. No cloud account required for the core loop.
+
+### Why a `.tokenade` file (not raw cookies)?
+
+Cookie dumps (Cookie-Editor JSON, Netscape, `Set-Cookie` headers, even Playwright `storageState`) are **partial** session views. Tokenade’s native jar is the **most mature, first-class format** in this project because a real login is more than a name/value list:
+
+| Concern | Loose cookie dump | `.tokenade` |
+|---------|-------------------|-------------|
+| **Where to open the site** | Often missing — you guess the product URL from domains | Site / handler metadata + export path keep **product URL** intent |
+| **Multi-origin storage** | Rarely complete (one tab origin, or cookies only) | Handlers declare **storage origins** (Discord, Telegram Web, …) |
+| **Auth shape** | Flat list; no auth status / packaging version | Packaged session with cookies, tokens, storage, optional fingerprint |
+| **Cross-tool round-trip** | Each vendor schema differs | **Convert in**, load/launch/proxy/share **out** of one format |
+| **At-rest safety** | Usually plaintext JSON | Optional **AES-256-GCM** encrypt / rekey on the same file type |
+| **Ops** | Ad-hoc scripts per dump type | One CLI/TUI/SDK surface: health, refresh, share-url, gateway routing |
+
+**Honest limits:** a `.tokenade` is still only as good as the export path (CLI SQLite > extension live cookies > foreign convert). It is **not** a Multilogin profile and does not invent TLS fingerprints the donor never had.
 
 ---
 
@@ -139,6 +156,15 @@ tokenade load --file discord.tokenade --visible
 ```bash
 tokenade proxy -s gmail.tokenade
 # Open the local GUI / URL printed by the CLI (default port 9222)
+```
+
+**Programmatic proxy** (same stack, no second CLI process) — see [`USE-CASES.md`](USE-CASES.md):
+
+```python
+from tokenade.sdk import TokenadeClient
+
+with TokenadeClient().start_proxy("gmail.tokenade", port=9222) as proxy:
+    print(proxy.base_url)  # point scrapers / tools here
 ```
 
 **Encrypt** sensitive jars before sharing or storing:
@@ -239,11 +265,17 @@ These matter more than flag trivia. Follow them and most “broken session” re
 git clone https://github.com/mihir0209/tokenade.git
 cd tokenade
 pip install -e ".[dev]"
-playwright install chromium --with-deps
 pytest   # suite under tokenade/tests/
 ```
 
-CloakBrowser (stealth Chromium backend) is a core dependency; its binary downloads on first use when available.
+**Browser backends (know which is which):**
+
+| Piece | Role | How you get it |
+|-------|------|----------------|
+| **CloakBrowser** | Default **load / launch / stealth** Chromium backend (core dependency) | Ships with `pip install tokenade`; **binary downloads on first use** when available |
+| **Playwright Chromium** | Used by some **proxy / CDP / test** paths that drive stock Playwright | Optional for core CLI export; for those paths: `playwright install chromium` (add `--with-deps` on Linux CI images) |
+
+You do **not** need `playwright install` just to export cookies or run most unit tests. Install Playwright browsers when you exercise CDP proxy, gateway runtime with a real browser, or Playwright-based integration tests.
 
 ---
 

@@ -1,11 +1,22 @@
 # Tokenade Gateway
 
-Multi-session control plane for session routing and isolation.
+Multi-session **control plane** for listing sanitized session metadata and selecting an active session by strategy. Optional browser runtime hooks attach contexts/tabs when configured.
 
-## Quick Start
+## Maturity (read this first)
+
+| Layer | Status |
+|-------|--------|
+| CLI `tokenade gateway --request …` | **Present** — validates request JSON, starts HTTP server |
+| Session store + routing strategies | **Unit-tested** (round-robin, select by id/site, sanitized list) |
+| HTTP API (`/status`, `/sessions`, `/route/*`) | **Implemented**; keep binding on `127.0.0.1` unless you design otherwise |
+| Browser runtime (CloakBrowser / CDP contexts, `/tabs/new`) | **Code present** — needs your own witness run with real jars |
+| Auto-rotate timers, webhooks, rate limits | **Implemented in code**; not a production SLA |
+
+This is **not** a drop-in replacement for a full fleet product. Use it when you want a local router over many `.tokenade` files; verify endpoints against your sessions before automation depends on them.
+
+## Quick start
 
 ```bash
-# 1. Create a request.json
 cat > gateway.request.json << 'EOF'
 {
   "version": "1",
@@ -17,7 +28,7 @@ cat > gateway.request.json << 'EOF'
   "gateway": {
     "host": "127.0.0.1",
     "port": 9222,
-    "backend": "cloakbrowser"
+    "backend": "cdp"
   },
   "routing": {
     "object": "session",
@@ -27,33 +38,42 @@ cat > gateway.request.json << 'EOF'
 }
 EOF
 
-# 2. Start the gateway
 tokenade gateway --request gateway.request.json
 ```
 
-## API Endpoints
+Smoke-check:
+
+```bash
+curl -s http://127.0.0.1:9222/status | python3 -m json.tool
+curl -s http://127.0.0.1:9222/sessions | python3 -m json.tool
+curl -s -X POST http://127.0.0.1:9222/route/next | python3 -m json.tool
+```
+
+Invalid request files exit **2** with a JSON error envelope (`operation: gateway`).
+
+## API endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/status` | GET | Gateway state and session count |
-| `/sessions` | GET | Sanitized session records (no cookies) |
+| `/sessions` | GET | Sanitized session records (**no** cookie/storage secrets) |
 | `/route/next` | POST | Select next session by strategy |
 | `/route/select` | POST | Set active session by selector |
-| `/contexts` | GET | Browser context state |
+| `/contexts` | GET | Browser context state (when runtime enabled) |
 | `/contexts/prewarm` | POST | Prewarm contexts for sessions |
 | `/contexts/drain` | POST | Close inactive contexts |
-| `/tabs/new` | POST | Open new tab on active context |
+| `/tabs/new` | POST | Open new tab on active context (runtime) |
 
-## Routing Strategies
+## Routing strategies
 
 | Strategy | Behavior |
 |----------|----------|
 | `round-robin` | Cycle through sessions in order |
 | `random` | Random session selection |
 | `health-weighted` | Prefer sessions with better health scores |
-| `sticky` | Stick to same session by key (e.g., site) |
+| `sticky` | Stick to same session by key (e.g. site) |
 
-## Request Shape
+## Request shape
 
 ```json
 {
@@ -66,27 +86,7 @@ tokenade gateway --request gateway.request.json
   "gateway": {
     "host": "127.0.0.1",
     "port": 9222,
-    "backend": "cloakbrowser",
-    "runtime": {
-      "enabled": true,
-      "backend": "cloakbrowser",
-      "headless": true
-    }
-  },
-  "routing": {
-    "object": "session",
-    "strategy": "health-weighted",
-    "switch_interval_seconds": 300,
-    "health_check_interval_seconds": 30,
-    "unhealthy_threshold": 3,
-    "sticky_by": "site",
-    "failover": true,
-    "drain_existing_tabs": true
-  },
-  "gateway": {
-    "host": "127.0.0.1",
-    "port": 9222,
-    "backend": "cloakbrowser",
+    "backend": "cdp",
     "runtime": {
       "enabled": true,
       "backend": "cloakbrowser",
@@ -104,61 +104,75 @@ tokenade gateway --request gateway.request.json
       "burst": 10
     }
   },
+  "routing": {
+    "object": "session",
+    "strategy": "health-weighted",
+    "switch_interval_seconds": 300,
+    "health_check_interval_seconds": 30,
+    "unhealthy_threshold": 3,
+    "sticky_by": "site",
+    "failover": true,
+    "drain_existing_tabs": true
+  },
   "plugins": []
 }
 ```
 
 ## Privacy
 
-Gateway outputs session metadata only:
-- Site name
-- Cookie count
-- Health score
-- Authentication status
+Gateway list/status responses expose **metadata only**:
 
-**Never outputs:**
-- Cookie values
-- Tokens
-- localStorage/sessionStorage
-- Proxy credentials
+- Site name, cookie **count**, health score, auth status flags
 
-## Use Cases
+**Never** intended in those responses:
 
-### Load Balancing
+- Cookie values, tokens, localStorage/sessionStorage, proxy credentials
 
-Route requests across multiple sessions:
+Always verify with your own `curl` that secrets do not leak before exposing the port.
 
-```bash
-curl -X POST http://127.0.0.1:9222/route/next
-```
-
-### Session Isolation
-
-Each session gets its own browser context. Rotation changes the active context for future work. Existing tabs drain.
-
-### API Automation
-
-Use gateway as a session-aware reverse proxy backend:
+## Programmatic use
 
 ```python
-import requests
+from tokenade.core.request_config import parse_request_config
+from tokenade.core.gateway import create_gateway_control_plane
 
-# Get next session
-resp = requests.post("http://127.0.0.1:9222/route/next")
-session = resp.json()["decision"]["session"]
-
-# Open a new tab with that session
-resp = requests.post("http://127.0.0.1:9222/tabs/new", json={
-    "url": "https://example.com"
+request = parse_request_config({
+    "version": "1",
+    "operation": "gateway",
+    "sessions": {"dir": "./sessions", "pattern": "*.tokenade"},
+    "gateway": {"host": "127.0.0.1", "port": 0, "backend": "cdp"},
+    "routing": {"object": "session", "strategy": "round-robin"},
+    "plugins": [],
 })
-tab = resp.json()
+plane = create_gateway_control_plane(request)
+print(plane.status())
+print(plane.route_next())
+# plane.serve_forever()  # blocking HTTP server
 ```
 
-## Future Features (Planned)
+For a **single-session** authenticated reverse proxy from Python (scraping use case), prefer:
 
-- Auto-rotation on timer
-- Health monitoring with auto-failover
-- Session persistence across restarts
-- Webhook notifications
+```python
+from tokenade.sdk import TokenadeClient
+with TokenadeClient().start_proxy("site.tokenade", port=9222) as proxy:
+    ...
+```
 
-See `.agent/plans/gateway-maturity.md` for details.
+Gateway is for **multi-session routing**; `SessionProxy` is for **one jar → one local proxy**.
+
+## Related tests
+
+```bash
+pytest tokenade/tests/test_cli_gateway.py \
+       tokenade/tests/test_gateway_server.py \
+       tokenade/tests/test_gateway_session_router.py \
+       tokenade/tests/test_gateway_runtime.py -q
+```
+
+## Future / hardening
+
+- Stronger live runtime witnesses with CloakBrowser
+- Production guidance for webhooks + auth on the control port
+- Clearer split between control-plane-only vs full browser mesh
+
+See also [`USE-CASES.md`](../USE-CASES.md) §14 and the main [`README.md`](../README.md).

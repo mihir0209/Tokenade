@@ -1,6 +1,9 @@
 # Tokenade Use Cases & Competitor Comparison
 
-> Every distinct way Tokenade can be used, with real-world scenarios and how it compares to existing tools.
+> Distinct ways to use Tokenade — session **portability** (export → `.tokenade` → load / proxy / share), not a Multilogin replacement.
+> Stealth and anti-bot outcomes are **best-effort** and site-dependent.
+
+**Native format:** Prefer `.tokenade` over raw cookie dumps. Loose cookies rarely carry product URL intent, multi-origin storage, packaging version, or encrypt/share/health ops. See README → *Why a `.tokenade` file*.
 
 ---
 
@@ -15,15 +18,13 @@
   - [Browser Fingerprint Spoofing](#6-browser-fingerprint-spoofing)
   - [QA & Automated Testing](#7-qa--automated-testing)
   - [Developer Workflow Integration](#8-developer-workflow-integration)
+  - [Convert foreign dumps](#12-convert-foreign-cookie-dumps)
+  - [Password-protected share links](#13-password-protected-share-links)
+  - [Gateway multi-session control plane](#14-gateway-multi-session-control-plane)
   - [Enterprise & Compliance](#9-enterprise--compliance)
   - [AI & Automation](#10-ai--automation)
   - [Content & Research](#11-content--research)
 - [Competitor Comparison](#competitor-comparison)
-  - [Cookie Editor Extensions](#cookie-editor-extensions)
-  - [Antidetect Browsers](#antidetect-browsers)
-  - [Cloud Browser Platforms](#cloud-browser-platforms)
-  - [Stealth Automation Tools](#stealth-automation-tools)
-  - [Session Sharing & Security](#session-sharing--security)
 - [Feature Matrix](#feature-matrix)
 
 ---
@@ -35,24 +36,40 @@
 #### 1.1 Authenticated Web Scraping
 **Scenario:** Scrape data behind login walls — job boards, analytics dashboards, SaaS admin panels, membership sites.
 
-**How Tokenade helps:**
+**How Tokenade helps (CLI):**
 ```bash
 # Export logged-in session from your browser
 tokenade export --browser-name firefox --domains "linkedin.com" -o linkedin.tokenade
 
 # Start proxy — browse as authenticated user
 tokenade proxy -s linkedin.tokenade
-# → All requests to LinkedIn carry your session cookies
-# → Use with any scraping tool pointed at the proxy
+# → Local reverse proxy (default port 9222); open the URL the CLI prints
 ```
+
+**How Tokenade helps (programmatic — no second CLI process):**
+```python
+from tokenade.sdk import TokenadeClient
+
+client = TokenadeClient()
+# Optional: extract in-process instead of shelling out
+# result = client.extract(browser="firefox", domains=["linkedin.com"], output="linkedin.tokenade")
+
+with client.start_proxy("linkedin.tokenade", port=9222, fingerprint=False) as proxy:
+    # Point scrapers / HTTP clients at the session reverse proxy
+    print(proxy.base_url)  # e.g. http://127.0.0.1:9222
+    # ... your automation ...
+# proxy stops when the context exits
+```
+
+Same stack as `tokenade proxy -s …` (CDP by default). Use `mode="forward"` for a classic HTTP forward proxy when your tool only speaks `HTTP_PROXY`.
 
 **vs. Competitors:**
 | Tool | Approach | Limitation |
 |------|----------|-----------|
 | `requests.Session()` | Python-only, no browser | Can't handle JS-rendered pages |
-| Playwright `storageState` | Save/load browser state | No cross-browser transfer |
-| Browserbase | Cloud browser | $20+/mo, data on their servers |
-| **Tokenade** | **CLI + proxy** | **Free, self-hosted, cross-browser** |
+| Playwright `storageState` | Save/load browser state | No cross-browser transfer; cookies-only shape |
+| Browserbase | Cloud browser | Paid; data on their servers |
+| **Tokenade** | **`.tokenade` + CLI / SDK proxy** | **Self-hosted; jar is richer than a cookie list** |
 
 #### 1.2 Anti-Bot / Cloudflare Bypass
 **Scenario:** Access sites protected by Cloudflare, DataDome, PerimeterX using TLS fingerprint matching.
@@ -223,18 +240,21 @@ tokenade proxy -s all_sessions.tokenade
 **vs. Chrome Sync:** Chrome Sync stores data on Google servers. Tokenade keeps data local.
 
 #### 5.4 Team Session Delegation
-**Scenario:** Share authenticated access with team members without sharing credentials.
+**Scenario:** Share authenticated access with team members without sharing account passwords.
 
 **How Tokenade helps:**
 ```bash
-# Create password-protected share link
-tokenade share -s session.tokenade --password team123 --expiry 48
+# Password-protected share (full URL; optional Supabase short-id when configured)
+tokenade share-url create -s session.tokenade --password 'team-secret' --expiry-hours 48
 
-# Team member imports
-tokenade load -s <shared_link>
+# Recipient retrieves into a local .tokenade, then load / proxy
+tokenade share-url retrieve --url '<share-url>' --password 'team-secret' -o team.tokenade
+tokenade load --file team.tokenade --visible
 ```
 
-**vs. Sendwin:** Sendwin is a paid platform ($10+/mo). Tokenade is free and self-hosted.
+Treat share links like temporary credentials. Prefer encrypting the jar at rest as well.
+
+**vs. Sendwin:** Sendwin is a paid platform. Tokenade share-url is self-hosted / optional public short-id; you operate the risk model.
 
 ---
 
@@ -304,70 +324,110 @@ tokenade proxy -s admin.tokenade --port 9222
 
 ### 8. Developer Workflow Integration
 
-#### 8.1 Playwright Session Injection
-**Scenario:** Use Tokenade-exported sessions in Playwright tests.
+#### 8.0 In-process session proxy (recommended for wrappers)
+**Scenario:** Your Python service should expose an authenticated browsing surface without `subprocess` + `tokenade proxy`.
 
-**How Tokenade helps:**
 ```python
-import json
+from tokenade.sdk import TokenadeClient, SessionProxy
+
+# Context-manager form
+with TokenadeClient().start_proxy("app.tokenade", port=9222) as proxy:
+    assert proxy.running
+    # configure workers with proxy.base_url
+
+# Or manage lifetime yourself
+proxy = SessionProxy.from_file("app.tokenade", port=9223, fingerprint=True)
+proxy.start()
+try:
+    ...
+finally:
+    proxy.stop()
+```
+
+**Note:** CDP mode drives a real browser backend (CloakBrowser / Playwright stack depending on path). Install Playwright Chromium only if that path requires stock Playwright browsers; CloakBrowser binary still downloads on first use when used.
+
+#### 8.1 Playwright `storageState` from a jar
+**Scenario:** Feed Playwright a storage state derived from a `.tokenade`.
+
+```python
+from tokenade.sdk import TokenadeClient
 from playwright.sync_api import sync_playwright
 
-# Load Tokenade export
-with open("storage_state.json") as f:
-    state = json.load(f)
+client = TokenadeClient()
+client.export_playwright("session.tokenade", "storage_state.json")
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
-    context = browser.new_context(storage_state=state)
+    context = browser.new_context(storage_state="storage_state.json")
     page = context.new_page()
-    # → Already logged in
 ```
 
-#### 8.2 Puppeteer Cookie Injection
-**Scenario:** Use Tokenade-exported cookies in Puppeteer.
+Prefer `tokenade load` / CloakBrowser when you need handler-aware inject + stealth defaults; use storageState when you already own a Playwright suite.
 
-**How Tokenade helps:**
-```python
-import json
-from pyppeteer import launch
+#### 8.2 Convert then automate
+**Scenario:** QA hands you Cookie-Editor JSON; you need a stable jar for CI.
 
-with open("puppeteer_cookies.json") as f:
-    cookies = json.load(f)
-
-browser = await launch()
-page = await browser.newPage()
-await page.setCookie(*cookies)
-# → Authenticated
-```
-
-#### 8.3 Python `requests` Session
-**Scenario:** Use Tokenade-exported cookies in Python requests.
-
-**How Tokenade helps:**
-```python
-import requests
-
-# Load cookie header from Tokenade
-with open("cookie_header.txt") as f:
-    cookie_header = f.read()
-
-response = requests.get(
-    "https://api.example.com/data",
-    headers={"Cookie": cookie_header}
-)
-```
-
-#### 8.4 cURL Integration
-**Scenario:** Use Tokenade-exported Netscape cookies with cURL.
-
-**How Tokenade helps:**
 ```bash
-# Export Netscape format
-tokenade export --browser-name firefox --format netscape -o cookies.txt
-
-# Use with curl
-curl -b cookies.txt https://target.com/api/data
+tokenade convert -i cookies.json -o ci.tokenade
+tokenade health -s ci.tokenade
 ```
+
+#### 8.3 Interactive TUI for operators
+```bash
+pip install 'tokenade[tui]'
+tokenade tui
+# Export · Sessions · Share · Convert · Vault · …
+```
+
+#### 8.4 cURL / Netscape interop
+```bash
+# Prefer staying in .tokenade; convert only at the edge
+tokenade convert -i cookies.txt --format netscape -o session.tokenade
+```
+
+---
+
+### 12. Convert foreign cookie dumps
+
+**Scenario:** Cookies already left the browser (Cookie-Editor, Playwright, Puppeteer, HAR, Cypress, Selenium, CSV, raw headers).
+
+```bash
+tokenade convert -i dump.json -o session.tokenade
+tokenade convert -i capture.har -o session.tokenade
+# TUI → Convert tab also walks a directory tree
+```
+
+**Why convert into `.tokenade` instead of keeping the dump:** one format for load, proxy, encrypt, share-url, health, and plugins. Dump quality still caps the result (no invented fingerprint or missing storage).
+
+---
+
+### 13. Password-protected share links
+
+**Scenario:** Hand a session to another machine or teammate without SCP of a raw file forever.
+
+```bash
+tokenade share-url create -s gmail.tokenade --password '…' --expiry-hours 24
+tokenade share-url retrieve --url '…' --password '…' -o gmail.tokenade
+tokenade share-url list
+tokenade share-url revoke --id '…'
+```
+
+Also available in the TUI **Share** tab. Ciphertext size is capped; keep jars domain-scoped.
+
+---
+
+### 14. Gateway multi-session control plane
+
+**Scenario:** Route work across many `.tokenade` files (round-robin / health-weighted) via a local HTTP control plane.
+
+```bash
+# See docs/GATEWAY.md for request.json shape
+tokenade gateway --request gateway.request.json
+curl -s http://127.0.0.1:9222/status
+curl -s -X POST http://127.0.0.1:9222/route/next
+```
+
+**Status (honest):** Gateway is a real CLI + library surface with unit tests for config, sanitized session listing, and routing helpers. Treat **live multi-browser runtime / production ops** as still maturing — validate on your workload before relying on it. Details: [`docs/GATEWAY.md`](docs/GATEWAY.md).
 
 ---
 
