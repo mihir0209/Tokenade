@@ -2545,7 +2545,7 @@ Commands:
         "setup", "extract", "transfer", "inject-profile",
         "batch-export", "batch-load", "health-report", "refresh",
         "share", "unshare", "import", "validate-rules", "diff",
-        "sync", "monitor", "analytics",
+        "sync", "monitor", "container", "analytics",
         "refresh-oauth", "oauth-config", "batch-refresh", "cicd", "ci",
         "fleet", "autopsy", "validate-session", "encrypted-refresh",
         "accounts", "mobile-import", "daemon", "versions", "rollback",

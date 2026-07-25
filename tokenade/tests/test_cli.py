@@ -48,7 +48,7 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("\n📋 Stored fingerprints:")
+            mock_print.assert_any_call("\n[LIST] Stored fingerprints:")
 
     @patch('tokenade.core.fingerprint.manager.FingerprintManager')
     def test_list_with_fingerprints(self, mock_fp_manager):
@@ -61,8 +61,8 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("   • desktop")
-            mock_print.assert_any_call("   • laptop")
+            mock_print.assert_any_call("   - desktop")
+            mock_print.assert_any_call("   - laptop")
 
     @patch('tokenade.core.fingerprint.manager.FingerprintManager')
     def test_show_found(self, mock_fp_manager):
@@ -83,7 +83,7 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("\n🔍 Fingerprint: test_fp")
+            mock_print.assert_any_call("\n[SEARCH] Fingerprint: test_fp")
 
     @patch('tokenade.core.fingerprint.manager.FingerprintManager')
     def test_show_not_found(self, mock_fp_manager):
@@ -97,7 +97,7 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("❌ Fingerprint not found: missing")
+            mock_print.assert_any_call("[ERROR] Fingerprint not found: missing")
 
     @patch('tokenade.core.fingerprint.manager.FingerprintManager')
     def test_delete_success(self, mock_fp_manager):
@@ -111,7 +111,7 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("✅ Deleted: test_fp")
+            mock_print.assert_any_call("[OK] Deleted: test_fp")
 
     @patch('tokenade.core.fingerprint.manager.FingerprintManager')
     def test_delete_not_found(self, mock_fp_manager):
@@ -125,7 +125,7 @@ class TestCmdFingerprint(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_fingerprint(self.args)
-            mock_print.assert_any_call("❌ Not found: missing")
+            mock_print.assert_any_call("[ERROR] Not found: missing")
 
 
 class TestCmdValidate(unittest.TestCase):
@@ -144,7 +144,7 @@ class TestCmdValidate(unittest.TestCase):
 
         with patch('builtins.print') as mock_print:
             cmd_validate(self.args)
-            mock_print.assert_any_call("❌ Directory not found: sessions")
+            mock_print.assert_any_call("[ERROR] Directory not found: sessions")
 
     @patch('tokenade.cli.advanced.Path')
     def test_valid_session(self, mock_path):
@@ -164,7 +164,7 @@ class TestCmdValidate(unittest.TestCase):
         with patch('builtins.open', mock_open(read_data=json.dumps(session_data))):
             with patch('builtins.print') as mock_print:
                 cmd_validate(self.args)
-                mock_print.assert_any_call("   ✅ Status: logged_in")
+                mock_print.assert_any_call("   [OK] Status: logged_in")
 
 
 class TestMain(unittest.TestCase):
@@ -224,7 +224,6 @@ class TestParserSurface(unittest.TestCase):
         "ci",
         "fleet",
         "autopsy",
-        "tui",
         "validate-session",
         "encrypted-refresh",
         "accounts",
@@ -254,6 +253,7 @@ class TestParserSurface(unittest.TestCase):
         "sessions",
         "plugin",
         "completion",
+        "tui",
         "cloak",
         "launch",
         "refresh-browser",
@@ -263,6 +263,8 @@ class TestParserSurface(unittest.TestCase):
         "serve",
         "profile",
         "clone-profile",
+        "convert",
+        "share-url",
     )
 
     def test_removed_patch_chrome_is_not_registered(self):
