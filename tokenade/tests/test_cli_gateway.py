@@ -75,3 +75,29 @@ def test_gateway_cli_starts_control_plane_after_validation(monkeypatch, tmp_path
 
     assert json.loads(capsys.readouterr().out)["session_count"] == 1
     assert control_plane.served is True
+
+
+def test_gateway_cli_flushes_readiness_status(monkeypatch, tmp_path):
+    request_file = tmp_path / "request.json"
+    request_file.write_text(json.dumps({"operation": "gateway", "plugins": []}))
+    print_calls = []
+
+    class ControlPlane:
+        def status(self):
+            return {"success": True, "operation": "gateway", "session_count": 1}
+
+        def serve_forever(self):
+            return None
+
+    def capture_print(*args, **kwargs):
+        print_calls.append((args, kwargs))
+
+    monkeypatch.setattr("builtins.print", capture_print)
+    monkeypatch.setattr("tokenade.core.request_config.validate_required_plugins", lambda plugins: None)
+    monkeypatch.setattr("tokenade.core.gateway.server.create_gateway_control_plane", lambda request: ControlPlane())
+
+    args = _build_parser().parse_args(["gateway", "--request", str(request_file)])
+    cmd_gateway(args)
+
+    assert json.loads(print_calls[0][0][0])["operation"] == "gateway"
+    assert print_calls[0][1].get("flush") is True

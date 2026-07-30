@@ -203,7 +203,7 @@ class TestForwardProxyMode:
 
     @patch("tokenade.core.proxy.forward_proxy.ForwardProxy")
     @patch("tokenade.core.importer.session_packager.SessionPackager")
-    def test_forward_proxy_no_engine_display(self, mock_packager_cls, mock_proxy_cls, tmp_path, capsys):
+    def test_forward_proxy_no_engine_selection_display(self, mock_packager_cls, mock_proxy_cls, tmp_path, capsys):
         f = _make_session_file(tmp_path, "session")
         mock_packager = MagicMock()
         mock_packager.load.return_value = {"cookies": []}
@@ -214,8 +214,7 @@ class TestForwardProxyMode:
         args = _make_args(session=str(f), mode="forward")
         cmd_proxy(args)
         output = capsys.readouterr().out
-        assert "CDP" not in output
-        assert "Legacy" not in output
+        assert "Engine:" not in output
 
     @patch("tokenade.core.proxy.forward_proxy.ForwardProxy")
     @patch("tokenade.core.importer.session_packager.SessionPackager")

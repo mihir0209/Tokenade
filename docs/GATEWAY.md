@@ -9,7 +9,7 @@ Multi-session **control plane** for listing sanitized session metadata and selec
 | CLI `tokenade gateway --request …` | **Present** — validates request JSON, starts HTTP server |
 | Session store + routing strategies | **Unit-tested** (round-robin, select by id/site, sanitized list) |
 | HTTP API (`/status`, `/sessions`, `/route/*`) | **Implemented**; keep binding on `127.0.0.1` unless you design otherwise |
-| Browser runtime (CloakBrowser / CDP contexts, `/tabs/new`) | **Code present** — needs your own witness run with real jars |
+| Browser runtime (CloakBrowser / CDP contexts, `/tabs/new`) | **Witnessed locally** with 5 generated `.tokenade` sessions and CloakBrowser headless |
 | Auto-rotate timers, webhooks, rate limits | **Implemented in code**; not a production SLA |
 
 This is **not** a drop-in replacement for a full fleet product. Use it when you want a local router over many `.tokenade` files; verify endpoints against your sessions before automation depends on them.
@@ -57,12 +57,12 @@ Invalid request files exit **2** with a JSON error envelope (`operation: gateway
 |----------|--------|-------------|
 | `/status` | GET | Gateway state and session count |
 | `/sessions` | GET | Sanitized session records (**no** cookie/storage secrets) |
-| `/route/next` | POST | Select next session by strategy |
+| `/route/next` | POST | Select the active session context by strategy; existing tabs stay in their original context |
 | `/route/select` | POST | Set active session by selector |
 | `/contexts` | GET | Browser context state (when runtime enabled) |
-| `/contexts/prewarm` | POST | Prewarm contexts for sessions |
+| `/contexts/prewarm` | POST | Prewarm browser contexts for sessions without opening user-facing tabs |
 | `/contexts/drain` | POST | Close inactive contexts |
-| `/tabs/new` | POST | Open new tab on active context (runtime) |
+| `/tabs/new` | POST | Open a new tab in the active context (runtime) |
 
 ## Routing strategies
 
@@ -171,8 +171,20 @@ pytest tokenade/tests/test_cli_gateway.py \
 
 ## Future / hardening
 
-- Stronger live runtime witnesses with CloakBrowser
+- Real-site runtime witnesses with non-fixture sessions
 - Production guidance for webhooks + auth on the control port
 - Clearer split between control-plane-only vs full browser mesh
+
+## Witness Log
+
+### 2026-07-27
+
+- Started a temporary local account server and minted 5 independent accounts.
+- Generated Playwright `storageState` JSON directly for each account (no browser launch required for export generation).
+- Converted each storage state into v3 `.tokenade` sessions through `FormatImporter`.
+- Ran Gateway with `runtime.enabled=true`, `backend=cloakbrowser`, and `headless=true`.
+- Verified `/contexts/prewarm` created 5 isolated CloakBrowser contexts.
+- Verified `/tabs/new` navigated the selected account context to the local app with no navigation error.
+- Fixed Playwright storage origin preservation so `http://127.0.0.1:<port>` remains exact during localStorage injection.
 
 See also [`USE-CASES.md`](../USE-CASES.md) §14 and the main [`README.md`](../README.md).

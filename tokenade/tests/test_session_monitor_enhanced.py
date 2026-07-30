@@ -599,18 +599,18 @@ class TestHealthBar:
     def test_health_bar_high(self):
         from tokenade.cli.management import _health_bar
         bar = _health_bar(100.0)
-        assert "█" in bar
-        assert "20/20" in bar.replace(" ", "") or bar.count("█") == 20
+        assert "#" in bar
+        assert bar.count("#") == 20
 
     def test_health_bar_medium(self):
         from tokenade.cli.management import _health_bar
         bar = _health_bar(60.0)
-        assert "▓" in bar
+        assert "#" in bar
 
     def test_health_bar_low(self):
         from tokenade.cli.management import _health_bar
         bar = _health_bar(20.0)
-        assert "░" in bar
+        assert "-" in bar
 
     def test_health_bar_zero(self):
         from tokenade.cli.management import _health_bar

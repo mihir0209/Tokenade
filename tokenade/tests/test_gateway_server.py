@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import urllib.request
+from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 
 from tokenade.core.gateway.server import GatewayConfigError, create_gateway_control_plane
 from tokenade.core.gateway.runtime import GatewayRuntime
+from tokenade.core.importer.format_importer import FormatImporter
 from tokenade.core.request_config import parse_request_config
 from tokenade.tests.test_gateway_runtime import FakeContextFactory
 
@@ -48,6 +50,284 @@ def _request(tmp_path, extra=None):
     if extra:
         payload.update(extra)
     return parse_request_config(payload)
+
+
+def _start_account_server():
+    accounts = {}
+
+    class AccountHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path != "/accounts":
+                self._send_json(404, {"error": "not found"})
+                return
+
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            username = str(payload.get("username") or "").strip()
+            if not username:
+                self._send_json(400, {"error": "username required"})
+                return
+
+            account_id = f"acct-{len(accounts) + 1}"
+            session_value = f"session-{account_id}-{username}"
+            accounts[session_value] = {"account_id": account_id, "username": username}
+            self._send_json(
+                201,
+                {
+                    "account_id": account_id,
+                    "username": username,
+                    "session_value": session_value,
+                    "origin": f"http://127.0.0.1:{self.server.server_port}",
+                },
+                {"Set-Cookie": f"ta_session={session_value}; Path=/; HttpOnly; SameSite=Lax"},
+            )
+
+        def do_GET(self):
+            if self.path != "/whoami":
+                self._send_json(404, {"error": "not found"})
+                return
+            cookies = self.headers.get("Cookie", "")
+            session_value = ""
+            for item in cookies.split(";"):
+                name, _, value = item.strip().partition("=")
+                if name == "ta_session":
+                    session_value = value
+                    break
+            account = accounts.get(session_value)
+            if not account:
+                self._send_json(401, {"error": "not authenticated"})
+                return
+            self._send_json(200, {"authenticated": True, **account})
+
+        def log_message(self, format, *args):
+            return
+
+        def _send_json(self, status, payload, headers=None):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in (headers or {}).items():
+                self.send_header(key, value)
+            self.end_headers()
+            self.wfile.write(body)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), AccountHandler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, thread
+
+
+def _post_json(url, payload):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _get_json(url, cookie_header=None):
+    headers = {"Cookie": cookie_header} if cookie_header else {}
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _gateway_post(base_url, path, payload=None):
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=json.dumps(payload or {}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
+    """End-to-end-ish gateway smoke using generated Playwright storageState files.
+
+    The account server mints five independent accounts and session cookies. The
+    test then models Playwright's storageState JSON directly (no browser launch),
+    converts each export into a v3 .tokenade session, and verifies the gateway can
+    list, route, select, and prewarm isolated runtime contexts for all accounts.
+    """
+    account_httpd, account_thread = _start_account_server()
+    sessions_dir = tmp_path / "sessions"
+    storage_dir = tmp_path / "storage-state"
+    sessions_dir.mkdir()
+    storage_dir.mkdir()
+    origin = f"http://127.0.0.1:{account_httpd.server_port}"
+    expires = int(time.time() + 172800)
+
+    try:
+        expected_ids = []
+        expected_cookie_values = []
+        for index in range(1, 6):
+            username = f"account-{index}"
+            account = _post_json(f"{origin}/accounts", {"username": username})
+            assert _get_json(
+                f"{origin}/whoami",
+                f"ta_session={account['session_value']}",
+            ) == {
+                "authenticated": True,
+                "account_id": account["account_id"],
+                "username": username,
+            }
+
+            expected_ids.append(account["account_id"])
+            expected_cookie_values.append(account["session_value"])
+            storage_state_path = storage_dir / f"{account['account_id']}.json"
+            storage_state_path.write_text(json.dumps({
+                "cookies": [{
+                    "name": "ta_session",
+                    "value": account["session_value"],
+                    "domain": "127.0.0.1",
+                    "path": "/",
+                    "expires": expires,
+                    "httpOnly": True,
+                    "secure": False,
+                    "sameSite": "Lax",
+                }],
+                "origins": [{
+                    "origin": origin,
+                    "localStorage": [
+                        {"name": "account_id", "value": account["account_id"]},
+                        {"name": "username", "value": username},
+                    ],
+                }],
+            }))
+
+            session = FormatImporter.from_playwright_storagestate(str(storage_state_path))
+            session["site_name"] = "account-server"
+            session["auth_status"] = "logged_in"
+            session.setdefault("metadata", {}).update({
+                "session_id": account["account_id"],
+                "site_name": "account-server",
+            })
+            (sessions_dir / f"{account['account_id']}.tokenade").write_text(json.dumps(session))
+
+        control_plane = create_gateway_control_plane(parse_request_config({
+            "version": "1",
+            "operation": "gateway",
+            "sessions": {"dir": str(sessions_dir), "pattern": "*.tokenade"},
+            "gateway": {"host": "127.0.0.1", "port": 0, "backend": "cdp"},
+            "routing": {"object": "session", "strategy": "round-robin"},
+            "plugins": [],
+        }))
+        runtime_factory = FakeContextFactory()
+        control_plane.runtime = GatewayRuntime(runtime_factory)
+        gateway_httpd = ThreadingHTTPServer(("127.0.0.1", 0), control_plane.make_handler())
+        gateway_thread = threading.Thread(target=gateway_httpd.serve_forever, daemon=True)
+        gateway_thread.start()
+        base_url = f"http://127.0.0.1:{gateway_httpd.server_port}"
+
+        try:
+            with urllib.request.urlopen(f"{base_url}/status", timeout=5) as response:
+                status = json.loads(response.read().decode("utf-8"))
+            with urllib.request.urlopen(f"{base_url}/sessions", timeout=5) as response:
+                sessions = json.loads(response.read().decode("utf-8"))["sessions"]
+
+            prewarm = _gateway_post(base_url, "/contexts/prewarm")
+            routed_ids = [
+                _gateway_post(base_url, "/route/next")["decision"]["session"]["id"]
+                for _ in range(5)
+            ]
+            selected = _gateway_post(base_url, "/route/select", {"id": "acct-3"})
+            with urllib.request.urlopen(f"{base_url}/contexts", timeout=5) as response:
+                contexts = json.loads(response.read().decode("utf-8"))["contexts"]
+        finally:
+            gateway_httpd.shutdown()
+            gateway_httpd.server_close()
+            gateway_thread.join(timeout=5)
+            control_plane.close()
+
+        serialized_sessions = json.dumps(sessions)
+        serialized_contexts = json.dumps(contexts)
+        assert status["success"] is True
+        assert status["session_count"] == 5
+        assert [session["id"] for session in sessions] == expected_ids
+        assert {session["site_name"] for session in sessions} == {"account-server"}
+        assert {session["cookie_count"] for session in sessions} == {1}
+        assert not any(value in serialized_sessions for value in expected_cookie_values)
+        assert "account-1" not in serialized_sessions
+        assert prewarm["runtime"]["context_count"] == 5
+        assert routed_ids == expected_ids
+        assert selected["decision"]["session"]["id"] == "acct-3"
+        assert len(contexts) == 5
+        assert {tuple(context["origins"]) for context in contexts} == {(origin,)}
+        assert not any(value in serialized_contexts for value in expected_cookie_values)
+        assert sorted(runtime_factory.contexts) == expected_ids
+        assert [runtime_factory.contexts[account_id].cookies[0]["value"] for account_id in expected_ids] == expected_cookie_values
+    finally:
+        account_httpd.shutdown()
+        account_httpd.server_close()
+        account_thread.join(timeout=5)
+
+
+def test_gateway_state_file_saves_and_restores_active_session(tmp_path):
+    _write_session(tmp_path, "github.tokenade", site_name="github", metadata={"session_id": "github-stable"})
+    _write_session(tmp_path, "discord.tokenade", site_name="discord", metadata={"session_id": "discord-stable"})
+    state_file = tmp_path / "state" / "gateway_state.json"
+    request = _request(tmp_path, {
+        "gateway": {
+            "host": "127.0.0.1",
+            "port": 0,
+            "backend": "cdp",
+            "state_file": str(state_file),
+        },
+        "routing": {"object": "session", "strategy": "round-robin"},
+    })
+
+    control_plane = create_gateway_control_plane(request)
+    try:
+        assert control_plane.route_select({"id": "discord-stable"})["decision"]["session"]["id"] == "discord-stable"
+    finally:
+        control_plane.close()
+
+    saved = json.loads(state_file.read_text())
+    assert saved["active_session_id"] == "discord-stable"
+
+    restored = create_gateway_control_plane(request)
+    try:
+        assert restored.status()["active_session"]["id"] == "discord-stable"
+    finally:
+        restored.close()
+
+
+def test_gateway_webhook_failure_is_logged_not_raised(monkeypatch, tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+
+    class ImmediateThread:
+        def __init__(self, target, daemon=False):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            self.target()
+
+    def fail_urlopen(*args, **kwargs):
+        raise RuntimeError("webhook offline")
+
+    monkeypatch.setattr("tokenade.core.gateway.server.threading.Thread", ImmediateThread)
+    monkeypatch.setattr("urllib.request.urlopen", fail_urlopen)
+    control_plane = create_gateway_control_plane(_request(tmp_path, {
+        "gateway": {
+            "host": "127.0.0.1",
+            "port": 0,
+            "backend": "cdp",
+            "webhooks": {"on_select": "http://127.0.0.1:9/webhook"},
+        },
+        "routing": {"object": "session", "strategy": "round-robin"},
+    }))
+
+    try:
+        control_plane.route_select({"id": "github-stable"})
+    finally:
+        control_plane.close()
 
 
 def test_create_gateway_control_plane_returns_status(tmp_path):

@@ -587,8 +587,32 @@ def cmd_launch(args):
                     await asyncio.sleep(5)
 
                     # Step 6: Inject localStorage + sessionStorage (after navigation, on correct origin)
-                    session_data = session.get("session_storage", {})
-                    local_data = session.get("local_storage", {})
+                    storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
+                    local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+                    session_by_origin = storage.get("session") if isinstance(storage.get("session"), dict) else {}
+                    current_origin = None
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(args.url)
+                        if parsed.scheme and parsed.netloc:
+                            current_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    except Exception:
+                        pass
+                    local_data = {}
+                    session_data = {}
+                    if current_origin and current_origin in local_by_origin:
+                        local_data = local_by_origin.get(current_origin) or {}
+                    elif len(local_by_origin) == 1:
+                        local_data = next(iter(local_by_origin.values())) or {}
+                    else:
+                        local_data = session.get("local_storage", {})
+
+                    if current_origin and current_origin in session_by_origin:
+                        session_data = session_by_origin.get(current_origin) or {}
+                    elif len(session_by_origin) == 1:
+                        session_data = next(iter(session_by_origin.values())) or {}
+                    else:
+                        session_data = session.get("session_storage", {})
 
                     if local_data:
                         print(f"   Injecting {len(local_data)} localStorage entries...", flush=True)

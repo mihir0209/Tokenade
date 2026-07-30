@@ -58,7 +58,7 @@ class TestCmdMonitorDispatch:
         args = _make_args(monitor_command="unknown")
         cmd_monitor(args)
         output = capsys.readouterr().out
-        assert "❌" in output
+        assert "[ERROR]" in output
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ class TestMonitorStatus:
         args = _make_args(monitor_command="status")
         cmd_monitor(args)
         output = capsys.readouterr().out
-        assert "❌" in output
+        assert "[ERROR]" in output
 
     def test_status_with_session(self, tmp_path, capsys):
         path = _make_session_file(tmp_path)
@@ -100,7 +100,7 @@ class TestMonitorStatus:
         args = _make_args(monitor_command="status", session=str(path))
         cmd_monitor(args)
         output = capsys.readouterr().out
-        assert "❌" in output
+        assert "[ERROR]" in output
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ class TestMonitorStart:
         args = _make_args(monitor_command="start")
         cmd_monitor(args)
         output = capsys.readouterr().out
-        assert "❌" in output
+        assert "[ERROR]" in output
 
     def test_start_with_session(self, tmp_path, capsys):
         path = _make_session_file(tmp_path)
@@ -141,7 +141,7 @@ class TestMonitorStop:
         args = _make_args(monitor_command="stop")
         cmd_monitor(args)
         output = capsys.readouterr().out
-        assert "❌" in output
+        assert "[ERROR]" in output
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ class TestMonitorPredict:
         cmd_monitor(args)
         output = capsys.readouterr().out
         # no sessions = no output lines (just passes)
-        assert "❌" not in output
+        assert "[ERROR]" not in output
 
     def test_predict_with_session(self, tmp_path, capsys):
         path = _make_session_file(tmp_path)
@@ -183,17 +183,17 @@ class TestMonitorPredict:
 class TestHealthBar:
     def test_bar_100_percent(self):
         bar = _health_bar(100.0)
-        assert bar.count("█") == 20
+        assert bar.count("#") == 20
 
     def test_bar_50_percent(self):
         bar = _health_bar(50.0)
-        assert "▓" in bar
-        assert bar.count("▓") == 10
+        assert "#" in bar
+        assert bar.count("#") == 10
 
     def test_bar_10_percent(self):
         bar = _health_bar(10.0)
-        assert "░" in bar
-        assert bar.count("░") == 2
+        assert "-" in bar
+        assert bar.count("-") == 2
 
     def test_bar_0_percent(self):
         bar = _health_bar(0.0)

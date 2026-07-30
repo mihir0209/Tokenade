@@ -64,11 +64,14 @@ class FormatImporter:
         local_storage = {}
         for origin_data in data.get("origins", []):
             origin = origin_data.get("origin", "")
+            if not origin:
+                continue
+            entries = local_storage.setdefault(origin, {})
             for ls_entry in origin_data.get("localStorage", []):
                 key = ls_entry.get("name", "")
                 value = ls_entry.get("value", "")
-                domain = origin.replace("https://", "").replace("http://", "")
-                local_storage[f"{domain}:{key}"] = value
+                if key:
+                    entries[key] = value
 
         return FormatImporter._build_session(
             cookies=cookies,

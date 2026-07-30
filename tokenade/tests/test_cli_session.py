@@ -789,9 +789,11 @@ class TestCmdLoad:
             "success": False, "error": "Browser launch failed",
         }
         mock_loader_cls.return_value = mock_loader
-        cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
-                           stealth_level="maximum", validate=False, visible=False,
-                           profile_dir=None, no_local_storage=False, runtime=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
+                               stealth_level="maximum", validate=False, visible=False,
+                               profile_dir=None, no_local_storage=False, runtime=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
     @patch("tokenade.cli.session.SessionLoader")
@@ -877,9 +879,11 @@ class TestCmdLoad:
         mock_loader = MagicMock()
         mock_loader.load.return_value = {"success": False}
         mock_loader_cls.return_value = mock_loader
-        cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
-                           stealth_level="maximum", validate=False, visible=False,
-                           profile_dir=None, no_local_storage=False, runtime=False))
+        with pytest.raises(SystemExit) as ei:
+            cmd_load(Namespace(file=str(f), site_config=None, fingerprint="default",
+                               stealth_level="maximum", validate=False, visible=False,
+                               profile_dir=None, no_local_storage=False, runtime=False))
+        assert ei.value.code == 1
         assert "failed" in capsys.readouterr().out.lower()
 
 

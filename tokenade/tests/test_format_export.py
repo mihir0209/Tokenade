@@ -250,7 +250,7 @@ class TestFormatImporterPlaywright:
         p.write_text(state_json)
 
         session = FormatImporter.from_playwright_storagestate(str(p))
-        assert session["version"] == "2.0"
+        assert session["version"] == "3.0"
         assert len(session["cookies"]) == 5
 
     def test_cookie_fields_preserved(self, exporter, tmp_path):
@@ -271,7 +271,7 @@ class TestFormatImporterPlaywright:
         p.write_text(state_json)
 
         session = FormatImporter.from_playwright_storagestate(str(p))
-        assert len(session["local_storage"]) == 2
+        assert len(session["storage"]["local"]["https://example.com"]) == 2
 
     def test_file_not_found(self):
         with pytest.raises(FileNotFoundError):

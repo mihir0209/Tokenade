@@ -145,7 +145,7 @@ Next step: collect or choose a fingerprint, then rerun the test:
 
 ### 8. Update README Front Page
 
-- [ ] README should show the verified install path:
+- [x] README should show the verified install path:
 
 ```bash
 pip install tokenade
@@ -161,6 +161,49 @@ tokenade load --file discord.tokenade
 ## Verification Log
 
 Add dated entries here as hardening steps complete.
+
+### 2026-07-31
+
+- Bumped release checkpoint to `tokenade==1.1.80` for the Gateway feature set.
+- Fixed Gateway runtime prewarm so the default shared-browser factory closes the throwaway startup context/page and creates per-session browser contexts without opening user-facing tabs for cookie-only sessions.
+- Clarified Gateway runtime semantics: `/route/next` selects the active session context, existing tabs remain bound to their original context, and `/tabs/new` opens a visible tab in the active context.
+- Full local suite passed: `python3 -m pytest -q --tb=short -x`.
+- Built local artifacts from the current worktree: `dist/tokenade-1.1.80.tar.gz` and `dist/tokenade-1.1.80-py3-none-any.whl`.
+- Verified wheel contents: `python3 scripts/check_wheel_contents.py dist/tokenade-1.1.80-py3-none-any.whl`.
+- Installed the rebuilt wheel in `/tmp/opencode/tokenade-wheel-verify-1-1-80` and verified:
+  - `tokenade --version` => `tokenade 1.1.80`
+  - `tokenade gateway --help` starts cleanly
+  - `scripts/smoke_installed_wheel.py` passed against the rebuilt wheel
+
+### 2026-07-30
+
+- Cleaned up stale test expectations after ASCII CLI output and mature v3 convert/import behavior:
+  - plugin test output now expects `[OK]` / `[X]`
+  - monitor errors now expect `[ERROR]`
+  - health bars now expect ASCII `#` / `-`
+  - Playwright imports now assert v3 `storage.local` instead of legacy v2 `local_storage`
+- Fixed `BrowserProcess.close()` so tests and external wrappers do not signal the parent pytest process group; launcher-owned browser processes still close their process group.
+- Fixed official marketplace `google-flow-handler/plugin.json` by removing duplicated trailing JSON.
+- Full local suite passed: `python3 -m pytest -q --tb=short -x`.
+- Focused release suites passed for Gateway, convert/importer, TUI, and undetectable browser process coverage.
+- Rebuilt local artifacts from the current worktree: `dist/tokenade-1.1.77.tar.gz` and `dist/tokenade-1.1.77-py3-none-any.whl`.
+- Installed the rebuilt wheel in `/tmp/opencode/tokenade-wheel-verify-1-1-77-clean` and verified:
+  - `tokenade --version` => `tokenade 1.1.77`
+  - `tokenade gateway --help` starts cleanly
+  - installed-wheel imports for `TokenadeClient`, `SessionProxy`, `GatewayServerConfig`, `FormatImporter`, and `BrowserProcess`
+
+### 2026-07-27
+
+- Updated the README front page to show the verified install path (`pip install`, `plugin sync`, `export`, `load`).
+- Built local artifacts from the current worktree: `dist/tokenade-1.1.77.tar.gz` and `dist/tokenade-1.1.77-py3-none-any.whl`.
+- Installed the local wheel in an isolated venv under `/tmp/opencode/tokenade-wheel-verify` and verified:
+  - `tokenade --version` => `tokenade 1.1.77`
+  - `tokenade --help` starts cleanly
+  - v3 convert packaging imports and builds a mature session
+  - SDK `TokenadeClient` / `SessionProxy` imports
+  - gateway `GatewayControlPlane` / `GatewayServerConfig` imports
+- Added Gateway regression coverage for state-file persistence, webhook failure logging, flushed CLI readiness output, and a 5-account generated Playwright storageState flow.
+- Witnessed Gateway real runtime locally with 5 generated `.tokenade` sessions and CloakBrowser headless; `/contexts/prewarm` created 5 isolated browser contexts and `/tabs/new` navigated successfully.
 
 ### 2026-07-16
 

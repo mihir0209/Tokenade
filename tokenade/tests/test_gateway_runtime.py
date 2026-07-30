@@ -4,7 +4,7 @@ import json
 import time
 from pathlib import Path
 
-from tokenade.core.gateway.runtime import GatewayRuntime
+from tokenade.core.gateway.runtime import BrowserManagerContextFactory, GatewayRuntime
 from tokenade.core.gateway.session_store import SessionRecord, SessionStore
 
 
@@ -62,6 +62,37 @@ class FakeContextFactory:
         self.closed = True
 
 
+class FakeBrowser:
+    def __init__(self):
+        self.contexts = []
+
+    def new_context(self, viewport=None):
+        context = FakeContext(f"context-{len(self.contexts) + 1}")
+        context.viewport = viewport
+        self.contexts.append(context)
+        return context
+
+    def close(self):
+        pass
+
+
+class FakeBrowserManager:
+    def __init__(self):
+        self.config = type("Config", (), {"viewport": {"width": 1024, "height": 768}})()
+        self._browser = FakeBrowser()
+        self._context = FakeContext("startup")
+        self._page = object()
+        self.launch_calls = 0
+
+    def launch(self):
+        self.launch_calls += 1
+        return self._page
+
+    def close(self):
+        if self._browser:
+            self._browser.close()
+
+
 def _write_session(tmp_path, name, site_name, cookie_value, storage_value=None):
     storage = {}
     if storage_value is not None:
@@ -91,6 +122,12 @@ def _records(tmp_path):
     return SessionStore().load_directory(tmp_path)
 
 
+def _cookie_only_records(tmp_path):
+    _write_session(tmp_path, "github.tokenade", "github", "github-cookie")
+    _write_session(tmp_path, "discord.tokenade", "discord", "discord-cookie")
+    return SessionStore().load_directory(tmp_path)
+
+
 def test_prewarm_creates_isolated_contexts_and_injects_session_state(tmp_path):
     records = _records(tmp_path)
     factory = FakeContextFactory()
@@ -107,6 +144,31 @@ def test_prewarm_creates_isolated_contexts_and_injects_session_state(tmp_path):
     assert discord.cookies[0]["value"] == "discord-cookie"
     assert github.local_storage_updates == [{"token": "github-storage"}]
     assert discord.local_storage_updates == [{"token": "discord-storage"}]
+
+
+def test_default_context_factory_closes_startup_context_and_does_not_open_pages(monkeypatch, tmp_path):
+    records = _cookie_only_records(tmp_path)
+    manager = FakeBrowserManager()
+
+    def create_browser_manager(**kwargs):
+        return manager
+
+    monkeypatch.setattr(
+        "tokenade.core.browser.manager.BrowserFactory.create",
+        create_browser_manager,
+    )
+    runtime = GatewayRuntime(BrowserManagerContextFactory(headless=False))
+
+    result = runtime.prewarm(records)
+
+    assert result["success"] is True
+    assert manager.launch_calls == 1
+    assert manager._context is None
+    assert manager._page is None
+    assert manager._browser.contexts[0].closed is False
+    assert manager._browser.contexts[1].closed is False
+    assert manager._browser.contexts[0].pages == []
+    assert manager._browser.contexts[1].pages == []
 
 
 def test_active_context_changes_on_rotation_without_mutating_old_context(tmp_path):

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from tokenade.core.gateway.session_router import RoutingConfig, RoutingDecision, SessionRouter, SessionRoutingError
@@ -14,6 +16,9 @@ from tokenade.core.gateway.session_store import SessionRecord, SessionStore
 from tokenade.core.gateway.runtime import BrowserManagerContextFactory, GatewayRuntime, GatewayRuntimeError
 from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver
 from tokenade.core.request_config import RequestConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class GatewayConfigError(ValueError):

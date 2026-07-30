@@ -184,7 +184,7 @@ def cmd_gateway(args):
         print(json.dumps(envelope, ensure_ascii=False))
         raise SystemExit(2)
 
-    print(json.dumps(control_plane.status(), ensure_ascii=False))
+    print(json.dumps(control_plane.status(), ensure_ascii=False), flush=True)
     control_plane.serve_forever()
 
 

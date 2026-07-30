@@ -70,9 +70,8 @@ class GatewaySessionContext:
 class _ContextWrapper:
     """Lightweight wrapper around a Playwright browser context."""
 
-    def __init__(self, context, page, config):
+    def __init__(self, context, config):
         self._context = context
-        self._page = page
         self.config = config
 
     def add_cookies(self, cookies: list[Dict[str, Any]]):
@@ -116,6 +115,19 @@ class BrowserManagerContextFactory:
                 headless=self.headless,
             )
             self._browser_manager.launch()
+            if getattr(self._browser_manager, "_browser", None):
+                # BrowserManager.launch() creates a default context/page for single-session use.
+                # Gateway creates per-session contexts itself, so close the throwaway startup
+                # context to avoid an extra visible window during prewarm.
+                startup_context = getattr(self._browser_manager, "_context", None)
+                if startup_context is not None:
+                    try:
+                        startup_context.close()
+                    except Exception:
+                        pass
+                self._browser_manager._context = None
+                if hasattr(self._browser_manager, "_page"):
+                    self._browser_manager._page = None
         return self._browser_manager
 
     def create_context(self, session: SessionRecord):
@@ -123,8 +135,7 @@ class BrowserManagerContextFactory:
         # Create a new isolated context from the same browser
         if hasattr(manager, '_browser') and manager._browser:
             context = manager._browser.new_context(viewport=manager.config.viewport)
-            page = context.new_page()
-            wrapper = _ContextWrapper(context, page, manager.config)
+            wrapper = _ContextWrapper(context, manager.config)
             self._contexts.append(context)
             return _BrowserManagerGatewayContext(wrapper)
         return _BrowserManagerGatewayContext(manager)

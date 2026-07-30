@@ -62,11 +62,13 @@ class BrowserProcess:
         port: int,
         profile_dir: str,
         browser_name: str,
+        owns_process_group: bool = False,
     ):
         self.process = process
         self.port = port
         self.profile_dir = profile_dir
         self.browser_name = browser_name
+        self.owns_process_group = owns_process_group
         self._ws_url: Optional[str] = None
         self._connected = False
 
@@ -131,6 +133,8 @@ class BrowserProcess:
                 import os
                 import signal
                 try:
+                    if not self.owns_process_group:
+                        raise RuntimeError("process group not owned by BrowserProcess")
                     os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
                 except Exception:
                     self.process.terminate()
@@ -138,6 +142,8 @@ class BrowserProcess:
                     self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     try:
+                        if not self.owns_process_group:
+                            raise RuntimeError("process group not owned by BrowserProcess")
                         os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
                     except Exception:
                         self.process.kill()
@@ -546,6 +552,7 @@ class SystemBrowserLauncher:
             port=port,
             profile_dir=profile_dir,
             browser_name=browser,
+            owns_process_group=platform.system() != "Windows",
         )
 
         # Wait for CDP to be ready

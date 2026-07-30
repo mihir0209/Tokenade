@@ -87,6 +87,7 @@ class TestFormatImporterPlaywright:
         assert result["cookies"][0]["expires"] == 1893456000
         # v3 mature jar: per-origin storage (not flat local_storage)
         local = (result.get("storage") or {}).get("local") or {}
+        assert "https://test.com" in local
         assert any(
             entries.get("key") == "val"
             for entries in local.values()

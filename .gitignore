@@ -46,6 +46,9 @@ accounts.json
 # Session packages (contain sensitive cookies)
 *.tokenade
 
+# Request json files
+*.request.json
+
 # Build artifacts
 build/
 dist/

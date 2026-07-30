@@ -339,9 +339,18 @@ class SessionLoader:
             result["cookies_injected"] = self.inject_cookies(self._browser, cookies)
 
             # Step 7: Inject localStorage if present and enabled
-            local_storage = package.get("local_storage", {})
-            result["local_storage_total"] = len(local_storage)
-            if inject_local_storage and local_storage:
+            local_storage_by_origin = self._local_storage_by_origin(package, site_config)
+            result["local_storage_total"] = sum(len(entries) for _, entries in local_storage_by_origin)
+            if inject_local_storage:
+                for origin, local_storage in local_storage_by_origin:
+                    if not local_storage:
+                        continue
+                    result["local_storage_injected"] += self.inject_local_storage(
+                        self._browser, local_storage, origin=origin
+                    )
+
+            if inject_local_storage and not local_storage_by_origin:
+                local_storage = package.get("local_storage", {})
                 origin = self._infer_origin(package, site_config)
                 result["local_storage_injected"] = self.inject_local_storage(
                     self._browser, local_storage, origin=origin
@@ -388,6 +397,27 @@ class SessionLoader:
                     pass
 
         return result
+
+    def _local_storage_by_origin(
+        self,
+        package: Dict,
+        site_config: Optional[Dict] = None,
+    ) -> list[tuple[Optional[str], Dict[str, str]]]:
+        """Return localStorage entries grouped by exact v3 origin, falling back to legacy flat storage."""
+        grouped: list[tuple[Optional[str], Dict[str, str]]] = []
+        storage = package.get("storage") if isinstance(package.get("storage"), dict) else {}
+        local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+        for origin, entries in local_by_origin.items():
+            if isinstance(origin, str) and isinstance(entries, dict) and entries:
+                grouped.append((origin, entries))
+
+        if grouped:
+            return grouped
+
+        legacy = package.get("local_storage")
+        if isinstance(legacy, dict) and legacy:
+            grouped.append((self._infer_origin(package, site_config), legacy))
+        return grouped
 
     def _infer_origin(self, package: Dict, site_config: Optional[Dict] = None) -> Optional[str]:
         """Infer the origin URL from package data or site config for localStorage injection."""

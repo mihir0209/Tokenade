@@ -60,28 +60,28 @@ class TestOutputFormatterMessages:
         formatter.success("done")
         output = capsys.readouterr().out
         assert "done" in output
-        assert "✓" in output
+        assert "[OK]" in output
 
     def test_error_no_json(self, capsys):
         formatter = OutputFormatter(use_color=False)
         formatter.error("failed")
         output = capsys.readouterr().out
         assert "failed" in output
-        assert "✗" in output
+        assert "[X]" in output
 
     def test_warning_no_json(self, capsys):
         formatter = OutputFormatter(use_color=False)
         formatter.warning("careful")
         output = capsys.readouterr().out
         assert "careful" in output
-        assert "⚠" in output
+        assert "[WARN]" in output
 
     def test_info_no_json(self, capsys):
         formatter = OutputFormatter(use_color=False)
         formatter.info("fyi")
         output = capsys.readouterr().out
         assert "fyi" in output
-        assert "ℹ" in output
+        assert "[i]" in output
 
     def test_success_json(self):
         formatter = OutputFormatter(json_mode=True)

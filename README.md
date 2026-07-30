@@ -16,6 +16,8 @@
 ```bash
 pip install tokenade
 tokenade plugin sync
+tokenade export --browser-name firefox --plugin discord-handler -o discord.tokenade
+tokenade load --file discord.tokenade
 ```
 
 > **Not a Multilogin / AdsPower replacement.** Tokenade is session **portability** (export → package → inject / proxy), not a full anti-detect browser product. Stealth is best-effort and measured — never “undetectable.”

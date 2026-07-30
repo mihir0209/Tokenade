@@ -626,7 +626,7 @@ class TestCmdPluginTest(unittest.TestCase):
             with patch("sys.stdout", out):
                 _plugin_test(args)
             self.assertIn("2 passed", out.getvalue())
-            self.assertIn("✓", out.getvalue())
+            self.assertIn("[OK]", out.getvalue())
 
     def test_plugin_test_single_fail(self):
         """plugin test with a failing plugin."""
@@ -646,7 +646,7 @@ class TestCmdPluginTest(unittest.TestCase):
             with patch("sys.stdout", out):
                 _plugin_test(args)
             self.assertIn("1 failed", out.getvalue())
-            self.assertIn("✗", out.getvalue())
+            self.assertIn("[X]", out.getvalue())
             self.assertIn("file missing", out.getvalue())
 
 

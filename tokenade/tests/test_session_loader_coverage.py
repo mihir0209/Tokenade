@@ -439,6 +439,21 @@ class TestLoadWorkflow:
             assert result["local_storage_injected"] == 1
 
     @patch("tokenade.core.importer.session_loader.BrowserFactory")
+    def test_with_v3_storage_local_by_origin(self, MockFactory, tmp_path):
+        package = _make_package()
+        package.pop("local_storage", None)
+        package["storage"] = {"local": {"https://api.hcnsec.cn": {"token": "v1", "user": "v2"}}}
+        path = _write_package(tmp_path, package)
+        mock_bm = MagicMock()
+        MockFactory.create.return_value = mock_bm
+        loader = SessionLoader()
+        with patch.object(loader, "inject_local_storage", return_value=2) as mock_ls:
+            result = loader.load(path, validate=False)
+            assert result["local_storage_total"] == 2
+            assert result["local_storage_injected"] == 2
+            mock_ls.assert_called_once_with(mock_bm, {"token": "v1", "user": "v2"}, origin="https://api.hcnsec.cn")
+
+    @patch("tokenade.core.importer.session_loader.BrowserFactory")
     def test_local_storage_disabled(self, MockFactory, tmp_path):
         path = _write_package(tmp_path, _make_package(
             local_storage={"k1": "v1"}
