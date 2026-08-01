@@ -16,6 +16,9 @@ from tokenade.core.gateway.session_store import SessionRecord, SessionStore
 from tokenade.core.gateway.runtime import BrowserManagerContextFactory, GatewayRuntime, GatewayRuntimeError
 from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver
 from tokenade.core.request_config import RequestConfig
+from tokenade.core.events.bus import EventBus
+from tokenade.core.events.scheduler import Scheduler
+from tokenade.core.events.types import EventType
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +128,11 @@ class GatewayControlPlane:
             burst=rate_limit_config.get("burst", 10) if rate_limit_config else 10,
         ) if rate_limit_config else None
 
+        # Probe config: timeout (seconds) and per-domain rate limit (min interval between probes)
+        self._probe_timeout = 8.0
+        self._probe_min_interval = 60.0  # seconds between probes to same domain
+        self._probe_last_run: Dict[str, float] = {}  # domain -> last probe timestamp
+
         # Load previous state if state_file exists
         if state_file:
             self._load_state()
@@ -138,6 +146,11 @@ class GatewayControlPlane:
         self._health_timer: Optional[threading.Timer] = None
         if routing_config.health_check_interval_seconds:
             self._start_health_monitor()
+
+        # Events + scheduler for cron-based tasks
+        self.event_bus = EventBus()
+        self.scheduler = Scheduler(self.event_bus, check_interval=10)
+        self._scheduler_started = False
 
     def _fire_webhook(self, event: str, data: Dict[str, Any]):
         """Fire a webhook notification (async, fire-and-forget)."""
@@ -239,17 +252,98 @@ class GatewayControlPlane:
         for session in self.sessions:
             try:
                 health = checker.check_session(session.path)
+                was_healthy = getattr(session, '_healthy', True)
                 if not health.healthy:
-                    session._health_failures = getattr(session, '_health_failures', 0) + 1
-                    if session._health_failures >= self.routing_config.unhealthy_threshold:
-                        session._healthy = False
+                    failures = getattr(session, '_health_failures', 0) + 1
+                    object.__setattr__(session, '_health_failures', failures)
+                    if failures >= self.routing_config.unhealthy_threshold:
+                        object.__setattr__(session, '_healthy', False)
+                        if was_healthy:
+                            self.event_bus.emit(EventType.HEALTH_DEGRADED, {
+                                "session_id": session.id,
+                                "site_name": session.site_name,
+                                "health_failures": failures,
+                                "health_score": health.health_score,
+                            }, source="gateway")
                 else:
-                    session._health_failures = 0
-                    session._healthy = True
+                    object.__setattr__(session, '_health_failures', 0)
+                    object.__setattr__(session, '_healthy', True)
+                    if not was_healthy:
+                        self.event_bus.emit(EventType.HEALTH_RECOVERED, {
+                            "session_id": session.id,
+                            "site_name": session.site_name,
+                        }, source="gateway")
+                self._probe_session_health(session, was_healthy)
             except Exception:
-                session._health_failures = getattr(session, '_health_failures', 0) + 1
-                if session._health_failures >= self.routing_config.unhealthy_threshold:
-                    session._healthy = False
+                failures = getattr(session, '_health_failures', 0) + 1
+                object.__setattr__(session, '_health_failures', failures)
+                if failures >= self.routing_config.unhealthy_threshold:
+                    object.__setattr__(session, '_healthy', False)
+
+    def _probe_session_health(self, session, was_healthy: bool):
+        """Run a server-side probe to detect cookie invalidation beyond expiry.
+
+        Emits HEALTH_DEGRADED when the probe returns False (server rejected cookies)
+        or HEALTH_RECOVERED when it returns True after being degraded.
+        Rate-limited per domain to avoid overwhelming target sites.
+        """
+        from tokenade.core.refresh.health_checker import SessionProbe, _resolve_probe_url, _infer_probe_url_from_cookies
+
+        try:
+            import json as _json
+            with open(session.path, encoding="utf-8") as f:
+                session_data = _json.load(f)
+            probe_url = _resolve_probe_url(session_data)
+            if not probe_url:
+                probe_url = _infer_probe_url_from_cookies(session_data.get("cookies", []))
+            if not probe_url:
+                return
+
+            from urllib.parse import urlparse
+            domain = urlparse(probe_url).hostname or ""
+            if not domain:
+                return
+
+            # Per-domain rate limiting
+            now = time.time()
+            last = self._probe_last_run.get(domain, 0)
+            if now - last < self._probe_min_interval:
+                logger.debug("Probe rate-limited for domain %s (last %.1fs ago)", domain, now - last)
+                return
+            self._probe_last_run[domain] = now
+        except Exception:
+            return
+
+        try:
+            result = SessionProbe.probe(session.path, timeout=self._probe_timeout)
+        except Exception as exc:
+            logger.debug("Session probe failed for %s: %s", session.id, exc)
+            return
+
+        if result is None:
+            return
+
+        if result is False:
+            failures = getattr(session, '_health_failures', 0) + 1
+            object.__setattr__(session, '_health_failures', failures)
+            if failures >= self.routing_config.unhealthy_threshold:
+                object.__setattr__(session, '_healthy', False)
+                if was_healthy:
+                    self.event_bus.emit(EventType.HEALTH_DEGRADED, {
+                        "session_id": session.id,
+                        "site_name": session.site_name,
+                        "health_failures": failures,
+                        "probe": "server_invalidated",
+                    }, source="gateway")
+        elif result is True:
+            if not was_healthy:
+                object.__setattr__(session, '_health_failures', 0)
+                object.__setattr__(session, '_healthy', True)
+                self.event_bus.emit(EventType.HEALTH_RECOVERED, {
+                    "session_id": session.id,
+                    "site_name": session.site_name,
+                    "probe": "server_valid",
+                }, source="gateway")
 
     def _save_state(self):
         """Save gateway state to disk (atomic write)."""
@@ -315,6 +409,10 @@ class GatewayControlPlane:
                 "context_count": len(self.runtime.contexts()) if self.runtime else 0,
             },
             "upstream_proxies": self.upstream_proxies,
+            "scheduler": {
+                "running": self._scheduler_started,
+                "task_count": len(self.scheduler.get_tasks()),
+            },
         }
 
     def session_list(self) -> Dict[str, Any]:
@@ -338,6 +436,12 @@ class GatewayControlPlane:
             "strategy": decision.strategy,
             "reason": decision.reason,
         })
+        # Emit event
+        self.event_bus.emit(EventType.PROXY_ROTATED, {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        }, source="gateway")
         return self._decision_response(decision, runtime_context)
 
     def route_select(self, selector: Dict[str, Any]) -> Dict[str, Any]:
@@ -366,6 +470,12 @@ class GatewayControlPlane:
             "strategy": decision.strategy,
             "reason": decision.reason,
         })
+        # Emit event
+        self.event_bus.emit(EventType.SESSION_VALIDATED, {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        }, source="gateway")
         return self._decision_response(decision, runtime_context)
 
     def context_list(self) -> Dict[str, Any]:
@@ -520,8 +630,95 @@ class GatewayControlPlane:
         if self._health_timer:
             self._health_timer.cancel()
             self._health_timer = None
+        if self._scheduler_started:
+            self.scheduler.stop()
+            self._scheduler_started = False
         if self.runtime:
             self.runtime.close()
+
+    def register_scheduler_tasks(self):
+        """Register cron-based tasks from plugin config and start the scheduler."""
+        self._plugin_configs = {}
+        for plugin in self.plugins:
+            roles = plugin.get("roles", {})
+            refresher_config = roles.get("session_refresher", {})
+            if not refresher_config.get("enabled"):
+                continue
+            plugin_name = plugin.get("name", "")
+            plugin_config = plugin.get("config", {})
+            self._plugin_configs[plugin_name] = plugin_config
+            interval = refresher_config.get("refresh_interval_seconds", 3600)
+            methods = refresher_config.get("methods", [])
+            for session in self.sessions:
+                task_name = f"refresh-{session.id}"
+                self.scheduler.add_interval_task(
+                    name=task_name,
+                    event_type=EventType.REFRESH_STARTED,
+                    data={
+                        "session_id": session.id,
+                        "session_path": session.path,
+                        "methods": methods,
+                        "plugin_name": plugin_name,
+                    },
+                    interval_seconds=float(interval),
+                    source="gateway",
+                )
+                logger.info("Registered refresh task: %s (every %ss)", task_name, interval)
+        if self.scheduler.get_tasks() and not self._scheduler_started:
+            self.event_bus.on(EventType.REFRESH_STARTED, self._on_refresh_task_fired)
+            self.scheduler.start()
+            self._scheduler_started = True
+
+    def _on_refresh_task_fired(self, event):
+        """Event handler that actually executes the refresh plugin."""
+        data = event.data
+        session_path = data.get("session_path")
+        plugin_name = data.get("plugin_name", "")
+        if not session_path or not plugin_name:
+            logger.warning("Refresh event missing session_path or plugin_name")
+            return
+
+        try:
+            from tokenade.core.integration.plugin_loader import get_or_create_shared_loader
+            loader = get_or_create_shared_loader()
+            refresher = loader.get_refresher(plugin_name)
+            if refresher is None:
+                logger.warning("Plugin '%s' not loaded or not a refresher", plugin_name)
+                return
+
+            with open(session_path, encoding="utf-8") as f:
+                session_data = json.load(f)
+
+            if not refresher.can_refresh(session_data):
+                logger.info("Plugin '%s' cannot refresh session %s", plugin_name, session_path)
+                return
+
+            credentials = self._plugin_configs.get(plugin_name, {})
+            result = refresher.refresh(session_data, credentials)
+
+            if result.success:
+                updated = result.data.get("session", session_data)
+                with open(session_path, "w", encoding="utf-8") as f:
+                    json.dump(updated, f, indent=2, ensure_ascii=False)
+                logger.info("Session refreshed: %s (plugin=%s)", session_path, plugin_name)
+                self.event_bus.emit(EventType.SESSION_REFRESHED, {
+                    "session_path": session_path,
+                    "plugin_name": plugin_name,
+                }, source="gateway")
+            else:
+                logger.warning("Refresh failed for %s: %s", session_path, result.error)
+                self.event_bus.emit(EventType.REFRESH_FAILED, {
+                    "session_path": session_path,
+                    "plugin_name": plugin_name,
+                    "error": result.error,
+                }, source="gateway")
+        except Exception as exc:
+            logger.error("Refresh handler error for %s: %s", session_path, exc)
+            self.event_bus.emit(EventType.REFRESH_FAILED, {
+                "session_path": session_path,
+                "plugin_name": plugin_name,
+                "error": str(exc),
+            }, source="gateway")
 
 
 def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
@@ -554,6 +751,7 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
             "name": plugin.name,
             "required": plugin.required,
             "roles": dict(plugin.roles),
+            "config": dict(plugin.config),
         }
         for plugin in request.plugins
     ]
@@ -563,7 +761,8 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
     state_file = gateway_raw.get("state_file")
     webhooks = gateway_raw.get("webhooks", {})
     rate_limit_config = gateway_raw.get("rate_limit", {})
-    return GatewayControlPlane(
+    health_config = gateway_raw.get("health", {})
+    plane = GatewayControlPlane(
         server_config,
         routing_config,
         sessions,
@@ -574,6 +773,13 @@ def create_gateway_control_plane(request: RequestConfig) -> GatewayControlPlane:
         webhooks=webhooks,
         rate_limit_config=rate_limit_config,
     )
+    if isinstance(health_config, dict):
+        if isinstance(health_config.get("probe_timeout_seconds"), (int, float)):
+            plane._probe_timeout = float(health_config["probe_timeout_seconds"])
+        if isinstance(health_config.get("probe_min_interval_seconds"), (int, float)):
+            plane._probe_min_interval = float(health_config["probe_min_interval_seconds"])
+    plane.register_scheduler_tasks()
+    return plane
 
 
 def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:

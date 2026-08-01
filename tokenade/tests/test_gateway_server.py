@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tokenade.core.events.types import EventType
 from tokenade.core.gateway.server import GatewayConfigError, create_gateway_control_plane
 from tokenade.core.gateway.runtime import GatewayRuntime
 from tokenade.core.importer.format_importer import FormatImporter
@@ -302,7 +303,7 @@ def test_gateway_webhook_failure_is_logged_not_raised(monkeypatch, tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
 
     class ImmediateThread:
-        def __init__(self, target, daemon=False):
+        def __init__(self, target, daemon=False, **kwargs):
             self.target = target
             self.daemon = daemon
 
@@ -341,6 +342,24 @@ def test_create_gateway_control_plane_returns_status(tmp_path):
     assert status["active_session"] is None
     assert status["session_count"] == 1
     assert status["routing"]["strategy"] == "round-robin"
+
+
+def test_gateway_refresh_scheduler_fires_started_event(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    request = _request(tmp_path, {"plugins": [{
+        "name": "oauth2",
+        "roles": {"session_refresher": {"enabled": True, "refresh_interval_seconds": 3600}},
+        "config": {},
+    }]})
+
+    control_plane = create_gateway_control_plane(request)
+
+    try:
+        tasks = control_plane.scheduler.get_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].event_type is EventType.REFRESH_STARTED
+    finally:
+        control_plane.close()
 
 
 def test_sessions_endpoint_contract_is_sanitized(tmp_path):
@@ -573,3 +592,98 @@ def test_gateway_status_includes_redacted_proxy_provider(monkeypatch, tmp_path):
         "plugin_name": "brightdata",
         "proxy": {"server": "http://proxy.example:8080", "username": "us***", "password": "***"},
     }]
+
+
+def test_gateway_health_probe_timeout_config(tmp_path):
+    """Probe timeout is configurable via gateway.health.probe_timeout_seconds."""
+    _write_session(tmp_path, "github.tokenade")
+    request = _request(tmp_path, {
+        "gateway": {
+            "host": "127.0.0.1", "port": 0, "backend": "cdp",
+            "health": {"probe_timeout_seconds": 3.5, "probe_min_interval_seconds": 15},
+        },
+    })
+
+    control_plane = create_gateway_control_plane(request)
+    try:
+        assert control_plane._probe_timeout == 3.5
+        assert control_plane._probe_min_interval == 15.0
+    finally:
+        control_plane.close()
+
+
+def test_gateway_health_probe_timeout_default(tmp_path):
+    """Probe timeout defaults to 8s when not configured."""
+    _write_session(tmp_path, "github.tokenade")
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    try:
+        assert control_plane._probe_timeout == 8.0
+        assert control_plane._probe_min_interval == 60.0
+    finally:
+        control_plane.close()
+
+
+def test_gateway_probe_rate_limits_same_domain(tmp_path, monkeypatch):
+    """Probes to the same domain are rate-limited by _probe_min_interval."""
+    _write_session(tmp_path, "github.tokenade", site_name="github")
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    try:
+        # Force a small min interval and record a recent probe for github.com
+        control_plane._probe_min_interval = 30.0
+        control_plane._probe_last_run["github.com"] = time.time()
+        # _probe_session_health should no-op due to rate limit
+        before = dict(control_plane._probe_last_run)
+        session = control_plane.sessions[0]
+        control_plane._probe_session_health(session, True)
+        # No new entry added; existing entry unchanged
+        assert control_plane._probe_last_run == before
+    finally:
+        control_plane.close()
+
+
+def test_gateway_probe_session_health_emits_degraded_on_false(tmp_path, monkeypatch):
+    """HEALTH_DEGRADED emitted when probe returns False."""
+    _write_session(tmp_path, "github.tokenade", site_name="github")
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    try:
+        # Patch SessionProbe.probe to return False
+        from tokenade.core.refresh import health_checker
+        monkeypatch.setattr(health_checker.SessionProbe, "probe", staticmethod(lambda *a, **k: False))
+        control_plane._probe_last_run.clear()
+        events = []
+        control_plane.event_bus.on(EventType.HEALTH_DEGRADED, lambda e: events.append(e.data))
+        session = control_plane.sessions[0]
+        object.__setattr__(session, '_healthy', True)
+        object.__setattr__(session, '_health_failures', 0)
+        # Force a low unhealthy_threshold so the probe failure crosses it
+        object.__setattr__(control_plane.routing_config, 'unhealthy_threshold', 1)
+        control_plane._probe_session_health(session, True)
+        # Allow async handler to run
+        time.sleep(0.1)
+        # Failures incremented
+        assert getattr(session, '_health_failures', 0) >= 1
+        assert len(events) == 1
+        assert events[0]["probe"] == "server_invalidated"
+    finally:
+        control_plane.close()
+
+
+def test_gateway_probe_session_health_emits_recovered_on_true(tmp_path, monkeypatch):
+    """HEALTH_RECOVERED emitted when probe returns True after degraded."""
+    _write_session(tmp_path, "github.tokenade", site_name="github")
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    try:
+        from tokenade.core.refresh import health_checker
+        monkeypatch.setattr(health_checker.SessionProbe, "probe", staticmethod(lambda *a, **k: True))
+        control_plane._probe_last_run.clear()
+        events = []
+        control_plane.event_bus.on(EventType.HEALTH_RECOVERED, lambda e: events.append(e.data))
+        session = control_plane.sessions[0]
+        object.__setattr__(session, '_healthy', False)
+        object.__setattr__(session, '_health_failures', 2)
+        control_plane._probe_session_health(session, False)
+        time.sleep(0.1)
+        assert len(events) == 1
+        assert events[0]["probe"] == "server_valid"
+    finally:
+        control_plane.close()

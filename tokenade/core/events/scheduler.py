@@ -99,7 +99,7 @@ class Scheduler:
         scheduler = Scheduler(event_bus)
         scheduler.add_cron_task(
             name="google-refresh",
-            event_type=EventType.REFRESH_SUCCESS,
+            event_type=EventType.REFRESH_STARTED,
             data={"session_id": "abc"},
             cron_expr="0 */6 * * *"
         )

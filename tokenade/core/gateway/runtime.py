@@ -8,11 +8,16 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol
+from urllib.parse import urlparse
 
 from tokenade.core.gateway.session_store import SessionRecord
 from tokenade.core.importer.session_loader import SessionLoader
 
 logger = logging.getLogger(__name__)
+
+_MS_THRESHOLD = 1262304000000
+_ALLOWED_URL_SCHEMES = frozenset(("http", "https"))
+_MAX_LS_ENTRIES_PER_ORIGIN = 500
 
 
 class GatewayRuntimeError(RuntimeError):
@@ -270,52 +275,146 @@ class GatewayRuntime:
         return data
 
     def _inject_cookies(self, context: Any, cookies: list[Dict[str, Any]]) -> int:
+        now = time.time()
         normalized = []
+        skipped_expired = 0
         for cookie in cookies:
             if not isinstance(cookie, dict) or "name" not in cookie or "value" not in cookie:
+                continue
+            expires = cookie.get("expires")
+            if expires and _is_expired(expires, now):
+                skipped_expired += 1
                 continue
             normalized.append(self._loader._normalize_cookie(cookie))
         if normalized:
             context.add_cookies(normalized)
+        if skipped_expired:
+            logger.info(
+                "Skipped %d expired cookies during injection", skipped_expired
+            )
         return len(normalized)
 
     def _inject_storage(self, context: Any, package: Dict[str, Any]) -> list[str]:
         origins = []
         storage = package.get("storage") if isinstance(package.get("storage"), dict) else {}
         local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+
+        relevant_domains = self._relevant_domains(package)
+
         for origin, values in local_by_origin.items():
-            if isinstance(origin, str) and isinstance(values, dict):
-                self._inject_local_storage_origin(context, origin, values)
+            if not isinstance(origin, str) or not isinstance(values, dict) or not values:
+                continue
+            if not _is_valid_origin(origin):
+                logger.debug("Skipping invalid localStorage origin: %s", origin)
+                continue
+            if relevant_domains and not _origin_matches_domains(origin, relevant_domains):
+                logger.debug("Skipping non-session localStorage origin: %s", origin)
+                continue
+            injected = self._inject_local_storage_origin(context, origin, values)
+            if injected:
                 origins.append(origin)
 
         legacy_local_storage = package.get("local_storage")
         if isinstance(legacy_local_storage, dict) and legacy_local_storage:
             origin = self._loader._infer_origin(package)
-            if origin:
-                self._inject_local_storage_origin(context, origin, legacy_local_storage)
-                origins.append(origin)
+            if origin and _is_valid_origin(origin):
+                if not relevant_domains or _origin_matches_domains(origin, relevant_domains):
+                    injected = self._inject_local_storage_origin(context, origin, legacy_local_storage)
+                    if injected:
+                        origins.append(origin)
+            elif origin:
+                logger.debug("Skipping invalid legacy localStorage origin: %s", origin)
         return origins
 
-    def _inject_local_storage_origin(self, context: Any, origin: str, values: Dict[str, Any]):
+    def _relevant_domains(self, package: Dict[str, Any]) -> set[str]:
+        """Extract the set of cookie/site domains relevant to this session."""
+        domains: set[str] = set()
+        for cookie in package.get("cookies", []):
+            if isinstance(cookie, dict):
+                domain = cookie.get("domain", "")
+                if isinstance(domain, str) and domain.strip():
+                    domains.add(domain.lstrip(".").lower())
+        site_name = package.get("site_name", "")
+        if isinstance(site_name, str) and site_name and site_name != "unknown":
+            domains.add(site_name.lower())
+        return domains
+
+    def _inject_local_storage_origin(self, context: Any, origin: str, values: Dict[str, Any]) -> bool:
         if not values:
-            return
+            return False
+        batches = _batch_local_storage(values)
         page = context.new_page()
         try:
             if hasattr(page, "goto"):
                 page.goto(origin, wait_until="domcontentloaded", timeout=15000)
             if hasattr(page, "evaluate"):
-                page.evaluate(
-                    """
-                    (data) => {
-                        for (const [key, value] of Object.entries(data)) {
-                            localStorage.setItem(key, value);
+                for batch in batches:
+                    page.evaluate(
+                        """
+                        (data) => {
+                            for (const [key, value] of Object.entries(data)) {
+                                localStorage.setItem(key, value);
+                            }
                         }
-                    }
-                    """,
-                    values,
-                )
+                        """,
+                        batch,
+                    )
         except Exception as exc:
             logger.warning("localStorage injection failed for %s: %s", origin, exc)
+            return False
         finally:
             if hasattr(page, "close"):
                 page.close()
+        return True
+
+
+def _is_expired(expires: Any, now: float) -> bool:
+    """Check if a cookie expiry value is in the past."""
+    try:
+        expires_int = int(expires)
+    except (TypeError, ValueError):
+        return False
+    if expires_int <= 0:
+        return False
+    if expires_int > _MS_THRESHOLD:
+        expires_int = expires_int // 1000
+    return expires_int < now
+
+
+def _is_valid_origin(origin: str) -> bool:
+    """Check that an origin string has an http(s) scheme and a non-blocked host."""
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+    if parsed.scheme not in _ALLOWED_URL_SCHEMES:
+        return False
+    if not parsed.hostname:
+        return False
+    return True
+
+
+def _origin_matches_domains(origin: str, domains: set[str]) -> bool:
+    """Check if an origin's hostname is related to any of the given domains."""
+    try:
+        hostname = urlparse(origin).hostname or ""
+    except Exception:
+        return False
+    hostname = hostname.lower()
+    if not hostname:
+        return False
+    for domain in domains:
+        if hostname == domain or hostname.endswith("." + domain):
+            return True
+    return False
+
+
+def _batch_local_storage(values: Dict[str, Any], batch_size: int = _MAX_LS_ENTRIES_PER_ORIGIN) -> list[Dict[str, Any]]:
+    """Split a localStorage dict into batches to avoid huge evaluate payloads."""
+    items = list(values.items())
+    if len(items) <= batch_size:
+        return [dict(items)]
+    batches = []
+    for i in range(0, len(items), batch_size):
+        batches.append(dict(items[i : i + batch_size]))
+    return batches

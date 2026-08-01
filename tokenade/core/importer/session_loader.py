@@ -12,7 +12,7 @@ Handles:
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 from tokenade.core.browser.manager import BrowserFactory, BrowserConfig
@@ -192,6 +192,7 @@ class SessionLoader:
         - Firefox stores expires in milliseconds, Playwright expects seconds
         - Session cookies (expires=0 or missing) should omit the expires field
         - sameSite='None' requires secure=True per Playwright spec
+        - Boolean fields may be stored as strings "False"/"True" after round-trip
         """
         normalized = {
             "name": cookie["name"],
@@ -200,8 +201,8 @@ class SessionLoader:
             "path": cookie.get("path", "/"),
         }
 
-        secure = bool(cookie.get("secure"))
-        http_only = bool(cookie.get("httpOnly"))
+        secure = _parse_bool(cookie.get("secure"))
+        http_only = _parse_bool(cookie.get("httpOnly"))
         same_site = cookie.get("sameSite", "")
 
         # Fix expires: Firefox uses milliseconds, Playwright expects seconds
@@ -542,3 +543,12 @@ class SessionLoader:
     def get_last_result(self) -> Optional[Dict]:
         """Get result from last load operation."""
         return self._last_result
+
+
+def _parse_bool(value: Any) -> bool:
+    """Parse a value that might be a bool or string "True"/"False" into bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return bool(value)

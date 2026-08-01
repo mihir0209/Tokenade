@@ -23,6 +23,7 @@ class SessionHealth:
     issues: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
     last_checked: Optional[str] = None
+    server_valid: Optional[bool] = None  # None = not probed, True = valid, False = invalidated
 
 
 @dataclass
@@ -353,3 +354,157 @@ def generate_health_report(health: SessionHealth) -> str:
     lines.append(f"\nLast Checked: {health.last_checked}")
 
     return "\n".join(lines)
+
+
+class SessionProbe:
+    """Server-side session invalidation probe using a lightweight HTTP request.
+
+    Sends the session's cookies to a configured ``session_check_url`` or
+    ``api_probe_url`` and inspects the HTTP status code:
+    - 200/2xx/304 → valid
+    - 401/403 → invalidated
+    - Other → unknown (treated as inconclusive, not a failure)
+
+    The probe is pure HTTP (no browser). It reads the site_config from the
+    installed plugin system to find the probe URL.
+    """
+
+    @staticmethod
+    def probe(session_path: str, *, timeout: float = 8.0) -> Optional[bool]:
+        """Probe whether cookies in a session file are still server-valid.
+
+        Args:
+            session_path: Path to the .tokenade session file.
+            timeout: HTTP request timeout in seconds.
+
+        Returns:
+            True if server confirms valid, False if invalidated, None if inconclusive.
+        """
+        import urllib.request
+        import urllib.error
+
+        try:
+            with open(session_path, encoding="utf-8") as f:
+                session = json.load(f)
+        except Exception:
+            return None
+
+        cookies = session.get("cookies", [])
+        if not isinstance(cookies, list) or not cookies:
+            return None
+
+        probe_url = _resolve_probe_url(session)
+        if not probe_url:
+            probe_url = _infer_probe_url_from_cookies(cookies)
+        if not probe_url:
+            return None
+
+        cookie_header = _build_cookie_header(cookies, probe_url)
+        if not cookie_header:
+            # Site config URL didn't match any cookies — try inferring from cookie domains
+            inferred = _infer_probe_url_from_cookies(cookies)
+            if inferred and inferred != probe_url:
+                probe_url = inferred
+                cookie_header = _build_cookie_header(cookies, probe_url)
+        if not cookie_header:
+            return None
+
+        request = urllib.request.Request(
+            probe_url,
+            headers={"Cookie": cookie_header, "User-Agent": "tokenade-probe/1.0"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                status = resp.status
+            return status not in (401, 403)
+        except urllib.error.HTTPError as e:
+            return e.code not in (401, 403)
+        except Exception:
+            return None
+
+
+def _resolve_probe_url(session: dict) -> Optional[str]:
+    """Find a probe URL from the installed site config or session metadata."""
+    try:
+        from tokenade.core.importer.site_configs import get_site_config
+    except Exception:
+        return None
+
+    site_name = session.get("site_name", "unknown") or "unknown"
+    try:
+        config = get_site_config(site_name)
+    except Exception:
+        config = {}
+
+    probe_url = (
+        config.get("session_check_url")
+        or config.get("api_probe_url")
+        or config.get("validate_url")
+    )
+    if isinstance(probe_url, str) and probe_url.strip():
+        return probe_url.strip()
+
+    browser_metadata = (session.get("metadata") or {}).get("site_handler") or {}
+    if isinstance(browser_metadata, dict):
+        probe_url = browser_metadata.get("validate_url") or browser_metadata.get("session_check_url")
+        if isinstance(probe_url, str) and probe_url.strip():
+            return probe_url.strip()
+
+    return None
+
+
+def _build_cookie_header(cookies: list, probe_url: str) -> str:
+    """Build a Cookie header only from cookies relevant to the probe URL."""
+    from urllib.parse import urlparse
+
+    try:
+        hostname = urlparse(probe_url).hostname or ""
+    except Exception:
+        hostname = ""
+
+    parts = []
+    for cookie in cookies:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if not name or value is None:
+            continue
+        domain = cookie.get("domain", "")
+        if domain:
+            clean_domain = domain.lstrip(".").lower()
+            if hostname and hostname != clean_domain and not hostname.endswith("." + clean_domain):
+                continue
+        parts.append(f"{name}={value}")
+    return "; ".join(parts)
+
+
+def _infer_probe_url_from_cookies(cookies: list) -> Optional[str]:
+    """Infer a probe URL from cookie domains when no site config URL is available.
+
+    Picks the most common domain among cookies, preferring dot-prefixed domains
+    (which are shared across subdomains).
+    """
+    from collections import Counter
+
+    domains = []
+    for cookie in cookies:
+        if not isinstance(cookie, dict):
+            continue
+        domain = cookie.get("domain", "")
+        if not isinstance(domain, str) or not domain.strip():
+            continue
+        clean = domain.lstrip(".").strip().lower()
+        if clean:
+            domains.append(clean)
+
+    if not domains:
+        return None
+
+    # Pick most common domain
+    most_common = Counter(domains).most_common(1)
+    if most_common:
+        domain = most_common[0][0]
+        return f"https://{domain}/"
+    return None
