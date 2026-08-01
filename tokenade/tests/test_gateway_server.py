@@ -625,7 +625,12 @@ def test_gateway_health_probe_timeout_default(tmp_path):
 
 def test_gateway_probe_rate_limits_same_domain(tmp_path, monkeypatch):
     """Probes to the same domain are rate-limited by _probe_min_interval."""
-    _write_session(tmp_path, "github.tokenade", site_name="github")
+    _write_session(
+        tmp_path,
+        "github.tokenade",
+        site_name="github",
+        metadata={"site_handler": {"session_check_url": "https://github.com/settings/profile"}},
+    )
     control_plane = create_gateway_control_plane(_request(tmp_path))
     try:
         # Force a small min interval and record a recent probe for github.com
@@ -643,7 +648,12 @@ def test_gateway_probe_rate_limits_same_domain(tmp_path, monkeypatch):
 
 def test_gateway_probe_session_health_emits_degraded_on_false(tmp_path, monkeypatch):
     """HEALTH_DEGRADED emitted when probe returns False."""
-    _write_session(tmp_path, "github.tokenade", site_name="github")
+    _write_session(
+        tmp_path,
+        "github.tokenade",
+        site_name="github",
+        metadata={"site_handler": {"session_check_url": "https://github.com/settings/profile"}},
+    )
     control_plane = create_gateway_control_plane(_request(tmp_path))
     try:
         # Patch SessionProbe.probe to return False
@@ -670,7 +680,12 @@ def test_gateway_probe_session_health_emits_degraded_on_false(tmp_path, monkeypa
 
 def test_gateway_probe_session_health_emits_recovered_on_true(tmp_path, monkeypatch):
     """HEALTH_RECOVERED emitted when probe returns True after degraded."""
-    _write_session(tmp_path, "github.tokenade", site_name="github")
+    _write_session(
+        tmp_path,
+        "github.tokenade",
+        site_name="github",
+        metadata={"site_handler": {"session_check_url": "https://github.com/settings/profile"}},
+    )
     control_plane = create_gateway_control_plane(_request(tmp_path))
     try:
         from tokenade.core.refresh import health_checker

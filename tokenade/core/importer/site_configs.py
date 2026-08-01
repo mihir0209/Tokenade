@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -207,39 +207,61 @@ def discover_plugin_site_configs(
             continue
 
         plugin_type = (meta.get("type") or "").lower()
-        # Site configs only on handler-type plugins (or any with site_config.json)
-        site_path = plugin_dir / "site_config.json"
-        if not site_path.is_file():
-            continue
         if plugin_type and plugin_type not in ("handler", "site_handler", ""):
-            # Allow site_config.json only for handlers
-            if plugin_type != "handler":
-                continue
+            continue
 
         plugin_name = meta.get("name") or plugin_dir.name
-        cfg = load_site_config_file(site_path, plugin_name=plugin_name)
-        if not cfg:
-            continue
+        site_path = plugin_dir / "site_config.json"
+        if site_path.is_file():
+            cfg = load_site_config_file(site_path, plugin_name=plugin_name)
+            if cfg:
+                cfg["_plugin"] = plugin_name
+                cfg["_path"] = str(site_path)
+                _index_site(by_site, cfg, plugin_name, meta)
 
-        cfg["_plugin"] = plugin_name
-        cfg["_path"] = str(site_path)
-
-        # Index keys: explicit name, site_name from manifest, plugin stem
-        keys = set()
-        if cfg.get("name"):
-            keys.add(str(cfg["name"]).lower())
-        site_name = meta.get("site_name")
-        if site_name:
-            keys.add(str(site_name).lower())
-        if plugin_name.endswith("-handler"):
-            keys.add(plugin_name[: -len("-handler")].lower())
-        keys.add(plugin_name.lower())
-
-        for key in keys:
-            if key and key not in by_site:
-                by_site[key] = dict(cfg)
+        # Multi-catalog plugins (generic-handler) keep per-site JSONs under sites/*.json.
+        # Each file is a normal site config — pick them up so SessionProbe / health
+        # checks resolve session_check_url without an active handler instance.
+        if plugin_type in ("handler", "site_handler", ""):
+            sites_dir = plugin_dir / "sites"
+            if sites_dir.is_dir():
+                for site_path in sorted(sites_dir.glob("*.json")):
+                    try:
+                        site_cfg = json.loads(site_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError) as e:
+                        logger.debug("Failed to load %s: %s", site_path, e)
+                        continue
+                    if not isinstance(site_cfg, dict):
+                        continue
+                    site_cfg = normalize_site_config(site_cfg, plugin_name=plugin_name)
+                    site_cfg["_plugin"] = plugin_name
+                    site_cfg["_path"] = str(site_path)
+                    site_cfg.setdefault("preferred_plugin", plugin_name)
+                    _index_site(by_site, site_cfg, plugin_name, meta)
 
     return by_site
+
+
+def _index_site(
+    by_site: Dict[str, Dict[str, Any]],
+    cfg: Dict[str, Any],
+    plugin_name: str,
+    meta: Dict[str, Any],
+) -> None:
+    """Register a single site config under all its index keys (first-wins)."""
+    keys = set()
+    if cfg.get("name"):
+        keys.add(str(cfg["name"]).lower())
+    site_name = meta.get("site_name")
+    if site_name:
+        keys.add(str(site_name).lower())
+    if plugin_name.endswith("-handler"):
+        keys.add(plugin_name[: -len("-handler")].lower())
+    keys.add(plugin_name.lower())
+
+    for key in keys:
+        if key and key not in by_site:
+            by_site[key] = dict(cfg)
 
 
 def _configs_from_loaded_handlers() -> Dict[str, Dict[str, Any]]:

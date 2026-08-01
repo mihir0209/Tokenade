@@ -2,16 +2,37 @@
 
 import json
 import time
+import threading
 import pytest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import patch, MagicMock
 
 from tokenade.core.refresh.health_checker import (
     SessionHealthChecker,
     SessionHealth,
     SessionRefresher,
+    SessionProbe,
     RefreshResult,
     generate_health_report,
 )
+
+
+def _start_probe_server(status_code):
+    class ProbeHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(status_code)
+            if 300 <= status_code < 400:
+                self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            return
+
+    httpd = HTTPServer(("127.0.0.1", 0), ProbeHandler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, thread
 
 
 class TestSessionHealthChecker:
@@ -449,3 +470,62 @@ class TestSessionRefresher:
             saved_session = save_call_args[0][0]
             assert saved_session["metadata"]["refreshed_from"] == str(session_file)
             assert saved_session["metadata"]["original_exported_at"] == "2025-01-01"
+
+
+class TestSessionProbe:
+    def test_probe_redirect_to_login_is_invalid(self, tmp_path):
+        httpd, thread = _start_probe_server(302)
+        session_file = tmp_path / "session.tokenade"
+        session_file.write_text(json.dumps({
+            "cookies": [{"name": "sid", "value": "abc", "domain": "127.0.0.1", "path": "/"}],
+            "metadata": {
+                "site_handler": {
+                    "session_check_url": f"http://127.0.0.1:{httpd.server_port}/settings/profile"
+                }
+            },
+        }))
+
+        try:
+            assert SessionProbe.probe(str(session_file), timeout=2) is False
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+    def test_probe_200_is_valid(self, tmp_path):
+        httpd, thread = _start_probe_server(200)
+        session_file = tmp_path / "session.tokenade"
+        session_file.write_text(json.dumps({
+            "cookies": [{"name": "sid", "value": "abc", "domain": "127.0.0.1", "path": "/"}],
+            "metadata": {
+                "site_handler": {
+                    "session_check_url": f"http://127.0.0.1:{httpd.server_port}/settings/profile"
+                }
+            },
+        }))
+
+        try:
+            assert SessionProbe.probe(str(session_file), timeout=2) is True
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+    def test_probe_ignores_validate_url_without_session_check_url(self, tmp_path):
+        httpd, thread = _start_probe_server(200)
+        session_file = tmp_path / "session.tokenade"
+        session_file.write_text(json.dumps({
+            "cookies": [{"name": "sid", "value": "abc", "domain": "127.0.0.1", "path": "/"}],
+            "metadata": {
+                "site_handler": {
+                    "validate_url": f"http://127.0.0.1:{httpd.server_port}/dashboard"
+                }
+            },
+        }))
+
+        try:
+            assert SessionProbe.probe(str(session_file), timeout=2) is None
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)

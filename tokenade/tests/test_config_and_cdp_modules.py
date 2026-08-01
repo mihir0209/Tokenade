@@ -351,10 +351,10 @@ class TestGetSiteUrl:
         assert url == "https://github.com"
 
     def test_known_site_from_site_config(self):
-        # "google" has a validate_url in site_configs
+        # "google" resolves from the generic-handler catalog before google-flow.
         session = {"site_name": "google", "cookies": []}
         url = get_site_url(session)
-        assert url == "https://labs.google/fx/tools/flow"
+        assert url == "https://mail.google.com"
 
     def test_unknown_site_falls_back_to_cookies(self):
         session = {

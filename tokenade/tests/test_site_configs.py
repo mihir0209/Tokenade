@@ -218,3 +218,27 @@ def test_discover_plugin_without_handler_suffix(tmp_path):
     found = discover_plugin_site_configs(tmp_path)
     assert "acme" in found
     assert found["acme"]["critical_cookies"] == ["sid"]
+
+
+def test_discover_catalog_sites_without_root_site_config(tmp_path):
+    """Handler plugins can expose multiple site configs via sites/*.json."""
+    plugin = tmp_path / "generic-handler"
+    sites = plugin / "sites"
+    sites.mkdir(parents=True)
+    (plugin / "plugin.json").write_text(
+        json.dumps({"name": "generic-handler", "type": "handler", "entry_point": "plugin.py"})
+    )
+    (sites / "github.json").write_text(
+        json.dumps({
+            "name": "github",
+            "domains": ["github.com", ".github.com"],
+            "critical_cookies": ["user_session"],
+            "session_check_url": "https://github.com/settings/profile",
+        })
+    )
+
+    found = discover_plugin_site_configs(tmp_path)
+
+    assert "github" in found
+    assert found["github"]["session_check_url"] == "https://github.com/settings/profile"
+    assert found["github"]["preferred_plugin"] == "generic-handler"

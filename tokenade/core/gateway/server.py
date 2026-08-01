@@ -287,15 +287,13 @@ class GatewayControlPlane:
         or HEALTH_RECOVERED when it returns True after being degraded.
         Rate-limited per domain to avoid overwhelming target sites.
         """
-        from tokenade.core.refresh.health_checker import SessionProbe, _resolve_probe_url, _infer_probe_url_from_cookies
+        from tokenade.core.refresh.health_checker import SessionProbe, _resolve_probe_url
 
         try:
             import json as _json
             with open(session.path, encoding="utf-8") as f:
                 session_data = _json.load(f)
             probe_url = _resolve_probe_url(session_data)
-            if not probe_url:
-                probe_url = _infer_probe_url_from_cookies(session_data.get("cookies", []))
             if not probe_url:
                 return
 

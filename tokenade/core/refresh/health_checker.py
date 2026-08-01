@@ -395,17 +395,9 @@ class SessionProbe:
 
         probe_url = _resolve_probe_url(session)
         if not probe_url:
-            probe_url = _infer_probe_url_from_cookies(cookies)
-        if not probe_url:
             return None
 
         cookie_header = _build_cookie_header(cookies, probe_url)
-        if not cookie_header:
-            # Site config URL didn't match any cookies — try inferring from cookie domains
-            inferred = _infer_probe_url_from_cookies(cookies)
-            if inferred and inferred != probe_url:
-                probe_url = inferred
-                cookie_header = _build_cookie_header(cookies, probe_url)
         if not cookie_header:
             return None
 
@@ -414,12 +406,35 @@ class SessionProbe:
             headers={"Cookie": cookie_header, "User-Agent": "tokenade-probe/1.0"},
             method="GET",
         )
+
+        # Avoid following redirects — a 302 to /login is the auth-failed signal.
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def http_error_301(self, req, fp, code, msg, headers):
+                return fp
+            def http_error_302(self, req, fp, code, msg, headers):
+                return fp
+            def http_error_303(self, req, fp, code, msg, headers):
+                return fp
+            def http_error_307(self, req, fp, code, msg, headers):
+                return fp
+            def http_error_308(self, req, fp, code, msg, headers):
+                return fp
+
+        opener = urllib.request.build_opener(_NoRedirect)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
+            with opener.open(request, timeout=timeout) as resp:
                 status = resp.status
-            return status not in (401, 403)
+            # 2xx → valid; 3xx usually means redirect to login for auth-gated pages.
+            if 200 <= status < 300:
+                return True
+            if 300 <= status < 400:
+                return False
+            return None
         except urllib.error.HTTPError as e:
-            return e.code not in (401, 403)
+            status = e.code
+            if status in (401, 403, 302, 301, 303, 307, 308):
+                return False
+            return None
         except Exception:
             return None
 
@@ -437,17 +452,17 @@ def _resolve_probe_url(session: dict) -> Optional[str]:
     except Exception:
         config = {}
 
-    probe_url = (
-        config.get("session_check_url")
-        or config.get("api_probe_url")
-        or config.get("validate_url")
-    )
+    # Server-side probes require an endpoint with machine-readable auth semantics
+    # (2xx when logged in, 3xx/401/403 when logged out). Generic browser
+    # validate_url pages can return bot-protection 403 or anonymous 200, causing
+    # false invalidation signals.
+    probe_url = config.get("session_check_url") or config.get("api_probe_url")
     if isinstance(probe_url, str) and probe_url.strip():
         return probe_url.strip()
 
     browser_metadata = (session.get("metadata") or {}).get("site_handler") or {}
     if isinstance(browser_metadata, dict):
-        probe_url = browser_metadata.get("validate_url") or browser_metadata.get("session_check_url")
+        probe_url = browser_metadata.get("session_check_url") or browser_metadata.get("api_probe_url")
         if isinstance(probe_url, str) and probe_url.strip():
             return probe_url.strip()
 
