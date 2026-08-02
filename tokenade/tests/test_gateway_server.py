@@ -546,9 +546,15 @@ def test_tabs_new_url_uses_active_session_not_url_as_selector(tmp_path):
 
     control_plane.route_select({"id": "github-stable"})
     tab = control_plane.tabs_new({"url": "https://github.com"})
+    reused = control_plane.tabs_new({"url": "https://github.com/settings"})
+    new_tab = control_plane.tabs_new({"url": "https://github.com/new", "window_policy": "new-tab"})
 
     assert tab["runtime"]["success"] is True
-    assert tab["runtime"]["context"]["page_count"] == 1
+    assert tab["runtime"]["page_reused"] is False
+    assert reused["runtime"]["page_reused"] is True
+    assert reused["runtime"]["context"]["page_count"] == 1
+    assert new_tab["runtime"]["page_reused"] is False
+    assert new_tab["runtime"]["context"]["page_count"] == 2
 
 
 def test_gateway_http_runtime_contexts(tmp_path):

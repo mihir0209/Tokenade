@@ -52,6 +52,11 @@ ROUTING_STRATEGIES: List[Tuple[str, str]] = [
     ("sticky", "sticky"),
 ]
 
+WINDOW_POLICIES: List[Tuple[str, str]] = [
+    ("Reuse active window", "reuse-active-window"),
+    ("New tab", "new-tab"),
+]
+
 
 def gateway_request_options(root: Path | None = None) -> List[Tuple[str, str]]:
     """Return Gateway request JSON files from ~/.tokenade/requests by default."""
@@ -99,6 +104,7 @@ class GatewayView(BaseView):
     GatewayView #gateway-url-input { width: 44; min-width: 28; }
     GatewayView #gateway-session-select { width: 42; min-width: 28; }
     GatewayView #gateway-strategy-select { width: 20; min-width: 14; }
+    GatewayView #gateway-window-policy-select { width: 24; min-width: 18; }
     GatewayView #gateway-status-label {
         text-style: bold;
         color: $success;
@@ -142,6 +148,7 @@ class GatewayView(BaseView):
             )
             yield Horizontal(
                 Input(placeholder="URL from request", id="gateway-url-input"),
+                Select(WINDOW_POLICIES, id="gateway-window-policy-select", value="reuse-active-window", allow_blank=False),
                 Select(ROUTING_STRATEGIES, id="gateway-strategy-select", value="round-robin", allow_blank=False),
                 Select([("No sessions loaded", "")], id="gateway-session-select", value="", allow_blank=False),
                 classes="gateway-row",
@@ -149,9 +156,9 @@ class GatewayView(BaseView):
             yield Horizontal(
                 Button("Route next", variant="warning", compact=True, id="gateway-route-next"),
                 Button("Select", variant="default", compact=True, id="gateway-route-select"),
-                Button("Open tab", variant="success", compact=True, id="gateway-open-tab"),
-                Button("Next + tab", variant="success", compact=True, id="gateway-next-tab"),
-                Button("Select + tab", variant="success", compact=True, id="gateway-select-tab"),
+                Button("Open", variant="success", compact=True, id="gateway-open-tab"),
+                Button("Next + open", variant="success", compact=True, id="gateway-next-tab"),
+                Button("Select + open", variant="success", compact=True, id="gateway-select-tab"),
                 Button("Drain", variant="error", compact=True, id="gateway-drain"),
                 classes="gateway-row",
             )

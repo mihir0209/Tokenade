@@ -1028,6 +1028,23 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception:
             return ""
 
+    def _gateway_window_policy(self) -> str:
+        try:
+            val = self.query_one("#gateway-window-policy-select").value
+            blank = getattr(Select, "NULL", Select.BLANK)
+            if val is not blank and val not in (None, "", False):
+                return str(val)
+        except Exception:
+            pass
+        return "reuse-active-window"
+
+    def _gateway_open_payload(self) -> Dict[str, str]:
+        payload: Dict[str, str] = {"window_policy": self._gateway_window_policy()}
+        url = self._gateway_tab_url()
+        if url:
+            payload["url"] = url
+        return payload
+
     def _gateway_selector(self) -> Dict[str, str]:
         try:
             val = self.query_one("#gateway-session-select").value
@@ -1184,8 +1201,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self.notify("Gateway stopped", timeout=3)
 
     def _gateway_next_tab(self):
-        url = self._gateway_tab_url()
-
         def _worker():
             ok = False
             lines = []
@@ -1193,7 +1208,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 route = self._gateway_post("/route/next")
                 lines.append("$ POST /route/next")
                 lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                tab_payload = {"url": url} if url else {}
+                tab_payload = self._gateway_open_payload()
                 tab = self._gateway_post("/tabs/new", tab_payload)
                 lines.append("$ POST /tabs/new")
                 if tab_payload:
@@ -1206,9 +1221,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             def _ui():
                 self._gateway_log("\n".join(lines))
                 if ok:
-                    self.notify("Gateway next + tab OK", timeout=3)
+                    self.notify("Gateway next + open OK", timeout=3)
                 else:
-                    self.notify("Gateway next + tab failed", severity="error", timeout=4)
+                    self.notify("Gateway next + open failed", severity="error", timeout=4)
 
             try:
                 self.call_from_thread(_ui)
@@ -1218,7 +1233,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-next-tab").start()
 
     def _gateway_select_tab(self):
-        url = self._gateway_tab_url()
         selector = self._gateway_selector()
         if not selector:
             self.notify("Select a request session first", severity="warning")
@@ -1232,7 +1246,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 lines.append("$ POST /route/select")
                 lines.append(json.dumps(selector, ensure_ascii=False))
                 lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                tab_payload = {"url": url} if url else {}
+                tab_payload = self._gateway_open_payload()
                 tab = self._gateway_post("/tabs/new", tab_payload)
                 lines.append("$ POST /tabs/new")
                 if tab_payload:
@@ -1245,9 +1259,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             def _ui():
                 self._gateway_log("\n".join(lines))
                 if ok:
-                    self.notify("Gateway select + tab OK", timeout=3)
+                    self.notify("Gateway select + open OK", timeout=3)
                 else:
-                    self.notify("Gateway select + tab failed", severity="error", timeout=4)
+                    self.notify("Gateway select + open failed", severity="error", timeout=4)
 
             try:
                 self.call_from_thread(_ui)
@@ -1601,8 +1615,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "gateway-route-select":
             self._gateway_run_http("route select", "POST", "/route/select", self._gateway_selector())
         elif btn_id == "gateway-open-tab":
-            payload = {"url": self._gateway_tab_url()} if self._gateway_tab_url() else {}
-            self._gateway_run_http("open tab", "POST", "/tabs/new", payload)
+            self._gateway_run_http("open", "POST", "/tabs/new", self._gateway_open_payload())
         elif btn_id == "gateway-next-tab":
             self._gateway_next_tab()
         elif btn_id == "gateway-select-tab":

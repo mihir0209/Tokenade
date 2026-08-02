@@ -234,7 +234,42 @@ def test_new_page_navigates_optional_url_in_active_context(tmp_path):
 
     page = factory.contexts["github"].pages[-1]
     assert result["success"] is True
+    assert result["window_policy"] == "reuse-active-window"
+    assert result["page_reused"] is False
     assert page.goto_calls == [{"url": "https://github.com", "wait_until": "domcontentloaded", "timeout": 30000}]
+
+
+def test_reuse_active_window_reuses_page_for_repeated_opens(tmp_path):
+    records = {record.site_name: record for record in _records(tmp_path)}
+    factory = FakeContextFactory()
+    runtime = GatewayRuntime(factory)
+    runtime.activate(records["github"])
+
+    first = runtime.new_page(url="https://github.com/inbox")
+    second = runtime.new_page(url="https://github.com/settings")
+
+    pages = factory.contexts["github"].pages
+    assert len(pages) == 1
+    assert first["page_reused"] is False
+    assert second["page_reused"] is True
+    assert pages[0].goto_calls == [
+        {"url": "https://github.com/inbox", "wait_until": "domcontentloaded", "timeout": 30000},
+        {"url": "https://github.com/settings", "wait_until": "domcontentloaded", "timeout": 30000},
+    ]
+
+
+def test_new_tab_policy_creates_page_for_each_open(tmp_path):
+    records = {record.site_name: record for record in _records(tmp_path)}
+    factory = FakeContextFactory()
+    runtime = GatewayRuntime(factory)
+    runtime.activate(records["github"])
+
+    first = runtime.new_page(url="https://github.com/inbox", window_policy="new-tab")
+    second = runtime.new_page(url="https://github.com/settings", window_policy="new-tab")
+
+    assert len(factory.contexts["github"].pages) == 2
+    assert first["page_reused"] is False
+    assert second["page_reused"] is False
 
 
 def test_new_page_navigation_error_is_non_fatal(tmp_path):

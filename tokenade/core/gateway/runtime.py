@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 _MS_THRESHOLD = 1262304000000
 _ALLOWED_URL_SCHEMES = frozenset(("http", "https"))
 _MAX_LS_ENTRIES_PER_ORIGIN = 500
+WINDOW_POLICIES = frozenset(("reuse-active-window", "new-tab", "new-context", "headless-context"))
 
 
 class GatewayRuntimeError(RuntimeError):
@@ -59,6 +60,7 @@ class GatewaySessionContext:
     cookies_injected: int = 0
     local_storage_origins: list[str] = field(default_factory=list)
     page_count: int = 0
+    active_page: Any = None
     draining: bool = False
     closed: bool = False
 
@@ -90,6 +92,10 @@ class _ContextWrapper:
         if self._context:
             return self._context.new_page()
         raise GatewayRuntimeError("browser context is not active")
+
+    def add_init_script(self, script: str):
+        if self._context and hasattr(self._context, "add_init_script"):
+            return self._context.add_init_script(script)
 
     def close(self):
         if self._context:
@@ -176,6 +182,12 @@ class _BrowserManagerGatewayContext:
             raise GatewayRuntimeError("browser context is not active")
         return self.manager._context.new_page()
 
+    def add_init_script(self, script: str):
+        if getattr(self.manager, "_context", None) is None:
+            raise GatewayRuntimeError("browser context is not active")
+        if hasattr(self.manager._context, "add_init_script"):
+            return self.manager._context.add_init_script(script)
+
     def close(self):
         return self.manager.close()
 
@@ -183,12 +195,13 @@ class _BrowserManagerGatewayContext:
 class GatewayRuntime:
     """Routes work to isolated per-session contexts."""
 
-    def __init__(self, context_factory: GatewayContextFactory, target_url: Optional[str] = None):
+    def __init__(self, context_factory: GatewayContextFactory, target_url: Optional[str] = None, window_policy: str = "reuse-active-window"):
         self.context_factory = context_factory
         self._loader = SessionLoader()
         self._contexts: Dict[str, GatewaySessionContext] = {}
         self.active_context_id: Optional[str] = None
         self._target_origins = _target_origins(target_url)
+        self.window_policy = _validate_window_policy(window_policy)
         self._work_queue: "queue.Queue[tuple[Any, ...]]" = queue.Queue()
         self._worker: Optional[threading.Thread] = None
         self._worker_id: Optional[int] = None
@@ -249,10 +262,10 @@ class GatewayRuntime:
         self.active_context_id = session.id
         return runtime_context
 
-    def new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None) -> Dict[str, Any]:
-        return self._call_runtime(self._new_page, session, url)
+    def new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None, window_policy: Optional[str] = None) -> Dict[str, Any]:
+        return self._call_runtime(self._new_page, session, url, window_policy)
 
-    def _new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None) -> Dict[str, Any]:
+    def _new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None, window_policy: Optional[str] = None) -> Dict[str, Any]:
         if session is not None:
             runtime_context = self._activate(session)
         elif self.active_context_id:
@@ -260,18 +273,30 @@ class GatewayRuntime:
         else:
             raise GatewayRuntimeError("no active context")
 
-        page = runtime_context.context.new_page()
+        policy = _validate_window_policy(window_policy or self.window_policy)
+        page, created = self._page_for_policy(runtime_context, policy)
         navigation_error = None
         if url and hasattr(page, "goto"):
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=30000)
             except Exception as exc:
                 navigation_error = str(exc)
-        runtime_context.page_count += 1
+        if created:
+            runtime_context.page_count += 1
+        runtime_context.active_page = page
         result = {"success": True, "context": runtime_context.to_dict()}
+        result["window_policy"] = policy
+        result["page_reused"] = not created
         if navigation_error:
             result["navigation_error"] = navigation_error
         return result
+
+    def _page_for_policy(self, runtime_context: GatewaySessionContext, policy: str):
+        if policy == "reuse-active-window":
+            page = runtime_context.active_page
+            if page is not None and not _page_is_closed(page):
+                return page, False
+        return runtime_context.context.new_page(), True
 
     def drain_inactive(self) -> Dict[str, Any]:
         return self._call_runtime(self._drain_inactive)
@@ -475,6 +500,22 @@ def _target_origins(target_url: Optional[str]) -> set[str]:
     if parsed.port:
         origin = f"{origin}:{parsed.port}"
     return {origin}
+
+
+def _validate_window_policy(window_policy: str) -> str:
+    if window_policy not in WINDOW_POLICIES:
+        raise GatewayRuntimeError(f"unsupported gateway window_policy: {window_policy}")
+    return window_policy
+
+
+def _page_is_closed(page: Any) -> bool:
+    is_closed = getattr(page, "is_closed", None)
+    if callable(is_closed):
+        try:
+            return bool(is_closed())
+        except Exception:
+            return False
+    return bool(getattr(page, "closed", False))
 
 
 def _origin_matches_domains(origin: str, domains: set[str]) -> bool:

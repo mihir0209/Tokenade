@@ -516,7 +516,8 @@ class GatewayControlPlane:
         if session is None:
             raise GatewayConfigError("no active session selected")
         url = selector.get("url") if isinstance(selector.get("url"), str) else None
-        return {"success": True, "operation": "gateway", "runtime": self.runtime.new_page(session, url=url)}
+        window_policy = selector.get("window_policy") if isinstance(selector.get("window_policy"), str) else None
+        return {"success": True, "operation": "gateway", "runtime": self.runtime.new_page(session, url=url, window_policy=window_policy)}
 
     def make_handler(self):
         control_plane = self
@@ -806,7 +807,14 @@ def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:
     target_url = runtime_config.get("url") or runtime_config.get("start_url") or runtime_config.get("target_url")
     if target_url is not None and not isinstance(target_url, str):
         raise GatewayConfigError("request.gateway.runtime.url must be a string")
-    return GatewayRuntime(BrowserManagerContextFactory(backend=backend.strip(), headless=headless), target_url=target_url)
+    window_policy = runtime_config.get("window_policy", "reuse-active-window")
+    if not isinstance(window_policy, str):
+        raise GatewayConfigError("request.gateway.runtime.window_policy must be a string")
+    return GatewayRuntime(
+        BrowserManagerContextFactory(backend=backend.strip(), headless=headless),
+        target_url=target_url,
+        window_policy=window_policy,
+    )
 
 
 def _resolve_proxy_providers(request: RequestConfig, sessions: list[SessionRecord]) -> list[Dict[str, Any]]:
