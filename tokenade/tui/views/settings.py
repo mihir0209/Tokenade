@@ -263,9 +263,9 @@ class SettingsView(BaseView):
                     classes="section-help",
                 ),
                 Label("Proxy host", classes="field-label"),
-                Input(placeholder="127.0.0.1", id="settings-proxy-host", value="127.0.0.1"),
+                Input(placeholder="127.0.0.1", id="settings-proxy-host"),
                 Label("Proxy port", classes="field-label"),
-                Input(placeholder="9222", id="settings-proxy-port", value="9222"),
+                Input(placeholder="9222", id="settings-proxy-port"),
                 classes="settings-section",
             ),
             Vertical(

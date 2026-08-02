@@ -6,7 +6,12 @@ Usage:
 """
 
 import logging
+import json
+import os
+import signal
+import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -19,7 +24,7 @@ try:
     from textual.screen import Screen
     from textual.widgets import (
         Button, Footer, Header, Input, Rule, Static,
-        TabbedContent, TabPane, Select, Switch,
+        TabbedContent, TabPane, Select, Switch, DirectoryTree,
     )
     from textual.widget import Widget
     from textual import on
@@ -90,6 +95,9 @@ except ImportError:
     class Switch:
         pass
 
+    class DirectoryTree:
+        pass
+
     def on(*a, **k):
         def decorator(f):
             return f
@@ -98,7 +106,7 @@ except ImportError:
 
 from tokenade.tui.config import (
     TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, ANALYTICS_DIR, PLUGINS_DIR,
-    APP_TITLE, APP_SUBTITLE, MAX_SESSIONS_DISPLAY,
+    REQUESTS_DIR, APP_TITLE, APP_SUBTITLE, MAX_SESSIONS_DISPLAY,
 )
 from tokenade.tui.views.export import ExportView
 from tokenade.tui.views.convert import ConvertView
@@ -107,6 +115,7 @@ from tokenade.tui.views.marketplace import (
 )
 from tokenade.tui.views.installed import InstalledView, InstalledRow
 from tokenade.tui.views.sessions import SessionsView, SessionTile, load_sessions, detect_session_url
+from tokenade.tui.views.gateway import GatewayView, gateway_request_options, ROUTING_STRATEGIES
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
 from tokenade.tui.views.share import ShareView, session_select_options
@@ -121,6 +130,7 @@ from tokenade.tui.cli_runner import (
     cmd_refresh_browser,
     cmd_export,
     cmd_convert,
+    cmd_gateway,
     format_cli_display,
     format_receive_help,
     copy_text,
@@ -210,6 +220,107 @@ class PluginDetailScreen(Screen if _TEXTUAL_AVAILABLE else object):
         self.app.pop_screen()
 
 
+if _TEXTUAL_AVAILABLE:
+
+    class JsonRequestDirectoryTree(DirectoryTree):
+        """Directory picker scoped to Gateway request JSON files."""
+
+        def filter_paths(self, paths):
+            out = []
+            for path in paths:
+                try:
+                    if path.name.startswith("."):
+                        continue
+                    if path.is_dir() or path.suffix.lower() == ".json":
+                        out.append(path)
+                except OSError:
+                    continue
+            return out
+
+else:
+
+    class JsonRequestDirectoryTree(DirectoryTree):
+        pass
+
+
+class GatewayRequestPickerScreen(Screen if _TEXTUAL_AVAILABLE else object):
+    """Popup picker for Gateway request JSON files."""
+
+    DEFAULT_CSS = """
+    GatewayRequestPickerScreen { align: center middle; }
+    GatewayRequestPickerScreen #gateway-picker-box {
+        width: 80%; height: 80%; padding: 1 2;
+        background: $surface; border: tall $primary;
+    }
+    GatewayRequestPickerScreen #gateway-request-tree {
+        height: 1fr; background: $surface-darken-1;
+        border: tall $primary-background-lighten-2;
+    }
+    GatewayRequestPickerScreen .picker-title { text-style: bold; color: $primary; height: 1; }
+    GatewayRequestPickerScreen .picker-meta { color: $text-muted; height: 1; }
+    GatewayRequestPickerScreen .picker-actions { height: 3; margin-top: 1; }
+    GatewayRequestPickerScreen .picker-actions Button { margin-right: 1; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("b", "cancel", "Back"),
+    ]
+
+    def __init__(self, root: Optional[Path] = None, **kwargs):
+        if _TEXTUAL_AVAILABLE:
+            super().__init__(**kwargs)
+        start = Path.home() / "Downloads"
+        if root is not None:
+            start = Path(root).expanduser()
+        elif not start.is_dir():
+            start = Path.home()
+        self.root = start
+
+    def compose(self) -> "ComposeResult":
+        if not _TEXTUAL_AVAILABLE:
+            return
+        with Vertical(id="gateway-picker-box"):
+            yield Static("Select Gateway request JSON", classes="picker-title")
+            yield Static(str(self.root), classes="picker-meta")
+            yield JsonRequestDirectoryTree(str(self.root), id="gateway-request-tree")
+            yield Horizontal(
+                Button("Downloads", variant="default", id="gateway-picker-downloads"),
+                Button("Home", variant="default", id="gateway-picker-home"),
+                Button("Requests", variant="default", id="gateway-picker-requests"),
+                Button("/", variant="default", id="gateway-picker-root"),
+                Button("Cancel", variant="default", id="gateway-picker-cancel"),
+                classes="picker-actions",
+            )
+
+    def action_cancel(self):
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#gateway-picker-cancel")
+    def on_cancel(self):
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#gateway-picker-downloads")
+    def on_downloads(self):
+        self.app.pop_screen()
+        self.app.push_screen(GatewayRequestPickerScreen(Path.home() / "Downloads"))
+
+    @on(Button.Pressed, "#gateway-picker-home")
+    def on_home(self):
+        self.app.pop_screen()
+        self.app.push_screen(GatewayRequestPickerScreen(Path.home()))
+
+    @on(Button.Pressed, "#gateway-picker-requests")
+    def on_requests(self):
+        self.app.pop_screen()
+        self.app.push_screen(GatewayRequestPickerScreen(REQUESTS_DIR))
+
+    @on(Button.Pressed, "#gateway-picker-root")
+    def on_root(self):
+        self.app.pop_screen()
+        self.app.push_screen(GatewayRequestPickerScreen(Path("/")))
+
+
 class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     """Tokenade Terminal UI Application."""
 
@@ -248,11 +359,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         Binding("2", "show_sessions", "Sessions"),
         Binding("3", "show_share", "Share"),
         Binding("4", "show_convert", "Convert"),
-        Binding("5", "show_vault", "Vault"),
-        Binding("6", "show_sync", "Sync"),
-        Binding("7", "show_analytics", "Analytics"),
-        Binding("8", "show_installed", "Plugins"),
-        Binding("9", "show_marketplace", "Marketplace"),
+        Binding("5", "show_gateway", "Gateway"),
+        Binding("6", "show_vault", "Vault"),
+        Binding("7", "show_sync", "Sync"),
+        Binding("8", "show_analytics", "Analytics"),
+        Binding("9", "show_installed", "Plugins"),
         Binding("0", "show_settings", "Settings"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False),
@@ -271,6 +382,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._sessions: List[Dict] = []
         self._selected_session: Optional[Dict] = None
         self._last_share: Dict[str, Any] = {}
+        self._gateway_pid: int = 0
+        self._gateway_log_path: str = ""
 
     def compose(self) -> "ComposeResult":
         yield Header(show_clock=False)
@@ -281,6 +394,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             yield TabPane("Sessions", SessionsView(), id="tab-sessions")
             yield TabPane("Share", ShareView(), id="tab-share")
             yield TabPane("Convert", ConvertView(), id="tab-convert")
+            yield TabPane("Gateway", GatewayView(), id="tab-gateway")
             yield TabPane("Vault", VaultView(), id="tab-vault")
             yield TabPane("Sync", SyncView(), id="tab-sync")
             yield TabPane("Analytics", AnalyticsView(), id="tab-analytics")
@@ -345,6 +459,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._update_sessions()
         self._update_vault()
         self._update_settings()
+        self._gateway_refresh_requests(notify=False, apply_first=False)
 
     def _update_marketplace(self):
         try:
@@ -722,6 +837,425 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             background=background,
         )
 
+    def _gateway_log(self, text: str):
+        try:
+            log = self.query_one("#gateway-cli-log")
+        except Exception:
+            return
+        try:
+            write = getattr(log, "write", None)
+            if callable(write):
+                for line in (text or "").splitlines() or [text or ""]:
+                    write(line)
+                try:
+                    log.scroll_end(animate=False)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+        try:
+            prev = str(getattr(log, "renderable", None) or getattr(log, "content", "") or "")
+            log.update((prev + "\n" + text).strip())
+        except Exception:
+            pass
+
+    def _gateway_set_status(self, text: str):
+        try:
+            self.query_one("#gateway-status-label").update(text)
+        except Exception:
+            pass
+
+    def _gateway_host_port(self) -> tuple[str, int]:
+        host = "127.0.0.1"
+        port = 9322
+        try:
+            host = self.query_one("#gateway-host-input").value.strip() or host
+        except Exception:
+            pass
+        try:
+            raw = self.query_one("#gateway-port-input").value.strip()
+            if raw:
+                port = int(raw)
+        except Exception:
+            pass
+        return host, port
+
+    def _gateway_base_url(self) -> str:
+        host, port = self._gateway_host_port()
+        return f"http://{host}:{port}"
+
+    def _gateway_request_file(self) -> str:
+        try:
+            manual = self.query_one("#gateway-request-input").value.strip()
+            if manual:
+                return manual
+        except Exception:
+            pass
+        try:
+            val = self.query_one("#gateway-request-select").value
+            blank = getattr(Select, "NULL", Select.BLANK)
+            if val is not blank and val not in (None, "", False):
+                return str(val)
+        except Exception:
+            pass
+        return ""
+
+    def _gateway_load_request(self, request_file: str) -> Dict[str, Any]:
+        path = Path(request_file).expanduser()
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict):
+            raise ValueError("Gateway request must be a JSON object")
+        return data
+
+    def _gateway_request_summary(self, data: Dict[str, Any]) -> str:
+        gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
+        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        routing = data.get("routing") if isinstance(data.get("routing"), dict) else {}
+        runtime = gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        url = self._gateway_runtime_url(data) or "(none)"
+        sessions_dir = sessions.get("dir", "?")
+        pattern = sessions.get("pattern", "*.tokenade")
+        strategy = routing.get("strategy", "?")
+        rotate = routing.get("switch_interval_seconds")
+        health = routing.get("health_check_interval_seconds")
+        parts = [
+            f"host={gateway.get('host', '127.0.0.1')} port={gateway.get('port', 9222)}",
+            f"sessions={sessions_dir}/{pattern}",
+            f"routing={strategy}",
+        ]
+        if rotate:
+            parts.append(f"rotate={rotate}s")
+        if health:
+            parts.append(f"health={health}s")
+        parts.append(f"runtime={'on' if runtime.get('enabled') else 'off'} url={url}")
+        return " · ".join(parts)
+
+    def _gateway_runtime_url(self, data: Dict[str, Any]) -> str:
+        gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
+        runtime = gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        for key in ("url", "start_url", "target_url"):
+            val = runtime.get(key)
+            if isinstance(val, str) and val.startswith("http"):
+                return val
+        for key in ("url", "start_url", "target_url"):
+            val = gateway.get(key)
+            if isinstance(val, str) and val.startswith("http"):
+                return val
+        return ""
+
+    def _gateway_request_session_files(self, data: Dict[str, Any], request_file: str) -> List[Path]:
+        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        sessions_dir = sessions.get("dir")
+        pattern = sessions.get("pattern") or "*.tokenade"
+        if not isinstance(sessions_dir, str) or not sessions_dir.strip():
+            return []
+        root = Path(sessions_dir).expanduser()
+        if not root.is_absolute():
+            root = (Path(request_file).expanduser().parent / root).resolve()
+        try:
+            return sorted(path for path in root.glob(str(pattern)) if path.is_file())
+        except Exception:
+            return []
+
+    def _gateway_session_options(self, data: Dict[str, Any], request_file: str) -> List[tuple[str, str]]:
+        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        sessions_dir = sessions.get("dir")
+        if not isinstance(sessions_dir, str) or not sessions_dir.strip():
+            return [("No sessions dir configured", "")]
+        root = Path(sessions_dir).expanduser()
+        if not root.is_absolute():
+            root = (Path(request_file).expanduser().parent / root).resolve()
+        if not root.is_dir():
+            return [(f"Dir not found: {root}", "")]
+        options = []
+        for path in self._gateway_request_session_files(data, request_file):
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    session_data = json.load(handle)
+                if not isinstance(session_data, dict):
+                    continue
+                meta = session_data.get("metadata") if isinstance(session_data.get("metadata"), dict) else {}
+                selector = str(meta.get("session_id") or path.stem)
+                site = str(session_data.get("site_name") or session_data.get("site") or "unknown")
+                cookies = len(session_data.get("cookies") or [])
+                abs_path = str(path.resolve())
+                label = f"{selector} · {site} · {cookies} cookies"
+                options.append((label, abs_path))
+            except Exception:
+                options.append((path.name, str(path.resolve())))
+        return options
+
+    def _gateway_apply_request_file(self, request_file: str):
+        try:
+            request_path = str(Path(request_file).expanduser())
+            data = self._gateway_load_request(request_path)
+            gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
+            routing = data.get("routing") if isinstance(data.get("routing"), dict) else {}
+            host = str(gateway.get("host") or "127.0.0.1")
+            port = str(gateway.get("port") or "9222")
+            strategy = str(routing.get("strategy") or "round-robin")
+            configured_url = self._gateway_runtime_url(data)
+            try:
+                session_options = self._gateway_session_options(data, request_path)
+                self.query_one("#gateway-request-input").value = request_path
+                self.query_one("#gateway-host-input").value = host
+                self.query_one("#gateway-port-input").value = port
+                self.query_one("#gateway-url-input").value = configured_url
+                session_select = self.query_one("#gateway-session-select")
+                session_select.set_options(session_options or [("No sessions matched request", "")])
+                if session_options:
+                    session_select.value = session_options[0][1]
+                strategy_select = self.query_one("#gateway-strategy-select")
+                strategy_values = [val for _, val in ROUTING_STRATEGIES]
+                if strategy in strategy_values:
+                    strategy_select.value = strategy
+                self.query_one("#gateway-request-summary").update(self._gateway_request_summary(data))
+            except Exception:
+                pass
+            self._gateway_set_status(f"Gateway request loaded · {host}:{port}")
+            self._gateway_log(f"Loaded request: {request_path}")
+            self._gateway_log(self._gateway_request_summary(data))
+            self.notify("Gateway request loaded", timeout=2)
+        except Exception as exc:
+            self.notify(f"Request load failed: {exc}", severity="error", timeout=5)
+            self._gateway_log(f"Request load failed: {exc}")
+
+    def _gateway_tab_url(self) -> str:
+        try:
+            return self.query_one("#gateway-url-input").value.strip()
+        except Exception:
+            return ""
+
+    def _gateway_selector(self) -> Dict[str, str]:
+        try:
+            val = self.query_one("#gateway-session-select").value
+            blank = getattr(Select, "NULL", Select.BLANK)
+            if val is not blank and val not in (None, "", False):
+                raw = str(val)
+            else:
+                raw = ""
+        except Exception:
+            raw = ""
+        if not raw:
+            return {}
+        return {"path": raw}
+
+    def _gateway_post(self, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        data = json.dumps(payload or {}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self._gateway_base_url()}{path}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _gateway_get(self, path: str) -> Dict[str, Any]:
+        with urllib.request.urlopen(f"{self._gateway_base_url()}{path}", timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _gateway_run_http(self, label: str, method: str, path: str, payload: Optional[Dict[str, Any]] = None):
+        def _worker():
+            try:
+                result = self._gateway_post(path, payload) if method == "POST" else self._gateway_get(path)
+                text = json.dumps(result, indent=2, ensure_ascii=False)
+                ok = bool(result.get("success", True))
+            except Exception as exc:
+                text = str(exc)
+                ok = False
+
+            def _ui():
+                self._gateway_log(f"$ {method} {self._gateway_base_url()}{path}")
+                if payload:
+                    self._gateway_log(json.dumps(payload, ensure_ascii=False))
+                self._gateway_log(text)
+                if ok:
+                    self.notify(f"Gateway {label} OK", timeout=3)
+                else:
+                    self.notify(f"Gateway {label} failed", severity="error", timeout=3)
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-http").start()
+
+    def _gateway_refresh_requests(self, *, notify: bool = True, apply_first: bool = False):
+        try:
+            sel = self.query_one("#gateway-request-select")
+            opts = gateway_request_options()
+            sel.set_options(opts or [(f"No JSON files in {REQUESTS_DIR}", "")])
+            if apply_first and opts:
+                self._gateway_apply_request_file(opts[0][1])
+            if notify:
+                self.notify("Gateway request files refreshed", timeout=2)
+        except Exception as exc:
+            if notify:
+                self.notify(f"Refresh failed: {exc}", severity="error")
+
+    def _gateway_use_selected(self):
+        request_file = self._gateway_request_file()
+        if request_file:
+            self._gateway_apply_request_file(request_file)
+
+    def _gateway_browse_request(self):
+        if not _TEXTUAL_AVAILABLE:
+            self.notify("File picker requires Textual", severity="error")
+            return
+        try:
+            self.push_screen(GatewayRequestPickerScreen())
+        except Exception as exc:
+            self.notify(f"Could not open picker: {exc}", severity="error")
+
+    def _gateway_request_selected(self, path: str):
+        if not path:
+            return
+        request_path = Path(path).expanduser()
+        if request_path.suffix.lower() != ".json" or not request_path.is_file():
+            self.notify("Select a JSON request file", severity="warning")
+            return
+        try:
+            self.pop_screen()
+        except Exception:
+            pass
+        self._gateway_apply_request_file(str(request_path))
+
+    def _gateway_launch(self):
+        request_file = self._gateway_request_file()
+        if not request_file:
+            self.notify("Select a Gateway request file first", severity="warning")
+            return
+        request_path = Path(request_file).expanduser()
+        if not request_path.exists():
+            self.notify(f"Missing request file: {request_file}", severity="error")
+            return
+        if self._gateway_pid:
+            self.notify(f"Gateway already running pid={self._gateway_pid}", severity="warning")
+            return
+        self._gateway_apply_request_file(str(request_path))
+        args = cmd_gateway(str(request_path))
+        self._gateway_log(f"$ python3 -m tokenade {' '.join(args)}")
+        self.notify("Launching Gateway...", timeout=2)
+
+        def _done(result):
+            def _ui():
+                if result.ok:
+                    self._gateway_pid = result.pid
+                    self._gateway_log_path = result.log_path
+                    self._gateway_set_status(
+                        f"Gateway running pid={result.pid} · {self._gateway_base_url()}"
+                    )
+                    self.notify("Gateway running", timeout=3)
+                else:
+                    self.notify("Gateway launch failed", severity="error", timeout=5)
+                self._gateway_log((result.output or result.stdout or "(no output)")[-4000:])
+                if result.log_path:
+                    self._gateway_log(f"(full log: {result.log_path})")
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        run_tokenade_async(args, on_done=_done, background=True)
+
+    def _gateway_stop(self):
+        if not self._gateway_pid:
+            self.notify("No Gateway pid tracked", severity="warning")
+            return
+        pid = self._gateway_pid
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except Exception:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except Exception as exc:
+                self.notify(f"Stop failed: {exc}", severity="error")
+                return
+        self._gateway_log(f"Stopped Gateway pid={pid}")
+        self._gateway_pid = 0
+        self._gateway_set_status("Gateway stopped")
+        self.notify("Gateway stopped", timeout=3)
+
+    def _gateway_next_tab(self):
+        url = self._gateway_tab_url()
+
+        def _worker():
+            ok = False
+            lines = []
+            try:
+                route = self._gateway_post("/route/next")
+                lines.append("$ POST /route/next")
+                lines.append(json.dumps(route, indent=2, ensure_ascii=False))
+                tab_payload = {"url": url} if url else {}
+                tab = self._gateway_post("/tabs/new", tab_payload)
+                lines.append("$ POST /tabs/new")
+                if tab_payload:
+                    lines.append(json.dumps(tab_payload, ensure_ascii=False))
+                lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
+                ok = bool(route.get("success") and tab.get("success"))
+            except Exception as exc:
+                lines.append(str(exc))
+
+            def _ui():
+                self._gateway_log("\n".join(lines))
+                if ok:
+                    self.notify("Gateway next + tab OK", timeout=3)
+                else:
+                    self.notify("Gateway next + tab failed", severity="error", timeout=4)
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-next-tab").start()
+
+    def _gateway_select_tab(self):
+        url = self._gateway_tab_url()
+        selector = self._gateway_selector()
+        if not selector:
+            self.notify("Select a request session first", severity="warning")
+            return
+
+        def _worker():
+            ok = False
+            lines = []
+            try:
+                route = self._gateway_post("/route/select", selector)
+                lines.append("$ POST /route/select")
+                lines.append(json.dumps(selector, ensure_ascii=False))
+                lines.append(json.dumps(route, indent=2, ensure_ascii=False))
+                tab_payload = {"url": url} if url else {}
+                tab = self._gateway_post("/tabs/new", tab_payload)
+                lines.append("$ POST /tabs/new")
+                if tab_payload:
+                    lines.append(json.dumps(tab_payload, ensure_ascii=False))
+                lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
+                ok = bool(route.get("success") and tab.get("success"))
+            except Exception as exc:
+                lines.append(str(exc))
+
+            def _ui():
+                self._gateway_log("\n".join(lines))
+                if ok:
+                    self.notify("Gateway select + tab OK", timeout=3)
+                else:
+                    self.notify("Gateway select + tab failed", severity="error", timeout=4)
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-select-tab").start()
+
     def _update_vault(self):
         try:
             container = self.query_one("#vault-list")
@@ -1048,6 +1582,33 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "convert-root-downloads":
             dl = Path.home() / "Downloads"
             self._convert_set_root(str(dl if dl.is_dir() else Path.home()))
+        elif btn_id == "gateway-refresh-requests":
+            self._gateway_refresh_requests()
+        elif btn_id == "gateway-use-selected":
+            self._gateway_use_selected()
+        elif btn_id == "gateway-browse-request":
+            self._gateway_browse_request()
+        elif btn_id == "gateway-launch":
+            self._gateway_launch()
+        elif btn_id == "gateway-stop":
+            self._gateway_stop()
+        elif btn_id == "gateway-status":
+            self._gateway_run_http("status", "GET", "/status")
+        elif btn_id == "gateway-sessions":
+            self._gateway_run_http("sessions", "GET", "/sessions")
+        elif btn_id == "gateway-route-next":
+            self._gateway_run_http("route next", "POST", "/route/next")
+        elif btn_id == "gateway-route-select":
+            self._gateway_run_http("route select", "POST", "/route/select", self._gateway_selector())
+        elif btn_id == "gateway-open-tab":
+            payload = {"url": self._gateway_tab_url()} if self._gateway_tab_url() else {}
+            self._gateway_run_http("open tab", "POST", "/tabs/new", payload)
+        elif btn_id == "gateway-next-tab":
+            self._gateway_next_tab()
+        elif btn_id == "gateway-select-tab":
+            self._gateway_select_tab()
+        elif btn_id == "gateway-drain":
+            self._gateway_run_http("drain", "POST", "/contexts/drain")
         elif btn_id == "share-copy-full":
             self._share_copy("full")
         elif btn_id == "share-copy-id":
@@ -1078,6 +1639,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._update_marketplace()
         except Exception as e:
             self.notify(f"Search error: {e}", severity="error")
+
+    @on(Select.Changed, "#gateway-request-select")
+    def on_gateway_request_changed(self, event: Select.Changed):
+        try:
+            val = event.value
+            blank = getattr(Select, "NULL", Select.BLANK)
+            if val is blank or val in (None, "", False):
+                return
+            self._gateway_apply_request_file(str(val))
+        except Exception:
+            pass
 
     # ── Vault Actions ─────────────────────────────────────────
 
@@ -2326,6 +2898,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def action_show_convert(self):
         self._activate_tab("tab-convert")
 
+    def action_show_gateway(self):
+        self._activate_tab("tab-gateway")
+
     def action_show_analytics(self):
         self._activate_tab("tab-analytics")
 
@@ -2445,9 +3020,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             path = str(getattr(event, "path", "") or "")
             if not path:
                 return
-            # Only handle convert tree
             ctrl = getattr(event, "control", None) or getattr(event, "tree", None)
             cid = getattr(ctrl, "id", None) if ctrl is not None else None
+            if cid == "gateway-request-tree":
+                self._gateway_request_selected(path)
+                return
+            # Only handle convert tree
             if cid and cid != "convert-tree":
                 return
             self._on_convert_file_selected(path)

@@ -71,7 +71,8 @@ Exit code is non-zero. CLI commands still work without the extra.
 | `2` | Sessions | Launch / load / health / share selected jars |
 | `3` | Share | share-url create & receive; password never leaves the machine |
 | `4` | Convert | Embedded directory tree + multi-format → `.tokenade` |
-| `5`–`9`, `0` | Vault, Sync, Analytics, Plugins, Marketplace, Settings | Depth varies; some panes are thinner than Export/Share |
+| `5` | Gateway | Dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/prewarm/open tabs from request settings (`gateway.runtime.url`) |
+| `6`–`9`, `0` | Vault, Sync, Analytics, Plugins, Settings | Depth varies; some panes are thinner than Export/Share |
 
 **Copy / quit:** Mouse-select text in logs and labels. **Ctrl+C does nothing harmful** (hint only: use **Ctrl+Shift+C** to copy selection, **Ctrl+Q** or **q** to quit). Terminal-native copy still works.
 

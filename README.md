@@ -85,7 +85,7 @@ These surfaces **exist and run**, but are still being hardened. Expect rough edg
 
 | Area | What’s real today | Still unfinished |
 |------|-------------------|------------------|
-| **TUI** (`tokenade tui`) | Export, Sessions, Share, Convert (file tree), Vault/Sync shells, plugins, Settings | Polish, analytics depth, broader QA on Windows terminals |
+| **TUI** (`tokenade tui`) | Export, Sessions, Share, Convert (file tree), Gateway, Vault/Sync shells, plugins, Settings | Polish, analytics depth, broader QA on Windows terminals |
 | **Convert** | JSON, Netscape, curl, Playwright, Puppeteer, Cookie-Editor, Cypress, Selenium, Cookie/Set-Cookie headers, HAR, CSV → `.tokenade` | More exotic vendor dumps as they show up |
 | **Browser extension** (`extension/`) | Live cookie export, optional tab `localStorage`, default **`.tokenade`**, Cookie-Editor/Netscape alts | Store publish, Firefox packaging, multi-origin storage parity with CLI handlers |
 | **Chromium forks in CLI** | Vivaldi/Opera cookie path allowlisted | Full multi-profile battle-testing |
@@ -439,7 +439,8 @@ tokenade tui
 | `2` | **Sessions** — list jars, launch / load / health / share |
 | `3` | **Share** — password share-url create/receive (password never uploaded) |
 | `4` | **Convert** — DirectoryTree file picker + industry formats → `.tokenade` |
-| `5`–`9` / `0` | Vault, Sync, Analytics, Plugins, Marketplace, Settings |
+| `5` | **Gateway** — dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/prewarm/open tabs from request settings (`gateway.runtime.url`) |
+| `6`–`9` / `0` | Vault, Sync, Analytics, Plugins, Settings |
 
 **Copy:** drag to select text in logs and labels. **Ctrl+C does not quit** (shows a hint). Use **Ctrl+Shift+C** (or your terminal’s copy) for selection; **Ctrl+Q** or **q** to quit.
 

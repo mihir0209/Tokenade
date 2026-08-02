@@ -340,6 +340,11 @@ def cmd_convert(
     return args
 
 
+def cmd_gateway(request_file: str) -> List[str]:
+    """Build gateway argv for a request JSON file."""
+    return ["gateway", "--request", request_file]
+
+
 def format_receive_help(
     *,
     short_id: str,

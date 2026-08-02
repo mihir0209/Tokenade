@@ -38,6 +38,21 @@ class TestCliRunnerDisplay:
         assert "--output" in args
         assert "--domain" in args
 
+    def test_cmd_gateway_argv(self):
+        from tokenade.tui.cli_runner import cmd_gateway
+
+        assert cmd_gateway("gateway.request.json") == ["gateway", "--request", "gateway.request.json"]
+
+    def test_gateway_request_options_discovers_request_files(self, tmp_path, monkeypatch):
+        from tokenade.tui.views import gateway as gateway_view
+
+        request = tmp_path / "gateway.request.json"
+        request.write_text('{"operation":"gateway"}')
+
+        options = gateway_view.gateway_request_options(tmp_path)
+
+        assert any(value == str(request.resolve()) for _, value in options)
+
     def test_convert_view_importable(self):
         from tokenade.tui.views.convert import ConvertView, FORMAT_OPTIONS
 
@@ -56,6 +71,67 @@ class TestCliRunnerDisplay:
         assert "ctrl+q" in keys
         actions = {getattr(b, "action", "") for b in TokenadeTUI.BINDINGS}
         assert "copy_or_hint" in actions or "copy_selection" in actions
+
+    def test_gateway_is_fifth_tui_tab_binding(self):
+        from tokenade.tui.app import TokenadeTUI
+
+        bindings = [(getattr(b, "key", ""), getattr(b, "action", "")) for b in TokenadeTUI.BINDINGS]
+
+        assert ("5", "show_gateway") in bindings
+
+    def test_gateway_selector_heuristics(self):
+        from tokenade.tui.app import TokenadeTUI
+
+        app = TokenadeTUI()
+        widget = MagicMock()
+        app.query_one = MagicMock(return_value=widget)
+
+        widget.value = "gmail-profile-2"
+        assert app._gateway_selector() == {"path": "gmail-profile-2"}
+        widget.value = "/tmp/gmail.tokenade"
+        assert app._gateway_selector() == {"path": "/tmp/gmail.tokenade"}
+
+    def test_gateway_request_summary_and_inferred_controls(self, tmp_path):
+        from tokenade.tui.app import TokenadeTUI
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session = sessions / "gmail.tokenade"
+        session.write_text(json.dumps({
+            "site_name": "gmail",
+            "auth_status": "logged_in",
+            "metadata": {"session_id": "gmail-a"},
+            "cookies": [{"name": "sid", "value": "x", "domain": ".google.com"}],
+        }))
+        request = tmp_path / "gateway.json"
+        request.write_text(json.dumps({
+            "operation": "gateway",
+            "sessions": {"dir": "sessions", "pattern": "*.tokenade"},
+            "gateway": {
+                "host": "127.0.0.1",
+                "port": 9444,
+                "runtime": {"enabled": True, "url": "https://example.test/app"},
+            },
+            "routing": {"strategy": "round-robin"},
+        }))
+        app = TokenadeTUI()
+        data = app._gateway_load_request(str(request))
+        url = app._gateway_runtime_url(data)
+        options = app._gateway_session_options(data, str(request))
+        summary = app._gateway_request_summary(data)
+
+        assert url == "https://example.test/app"
+        assert options[0][1] == str(session.resolve())
+        assert "port=9444" in summary
+        assert "runtime=on" in summary
+        assert "url=https://example.test/app" in summary
+
+    def test_gateway_picker_starts_at_downloads_or_home(self):
+        from tokenade.tui.app import GatewayRequestPickerScreen
+
+        screen = GatewayRequestPickerScreen()
+
+        assert screen.root in (Path.home() / "Downloads", Path.home())
 
     def test_cmd_tui_missing_textual_exits(self):
         from tokenade.cli.handlers import ci

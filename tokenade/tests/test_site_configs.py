@@ -242,3 +242,34 @@ def test_discover_catalog_sites_without_root_site_config(tmp_path):
     assert "github" in found
     assert found["github"]["session_check_url"] == "https://github.com/settings/profile"
     assert found["github"]["preferred_plugin"] == "generic-handler"
+
+
+def test_discover_explicit_github_and_discord_probe_urls(tmp_path):
+    """Catalog and standalone handler configs expose explicit probe URLs."""
+    generic = tmp_path / "generic-handler"
+    sites = generic / "sites"
+    sites.mkdir(parents=True)
+    (generic / "plugin.json").write_text(
+        json.dumps({"name": "generic-handler", "type": "handler", "entry_point": "plugin.py"})
+    )
+    (sites / "github.json").write_text(json.dumps({
+        "name": "github",
+        "domains": ["github.com"],
+        "session_check_url": "https://github.com/settings/profile",
+    }))
+
+    discord = tmp_path / "discord-handler"
+    discord.mkdir()
+    (discord / "plugin.json").write_text(
+        json.dumps({"name": "discord-handler", "type": "handler", "entry_point": "plugin.py"})
+    )
+    (discord / "site_config.json").write_text(json.dumps({
+        "name": "discord",
+        "domains": ["discord.com"],
+        "session_check_url": "https://discord.com/channels/@me",
+    }))
+
+    found = discover_plugin_site_configs(tmp_path)
+
+    assert found["github"]["session_check_url"] == "https://github.com/settings/profile"
+    assert found["discord"]["session_check_url"] == "https://discord.com/channels/@me"

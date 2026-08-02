@@ -149,7 +149,6 @@ class TestTUIScreenshots:
                 await pilot.pause()
                 svg = _svg_text(app)
                 _save_shot("01-marketplace", svg)
-                assert "auto-refresh" in svg or "auto-refresh" in app.screen._get_title() or True
                 # Prefer grid; fall back to list
                 try:
                     host = app.query_one("#plugin-grid")
