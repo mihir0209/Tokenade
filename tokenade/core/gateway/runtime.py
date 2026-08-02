@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,7 +125,7 @@ class BrowserManagerContextFactory:
             if getattr(self._browser_manager, "_browser", None):
                 # BrowserManager.launch() creates a default context/page for single-session use.
                 # Gateway creates per-session contexts itself, so close the throwaway startup
-                # context to avoid an extra visible window during prewarm.
+                # context to avoid an extra visible window.
                 startup_context = getattr(self._browser_manager, "_context", None)
                 if startup_context is not None:
                     try:
@@ -179,29 +181,54 @@ class _BrowserManagerGatewayContext:
 
 
 class GatewayRuntime:
-    """Prewarms and routes work to isolated per-session contexts."""
+    """Routes work to isolated per-session contexts."""
 
-    def __init__(self, context_factory: GatewayContextFactory):
+    def __init__(self, context_factory: GatewayContextFactory, target_url: Optional[str] = None):
         self.context_factory = context_factory
         self._loader = SessionLoader()
         self._contexts: Dict[str, GatewaySessionContext] = {}
         self.active_context_id: Optional[str] = None
+        self._target_origins = _target_origins(target_url)
+        self._work_queue: "queue.Queue[tuple[Any, ...]]" = queue.Queue()
+        self._worker: Optional[threading.Thread] = None
+        self._worker_id: Optional[int] = None
 
-    def prewarm(self, sessions: list[SessionRecord]) -> Dict[str, Any]:
-        started = time.perf_counter()
-        created = []
-        for session in sessions:
-            if session.id not in self._contexts or self._contexts[session.id].closed:
-                self.ensure_context(session)
-                created.append(session.id)
-        return {
-            "success": True,
-            "created": created,
-            "context_count": len(self._contexts),
-            "duration_ms": (time.perf_counter() - started) * 1000,
-        }
+    def _call_runtime(self, fn, *args, **kwargs):
+        if threading.get_ident() == self._worker_id:
+            return fn(*args, **kwargs)
+        self._start_worker()
+        done = threading.Event()
+        item = [fn, args, kwargs, done, None, None]
+        self._work_queue.put(item)
+        done.wait()
+        if item[5] is not None:
+            raise item[5]
+        return item[4]
+
+    def _start_worker(self):
+        if self._worker and self._worker.is_alive():
+            return
+        self._worker = threading.Thread(target=self._run_worker, name="tokenade-gateway-runtime", daemon=True)
+        self._worker.start()
+
+    def _run_worker(self):
+        self._worker_id = threading.get_ident()
+        while True:
+            item = self._work_queue.get()
+            if item is None:
+                break
+            fn, args, kwargs, done = item[:4]
+            try:
+                item[4] = fn(*args, **kwargs)
+            except Exception as exc:
+                item[5] = exc
+            finally:
+                done.set()
 
     def ensure_context(self, session: SessionRecord) -> GatewaySessionContext:
+        return self._call_runtime(self._ensure_context, session)
+
+    def _ensure_context(self, session: SessionRecord) -> GatewaySessionContext:
         existing = self._contexts.get(session.id)
         if existing and not existing.closed:
             return existing
@@ -215,13 +242,19 @@ class GatewayRuntime:
         return runtime_context
 
     def activate(self, session: SessionRecord) -> GatewaySessionContext:
-        runtime_context = self.ensure_context(session)
+        return self._call_runtime(self._activate, session)
+
+    def _activate(self, session: SessionRecord) -> GatewaySessionContext:
+        runtime_context = self._ensure_context(session)
         self.active_context_id = session.id
         return runtime_context
 
     def new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None) -> Dict[str, Any]:
+        return self._call_runtime(self._new_page, session, url)
+
+    def _new_page(self, session: Optional[SessionRecord] = None, url: Optional[str] = None) -> Dict[str, Any]:
         if session is not None:
-            runtime_context = self.activate(session)
+            runtime_context = self._activate(session)
         elif self.active_context_id:
             runtime_context = self._contexts[self.active_context_id]
         else:
@@ -241,6 +274,9 @@ class GatewayRuntime:
         return result
 
     def drain_inactive(self) -> Dict[str, Any]:
+        return self._call_runtime(self._drain_inactive)
+
+    def _drain_inactive(self) -> Dict[str, Any]:
         closed = []
         for session_id, runtime_context in list(self._contexts.items()):
             if session_id == self.active_context_id or runtime_context.closed:
@@ -254,9 +290,20 @@ class GatewayRuntime:
         return {"success": True, "closed": closed, "active_context_id": self.active_context_id}
 
     def contexts(self) -> list[Dict[str, Any]]:
-        return [runtime_context.to_dict() for runtime_context in self._contexts.values()]
+        return self._call_runtime(lambda: [runtime_context.to_dict() for runtime_context in self._contexts.values()])
 
     def close(self):
+        if threading.get_ident() != self._worker_id and self._worker and self._worker.is_alive():
+            self._call_runtime(self._close)
+            self._work_queue.put(None)
+            self._worker.join(timeout=5)
+            self._worker = None
+            self._worker_id = None
+            return
+
+        self._close()
+
+    def _close(self):
         for runtime_context in self._contexts.values():
             if runtime_context.closed:
                 continue
@@ -299,7 +346,9 @@ class GatewayRuntime:
         storage = package.get("storage") if isinstance(package.get("storage"), dict) else {}
         local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
 
-        relevant_domains = self._relevant_domains(package)
+        target_origins = self._target_origins
+        if not target_origins:
+            return origins
 
         for origin, values in local_by_origin.items():
             if not isinstance(origin, str) or not isinstance(values, dict) or not values:
@@ -307,8 +356,8 @@ class GatewayRuntime:
             if not _is_valid_origin(origin):
                 logger.debug("Skipping invalid localStorage origin: %s", origin)
                 continue
-            if relevant_domains and not _origin_matches_domains(origin, relevant_domains):
-                logger.debug("Skipping non-session localStorage origin: %s", origin)
+            if origin not in target_origins:
+                logger.debug("Skipping non-target localStorage origin: %s", origin)
                 continue
             injected = self._inject_local_storage_origin(context, origin, values)
             if injected:
@@ -318,7 +367,7 @@ class GatewayRuntime:
         if isinstance(legacy_local_storage, dict) and legacy_local_storage:
             origin = self._loader._infer_origin(package)
             if origin and _is_valid_origin(origin):
-                if not relevant_domains or _origin_matches_domains(origin, relevant_domains):
+                if origin in target_origins:
                     injected = self._inject_local_storage_origin(context, origin, legacy_local_storage)
                     if injected:
                         origins.append(origin)
@@ -343,6 +392,25 @@ class GatewayRuntime:
         if not values:
             return False
         batches = _batch_local_storage(values)
+        if hasattr(context, "add_init_script"):
+            try:
+                for batch in batches:
+                    payload = json.dumps({"origin": origin, "data": batch})
+                    context.add_init_script(
+                        f"""
+                        (() => {{
+                            const {{ origin, data }} = {payload};
+                            if (window.location.origin !== origin) return;
+                            for (const [key, value] of Object.entries(data)) {{
+                                localStorage.setItem(key, value);
+                            }}
+                        }})();
+                        """
+                    )
+                return True
+            except Exception as exc:
+                logger.warning("localStorage init script failed for %s: %s", origin, exc)
+                return False
         page = context.new_page()
         try:
             if hasattr(page, "goto"):
@@ -392,6 +460,21 @@ def _is_valid_origin(origin: str) -> bool:
     if not parsed.hostname:
         return False
     return True
+
+
+def _target_origins(target_url: Optional[str]) -> set[str]:
+    if not isinstance(target_url, str) or not target_url.strip():
+        return set()
+    try:
+        parsed = urlparse(target_url.strip())
+    except Exception:
+        return set()
+    if parsed.scheme not in _ALLOWED_URL_SCHEMES or not parsed.hostname:
+        return set()
+    origin = f"{parsed.scheme}://{parsed.hostname}"
+    if parsed.port:
+        origin = f"{origin}:{parsed.port}"
+    return {origin}
 
 
 def _origin_matches_domains(origin: str, domains: set[str]) -> bool:

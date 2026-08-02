@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -49,12 +50,20 @@ class SessionStore:
         self.records: List[SessionRecord] = []
 
     def load_directory(self, sessions_dir: str | Path, pattern: str = "*.tokenade") -> List[SessionRecord]:
-        """Load session records from a directory using a glob pattern."""
+        """Load session records from a directory using regex, with glob fallback."""
         directory = Path(sessions_dir).expanduser()
         if not directory.exists() or not directory.is_dir():
             raise FileNotFoundError(f"sessions directory not found: {sessions_dir}")
 
-        paths = sorted(path for path in directory.glob(pattern) if path.is_file())
+        try:
+            regex = re.compile(pattern)
+        except re.error:
+            paths = sorted(path for path in directory.glob(pattern) if path.is_file())
+        else:
+            paths = sorted(
+                path for path in directory.iterdir()
+                if path.is_file() and (regex.search(path.name) or regex.search(str(path)))
+            )
         self.records = self.load_paths(paths)
         return list(self.records)
 

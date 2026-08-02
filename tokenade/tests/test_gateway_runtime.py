@@ -1,6 +1,7 @@
 """Tests for gateway isolated runtime contexts."""
 
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class FakeContext:
         self.cookies = []
         self.pages = []
         self.local_storage_updates = []
+        self.init_scripts = []
         self.closed = False
 
     def add_cookies(self, cookies):
@@ -43,6 +45,9 @@ class FakeContext:
         page = FakePage(self)
         self.pages.append(page)
         return page
+
+    def add_init_script(self, script):
+        self.init_scripts.append(script)
 
     def close(self):
         self.closed = True
@@ -128,22 +133,22 @@ def _cookie_only_records(tmp_path):
     return SessionStore().load_directory(tmp_path)
 
 
-def test_prewarm_creates_isolated_contexts_and_injects_session_state(tmp_path):
+def test_activate_creates_isolated_contexts_and_injects_session_state(tmp_path):
     records = _records(tmp_path)
     factory = FakeContextFactory()
-    runtime = GatewayRuntime(factory)
+    runtime = GatewayRuntime(factory, target_url="https://github.com")
 
-    result = runtime.prewarm(records)
-
-    assert result["success"] is True
-    assert result["context_count"] == 2
+    runtime.activate(records[0])
+    runtime.activate(records[1])
     github = factory.contexts["github"]
     discord = factory.contexts["discord"]
     assert github is not discord
     assert github.cookies[0]["value"] == "github-cookie"
     assert discord.cookies[0]["value"] == "discord-cookie"
-    assert github.local_storage_updates == [{"token": "github-storage"}]
-    assert discord.local_storage_updates == [{"token": "discord-storage"}]
+    assert github.init_scripts
+    assert not github.pages
+    assert discord.init_scripts == []
+    assert discord.pages == []
 
 
 def test_default_context_factory_closes_startup_context_and_does_not_open_pages(monkeypatch, tmp_path):
@@ -159,9 +164,8 @@ def test_default_context_factory_closes_startup_context_and_does_not_open_pages(
     )
     runtime = GatewayRuntime(BrowserManagerContextFactory(headless=False))
 
-    result = runtime.prewarm(records)
-
-    assert result["success"] is True
+    runtime.activate(records[0])
+    runtime.activate(records[1])
     assert manager.launch_calls == 1
     assert manager._context is None
     assert manager._page is None
@@ -186,8 +190,38 @@ def test_active_context_changes_on_rotation_without_mutating_old_context(tmp_pat
     assert second.context is factory.contexts["github"]
     assert old_context is factory.contexts["discord"]
     assert old_context.closed is False
-    assert len(old_context.pages) == 2
-    assert len(factory.contexts["github"].pages) == 2
+    assert len(old_context.pages) == 1
+    assert len(factory.contexts["github"].pages) == 1
+
+
+def test_runtime_operations_are_serialized_on_one_worker_thread(tmp_path):
+    records = {record.site_name: record for record in _records(tmp_path)}
+    factory = FakeContextFactory()
+    runtime = GatewayRuntime(factory)
+    seen_threads = []
+    original_create_context = factory.create_context
+
+    def create_context(session):
+        seen_threads.append(threading.get_ident())
+        return original_create_context(session)
+
+    factory.create_context = create_context
+
+    def activate(site_name):
+        runtime.activate(records[site_name])
+
+    first = threading.Thread(target=activate, args=("github",))
+    second = threading.Thread(target=activate, args=("discord",))
+    first.start()
+    second.start()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    try:
+        assert sorted(factory.contexts) == ["discord", "github"]
+        assert len(set(seen_threads)) == 1
+    finally:
+        runtime.close()
 
 
 def test_new_page_navigates_optional_url_in_active_context(tmp_path):
@@ -218,8 +252,9 @@ def test_drain_closes_inactive_contexts_only(tmp_path):
     records = _records(tmp_path)
     factory = FakeContextFactory()
     runtime = GatewayRuntime(factory)
-    runtime.prewarm(records)
     active = next(record for record in records if record.site_name == "github")
+    inactive = next(record for record in records if record.site_name == "discord")
+    runtime.activate(inactive)
     runtime.activate(active)
 
     result = runtime.drain_inactive()
@@ -229,12 +264,10 @@ def test_drain_closes_inactive_contexts_only(tmp_path):
     assert factory.contexts["discord"].closed is True
 
 
-def test_switch_with_prewarmed_contexts_is_under_hundreds_of_ms(tmp_path):
+def test_switching_contexts_is_under_hundreds_of_ms(tmp_path):
     records = _records(tmp_path)
     factory = FakeContextFactory()
     runtime = GatewayRuntime(factory)
-    runtime.prewarm(records)
-
     started = time.perf_counter()
     for _ in range(1000):
         for record in records:
@@ -247,7 +280,8 @@ def test_switch_with_prewarmed_contexts_is_under_hundreds_of_ms(tmp_path):
 def test_contexts_are_sanitized(tmp_path):
     records = _records(tmp_path)
     runtime = GatewayRuntime(FakeContextFactory())
-    runtime.prewarm(records)
+    for record in records:
+        runtime.activate(record)
 
     serialized = json.dumps(runtime.contexts())
 

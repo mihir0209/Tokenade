@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -154,7 +155,7 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
     The account server mints five independent accounts and session cookies. The
     test then models Playwright's storageState JSON directly (no browser launch),
     converts each export into a v3 .tokenade session, and verifies the gateway can
-    list, route, select, and prewarm isolated runtime contexts for all accounts.
+    list, route, and select isolated runtime contexts for all accounts.
     """
     account_httpd, account_thread = _start_account_server()
     sessions_dir = tmp_path / "sessions"
@@ -220,7 +221,7 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
             "plugins": [],
         }))
         runtime_factory = FakeContextFactory()
-        control_plane.runtime = GatewayRuntime(runtime_factory)
+        control_plane.runtime = GatewayRuntime(runtime_factory, target_url=origin)
         gateway_httpd = ThreadingHTTPServer(("127.0.0.1", 0), control_plane.make_handler())
         gateway_thread = threading.Thread(target=gateway_httpd.serve_forever, daemon=True)
         gateway_thread.start()
@@ -232,7 +233,6 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
             with urllib.request.urlopen(f"{base_url}/sessions", timeout=5) as response:
                 sessions = json.loads(response.read().decode("utf-8"))["sessions"]
 
-            prewarm = _gateway_post(base_url, "/contexts/prewarm")
             routed_ids = [
                 _gateway_post(base_url, "/route/next")["decision"]["session"]["id"]
                 for _ in range(5)
@@ -255,7 +255,6 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
         assert {session["cookie_count"] for session in sessions} == {1}
         assert not any(value in serialized_sessions for value in expected_cookie_values)
         assert "account-1" not in serialized_sessions
-        assert prewarm["runtime"]["context_count"] == 5
         assert routed_ids == expected_ids
         assert selected["decision"]["session"]["id"] == "acct-3"
         assert len(contexts) == 5
@@ -263,6 +262,7 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
         assert not any(value in serialized_contexts for value in expected_cookie_values)
         assert sorted(runtime_factory.contexts) == expected_ids
         assert [runtime_factory.contexts[account_id].cookies[0]["value"] for account_id in expected_ids] == expected_cookie_values
+        assert all(context.pages == [] for context in runtime_factory.contexts.values())
     finally:
         account_httpd.shutdown()
         account_httpd.server_close()
@@ -344,6 +344,20 @@ def test_create_gateway_control_plane_returns_status(tmp_path):
     assert status["routing"]["strategy"] == "round-robin"
 
 
+def test_gateway_sessions_pattern_accepts_regex(tmp_path):
+    _write_session(tmp_path, "google-default.tokenade", site_name="google")
+    _write_session(tmp_path, "2-google-default.tokenade", site_name="google")
+    _write_session(tmp_path, "github-default.tokenade", site_name="github")
+
+    request = _request(tmp_path, {"sessions": {"dir": str(tmp_path), "pattern": r"(^|-)google-default\.tokenade$"}})
+    control_plane = create_gateway_control_plane(request)
+
+    try:
+        assert [session.site_name for session in control_plane.sessions] == ["google", "google"]
+    finally:
+        control_plane.close()
+
+
 def test_gateway_refresh_scheduler_fires_started_event(tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
     request = _request(tmp_path, {"plugins": [{
@@ -358,6 +372,70 @@ def test_gateway_refresh_scheduler_fires_started_event(tmp_path):
         tasks = control_plane.scheduler.get_tasks()
         assert len(tasks) == 1
         assert tasks[0].event_type is EventType.REFRESH_STARTED
+    finally:
+        control_plane.close()
+
+
+def test_gateway_refresh_task_executes_refresher_and_persists_session(tmp_path, monkeypatch):
+    session_path = _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    request = _request(tmp_path, {"plugins": [{
+        "name": "oauth2",
+        "roles": {"session_refresher": {"enabled": True, "refresh_interval_seconds": 3600}},
+        "config": {"account": "test-account"},
+    }]})
+    control_plane = create_gateway_control_plane(request)
+    refreshed = {"version": "1.0", "site_name": "github", "cookies": [], "metadata": {"refreshed": True}}
+    refresher = SimpleNamespace(
+        can_refresh=lambda session: True,
+        refresh=lambda session, credentials: SimpleNamespace(success=True, data={"session": refreshed}),
+    )
+    loader = SimpleNamespace(get_refresher=lambda name: refresher)
+    monkeypatch.setattr(
+        "tokenade.core.integration.plugin_loader.get_or_create_shared_loader",
+        lambda: loader,
+    )
+
+    try:
+        control_plane._on_refresh_task_fired(SimpleNamespace(data={
+            "session_path": str(session_path),
+            "plugin_name": "oauth2",
+        }))
+        assert json.loads(session_path.read_text()) == refreshed
+    finally:
+        control_plane.close()
+
+
+def test_health_check_callback_reschedules_after_check_failure(tmp_path, monkeypatch):
+    _write_session(tmp_path, "github.tokenade")
+    request = _request(tmp_path, {"routing": {
+        "object": "session",
+        "strategy": "round-robin",
+        "health_check_interval_seconds": 10,
+    }})
+    control_plane = create_gateway_control_plane(request)
+    scheduled = []
+
+    try:
+        monkeypatch.setattr(control_plane, "_check_all_sessions_health", lambda: (_ for _ in ()).throw(RuntimeError("probe failed")))
+        monkeypatch.setattr(control_plane, "_start_health_monitor", lambda: scheduled.append(True))
+        control_plane._health_check_callback()
+        assert scheduled == [True]
+    finally:
+        control_plane.close()
+
+
+def test_auto_rotate_callback_does_not_create_duplicate_timers(tmp_path, monkeypatch):
+    _write_session(tmp_path, "github.tokenade")
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    scheduled = []
+
+    try:
+        monkeypatch.setattr(control_plane, "_auto_rotate_next", lambda: None)
+        monkeypatch.setattr(control_plane, "_start_auto_rotate_timer", lambda: scheduled.append(True))
+
+        control_plane._auto_rotate_callback()
+
+        assert scheduled == [True]
     finally:
         control_plane.close()
 
@@ -448,13 +526,11 @@ def test_control_plane_runtime_context_endpoints(tmp_path):
     control_plane = create_gateway_control_plane(_request(tmp_path))
     control_plane.runtime = runtime
 
-    prewarm = control_plane.contexts_prewarm()
     route = control_plane.route_next()
     contexts = control_plane.context_list()
     tab = control_plane.tabs_new()
     drain = control_plane.contexts_drain()
 
-    assert prewarm["runtime"]["context_count"] == 1
     assert route["runtime_context"]["session"]["id"] == "github-stable"
     assert contexts["runtime_enabled"] is True
     assert len(contexts["contexts"]) == 1
@@ -468,7 +544,6 @@ def test_tabs_new_url_uses_active_session_not_url_as_selector(tmp_path):
     control_plane = create_gateway_control_plane(_request(tmp_path))
     control_plane.runtime = runtime
 
-    control_plane.contexts_prewarm()
     control_plane.route_select({"id": "github-stable"})
     tab = control_plane.tabs_new({"url": "https://github.com"})
 
@@ -487,9 +562,6 @@ def test_gateway_http_runtime_contexts(tmp_path):
     base_url = f"http://127.0.0.1:{httpd.server_port}"
 
     try:
-        prewarm_request = urllib.request.Request(f"{base_url}/contexts/prewarm", data=b"{}", method="POST")
-        with urllib.request.urlopen(prewarm_request, timeout=5) as response:
-            prewarm = json.loads(response.read().decode("utf-8"))
         next_request = urllib.request.Request(f"{base_url}/route/next", data=b"{}", method="POST")
         with urllib.request.urlopen(next_request, timeout=5) as response:
             next_route = json.loads(response.read().decode("utf-8"))
@@ -500,7 +572,6 @@ def test_gateway_http_runtime_contexts(tmp_path):
         httpd.server_close()
         thread.join(timeout=5)
 
-    assert prewarm["runtime"]["context_count"] == 1
     assert next_route["runtime_context"]["session"]["id"] == "github-stable"
     assert contexts["runtime_enabled"] is True
     assert len(contexts["contexts"]) == 1

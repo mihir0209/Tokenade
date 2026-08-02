@@ -207,12 +207,27 @@ class GatewayControlPlane:
     def _auto_rotate_callback(self):
         """Background timer callback for auto-rotation."""
         try:
-            self.route_next()
+            self._auto_rotate_next()
         except Exception:
-            pass  # Silently ignore auto-rotation errors
+            logger.debug("Auto-rotation failed", exc_info=True)
         finally:
-            # Schedule next rotation
             self._start_auto_rotate_timer()
+
+    def _auto_rotate_next(self):
+        """Rotate the active session record without touching browser runtime APIs."""
+        decision = self.router.select()
+        self.active_session = decision.session
+        self._save_state()
+        self._fire_webhook("rotate", {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        })
+        self.event_bus.emit(EventType.PROXY_ROTATED, {
+            "session": decision.session.to_dict(),
+            "strategy": decision.strategy,
+            "reason": decision.reason,
+        }, source="gateway")
 
     def _cancel_auto_rotate_timer(self):
         """Cancel the auto-rotation timer."""
@@ -486,12 +501,6 @@ class GatewayControlPlane:
             "contexts": self.runtime.contexts(),
         }
 
-    def contexts_prewarm(self) -> Dict[str, Any]:
-        if not self.runtime:
-            raise GatewayConfigError("gateway runtime is not enabled")
-        result = self.runtime.prewarm(self.sessions)
-        return {"success": True, "operation": "gateway", "runtime": result}
-
     def contexts_drain(self) -> Dict[str, Any]:
         if not self.runtime:
             raise GatewayConfigError("gateway runtime is not enabled")
@@ -549,8 +558,6 @@ class GatewayControlPlane:
                         self._send_json(200, control_plane.route_next(payload))
                     elif self.path == "/route/select":
                         self._send_json(200, control_plane.route_select(payload))
-                    elif self.path == "/contexts/prewarm":
-                        self._send_json(200, control_plane.contexts_prewarm())
                     elif self.path == "/contexts/drain":
                         self._send_json(200, control_plane.contexts_drain())
                     elif self.path == "/tabs/new":
@@ -796,7 +803,10 @@ def _create_runtime(gateway_config: Any) -> Optional[GatewayRuntime]:
     headless = runtime_config.get("headless", True)
     if not isinstance(headless, bool):
         raise GatewayConfigError("request.gateway.runtime.headless must be a boolean")
-    return GatewayRuntime(BrowserManagerContextFactory(backend=backend.strip(), headless=headless))
+    target_url = runtime_config.get("url") or runtime_config.get("start_url") or runtime_config.get("target_url")
+    if target_url is not None and not isinstance(target_url, str):
+        raise GatewayConfigError("request.gateway.runtime.url must be a string")
+    return GatewayRuntime(BrowserManagerContextFactory(backend=backend.strip(), headless=headless), target_url=target_url)
 
 
 def _resolve_proxy_providers(request: RequestConfig, sessions: list[SessionRecord]) -> list[Dict[str, Any]]:
