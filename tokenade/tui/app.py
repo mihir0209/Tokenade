@@ -1620,6 +1620,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._gateway_next_tab()
         elif btn_id == "gateway-select-tab":
             self._gateway_select_tab()
+        elif btn_id == "gateway-lease":
+            payload = self._gateway_selector()
+            payload.update({"ttl_seconds": 900, "leased_by": "tui"})
+            self._gateway_run_http("lease", "POST", "/contexts/lease", payload)
+        elif btn_id == "gateway-release":
+            self._gateway_run_http("release", "POST", "/contexts/release", self._gateway_selector())
         elif btn_id == "gateway-drain":
             self._gateway_run_http("drain", "POST", "/contexts/drain")
         elif btn_id == "share-copy-full":

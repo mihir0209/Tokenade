@@ -436,9 +436,10 @@ class GatewayControlPlane:
         }
 
     def route_next(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        context = context or {}
         decision = self.router.select(context=context)
         self.active_session = decision.session
-        runtime_context = self.runtime.activate(decision.session) if self.runtime else None
+        runtime_context = self._apply_route_scope(decision.session, context)
         # Reset auto-rotate timer on manual rotation
         self.reset_auto_rotate_timer()
         # Save state after rotation
@@ -466,7 +467,7 @@ class GatewayControlPlane:
             raise GatewayConfigError("no session matched selector")
 
         self.active_session = selected
-        runtime_context = self.runtime.activate(selected) if self.runtime else None
+        runtime_context = self._apply_route_scope(selected, selector)
         decision = RoutingDecision(
             session=selected,
             strategy=self.routing_config.strategy,
@@ -491,6 +492,20 @@ class GatewayControlPlane:
         }, source="gateway")
         return self._decision_response(decision, runtime_context)
 
+    def _apply_route_scope(self, session: SessionRecord, payload: Dict[str, Any]):
+        if not self.runtime:
+            return None
+        scope = payload.get("scope", "future-only")
+        if scope == "future-only":
+            return None
+        if scope == "activate-context":
+            return self.runtime.activate(session)
+        if scope == "open-target":
+            url = payload.get("url") if isinstance(payload.get("url"), str) else None
+            window_policy = payload.get("window_policy") if isinstance(payload.get("window_policy"), str) else None
+            return self.runtime.new_page(session, url=url, window_policy=window_policy)
+        raise GatewayConfigError("scope must be future-only, activate-context, or open-target")
+
     def context_list(self) -> Dict[str, Any]:
         if not self.runtime:
             return {"success": True, "operation": "gateway", "runtime_enabled": False, "contexts": []}
@@ -501,10 +516,36 @@ class GatewayControlPlane:
             "contexts": self.runtime.contexts(),
         }
 
-    def contexts_drain(self) -> Dict[str, Any]:
+    def contexts_drain(self, force: bool = False) -> Dict[str, Any]:
         if not self.runtime:
             raise GatewayConfigError("gateway runtime is not enabled")
-        result = self.runtime.drain_inactive()
+        result = self.runtime.drain_inactive(force=force)
+        return {"success": True, "operation": "gateway", "runtime": result}
+
+    def contexts_lease(self, selector: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.runtime:
+            raise GatewayConfigError("gateway runtime is not enabled")
+        session = self._find_session(selector) if selector else self.active_session
+        if session is None:
+            raise GatewayConfigError("no session selected for lease")
+        ttl = selector.get("ttl_seconds", 900)
+        if not isinstance(ttl, (int, float)) or isinstance(ttl, bool):
+            raise GatewayConfigError("ttl_seconds must be a number")
+        leased_by = selector.get("leased_by") if isinstance(selector.get("leased_by"), str) else None
+        result = self.runtime.lease(session, ttl_seconds=float(ttl), leased_by=leased_by)
+        return {"success": True, "operation": "gateway", "runtime": result}
+
+    def contexts_release(self, selector: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.runtime:
+            raise GatewayConfigError("gateway runtime is not enabled")
+        context_id = selector.get("context_id") if isinstance(selector.get("context_id"), str) else None
+        lease_id = selector.get("lease_id") if isinstance(selector.get("lease_id"), str) else None
+        if not context_id and not lease_id:
+            session = self._find_session(selector)
+            context_id = session.id if session is not None else None
+        if not context_id and not lease_id:
+            raise GatewayConfigError("context_id, lease_id, or session selector is required")
+        result = self.runtime.release(context_id=context_id, lease_id=lease_id)
         return {"success": True, "operation": "gateway", "runtime": result}
 
     def tabs_new(self, selector: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -560,7 +601,12 @@ class GatewayControlPlane:
                     elif self.path == "/route/select":
                         self._send_json(200, control_plane.route_select(payload))
                     elif self.path == "/contexts/drain":
-                        self._send_json(200, control_plane.contexts_drain())
+                        force = bool(payload.get("force")) if isinstance(payload, dict) else False
+                        self._send_json(200, control_plane.contexts_drain(force=force))
+                    elif self.path == "/contexts/lease":
+                        self._send_json(200, control_plane.contexts_lease(payload))
+                    elif self.path == "/contexts/release":
+                        self._send_json(200, control_plane.contexts_release(payload))
                     elif self.path == "/tabs/new":
                         self._send_json(200, control_plane.tabs_new(payload))
                     else:
@@ -625,9 +671,10 @@ class GatewayControlPlane:
             "success": True,
             "operation": "gateway",
             "decision": decision.to_dict(),
+            "runtime_context": None,
         }
         if runtime_context is not None:
-            response["runtime_context"] = runtime_context.to_dict()
+            response["runtime_context"] = runtime_context if isinstance(runtime_context, dict) else runtime_context.to_dict()
         return response
 
     def close(self):

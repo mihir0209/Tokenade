@@ -159,6 +159,8 @@ class GatewayView(BaseView):
                 Button("Open", variant="success", compact=True, id="gateway-open-tab"),
                 Button("Next + open", variant="success", compact=True, id="gateway-next-tab"),
                 Button("Select + open", variant="success", compact=True, id="gateway-select-tab"),
+                Button("Lease", variant="primary", compact=True, id="gateway-lease"),
+                Button("Release", variant="default", compact=True, id="gateway-release"),
                 Button("Drain", variant="error", compact=True, id="gateway-drain"),
                 classes="gateway-row",
             )

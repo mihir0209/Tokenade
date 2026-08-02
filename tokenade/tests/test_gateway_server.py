@@ -234,10 +234,10 @@ def test_gateway_routes_five_playwright_storage_state_accounts(tmp_path):
                 sessions = json.loads(response.read().decode("utf-8"))["sessions"]
 
             routed_ids = [
-                _gateway_post(base_url, "/route/next")["decision"]["session"]["id"]
+                _gateway_post(base_url, "/route/next", {"scope": "activate-context"})["decision"]["session"]["id"]
                 for _ in range(5)
             ]
-            selected = _gateway_post(base_url, "/route/select", {"id": "acct-3"})
+            selected = _gateway_post(base_url, "/route/select", {"id": "acct-3", "scope": "activate-context"})
             with urllib.request.urlopen(f"{base_url}/contexts", timeout=5) as response:
                 contexts = json.loads(response.read().decode("utf-8"))["contexts"]
         finally:
@@ -526,7 +526,7 @@ def test_control_plane_runtime_context_endpoints(tmp_path):
     control_plane = create_gateway_control_plane(_request(tmp_path))
     control_plane.runtime = runtime
 
-    route = control_plane.route_next()
+    route = control_plane.route_next({"scope": "activate-context"})
     contexts = control_plane.context_list()
     tab = control_plane.tabs_new()
     drain = control_plane.contexts_drain()
@@ -538,13 +538,61 @@ def test_control_plane_runtime_context_endpoints(tmp_path):
     assert drain["runtime"]["closed"] == []
 
 
+def test_route_scope_future_only_does_not_activate_runtime(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+
+    route = control_plane.route_next()
+
+    assert route["runtime_context"] is None
+    assert control_plane.context_list()["contexts"] == []
+
+
+def test_route_scope_open_target_opens_with_window_policy(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+
+    route = control_plane.route_next({
+        "scope": "open-target",
+        "url": "https://github.com",
+        "window_policy": "reuse-active-window",
+    })
+
+    assert route["runtime_context"]["success"] is True
+    assert route["runtime_context"]["window_policy"] == "reuse-active-window"
+    assert route["runtime_context"]["context"]["page_count"] == 1
+
+
+def test_context_lease_preserves_inactive_context_from_drain(tmp_path):
+    _write_session(tmp_path, "github.tokenade", site_name="github")
+    _write_session(tmp_path, "discord.tokenade", site_name="discord")
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path, {"routing": {"object": "session", "strategy": "round-robin"}}))
+    control_plane.runtime = runtime
+
+    lease = control_plane.contexts_lease({"site": "discord", "ttl_seconds": 60, "leased_by": "test"})
+    control_plane.route_select({"site": "github", "scope": "activate-context"})
+    drain = runtime.drain_inactive()
+    released = control_plane.contexts_release({"lease_id": lease["runtime"]["lease_id"]})
+    drained_after_release = runtime.drain_inactive()
+
+    assert drain["closed"] == []
+    assert len(drain["preserved"]) == 1
+    assert released["runtime"]["context_id"] == drain["preserved"][0]
+    assert drained_after_release["closed"] == drain["preserved"]
+
+
 def test_tabs_new_url_uses_active_session_not_url_as_selector(tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
     runtime = GatewayRuntime(FakeContextFactory())
     control_plane = create_gateway_control_plane(_request(tmp_path))
     control_plane.runtime = runtime
 
-    control_plane.route_select({"id": "github-stable"})
+    control_plane.route_select({"id": "github-stable", "scope": "activate-context"})
     tab = control_plane.tabs_new({"url": "https://github.com"})
     reused = control_plane.tabs_new({"url": "https://github.com/settings"})
     new_tab = control_plane.tabs_new({"url": "https://github.com/new", "window_policy": "new-tab"})
@@ -568,7 +616,7 @@ def test_gateway_http_runtime_contexts(tmp_path):
     base_url = f"http://127.0.0.1:{httpd.server_port}"
 
     try:
-        next_request = urllib.request.Request(f"{base_url}/route/next", data=b"{}", method="POST")
+        next_request = urllib.request.Request(f"{base_url}/route/next", data=b'{"scope":"activate-context"}', method="POST")
         with urllib.request.urlopen(next_request, timeout=5) as response:
             next_route = json.loads(response.read().decode("utf-8"))
         with urllib.request.urlopen(f"{base_url}/contexts", timeout=5) as response:

@@ -7,6 +7,7 @@ import logging
 import queue
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol
@@ -61,6 +62,9 @@ class GatewaySessionContext:
     local_storage_origins: list[str] = field(default_factory=list)
     page_count: int = 0
     active_page: Any = None
+    lease_id: Optional[str] = None
+    leased_by: Optional[str] = None
+    lease_expires_at: Optional[float] = None
     draining: bool = False
     closed: bool = False
 
@@ -71,6 +75,10 @@ class GatewaySessionContext:
             "cookie_count_injected": self.cookies_injected,
             "origins": list(self.local_storage_origins),
             "page_count": self.page_count,
+            "lease_id": self.lease_id,
+            "leased_by": self.leased_by,
+            "lease_expires_at": self.lease_expires_at,
+            "leased": self.lease_expires_at is not None and self.lease_expires_at > time.time(),
             "draining": self.draining,
             "closed": self.closed,
         }
@@ -298,13 +306,45 @@ class GatewayRuntime:
                 return page, False
         return runtime_context.context.new_page(), True
 
-    def drain_inactive(self) -> Dict[str, Any]:
-        return self._call_runtime(self._drain_inactive)
+    def lease(self, session: SessionRecord, ttl_seconds: float = 900, leased_by: Optional[str] = None) -> Dict[str, Any]:
+        return self._call_runtime(self._lease, session, ttl_seconds, leased_by)
 
-    def _drain_inactive(self) -> Dict[str, Any]:
+    def _lease(self, session: SessionRecord, ttl_seconds: float = 900, leased_by: Optional[str] = None) -> Dict[str, Any]:
+        runtime_context = self._activate(session)
+        runtime_context.lease_id = uuid.uuid4().hex
+        runtime_context.leased_by = leased_by
+        runtime_context.lease_expires_at = time.time() + max(float(ttl_seconds), 1.0)
+        return {"success": True, "context": runtime_context.to_dict(), "lease_id": runtime_context.lease_id}
+
+    def release(self, context_id: Optional[str] = None, lease_id: Optional[str] = None) -> Dict[str, Any]:
+        return self._call_runtime(self._release, context_id, lease_id)
+
+    def _release(self, context_id: Optional[str] = None, lease_id: Optional[str] = None) -> Dict[str, Any]:
+        for session_id, runtime_context in self._contexts.items():
+            if context_id and session_id != context_id:
+                continue
+            if lease_id and runtime_context.lease_id != lease_id:
+                continue
+            if not context_id and not lease_id:
+                continue
+            runtime_context.lease_id = None
+            runtime_context.leased_by = None
+            runtime_context.lease_expires_at = None
+            return {"success": True, "context_id": session_id}
+        raise GatewayRuntimeError("no matching leased context")
+
+    def drain_inactive(self, force: bool = False) -> Dict[str, Any]:
+        return self._call_runtime(self._drain_inactive, force)
+
+    def _drain_inactive(self, force: bool = False) -> Dict[str, Any]:
         closed = []
+        preserved = []
+        now = time.time()
         for session_id, runtime_context in list(self._contexts.items()):
             if session_id == self.active_context_id or runtime_context.closed:
+                continue
+            if not force and runtime_context.lease_expires_at and runtime_context.lease_expires_at > now:
+                preserved.append(session_id)
                 continue
             runtime_context.draining = True
             try:
@@ -312,7 +352,7 @@ class GatewayRuntime:
             finally:
                 runtime_context.closed = True
                 closed.append(session_id)
-        return {"success": True, "closed": closed, "active_context_id": self.active_context_id}
+        return {"success": True, "closed": closed, "preserved": preserved, "active_context_id": self.active_context_id}
 
     def contexts(self) -> list[Dict[str, Any]]:
         return self._call_runtime(lambda: [runtime_context.to_dict() for runtime_context in self._contexts.values()])
