@@ -57,6 +57,12 @@ WINDOW_POLICIES: List[Tuple[str, str]] = [
     ("New tab", "new-tab"),
 ]
 
+ROUTE_SCOPES: List[Tuple[str, str]] = [
+    ("Prepare Context", "activate-context"),
+    ("Select Only", "future-only"),
+    ("Open Target", "open-target"),
+]
+
 
 def gateway_request_options(root: Path | None = None) -> List[Tuple[str, str]]:
     """Return Gateway request JSON files from ~/.tokenade/requests by default."""
@@ -105,6 +111,7 @@ class GatewayView(BaseView):
     GatewayView #gateway-session-select { width: 42; min-width: 28; }
     GatewayView #gateway-strategy-select { width: 20; min-width: 14; }
     GatewayView #gateway-window-policy-select { width: 24; min-width: 18; }
+    GatewayView #gateway-route-scope-select { width: 22; min-width: 18; }
     GatewayView #gateway-status-label {
         text-style: bold;
         color: $success;
@@ -149,6 +156,7 @@ class GatewayView(BaseView):
             yield Horizontal(
                 Input(placeholder="URL from request", id="gateway-url-input"),
                 Select(WINDOW_POLICIES, id="gateway-window-policy-select", value="reuse-active-window", allow_blank=False),
+                Select(ROUTE_SCOPES, id="gateway-route-scope-select", value="activate-context", allow_blank=False),
                 Select(ROUTING_STRATEGIES, id="gateway-strategy-select", value="round-robin", allow_blank=False),
                 Select([("No sessions loaded", "")], id="gateway-session-select", value="", allow_blank=False),
                 classes="gateway-row",
@@ -161,7 +169,7 @@ class GatewayView(BaseView):
                 Button("Select + open", variant="success", compact=True, id="gateway-select-tab"),
                 Button("Lease", variant="primary", compact=True, id="gateway-lease"),
                 Button("Release", variant="default", compact=True, id="gateway-release"),
-                Button("Drain", variant="error", compact=True, id="gateway-drain"),
+                Button("Cleanup", variant="error", compact=True, id="gateway-drain"),
                 classes="gateway-row",
             )
         yield RichLog(

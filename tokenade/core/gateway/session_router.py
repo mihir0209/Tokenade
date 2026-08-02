@@ -24,10 +24,12 @@ class RoutingConfig:
     sticky_by: str = "site"
     failover: bool = True
     drain_existing_tabs: bool = True
+    default_scope: str = "activate-context"
     health_check_interval_seconds: Optional[float] = None
     unhealthy_threshold: int = 3
 
     STRATEGIES = ("round-robin", "random", "health-weighted", "sticky")
+    SCOPES = ("future-only", "activate-context", "open-target")
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "RoutingConfig":
@@ -62,6 +64,10 @@ class RoutingConfig:
         if not isinstance(drain_existing_tabs, bool):
             raise SessionRoutingError("routing.drain_existing_tabs must be a boolean")
 
+        default_scope = raw.get("default_scope", "activate-context")
+        if default_scope not in cls.SCOPES:
+            raise SessionRoutingError("routing.default_scope must be future-only, activate-context, or open-target")
+
         health_check_interval = raw.get("health_check_interval_seconds")
         if health_check_interval is not None:
             if not isinstance(health_check_interval, (int, float)) or isinstance(health_check_interval, bool):
@@ -82,6 +88,7 @@ class RoutingConfig:
             sticky_by=sticky_by.strip(),
             failover=failover,
             drain_existing_tabs=drain_existing_tabs,
+            default_scope=default_scope,
             health_check_interval_seconds=float(health_check_interval) if health_check_interval is not None else None,
             unhealthy_threshold=unhealthy_threshold,
         )

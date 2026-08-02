@@ -414,6 +414,7 @@ class GatewayControlPlane:
                 "sticky_by": self.routing_config.sticky_by,
                 "failover": self.routing_config.failover,
                 "drain_existing_tabs": self.routing_config.drain_existing_tabs,
+                "default_scope": self.routing_config.default_scope,
             },
             "plugins": self.plugins,
             "runtime": {
@@ -495,7 +496,7 @@ class GatewayControlPlane:
     def _apply_route_scope(self, session: SessionRecord, payload: Dict[str, Any]):
         if not self.runtime:
             return None
-        scope = payload.get("scope", "future-only")
+        scope = payload.get("scope", self.routing_config.default_scope)
         if scope == "future-only":
             return None
         if scope == "activate-context":

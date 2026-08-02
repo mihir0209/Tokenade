@@ -541,13 +541,25 @@ def test_control_plane_runtime_context_endpoints(tmp_path):
 def test_route_scope_future_only_does_not_activate_runtime(tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
     runtime = GatewayRuntime(FakeContextFactory())
-    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane = create_gateway_control_plane(_request(tmp_path, {"routing": {"default_scope": "future-only"}}))
     control_plane.runtime = runtime
 
     route = control_plane.route_next()
 
     assert route["runtime_context"] is None
     assert control_plane.context_list()["contexts"] == []
+
+
+def test_route_default_scope_prepares_context(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+
+    route = control_plane.route_next()
+
+    assert route["runtime_context"]["session"]["id"] == "github-stable"
+    assert control_plane.context_list()["contexts"][0]["session"]["id"] == "github-stable"
 
 
 def test_route_scope_open_target_opens_with_window_policy(tmp_path):

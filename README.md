@@ -355,6 +355,7 @@ Start a local multi-session control plane with isolated browser contexts:
   "routing": {
     "object": "session",
     "strategy": "health-weighted",
+    "default_scope": "activate-context",
     "switch_interval_seconds": 30,
     "sticky_by": "site",
     "failover": true,
@@ -374,9 +375,12 @@ Gateway API endpoints:
 - `POST /route/next` — select next session by strategy
 - `POST /route/select` — set active session by ID/path/site
 - `GET /contexts` — isolated browser context state
-- `POST /contexts/prewarm` — prewarm contexts for sessions
-- `POST /contexts/drain` — close inactive contexts
-- `POST /tabs/new` — open new tab on active context
+- `POST /contexts/lease` — keep a runtime context protected from cleanup
+- `POST /contexts/release` — release a context lease
+- `POST /contexts/drain` — cleanup inactive, unleased contexts
+- `POST /tabs/new` — open the active session using the window policy
+
+Route scope controls what routing does to the browser runtime: `activate-context` prepares an isolated context, `future-only` selects without browser activity, and `open-target` routes and opens the target URL. The default window policy is `reuse-active-window` to avoid tab spam.
 
 **Privacy:** gateway outputs session metadata only (site, cookie count, health score). Never cookies, tokens, localStorage, or proxy credentials.
 
@@ -439,7 +443,7 @@ tokenade tui
 | `2` | **Sessions** — list jars, launch / load / health / share |
 | `3` | **Share** — password share-url create/receive (password never uploaded) |
 | `4` | **Convert** — DirectoryTree file picker + industry formats → `.tokenade` |
-| `5` | **Gateway** — dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/prewarm/open tabs from request settings (`gateway.runtime.url`) |
+| `5` | **Gateway** — dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/select/open/cleanup runtime contexts from request settings (`gateway.runtime.url`) |
 | `6`–`9` / `0` | Vault, Sync, Analytics, Plugins, Settings |
 
 **Copy:** drag to select text in logs and labels. **Ctrl+C does not quit** (shows a hint). Use **Ctrl+Shift+C** (or your terminal’s copy) for selection; **Ctrl+Q** or **q** to quit.

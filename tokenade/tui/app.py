@@ -115,7 +115,7 @@ from tokenade.tui.views.marketplace import (
 )
 from tokenade.tui.views.installed import InstalledView, InstalledRow
 from tokenade.tui.views.sessions import SessionsView, SessionTile, load_sessions, detect_session_url
-from tokenade.tui.views.gateway import GatewayView, gateway_request_options, ROUTING_STRATEGIES
+from tokenade.tui.views.gateway import GatewayView, gateway_request_options, ROUTING_STRATEGIES, ROUTE_SCOPES
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
 from tokenade.tui.views.share import ShareView, session_select_options
@@ -1011,6 +1011,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 strategy_values = [val for _, val in ROUTING_STRATEGIES]
                 if strategy in strategy_values:
                     strategy_select.value = strategy
+                default_scope = str(routing.get("default_scope") or "activate-context")
+                scope_select = self.query_one("#gateway-route-scope-select")
+                scope_values = [val for _, val in ROUTE_SCOPES]
+                if default_scope in scope_values:
+                    scope_select.value = default_scope
                 self.query_one("#gateway-request-summary").update(self._gateway_request_summary(data))
             except Exception:
                 pass
@@ -1037,6 +1042,22 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception:
             pass
         return "reuse-active-window"
+
+    def _gateway_route_scope(self) -> str:
+        try:
+            val = self.query_one("#gateway-route-scope-select").value
+            blank = getattr(Select, "NULL", Select.BLANK)
+            if val is not blank and val not in (None, "", False):
+                return str(val)
+        except Exception:
+            pass
+        return "activate-context"
+
+    def _gateway_route_payload(self) -> Dict[str, str]:
+        payload: Dict[str, str] = {"scope": self._gateway_route_scope()}
+        if payload["scope"] == "open-target":
+            payload.update(self._gateway_open_payload())
+        return payload
 
     def _gateway_open_payload(self) -> Dict[str, str]:
         payload: Dict[str, str] = {"window_policy": self._gateway_window_policy()}
@@ -1205,16 +1226,21 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             ok = False
             lines = []
             try:
-                route = self._gateway_post("/route/next")
+                route_payload = self._gateway_route_payload()
+                route = self._gateway_post("/route/next", route_payload)
                 lines.append("$ POST /route/next")
+                lines.append(json.dumps(route_payload, ensure_ascii=False))
                 lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                tab_payload = self._gateway_open_payload()
-                tab = self._gateway_post("/tabs/new", tab_payload)
-                lines.append("$ POST /tabs/new")
-                if tab_payload:
-                    lines.append(json.dumps(tab_payload, ensure_ascii=False))
-                lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
-                ok = bool(route.get("success") and tab.get("success"))
+                if route_payload.get("scope") == "open-target":
+                    ok = bool(route.get("success"))
+                else:
+                    tab_payload = self._gateway_open_payload()
+                    tab = self._gateway_post("/tabs/new", tab_payload)
+                    lines.append("$ POST /tabs/new")
+                    if tab_payload:
+                        lines.append(json.dumps(tab_payload, ensure_ascii=False))
+                    lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
+                    ok = bool(route.get("success") and tab.get("success"))
             except Exception as exc:
                 lines.append(str(exc))
 
@@ -1242,17 +1268,21 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             ok = False
             lines = []
             try:
+                selector.update(self._gateway_route_payload())
                 route = self._gateway_post("/route/select", selector)
                 lines.append("$ POST /route/select")
                 lines.append(json.dumps(selector, ensure_ascii=False))
                 lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                tab_payload = self._gateway_open_payload()
-                tab = self._gateway_post("/tabs/new", tab_payload)
-                lines.append("$ POST /tabs/new")
-                if tab_payload:
-                    lines.append(json.dumps(tab_payload, ensure_ascii=False))
-                lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
-                ok = bool(route.get("success") and tab.get("success"))
+                if selector.get("scope") == "open-target":
+                    ok = bool(route.get("success"))
+                else:
+                    tab_payload = self._gateway_open_payload()
+                    tab = self._gateway_post("/tabs/new", tab_payload)
+                    lines.append("$ POST /tabs/new")
+                    if tab_payload:
+                        lines.append(json.dumps(tab_payload, ensure_ascii=False))
+                    lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
+                    ok = bool(route.get("success") and tab.get("success"))
             except Exception as exc:
                 lines.append(str(exc))
 
@@ -1611,9 +1641,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "gateway-sessions":
             self._gateway_run_http("sessions", "GET", "/sessions")
         elif btn_id == "gateway-route-next":
-            self._gateway_run_http("route next", "POST", "/route/next")
+            self._gateway_run_http("route next", "POST", "/route/next", self._gateway_route_payload())
         elif btn_id == "gateway-route-select":
-            self._gateway_run_http("route select", "POST", "/route/select", self._gateway_selector())
+            payload = self._gateway_selector()
+            payload.update(self._gateway_route_payload())
+            self._gateway_run_http("route select", "POST", "/route/select", payload)
         elif btn_id == "gateway-open-tab":
             self._gateway_run_http("open", "POST", "/tabs/new", self._gateway_open_payload())
         elif btn_id == "gateway-next-tab":
@@ -1627,7 +1659,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "gateway-release":
             self._gateway_run_http("release", "POST", "/contexts/release", self._gateway_selector())
         elif btn_id == "gateway-drain":
-            self._gateway_run_http("drain", "POST", "/contexts/drain")
+            self._gateway_run_http("cleanup", "POST", "/contexts/drain")
         elif btn_id == "share-copy-full":
             self._share_copy("full")
         elif btn_id == "share-copy-id":

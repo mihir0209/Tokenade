@@ -1,6 +1,6 @@
 # Tokenade Gateway
 
-Multi-session **control plane** for listing sanitized session metadata and selecting an active session by strategy. Optional browser runtime hooks attach contexts/tabs when configured.
+Multi-session **control plane** for listing sanitized session metadata, selecting active sessions by strategy, and optionally preparing isolated browser contexts/tabs when runtime is enabled.
 
 ## Maturity (read this first)
 
@@ -32,7 +32,8 @@ cat > gateway.request.json << 'EOF'
   },
   "routing": {
     "object": "session",
-    "strategy": "round-robin"
+    "strategy": "round-robin",
+    "default_scope": "activate-context"
   },
   "plugins": []
 }
@@ -57,12 +58,33 @@ Invalid request files exit **2** with a JSON error envelope (`operation: gateway
 |----------|--------|-------------|
 | `/status` | GET | Gateway state and session count |
 | `/sessions` | GET | Sanitized session records (**no** cookie/storage secrets) |
-| `/route/next` | POST | Select the active session context by strategy; existing tabs stay in their original context |
-| `/route/select` | POST | Set active session by selector |
+| `/route/next` | POST | Select the active session by strategy, then apply route scope |
+| `/route/select` | POST | Set active session by selector, then apply route scope |
 | `/contexts` | GET | Browser context state (when runtime enabled) |
-| `/contexts/prewarm` | POST | Prewarm browser contexts for sessions without opening user-facing tabs |
-| `/contexts/drain` | POST | Close inactive contexts |
-| `/tabs/new` | POST | Open a new tab in the active context (runtime) |
+| `/contexts/lease` | POST | Keep a runtime context protected from cleanup for a TTL |
+| `/contexts/release` | POST | Release a context lease by `lease_id`, `context_id`, or session selector |
+| `/contexts/drain` | POST | Cleanup inactive runtime contexts; leased contexts are preserved unless `force` is true |
+| `/tabs/new` | POST | Open the active session using the configured window policy |
+
+## Gateway mental model
+
+Gateway separates selection, preparation, opening, and cleanup:
+
+- **Route** chooses which Session should be active.
+- **Prepare Context** (`activate-context`) creates or reuses the isolated browser context for that Session, but does not open a visible page.
+- **Select Only** (`future-only`) changes the active Session without touching the browser runtime.
+- **Open Target** (`open-target`) routes and opens the target URL in one request.
+- **Open** (`/tabs/new`) opens the active Session's target URL. The default window policy is `reuse-active-window` to avoid tab spam.
+- **Lease** protects a runtime context from cleanup for a TTL.
+- **Cleanup** (`/contexts/drain`) closes inactive, unleased contexts to recover resources. Pass `force: true` only when protected contexts should also close.
+
+Route scope can be set per request with `scope`, or globally with `routing.default_scope`:
+
+| Scope | Meaning |
+|-------|---------|
+| `activate-context` | Prepare Context: select the Session and prepare its browser context. This is the default. |
+| `future-only` | Select Only: select the Session without browser runtime activity. |
+| `open-target` | Open Target: select the Session and open the target URL immediately. |
 
 ## Routing strategies
 
@@ -90,7 +112,9 @@ Invalid request files exit **2** with a JSON error envelope (`operation: gateway
     "runtime": {
       "enabled": true,
       "backend": "cloakbrowser",
-      "headless": true
+      "headless": true,
+      "url": "https://example.com/",
+      "window_policy": "reuse-active-window"
     },
     "state_file": "~/.tokenade/gateway_state.json",
     "webhooks": {
@@ -110,6 +134,7 @@ Invalid request files exit **2** with a JSON error envelope (`operation: gateway
     "switch_interval_seconds": 300,
     "health_check_interval_seconds": 30,
     "unhealthy_threshold": 3,
+    "default_scope": "activate-context",
     "sticky_by": "site",
     "failover": true,
     "drain_existing_tabs": true

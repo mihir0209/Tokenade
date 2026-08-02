@@ -136,6 +136,15 @@ def test_enforces_minimum_switch_interval():
         RoutingConfig.from_dict({"object": "session", "strategy": "round-robin", "switch_interval_seconds": 4})
 
 
+def test_routing_config_default_scope():
+    config = RoutingConfig.from_dict({"default_scope": "future-only"})
+
+    assert config.default_scope == "future-only"
+
+    with pytest.raises(SessionRoutingError, match="routing.default_scope"):
+        RoutingConfig.from_dict({"default_scope": "invalid"})
+
+
 def test_rejects_non_session_routing_object():
     with pytest.raises(SessionRoutingError, match="routing.object must be session"):
         RoutingConfig.from_dict({"object": "proxy"})
