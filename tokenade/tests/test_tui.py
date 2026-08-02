@@ -126,6 +126,28 @@ class TestCliRunnerDisplay:
         assert "runtime=on" in summary
         assert "url=https://example.test/app" in summary
 
+    def test_gateway_session_options_support_regex_pattern(self, tmp_path):
+        from tokenade.tui.app import TokenadeTUI
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        matched = sessions / "2-google-default.tokenade"
+        ignored = sessions / "github.tokenade"
+        matched.write_text(json.dumps({"metadata": {"session_id": "google-a"}, "cookies": []}))
+        ignored.write_text(json.dumps({"metadata": {"session_id": "github-a"}, "cookies": []}))
+        request = tmp_path / "gateway.json"
+        request.write_text(json.dumps({
+            "operation": "gateway",
+            "sessions": {"dir": "sessions", "pattern": "(^|-)google-default\\.tokenade$"},
+            "gateway": {"host": "127.0.0.1", "port": 9444},
+        }))
+        app = TokenadeTUI()
+        data = app._gateway_load_request(str(request))
+
+        options = app._gateway_session_options(data, str(request))
+
+        assert options == [("google-a · unknown · 0 cookies", str(matched.resolve()))]
+
     def test_gateway_picker_starts_at_downloads_or_home(self):
         from tokenade.tui.app import GatewayRequestPickerScreen
 

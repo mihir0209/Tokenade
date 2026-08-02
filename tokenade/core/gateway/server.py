@@ -526,7 +526,9 @@ class GatewayControlPlane:
     def contexts_lease(self, selector: Dict[str, Any]) -> Dict[str, Any]:
         if not self.runtime:
             raise GatewayConfigError("gateway runtime is not enabled")
-        session = self._find_session(selector) if selector else self.active_session
+        session = self._find_session(selector) if selector else None
+        if session is None:
+            session = self.active_session
         if session is None:
             raise GatewayConfigError("no session selected for lease")
         ttl = selector.get("ttl_seconds", 900)
@@ -543,6 +545,8 @@ class GatewayControlPlane:
         lease_id = selector.get("lease_id") if isinstance(selector.get("lease_id"), str) else None
         if not context_id and not lease_id:
             session = self._find_session(selector)
+            if session is None:
+                session = self.active_session
             context_id = session.id if session is not None else None
         if not context_id and not lease_id:
             raise GatewayConfigError("context_id, lease_id, or session selector is required")

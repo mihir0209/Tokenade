@@ -598,6 +598,20 @@ def test_context_lease_preserves_inactive_context_from_drain(tmp_path):
     assert drained_after_release["closed"] == drain["preserved"]
 
 
+def test_context_lease_and_release_fall_back_to_active_session(tmp_path):
+    _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
+    runtime = GatewayRuntime(FakeContextFactory())
+    control_plane = create_gateway_control_plane(_request(tmp_path))
+    control_plane.runtime = runtime
+    control_plane.route_next()
+
+    lease = control_plane.contexts_lease({"ttl_seconds": 60, "leased_by": "test"})
+    release = control_plane.contexts_release({})
+
+    assert lease["runtime"]["context"]["leased"] is True
+    assert release["runtime"]["context_id"] == "github-stable"
+
+
 def test_tabs_new_url_uses_active_session_not_url_as_selector(tmp_path):
     _write_session(tmp_path, "github.tokenade", metadata={"session_id": "github-stable"})
     runtime = GatewayRuntime(FakeContextFactory())

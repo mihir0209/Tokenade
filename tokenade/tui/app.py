@@ -8,6 +8,7 @@ Usage:
 import logging
 import json
 import os
+import re
 import signal
 import threading
 import time
@@ -955,7 +956,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         if not root.is_absolute():
             root = (Path(request_file).expanduser().parent / root).resolve()
         try:
-            return sorted(path for path in root.glob(str(pattern)) if path.is_file())
+            regex = re.compile(str(pattern))
+        except re.error:
+            try:
+                return sorted(path for path in root.glob(str(pattern)) if path.is_file())
+            except Exception:
+                return []
+        try:
+            return sorted(
+                path for path in root.iterdir()
+                if path.is_file() and (regex.search(path.name) or regex.search(str(path)))
+            )
         except Exception:
             return []
 
@@ -1108,7 +1119,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             def _ui():
                 self._gateway_log(f"$ {method} {self._gateway_base_url()}{path}")
                 if payload:
+                    self._gateway_log("payload:")
                     self._gateway_log(json.dumps(payload, ensure_ascii=False))
+                self._gateway_log("response:")
                 self._gateway_log(text)
                 if ok:
                     self.notify(f"Gateway {label} OK", timeout=3)
@@ -1644,6 +1657,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._gateway_run_http("route next", "POST", "/route/next", self._gateway_route_payload())
         elif btn_id == "gateway-route-select":
             payload = self._gateway_selector()
+            if not payload:
+                self.notify("Select a request session first", severity="warning")
+                return
             payload.update(self._gateway_route_payload())
             self._gateway_run_http("route select", "POST", "/route/select", payload)
         elif btn_id == "gateway-open-tab":
