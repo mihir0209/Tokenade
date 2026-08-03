@@ -126,14 +126,24 @@ class SessionRouter:
     def from_config(cls, sessions: List[SessionRecord], routing: Optional[Dict[str, Any]] = None) -> "SessionRouter":
         return cls(sessions, RoutingConfig.from_dict(routing))
 
-    def select(self, context: Optional[Dict[str, Any]] = None, now: Optional[float] = None) -> RoutingDecision:
+    def select(
+        self,
+        context: Optional[Dict[str, Any]] = None,
+        now: Optional[float] = None,
+        ignore_switch_interval: bool = False,
+        exclude_active: bool = False,
+    ) -> RoutingDecision:
         """Return the active session routing decision."""
         selected_at = time.time() if now is None else now
         available = self._available_sessions()
         if not available:
             raise SessionRoutingError("no routable sessions available")
+        if exclude_active and self.config.strategy != "round-robin" and self._active and len(available) > 1:
+            alternatives = [session for session in available if session.id != self._active.session.id]
+            if alternatives:
+                available = alternatives
 
-        if self._active and self._within_switch_interval(selected_at):
+        if not ignore_switch_interval and self._active and self._within_switch_interval(selected_at):
             return RoutingDecision(
                 session=self._active.session,
                 strategy=self.config.strategy,

@@ -148,6 +148,43 @@ class TestCliRunnerDisplay:
 
         assert options == [("google-a · unknown · 0 cookies", str(matched.resolve()))]
 
+    def test_gateway_combined_open_actions_are_atomic(self):
+        from tokenade.tui.app import TokenadeTUI
+
+        app = TokenadeTUI()
+        app._gateway_open_payload = MagicMock(return_value={
+            "url": "https://mail.google.com/",
+            "window_policy": "reuse-active-window",
+        })
+        app._gateway_selector = MagicMock(return_value={"path": "/tmp/google.tokenade"})
+        app._gateway_run_http = MagicMock()
+
+        app._gateway_next_tab()
+        app._gateway_run_http.assert_called_once_with(
+            "route next + open",
+            "POST",
+            "/route/next",
+            {
+                "url": "https://mail.google.com/",
+                "window_policy": "reuse-active-window",
+                "scope": "open-target",
+            },
+        )
+
+        app._gateway_run_http.reset_mock()
+        app._gateway_select_tab()
+        app._gateway_run_http.assert_called_once_with(
+            "select dropdown + open",
+            "POST",
+            "/route/select",
+            {
+                "path": "/tmp/google.tokenade",
+                "url": "https://mail.google.com/",
+                "window_policy": "reuse-active-window",
+                "scope": "open-target",
+            },
+        )
+
     def test_gateway_picker_starts_at_downloads_or_home(self):
         from tokenade.tui.app import GatewayRequestPickerScreen
 

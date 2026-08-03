@@ -385,6 +385,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._last_share: Dict[str, Any] = {}
         self._gateway_pid: int = 0
         self._gateway_log_path: str = ""
+        self._gateway_status_data: Dict[str, Any] = {}
+        self._gateway_contexts_data: Dict[str, Any] = {}
 
     def compose(self) -> "ComposeResult":
         yield Header(show_clock=False)
@@ -619,6 +621,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self._refresh_session_profile_select(str(val))
             elif cid == "export-browser-select":
                 self._refresh_export_profile_select(str(val))
+            elif cid == "gateway-session-select":
+                self._gateway_render_state()
         except Exception:
             pass
 
@@ -1106,8 +1110,55 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         with urllib.request.urlopen(f"{self._gateway_base_url()}{path}", timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
 
+    def _gateway_render_state(self):
+        try:
+            selected = self._gateway_selector().get("path", "none")
+            active = self._gateway_status_data.get("active_session") or {}
+            active_path = active.get("path") or "none"
+            routing = self._gateway_status_data.get("routing") or {}
+            contexts = self._gateway_contexts_data.get("contexts") or []
+            lines = [
+                f"Dropdown selected: {selected}",
+                f"Gateway active: {active_path}",
+                f"Routing: {routing.get('strategy', 'unknown')} · {routing.get('default_scope', 'unknown')}",
+                f"Contexts: {len(contexts)}",
+            ]
+            for context in contexts:
+                session = context.get("session") or {}
+                marker = "active" if session.get("id") == (self._gateway_status_data.get("runtime") or {}).get("active_context_id") else "inactive"
+                lease = "leased" if context.get("leased") else "unleased"
+                lines.append(
+                    f"- {session.get('path', session.get('id', 'unknown'))} · {marker} · "
+                    f"pages={context.get('page_count', 0)} · {lease}"
+                )
+            self.query_one("#gateway-state-panel").update("\n".join(lines))
+        except Exception:
+            pass
+
+    def _gateway_refresh_state(self):
+        def _worker():
+            try:
+                status = self._gateway_get("/status")
+                contexts = self._gateway_get("/contexts")
+            except Exception:
+                return
+
+            def _ui():
+                self._gateway_status_data = status
+                self._gateway_contexts_data = contexts
+                self._gateway_render_state()
+
+            try:
+                self.call_from_thread(_ui)
+            except Exception:
+                _ui()
+
+        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-state").start()
+
     def _gateway_run_http(self, label: str, method: str, path: str, payload: Optional[Dict[str, Any]] = None):
         def _worker():
+            status_data: Dict[str, Any] = {}
+            contexts_data: Dict[str, Any] = {}
             try:
                 result = self._gateway_post(path, payload) if method == "POST" else self._gateway_get(path)
                 text = json.dumps(result, indent=2, ensure_ascii=False)
@@ -1115,6 +1166,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             except Exception as exc:
                 text = str(exc)
                 ok = False
+            try:
+                status_data = self._gateway_get("/status")
+                contexts_data = self._gateway_get("/contexts")
+            except Exception:
+                pass
 
             def _ui():
                 self._gateway_log(f"$ {method} {self._gateway_base_url()}{path}")
@@ -1123,6 +1179,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     self._gateway_log(json.dumps(payload, ensure_ascii=False))
                 self._gateway_log("response:")
                 self._gateway_log(text)
+                if status_data:
+                    self._gateway_status_data = status_data
+                if contexts_data:
+                    self._gateway_contexts_data = contexts_data
+                self._gateway_render_state()
                 if ok:
                     self.notify(f"Gateway {label} OK", timeout=3)
                 else:
@@ -1200,6 +1261,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     self._gateway_set_status(
                         f"Gateway running pid={result.pid} · {self._gateway_base_url()}"
                     )
+                    self._gateway_refresh_state()
                     self.notify("Gateway running", timeout=3)
                 else:
                     self.notify("Gateway launch failed", severity="error", timeout=5)
@@ -1235,41 +1297,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self.notify("Gateway stopped", timeout=3)
 
     def _gateway_next_tab(self):
-        def _worker():
-            ok = False
-            lines = []
-            try:
-                route_payload = self._gateway_route_payload()
-                route = self._gateway_post("/route/next", route_payload)
-                lines.append("$ POST /route/next")
-                lines.append(json.dumps(route_payload, ensure_ascii=False))
-                lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                if route_payload.get("scope") == "open-target":
-                    ok = bool(route.get("success"))
-                else:
-                    tab_payload = self._gateway_open_payload()
-                    tab = self._gateway_post("/tabs/new", tab_payload)
-                    lines.append("$ POST /tabs/new")
-                    if tab_payload:
-                        lines.append(json.dumps(tab_payload, ensure_ascii=False))
-                    lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
-                    ok = bool(route.get("success") and tab.get("success"))
-            except Exception as exc:
-                lines.append(str(exc))
-
-            def _ui():
-                self._gateway_log("\n".join(lines))
-                if ok:
-                    self.notify("Gateway next + open OK", timeout=3)
-                else:
-                    self.notify("Gateway next + open failed", severity="error", timeout=4)
-
-            try:
-                self.call_from_thread(_ui)
-            except Exception:
-                _ui()
-
-        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-next-tab").start()
+        payload = self._gateway_open_payload()
+        payload["scope"] = "open-target"
+        self._gateway_run_http("route next + open", "POST", "/route/next", payload)
 
     def _gateway_select_tab(self):
         selector = self._gateway_selector()
@@ -1277,41 +1307,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify("Select a request session first", severity="warning")
             return
 
-        def _worker():
-            ok = False
-            lines = []
-            try:
-                selector.update(self._gateway_route_payload())
-                route = self._gateway_post("/route/select", selector)
-                lines.append("$ POST /route/select")
-                lines.append(json.dumps(selector, ensure_ascii=False))
-                lines.append(json.dumps(route, indent=2, ensure_ascii=False))
-                if selector.get("scope") == "open-target":
-                    ok = bool(route.get("success"))
-                else:
-                    tab_payload = self._gateway_open_payload()
-                    tab = self._gateway_post("/tabs/new", tab_payload)
-                    lines.append("$ POST /tabs/new")
-                    if tab_payload:
-                        lines.append(json.dumps(tab_payload, ensure_ascii=False))
-                    lines.append(json.dumps(tab, indent=2, ensure_ascii=False))
-                    ok = bool(route.get("success") and tab.get("success"))
-            except Exception as exc:
-                lines.append(str(exc))
-
-            def _ui():
-                self._gateway_log("\n".join(lines))
-                if ok:
-                    self.notify("Gateway select + open OK", timeout=3)
-                else:
-                    self.notify("Gateway select + open failed", severity="error", timeout=4)
-
-            try:
-                self.call_from_thread(_ui)
-            except Exception:
-                _ui()
-
-        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-select-tab").start()
+        selector.update(self._gateway_open_payload())
+        selector["scope"] = "open-target"
+        self._gateway_run_http("select dropdown + open", "POST", "/route/select", selector)
 
     def _update_vault(self):
         try:
@@ -1670,10 +1668,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._gateway_select_tab()
         elif btn_id == "gateway-lease":
             payload = self._gateway_selector()
+            if not payload:
+                self.notify("Select a request session first", severity="warning")
+                return
             payload.update({"ttl_seconds": 900, "leased_by": "tui"})
             self._gateway_run_http("lease", "POST", "/contexts/lease", payload)
         elif btn_id == "gateway-release":
-            self._gateway_run_http("release", "POST", "/contexts/release", self._gateway_selector())
+            payload = self._gateway_selector()
+            if not payload:
+                self.notify("Select a request session first", severity="warning")
+                return
+            self._gateway_run_http("release", "POST", "/contexts/release", payload)
         elif btn_id == "gateway-drain":
             self._gateway_run_http("cleanup", "POST", "/contexts/drain")
         elif btn_id == "share-copy-full":

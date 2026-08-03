@@ -438,7 +438,7 @@ class GatewayControlPlane:
 
     def route_next(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         context = context or {}
-        decision = self.router.select(context=context)
+        decision = self.router.select(context=context, ignore_switch_interval=True, exclude_active=True)
         self.active_session = decision.session
         runtime_context = self._apply_route_scope(decision.session, context)
         # Reset auto-rotate timer on manual rotation

@@ -579,6 +579,25 @@ def test_route_scope_open_target_opens_with_window_policy(tmp_path):
     assert route["runtime_context"]["context"]["page_count"] == 1
 
 
+def test_manual_route_next_ignores_switch_interval(tmp_path):
+    _write_session(tmp_path, "github.tokenade", site_name="github")
+    _write_session(tmp_path, "discord.tokenade", site_name="discord")
+    control_plane = create_gateway_control_plane(_request(tmp_path, {
+        "routing": {
+            "strategy": "round-robin",
+            "switch_interval_seconds": 60,
+            "failover": False,
+            "default_scope": "future-only",
+        },
+    }))
+
+    first = control_plane.route_next()
+    second = control_plane.route_next()
+
+    assert first["decision"]["session"]["id"] != second["decision"]["session"]["id"]
+    assert second["decision"]["reason"] == "round-robin"
+
+
 def test_context_lease_preserves_inactive_context_from_drain(tmp_path):
     _write_session(tmp_path, "github.tokenade", site_name="github")
     _write_session(tmp_path, "discord.tokenade", site_name="discord")

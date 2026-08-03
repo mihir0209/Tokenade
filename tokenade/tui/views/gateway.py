@@ -117,6 +117,14 @@ class GatewayView(BaseView):
         color: $success;
         height: 1;
     }
+    GatewayView #gateway-state-panel {
+        height: auto;
+        min-height: 5;
+        padding: 0 1;
+        margin: 0 0 1 0;
+        background: $surface;
+        border: round $primary-background-lighten-2;
+    }
     GatewayView #gateway-cli-log {
         height: 18;
         min-height: 10;
@@ -144,6 +152,10 @@ class GatewayView(BaseView):
                 classes="gateway-row",
             )
             yield Static("No request loaded", id="gateway-request-summary", classes="field-label")
+            yield Static(
+                "Dropdown selected: none\nGateway active: unknown\nContexts: unknown",
+                id="gateway-state-panel",
+            )
             yield Horizontal(
                 Input(placeholder="host from request", id="gateway-host-input"),
                 Input(placeholder="port from request", id="gateway-port-input"),
@@ -162,14 +174,14 @@ class GatewayView(BaseView):
                 classes="gateway-row",
             )
             yield Horizontal(
-                Button("Route next", variant="warning", compact=True, id="gateway-route-next"),
-                Button("Select", variant="default", compact=True, id="gateway-route-select"),
-                Button("Open", variant="success", compact=True, id="gateway-open-tab"),
-                Button("Next + open", variant="success", compact=True, id="gateway-next-tab"),
-                Button("Select + open", variant="success", compact=True, id="gateway-select-tab"),
-                Button("Lease", variant="primary", compact=True, id="gateway-lease"),
-                Button("Release", variant="default", compact=True, id="gateway-release"),
-                Button("Cleanup", variant="error", compact=True, id="gateway-drain"),
+                Button("Route Next", variant="warning", compact=True, id="gateway-route-next"),
+                Button("Select Dropdown", variant="default", compact=True, id="gateway-route-select"),
+                Button("Open Active", variant="success", compact=True, id="gateway-open-tab"),
+                Button("Route Next + Open", variant="success", compact=True, id="gateway-next-tab"),
+                Button("Select Dropdown + Open", variant="success", compact=True, id="gateway-select-tab"),
+                Button("Lease Selected", variant="primary", compact=True, id="gateway-lease"),
+                Button("Release Selected", variant="default", compact=True, id="gateway-release"),
+                Button("Cleanup Inactive", variant="error", compact=True, id="gateway-drain"),
                 classes="gateway-row",
             )
         yield RichLog(

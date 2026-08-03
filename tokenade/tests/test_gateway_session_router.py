@@ -131,6 +131,19 @@ def test_switch_interval_keeps_current_active_session():
     assert third.session.id == "b"
 
 
+def test_manual_selection_can_ignore_switch_interval():
+    router = SessionRouter(
+        [_record("a"), _record("b")],
+        RoutingConfig(strategy="round-robin", switch_interval_seconds=5),
+    )
+
+    first = router.select(now=100.0)
+    second = router.select(now=101.0, ignore_switch_interval=True)
+
+    assert first.session.id == "a"
+    assert second.session.id == "b"
+
+
 def test_enforces_minimum_switch_interval():
     with pytest.raises(SessionRoutingError, match="switch_interval_seconds must be >= 5"):
         RoutingConfig.from_dict({"object": "session", "strategy": "round-robin", "switch_interval_seconds": 4})

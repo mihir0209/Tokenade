@@ -194,6 +194,19 @@ def test_active_context_changes_on_rotation_without_mutating_old_context(tmp_pat
     assert len(factory.contexts["github"].pages) == 1
 
 
+def test_lease_renews_active_lease_without_replacing_id(tmp_path):
+    record = _records(tmp_path)[0]
+    runtime = GatewayRuntime(FakeContextFactory())
+
+    first = runtime.lease(record, ttl_seconds=60, leased_by="test")
+    second = runtime.lease(record, ttl_seconds=120, leased_by="test")
+
+    assert first["renewed"] is False
+    assert second["renewed"] is True
+    assert second["lease_id"] == first["lease_id"]
+    assert second["context"]["lease_expires_at"] >= first["context"]["lease_expires_at"]
+
+
 def test_runtime_operations_are_serialized_on_one_worker_thread(tmp_path):
     records = {record.site_name: record for record in _records(tmp_path)}
     factory = FakeContextFactory()

@@ -213,6 +213,7 @@ class GatewayRuntime:
         self._work_queue: "queue.Queue[tuple[Any, ...]]" = queue.Queue()
         self._worker: Optional[threading.Thread] = None
         self._worker_id: Optional[int] = None
+        self._worker_lock = threading.Lock()
 
     def _call_runtime(self, fn, *args, **kwargs):
         if threading.get_ident() == self._worker_id:
@@ -227,10 +228,11 @@ class GatewayRuntime:
         return item[4]
 
     def _start_worker(self):
-        if self._worker and self._worker.is_alive():
-            return
-        self._worker = threading.Thread(target=self._run_worker, name="tokenade-gateway-runtime", daemon=True)
-        self._worker.start()
+        with self._worker_lock:
+            if self._worker and self._worker.is_alive():
+                return
+            self._worker = threading.Thread(target=self._run_worker, name="tokenade-gateway-runtime", daemon=True)
+            self._worker.start()
 
     def _run_worker(self):
         self._worker_id = threading.get_ident()
@@ -311,10 +313,18 @@ class GatewayRuntime:
 
     def _lease(self, session: SessionRecord, ttl_seconds: float = 900, leased_by: Optional[str] = None) -> Dict[str, Any]:
         runtime_context = self._activate(session)
-        runtime_context.lease_id = uuid.uuid4().hex
+        now = time.time()
+        renewed = bool(runtime_context.lease_id and runtime_context.lease_expires_at and runtime_context.lease_expires_at > now)
+        if not renewed:
+            runtime_context.lease_id = uuid.uuid4().hex
         runtime_context.leased_by = leased_by
-        runtime_context.lease_expires_at = time.time() + max(float(ttl_seconds), 1.0)
-        return {"success": True, "context": runtime_context.to_dict(), "lease_id": runtime_context.lease_id}
+        runtime_context.lease_expires_at = now + max(float(ttl_seconds), 1.0)
+        return {
+            "success": True,
+            "context": runtime_context.to_dict(),
+            "lease_id": runtime_context.lease_id,
+            "renewed": renewed,
+        }
 
     def release(self, context_id: Optional[str] = None, lease_id: Optional[str] = None) -> Dict[str, Any]:
         return self._call_runtime(self._release, context_id, lease_id)
