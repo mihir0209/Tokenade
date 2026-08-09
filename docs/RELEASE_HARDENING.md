@@ -168,6 +168,9 @@ Add dated entries here as hardening steps complete.
 - Added Site Handler profile-data packaging and pre-launch restoration hooks.
 - Verified a real Brave WhatsApp Session in a clean profile before and after reload: chat list visible, no QR login.
 - Moved the default plugin registry to `https://tokenade-plugins.pages.dev`.
+- Published Tokenade `1.1.91` with required-Plugin launch gating and runtime dependency reporting.
+- Verified WhatsApp replay from Linux Brave to a clean Windows Chromium-family profile using `whatsapp-handler` 1.1.1.
+- Windows acceptance passed before and after reload: chat list visible, QR login absent, linked-device session key present.
 
 ### 2026-07-31
 
