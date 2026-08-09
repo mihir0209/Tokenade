@@ -71,8 +71,23 @@ class PluginTestRunner:
         suite.results.append(self._test_run_manifest(plugin_name))
         suite.results.append(self._test_plugin_type_methods(plugin_name))
         suite.results.append(self._test_type_class_match(plugin_name))
+        suite.results.append(self._test_runtime_dependencies(plugin_name))
 
         return suite
+
+    def _test_runtime_dependencies(self, plugin_name: str) -> PluginTestResult:
+        """Test platform-applicable Python and system runtime requirements."""
+        try:
+            with open(self.plugins_dir / plugin_name / "plugin.json") as f:
+                meta = json.load(f)
+            from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+            report = check_runtime_dependencies(meta)
+            message = "; ".join(
+                f"{issue.kind} {issue.requirement}: {issue.reason}" for issue in report.issues
+            )
+            return PluginTestResult("runtime_dependencies", report.ready, message)
+        except Exception as exc:
+            return PluginTestResult("runtime_dependencies", False, str(exc))
 
     def _test_manifest_exists(self, plugin_name: str) -> PluginTestResult:
         """Test that plugin.json exists."""

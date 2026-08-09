@@ -365,6 +365,10 @@ class SiteHandlerPlugin(PluginBase):
         """Restore site-specific profile data before the target browser starts."""
         return PluginResult(success=True, data={})
 
+    def validate_launch_requirements(self, session: dict, browser: str) -> PluginResult:
+        """Validate site-specific prerequisites before the browser is started."""
+        return PluginResult(success=True, data={})
+
     def verify_login(self, browser_context: Any) -> PluginResult:
         """Verify if the browser is logged into this site.
 

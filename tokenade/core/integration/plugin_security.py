@@ -150,6 +150,17 @@ class SecurityValidator:
         
         if len(dependencies) > SecurityValidator.MAX_DEPENDENCIES:
             return (False, f"Too many dependencies: {len(dependencies)} (max {SecurityValidator.MAX_DEPENDENCIES})", {})
+        if any(not isinstance(dep, str) or not dep.strip() for dep in dependencies):
+            return (False, "dependencies entries must be non-empty strings", {})
+        if len(set(dependencies)) != len(dependencies):
+            return (False, "dependencies must not contain duplicates", {})
+        if name in dependencies:
+            return (False, "plugin cannot depend on itself", {})
+
+        from tokenade.core.integration.plugin_dependencies import validate_runtime_dependency_manifest
+        runtime_errors = validate_runtime_dependency_manifest(manifest)
+        if runtime_errors:
+            return (False, runtime_errors[0], {})
         
         # Check for suspicious patterns (warning, not rejection)
         manifest_str = json.dumps(manifest)

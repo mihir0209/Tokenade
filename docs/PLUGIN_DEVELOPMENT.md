@@ -70,7 +70,9 @@ Do not put site catalogs in the Tokenade core repo.
 |-------|------|-------------|
 | `category` | string | Category for marketplace |
 | `tags` | array | Searchable tags |
-| `dependencies` | array | Python package dependencies |
+| `dependencies` | array | Other Tokenade Plugin names required by this Plugin |
+| `runtime_dependencies.python` | array | PEP 508 Python distribution requirements, including optional environment markers |
+| `runtime_dependencies.system` | array | Executable names that must be available on `PATH` |
 | `min_version` | string | Minimum tokenade version |
 | `verified` | boolean | **Only true after contract tests + human review** (default false) |
 | `api_version` | string | Plugin API version (e.g. `1.0.0`) |

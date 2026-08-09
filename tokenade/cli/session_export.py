@@ -545,6 +545,12 @@ def cmd_export(args):
 
     if profile_data:
         package.setdefault("plugin_data", {})[site_handler.name] = profile_data
+        package.setdefault("metadata", {}).setdefault("required_plugins", []).append({
+            "name": site_handler.name,
+            "min_version": getattr(site_handler, "version", None) or "0",
+            "reason": "site-specific browser storage",
+            "required_at": "launch",
+        })
 
     if site_handler and package.get("site_name") == "unknown":
         handler_site_name = None

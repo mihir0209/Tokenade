@@ -330,8 +330,8 @@ class MyPlugin(StealthPlugin):
         runner = PluginTestRunner(plugins_dir=tmp_path)
         suite = runner.test_plugin("my-plugin")
         assert suite.passed is True
-        assert suite.total == 10  # includes API/run contract checks
-        assert suite.passed_count == 10
+        assert suite.total == 11  # includes API/run/runtime dependency checks
+        assert suite.passed_count == 11
         assert suite.failed_count == 0
 
     def test_test_all(self, tmp_path):

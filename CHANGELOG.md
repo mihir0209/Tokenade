@@ -4,6 +4,19 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.91] - 2026-08-09
+
+### Added
+- Required Plugin metadata and fail-closed pre-launch checks for portable Sessions.
+- Runtime Python/system dependency declarations and CLI readiness reporting.
+- Cross-platform restoration hooks used by WhatsApp's browser-native localStorage payload.
+
+### Fixed
+- Windows WhatsApp replay no longer requires the Linux-only `plyvel` package.
+- Sessions missing required Site Handlers no longer launch a browser and silently skip profile restoration.
+
+---
+
 ## [1.1.90] - 2026-08-09
 
 ### Added

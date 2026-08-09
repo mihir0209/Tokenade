@@ -327,6 +327,10 @@ def cmd_plugin(args):
             for p in plugins:
                 status = " [OK] installed" if p["name"] in installed_names else ""
                 print(f"   - {p['name']} v{p.get('version', '?')} - {p.get('description', '')}{status}")
+                from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+                report = check_runtime_dependencies(p)
+                for issue in report.issues:
+                    print(f"      missing {issue.kind}: {issue.requirement} ({issue.reason})")
         else:
             # Load plugins so we can show lifecycle state; graceful if load fails
             try:
@@ -354,6 +358,10 @@ def cmd_plugin(args):
                             print(f"      health: {health_str}")
                     except Exception:
                         pass
+                from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+                report = check_runtime_dependencies(p)
+                for issue in report.issues:
+                    print(f"      missing {issue.kind}: {issue.requirement} ({issue.reason})")
 
     elif args.plugin_command == "install":
         reg_name = getattr(args, "registry", None)
@@ -381,6 +389,15 @@ def cmd_plugin(args):
             if deps_installed:
                 print(f"   [PKG] Dependencies installed: {', '.join(deps_installed)}")
             print("   [OK] Plugin installed successfully")
+            installed_manifest = loader.get_manifest(args.name)
+            if installed_manifest:
+                from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+                runtime_report = check_runtime_dependencies(installed_manifest)
+                if not runtime_report.ready:
+                    print("   [WARN] Plugin runtime dependencies are missing:")
+                    for issue in runtime_report.issues:
+                        print(f"      - {issue.kind}: {issue.requirement} ({issue.reason})")
+                    print(f"   Check: tokenade plugin check-deps {args.name}")
         else:
             print("   [ERROR] Failed to install plugin")
 
@@ -408,6 +425,9 @@ def cmd_plugin(args):
                 print(f"   Description: {registry_details.get('description', '')}")
                 if registry_details.get("dependencies"):
                     print(f"   Dependencies: {', '.join(registry_details['dependencies'])}")
+                from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+                for issue in check_runtime_dependencies(registry_details).issues:
+                    print(f"   Missing {issue.kind}: {issue.requirement} ({issue.reason})")
                 print(f"   Install: tokenade plugin install {args.name}")
             else:
                 print(f"[ERROR] Plugin not found: {args.name}")
@@ -445,6 +465,13 @@ def cmd_plugin(args):
                 pass
         if plugin.get("dependencies"):
             print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
+        from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+        runtime_report = check_runtime_dependencies(plugin)
+        if runtime_report.ready:
+            print("   Runtime dependencies: ready")
+        else:
+            for issue in runtime_report.issues:
+                print(f"   Missing {issue.kind}: {issue.requirement} ({issue.reason})")
         registry_details = registry.get_plugin_details(args.name)
         if registry_details and registry_details.get("version") != installed_ver:
             print(f"   Registry version: {registry_details['version']} (update available)")
@@ -585,6 +612,11 @@ def cmd_plugin(args):
                 print(f"\n   [WARN] Missing dependencies for {args.name}: {', '.join(missing)}")
             else:
                 print(f"\n   [OK] No missing dependencies for {args.name}")
+            from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+            manifest = next(p for p in loader.discover() if p["name"] == args.name)
+            runtime_report = check_runtime_dependencies(manifest)
+            for issue in runtime_report.issues:
+                print(f"   [WARN] Missing {issue.kind}: {issue.requirement} ({issue.reason})")
         else:
             missing = resolver.check_missing()
             circular = resolver.check_circular()
@@ -604,6 +636,13 @@ def cmd_plugin(args):
                     print(f"      {e}")
             else:
                 print("   [OK] No depth violations")
+            from tokenade.core.integration.plugin_dependencies import check_runtime_dependencies
+            for manifest in loader.discover():
+                for issue in check_runtime_dependencies(manifest).issues:
+                    print(
+                        f"   [WARN] {manifest['name']} missing {issue.kind}: "
+                        f"{issue.requirement} ({issue.reason})"
+                    )
 
     elif args.plugin_command == "registry":
         reg_action = getattr(args, "registry_action", None)

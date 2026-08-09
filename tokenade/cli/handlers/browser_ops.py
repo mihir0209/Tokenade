@@ -93,6 +93,103 @@ def cmd_launch(args):
             print(f"[ERROR] Session load failed: {e}")
             return
 
+        metadata = session.get("metadata") if isinstance(session.get("metadata"), dict) else {}
+        required_plugins = metadata.get("required_plugins", [])
+        if not isinstance(required_plugins, list):
+            print("[ERROR] Session required_plugins metadata must be a list")
+            return
+        if not required_plugins:
+            plugin_data = session.get("plugin_data", {})
+            if isinstance(plugin_data, dict):
+                required_plugins = [
+                    {"name": name, "reason": "embedded site-specific browser storage"}
+                    for name in plugin_data
+                ]
+        if required_plugins and getattr(args, "no_plugin", False):
+            names = ", ".join(str(item.get("name")) for item in required_plugins)
+            print(f"[ERROR] Session requires plugin behavior that --no-plugin disables: {names}")
+            print("   Browser was not launched. Remove --no-plugin and retry.")
+            return
+        elif required_plugins:
+            from tokenade import __version__
+            from tokenade.core.integration.plugin_dependencies import (
+                check_runtime_dependencies,
+                check_tokenade_compatibility,
+            )
+            from tokenade.core.integration.plugin_loader import PluginLoader
+
+            requirement_loader = PluginLoader()
+            requirement_failures = []
+            for requirement in required_plugins:
+                if not isinstance(requirement, dict):
+                    requirement_failures.append(("unknown", "invalid requirement metadata"))
+                    continue
+                name = str(requirement.get("name") or "").strip()
+                manifest = requirement_loader.get_manifest(name) if name else None
+                if not manifest:
+                    requirement_failures.append((name or "unknown", "not installed"))
+                    continue
+                if name in requirement_loader._disabled:
+                    requirement_failures.append((name, "disabled"))
+                    continue
+                installed_version = str(manifest.get("version") or "0")
+                minimum = requirement.get("min_version")
+                if minimum:
+                    from packaging.version import InvalidVersion, Version
+                    try:
+                        too_old = Version(installed_version) < Version(str(minimum))
+                    except InvalidVersion:
+                        requirement_failures.append((name, "invalid plugin version requirement"))
+                        continue
+                    if too_old:
+                        requirement_failures.append((
+                            name,
+                            f"installed version {installed_version}; requires >= {minimum}",
+                        ))
+                        continue
+                missing_dependencies = [
+                    dependency for dependency in manifest.get("dependencies", [])
+                    if not requirement_loader.get_manifest(str(dependency))
+                ]
+                if missing_dependencies:
+                    requirement_failures.append((
+                        name,
+                        f"missing plugin dependencies: {', '.join(missing_dependencies)}",
+                    ))
+                    continue
+                reports = [
+                    check_tokenade_compatibility(manifest, __version__),
+                    check_runtime_dependencies(manifest),
+                ]
+                issues = [issue for report in reports for issue in report.issues]
+                if issues:
+                    requirement_failures.append((
+                        name,
+                        "; ".join(f"{issue.requirement}: {issue.reason}" for issue in issues),
+                    ))
+                    continue
+                loaded = requirement_loader.load_by_name(name)
+                if not loaded:
+                    requirement_failures.append((name, "failed to load"))
+                    continue
+                validator = getattr(loaded.instance, "validate_launch_requirements", None)
+                if validator:
+                    validation = validator(session, browser_name)
+                    if not validation.success:
+                        requirement_failures.append((
+                            name,
+                            validation.error or "Session is incompatible with this target",
+                        ))
+
+            if requirement_failures:
+                print("[ERROR] Session requires unavailable plugins:")
+                for name, reason in requirement_failures:
+                    print(f"   - {name}: {reason}")
+                    if reason == "not installed":
+                        print(f"     Install: tokenade plugin install {name}")
+                print("   Browser was not launched; install/fix the requirements and retry.")
+                return
+
         if not getattr(args, "no_plugin", False):
             try:
                 from tokenade.core.importer.plugin_export import PluginExporter
