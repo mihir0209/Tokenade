@@ -94,3 +94,28 @@ def test_no_plugin_cannot_bypass_required_plugin(tmp_path, capsys):
 
     launcher.assert_not_called()
     assert "Browser was not launched" in capsys.readouterr().out
+
+
+def test_exclusive_move_requires_acknowledgement(tmp_path, capsys):
+    from tokenade.cli.handlers.browser_ops import cmd_launch
+
+    session_path = tmp_path / "move.tokenade"
+    session_path.write_text(json.dumps({
+        "version": "3.0", "created_at": "2026-08-09T00:00:00Z",
+        "site_name": "whatsapp", "auth_status": "logged_in", "cookies": [],
+        "metadata": {"required_plugins": [{
+            "name": "whatsapp-handler", "access_mode": "exclusive_move"
+        }]},
+    }))
+    args = Namespace(
+        browser="edge", session=str(session_path), url=None, port=9222,
+        profile_dir=None, visible=True, headless=False, extra_args="",
+        browser_path=None, proxy=None, proxy_file=None, proxy_rotate=False,
+        proxy_strategy="health-weighted", humanize=False, geoip=False,
+        no_cloak=False, profile=None, decrypt_password=None,
+        plugin=None, no_plugin=False, acknowledge_exclusive_move=False,
+    )
+    with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as launcher:
+        cmd_launch(args)
+    launcher.assert_not_called()
+    assert "exclusive linked-device move" in capsys.readouterr().out

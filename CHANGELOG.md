@@ -4,6 +4,17 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.92] - 2026-08-09
+
+### Security
+- Retracted concurrent WhatsApp linked-device cloning after outbound Signal/call state divergence was observed.
+- WhatsApp profile transfer now requires an explicit exclusive-move acknowledgement and rejects legacy clone payloads.
+
+### Fixed
+- Native profile storage is no longer rewritten after browser startup, avoiding stale mutex/queue restoration.
+
+---
+
 ## [1.1.91] - 2026-08-09
 
 ### Added

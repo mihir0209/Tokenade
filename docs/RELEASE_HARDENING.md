@@ -169,8 +169,8 @@ Add dated entries here as hardening steps complete.
 - Verified a real Brave WhatsApp Session in a clean profile before and after reload: chat list visible, no QR login.
 - Moved the default plugin registry to `https://tokenade-plugins.pages.dev`.
 - Published Tokenade `1.1.91` with required-Plugin launch gating and runtime dependency reporting.
-- Verified WhatsApp replay from Linux Brave to a clean Windows Chromium-family profile using `whatsapp-handler` 1.1.1.
-- Windows acceptance passed before and after reload: chat list visible, QR login absent, linked-device session key present.
+- WhatsApp cross-platform authentication passed, but concurrent cloned profiles caused outbound message/call state divergence.
+- Retracted the clone verification claim; WhatsApp transfer is restricted to an acknowledged exclusive move pending send/call acceptance.
 
 ### 2026-07-31
 

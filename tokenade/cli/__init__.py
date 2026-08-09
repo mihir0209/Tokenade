@@ -2147,6 +2147,10 @@ Commands:
         "--no-plugin", action="store_true",
         help="Skip plugin handlers; use default launch",
     )
+    launch_parser.add_argument(
+        "--acknowledge-exclusive-move", action="store_true",
+        help="Confirm the source linked-device profile is closed and will not be used concurrently",
+    )
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session through a browser-backed flow")

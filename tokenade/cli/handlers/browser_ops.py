@@ -111,6 +111,16 @@ def cmd_launch(args):
             print("   Browser was not launched. Remove --no-plugin and retry.")
             return
         elif required_plugins:
+            exclusive = [
+                item for item in required_plugins
+                if isinstance(item, dict) and item.get("access_mode") == "exclusive_move"
+            ]
+            if exclusive and not getattr(args, "acknowledge_exclusive_move", False):
+                print("[ERROR] This Session is an exclusive linked-device move, not a clone.")
+                print("   Fully close the source browser and do not reopen its original WhatsApp profile.")
+                print("   Concurrent source/target use can corrupt message sending and call state.")
+                print("   Retry with --acknowledge-exclusive-move after the source is retired.")
+                return
             from tokenade import __version__
             from tokenade.core.integration.plugin_dependencies import (
                 check_runtime_dependencies,
@@ -729,6 +739,21 @@ def cmd_launch(args):
                     session_data = next(iter(session_by_origin.values())) or {}
                 local_data = local_data or session.get("local_storage", {})
                 session_data = session_data or session.get("session_storage", {})
+                plugin_payloads = session.get("plugin_data", {})
+                profile_storage_authoritative = bool(
+                    isinstance(plugin_payloads, dict)
+                    and any(
+                        isinstance(payload, dict)
+                        and any(
+                            str(name).startswith("Local Storage/leveldb/")
+                            for name in (payload.get("files") or {})
+                        )
+                        for payload in plugin_payloads.values()
+                    )
+                )
+                if profile_storage_authoritative:
+                    local_data = {}
+                    session_data = {}
 
                 if local_data or session_data:
                     init_storage = json.dumps({

@@ -550,6 +550,7 @@ def cmd_export(args):
             "min_version": getattr(site_handler, "version", None) or "0",
             "reason": "site-specific browser storage",
             "required_at": "launch",
+            **({"access_mode": profile_data["access_mode"]} if profile_data.get("access_mode") else {}),
         })
 
     if site_handler and package.get("site_name") == "unknown":
