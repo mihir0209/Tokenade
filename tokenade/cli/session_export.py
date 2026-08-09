@@ -473,8 +473,23 @@ def cmd_export(args):
         except Exception:
             pass
 
-    if not cookies and not local_storage and not session_storage and not storage["local"]:
-        print("[ERROR] No cookies or localStorage to export")
+    profile_data = {}
+    if site_handler and hasattr(site_handler, "export_profile_data") and browser_path:
+        print("\n[SAVE] Exporting site-specific browser storage...")
+        profile_result = site_handler.export_profile_data(str(browser_path), browser_name)
+        if not profile_result.success:
+            print(f"[ERROR] Site-specific storage export failed: {profile_result.error}")
+            raise SystemExit(1)
+        profile_data = profile_result.data or {}
+        if profile_data:
+            artifact_count = profile_data.get("file_count", 0)
+            artifact_bytes = profile_data.get("uncompressed_size", 0)
+            print(f"   [OK] Included {artifact_count} profile files ({artifact_bytes} bytes)")
+        for warning in profile_result.warnings:
+            print(f"   [WARN] {warning}")
+
+    if not cookies and not local_storage and not session_storage and not storage["local"] and not profile_data:
+        print("[ERROR] No cookies, Web Storage, or site-specific browser storage to export")
         return
 
     packager = SessionPackager()
@@ -527,6 +542,9 @@ def cmd_export(args):
         extra_cookies=extra_cookies if extra_cookies else None,
         metadata=export_metadata or None,
     )
+
+    if profile_data:
+        package.setdefault("plugin_data", {})[site_handler.name] = profile_data
 
     if site_handler and package.get("site_name") == "unknown":
         handler_site_name = None

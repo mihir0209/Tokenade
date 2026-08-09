@@ -162,6 +162,13 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-09
+
+- Bumped Tokenade to `1.1.90` for end-to-end WhatsApp Web Session portability.
+- Added Site Handler profile-data packaging and pre-launch restoration hooks.
+- Verified a real Brave WhatsApp Session in a clean profile before and after reload: chat list visible, no QR login.
+- Moved the default plugin registry to `https://tokenade-plugins.pages.dev`.
+
 ### 2026-07-31
 
 - Bumped release checkpoint to `tokenade==1.1.80` for the Gateway feature set.

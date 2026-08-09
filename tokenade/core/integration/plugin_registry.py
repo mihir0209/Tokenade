@@ -32,7 +32,7 @@ def _version_lt(a: str, b: str) -> bool:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REMOTE_REGISTRY = "https://raw.githubusercontent.com/mihir0209/tokenade-plugins/main"
+DEFAULT_REMOTE_REGISTRY = "https://tokenade-plugins.pages.dev"
 DEFAULT_PLUGINS_DIR = Path.home() / ".tokenade" / "plugins"
 PREFERENCES_FILE = Path.home() / ".tokenade" / "preferences.json"
 

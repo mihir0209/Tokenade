@@ -142,6 +142,20 @@ class TestExtractChromeMockedPlyvel(unittest.TestCase):
 
             self.assertEqual(result, {"token": "abc"})
 
+    def test_chromium_string_markers_are_removed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = self._make_ext(tmpdir)
+            entries = [
+                (b"_https://example.com\x00\x01utf8", b"\x01value"),
+                (b"_https://example.com\x00\x01utf16", b"\x00v\x00a\x00l\x00u\x00e\x00"),
+            ]
+            mock_plyvel, _ = _make_mock_plyvel(entries)
+
+            with patch.dict(sys.modules, {"plyvel": mock_plyvel}):
+                result = ext.extract_chrome(origin_filter="https://example.com")
+
+            self.assertEqual(result, {"utf8": "value", "utf16": "value"})
+
     def test_non_matching_origin_filter(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             ext = self._make_ext(tmpdir)

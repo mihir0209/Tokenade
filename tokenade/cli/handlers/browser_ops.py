@@ -82,6 +82,45 @@ def cmd_launch(args):
         visible = False
     args.visible = visible  # normalize for rest of function
 
+    session = None
+    site_handler = None
+    session_path = getattr(args, "session", None)
+    if session_path:
+        decrypt_password = getattr(args, "decrypt_password", None)
+        try:
+            session = SessionPackager().load(session_path, password=decrypt_password)
+        except Exception as e:
+            print(f"[ERROR] Session load failed: {e}")
+            return
+
+        if not getattr(args, "no_plugin", False):
+            try:
+                from tokenade.core.importer.plugin_export import PluginExporter
+
+                exporter = PluginExporter()
+                force_plugin = getattr(args, "plugin", None)
+                recorded_plugin = (
+                    session.get("metadata", {}).get("site_handler", {}).get("plugin_name")
+                    if isinstance(session.get("metadata"), dict) else None
+                )
+                plugin_data = session.get("plugin_data", {})
+                if not recorded_plugin and isinstance(plugin_data, dict) and len(plugin_data) == 1:
+                    recorded_plugin = next(iter(plugin_data))
+                if force_plugin:
+                    site_handler = exporter.get_handler(force_plugin)
+                elif recorded_plugin:
+                    site_handler = exporter.get_handler(str(recorded_plugin))
+                else:
+                    domains = [
+                        str(cookie.get("domain") or "").lstrip(".")
+                        for cookie in session.get("cookies", [])
+                        if cookie.get("domain")
+                    ]
+                    site_name = str(session.get("site_name") or "")
+                    site_handler = exporter.find_handler(domains or ([site_name] if site_name else []))
+            except Exception as e:
+                logger.debug("Pre-launch site handler resolution failed: %s", e)
+
     # Resolve upstream proxy
     upstream_proxy = _resolve_upstream_proxy(args)
     if upstream_proxy:
@@ -123,6 +162,13 @@ def cmd_launch(args):
                 print(f"   [DIR] Clean profile (session inject): {profile_dir}")
             else:
                 print(f"   [DIR] Profile: {profile_dir}")
+            if session and site_handler:
+                restore = site_handler.restore_profile_data(session, profile_dir, "cloak")
+                if not restore.success:
+                    print(f"[ERROR] Site-specific storage restore failed: {restore.error}")
+                    return
+                if restore.data:
+                    print(f"   [OK] Restored {restore.data.get('file_count', 0)} site-specific profile files")
             # Pick a free port if default is busy
             cdp_port = int(args.port or 9222)
             try:
@@ -246,6 +292,14 @@ def cmd_launch(args):
                     else:
                         print(f"   [WARN] Profile copy failed, using fresh profile")
 
+            if session and site_handler:
+                restore = site_handler.restore_profile_data(session, profile_dir, system_browser)
+                if not restore.success:
+                    print(f"[ERROR] Site-specific storage restore failed: {restore.error}")
+                    return
+                if restore.data:
+                    print(f"   [OK] Restored {restore.data.get('file_count', 0)} site-specific profile files")
+
             browser = launcher.launch(
                 browser=system_browser,
                 visible=args.visible,
@@ -263,26 +317,6 @@ def cmd_launch(args):
         if args.session:
             print(f"\n[DIR] Loading session: {args.session}")
 
-            session_path = args.session
-            decrypt_password = getattr(args, 'decrypt_password', None)
-            if decrypt_password:
-                import tempfile
-                try:
-                    from tokenade.core.crypto.at_rest import load_encrypted
-                    session = load_encrypted(session_path, password=decrypt_password)
-                    # Write decrypted to temp file
-                    temp_path = tempfile.mktemp(suffix='.tokenade')
-                    with open(temp_path, 'w') as f:
-                        json.dump(session, f)
-                    session_path = temp_path
-                    print(f"    Decrypted with password")
-                except Exception as e:
-                    print(f"[ERROR] Decryption failed: {e}")
-                    return
-
-            packager = SessionPackager()
-            session = packager.load(session_path)
-
             cookies = session.get("cookies", [])
             source_browser = session.get("source_device", {}).get("browser", "unknown")
             if isinstance(source_browser, dict):
@@ -290,14 +324,13 @@ def cmd_launch(args):
             print(f"   Cookies: {len(cookies)} (from {source_browser})")
 
             # Site-handler plugin override: domains, dashboard URL, cookie filter
-            site_handler = None
             site_hint = ""
             cookie_domains = list({
                 (c.get("domain") or "").lstrip(".")
                 for c in cookies
                 if c.get("domain")
             })
-            if not getattr(args, "no_plugin", False):
+            if not site_handler and not getattr(args, "no_plugin", False):
                 try:
                     from tokenade.core.importer.plugin_export import PluginExporter
                     exporter = PluginExporter()
@@ -578,6 +611,44 @@ def cmd_launch(args):
                 if injected == 0 and cdp_cookies:
                     raise RuntimeError(f"Failed to inject any of {len(cdp_cookies)} cookies")
 
+                storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
+                local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+                session_by_origin = storage.get("session") if isinstance(storage.get("session"), dict) else {}
+                current_origin = None
+                if args.url:
+                    try:
+                        from urllib.parse import urlparse
+
+                        parsed = urlparse(args.url)
+                        if parsed.scheme and parsed.netloc:
+                            current_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    except Exception:
+                        pass
+                local_data = local_by_origin.get(current_origin, {}) if current_origin else {}
+                session_data = session_by_origin.get(current_origin, {}) if current_origin else {}
+                if not local_data and len(local_by_origin) == 1:
+                    local_data = next(iter(local_by_origin.values())) or {}
+                if not session_data and len(session_by_origin) == 1:
+                    session_data = next(iter(session_by_origin.values())) or {}
+                local_data = local_data or session.get("local_storage", {})
+                session_data = session_data or session.get("session_storage", {})
+
+                if local_data or session_data:
+                    init_storage = json.dumps({
+                        "origin": current_origin,
+                        "local": local_data,
+                        "session": session_data,
+                    })
+                    await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {
+                        "source": (
+                            f"(function(){{const d={init_storage};"
+                            "if(d.origin&&location.origin!==d.origin)return;"
+                            "Object.entries(d.local).forEach(([k,v])=>localStorage.setItem(k,v));"
+                            "Object.entries(d.session).forEach(([k,v])=>sessionStorage.setItem(k,v));"
+                            "}})();"
+                        ),
+                    })
+
                 # Step 5: Navigate to site
                 if args.url:
                     print(f"   Navigating to: {args.url}", flush=True)
@@ -587,33 +658,6 @@ def cmd_launch(args):
                     await asyncio.sleep(5)
 
                     # Step 6: Inject localStorage + sessionStorage (after navigation, on correct origin)
-                    storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
-                    local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
-                    session_by_origin = storage.get("session") if isinstance(storage.get("session"), dict) else {}
-                    current_origin = None
-                    try:
-                        from urllib.parse import urlparse
-                        parsed = urlparse(args.url)
-                        if parsed.scheme and parsed.netloc:
-                            current_origin = f"{parsed.scheme}://{parsed.netloc}"
-                    except Exception:
-                        pass
-                    local_data = {}
-                    session_data = {}
-                    if current_origin and current_origin in local_by_origin:
-                        local_data = local_by_origin.get(current_origin) or {}
-                    elif len(local_by_origin) == 1:
-                        local_data = next(iter(local_by_origin.values())) or {}
-                    else:
-                        local_data = session.get("local_storage", {})
-
-                    if current_origin and current_origin in session_by_origin:
-                        session_data = session_by_origin.get(current_origin) or {}
-                    elif len(session_by_origin) == 1:
-                        session_data = next(iter(session_by_origin.values())) or {}
-                    else:
-                        session_data = session.get("session_storage", {})
-
                     if local_data:
                         print(f"   Injecting {len(local_data)} localStorage entries...", flush=True)
                         ls_json = json.dumps(local_data)

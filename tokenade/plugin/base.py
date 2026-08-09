@@ -352,6 +352,19 @@ class SiteHandlerPlugin(PluginBase):
         """
         return []
 
+    def export_profile_data(self, profile_path: str, browser: str) -> PluginResult:
+        """Export site-specific browser profile data not covered by Web Storage."""
+        return PluginResult(success=True, data={})
+
+    def restore_profile_data(
+        self,
+        session: dict,
+        profile_path: str,
+        browser: str,
+    ) -> PluginResult:
+        """Restore site-specific profile data before the target browser starts."""
+        return PluginResult(success=True, data={})
+
     def verify_login(self, browser_context: Any) -> PluginResult:
         """Verify if the browser is logged into this site.
 

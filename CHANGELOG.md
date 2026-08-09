@@ -4,6 +4,19 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.90] - 2026-08-09
+
+### Added
+- Site Handler hooks for packaging and restoring origin-specific browser profile data.
+- Pre-launch restoration used by the WhatsApp Web handler for Chromium IndexedDB and localStorage.
+- Cloudflare Pages as the default plugin marketplace registry.
+
+### Fixed
+- Chromium localStorage decoding now handles its UTF-8/UTF-16 type markers.
+- Web Storage is initialized before first navigation for storage-backed applications.
+
+---
+
 ## [1.1.65] - 2026-07-20
 
 ### Added

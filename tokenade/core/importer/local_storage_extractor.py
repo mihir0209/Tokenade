@@ -142,14 +142,18 @@ class LocalStorageExtractor:
                         if len(parts) == 2:
                             origin = parts[0][1:]  # Remove leading underscore
                             actual_key = parts[1]
+                            if actual_key.startswith("\x01"):
+                                actual_key = actual_key[1:]
 
                             if origin_filter and origin_filter not in origin:
                                 continue
 
                             # Decode value (may be JSON or plain string)
-                            try:
-                                value = value_bytes.decode("utf-8")
-                            except UnicodeDecodeError:
+                            if value_bytes[:1] == b"\x01":
+                                value = value_bytes[1:].decode("utf-8", errors="replace")
+                            elif value_bytes[:1] == b"\x00":
+                                value = value_bytes[1:].decode("utf-16-le", errors="replace")
+                            else:
                                 value = value_bytes.decode("utf-8", errors="replace")
 
                             storage_key = actual_key if origin_filter else f"[{origin}] {actual_key}"
