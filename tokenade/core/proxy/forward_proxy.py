@@ -248,6 +248,8 @@ class ForwardProxy:
     """HTTP forward proxy that forwards requests with donor fingerprint."""
 
     def __init__(self, session_package: Dict, port: int = 9223, host: str = "127.0.0.1"):
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(session_package, purpose="proxy")
         self.session = session_package
         self.port = port
         self.host = host

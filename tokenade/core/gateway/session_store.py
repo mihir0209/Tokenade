@@ -26,6 +26,9 @@ class SessionRecord:
     cookie_count: int = 0
     health_score: float = 0.0
     healthy: bool = False
+    access_mode: str = "clone"
+    profile_artifact_count: int = 0
+    required_plugins: tuple[str, ...] = ()
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,6 +41,9 @@ class SessionRecord:
             "cookie_count": self.cookie_count,
             "health_score": self.health_score,
             "healthy": getattr(self, '_healthy', self.healthy),
+            "access_mode": self.access_mode,
+            "profile_artifact_count": self.profile_artifact_count,
+            "required_plugins": list(self.required_plugins),
             "metadata": dict(self.metadata),
         }
 
@@ -95,6 +101,12 @@ class SessionStore:
         cookies = data.get("cookies") if isinstance(data.get("cookies"), list) else []
         health = self.health_checker.check_session(str(session_path))
         session_id = self._session_id(session_path, data, metadata)
+        try:
+            from tokenade.core.artifacts import ProfileArtifactManager
+            inspection = ProfileArtifactManager.inspect(data)
+        except Exception as exc:
+            logger.warning("Failed to inspect session policy %s: %s", session_path, exc)
+            return None
 
         return SessionRecord(
             id=session_id,
@@ -104,6 +116,9 @@ class SessionStore:
             cookie_count=len(cookies),
             health_score=self._clamp_health(health.health_score),
             healthy=bool(health.healthy),
+            access_mode=inspection.access_mode.value,
+            profile_artifact_count=inspection.artifact_count,
+            required_plugins=tuple(item["name"] for item in inspection.required_plugins),
             metadata=self._sanitize_metadata(metadata),
         )
 

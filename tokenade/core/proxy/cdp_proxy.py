@@ -139,6 +139,8 @@ class CDPProxy:
     """
 
     def __init__(self, session_package: Dict, config: Optional[CDPProxyConfig] = None):
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(session_package, purpose="proxy")
         self.config = config or CDPProxyConfig()
         self.session = session_package
 
@@ -191,10 +193,14 @@ class CDPProxy:
         from tokenade.core.importer.session_packager import SessionPackager
         packager = SessionPackager()
         session = packager.load(session_file)
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(session, purpose="proxy")
         return cls(session, config)
 
     @classmethod
     def from_session_data(cls, session_data: Dict, config: Optional[CDPProxyConfig] = None) -> "CDPProxy":
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(session_data, purpose="proxy")
         return cls(session_data, config)
 
     # ── App creation ──────────────────────────────────────────────

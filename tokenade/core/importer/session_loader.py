@@ -48,12 +48,9 @@ class SessionLoader:
         Returns:
             Package dictionary
         """
+        from tokenade.core.importer.session_packager import SessionPackager
         path = Path(file_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Session file not found: {file_path}")
-
-        with open(path, "r", encoding="utf-8") as f:
-            package = json.load(f)
+        package = SessionPackager().load(str(path))
 
         logger.info(f"Loaded session package: {path} ({len(package.get('cookies', []))} cookies)")
         return package
@@ -272,7 +269,9 @@ class SessionLoader:
              visible: bool = False,
              profile_dir: Optional[str] = None,
              inject_local_storage: bool = True,
-             site_config: Optional[Dict] = None) -> Dict:
+             site_config: Optional[Dict] = None,
+             acknowledge_exclusive_move: bool = False,
+             allow_single_use: bool = False) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
 
@@ -303,6 +302,13 @@ class SessionLoader:
         try:
             # Step 1: Load package
             package = self.load_file(file_path)
+            from tokenade.core.artifacts import ProfileArtifactManager
+            ProfileArtifactManager.preflight(
+                package,
+                purpose="load",
+                acknowledge_exclusive_move=acknowledge_exclusive_move,
+                allow_single_use=allow_single_use,
+            )
             result["cookies_total"] = len(package.get("cookies", []))
             result["site_name"] = package.get("site_name", "unknown")
             site_handler_metadata = self._site_handler_metadata(package)
@@ -314,8 +320,15 @@ class SessionLoader:
                 "headless": not visible,
                 "stealth_level": stealth_level,
             }
+            if package.get("profile_artifacts") and not profile_dir:
+                import tempfile
+                profile_dir = tempfile.mkdtemp(prefix="tokenade-load-artifacts-")
             if profile_dir:
                 config_kwargs["user_data_dir"] = profile_dir
+            if package.get("profile_artifacts"):
+                ProfileArtifactManager.restore(
+                    package, profile_dir, "cloak", allow_single_use=allow_single_use
+                )
 
             # Step 3: Apply target fingerprint if specified
             if target_fp_name:
@@ -340,7 +353,10 @@ class SessionLoader:
             result["cookies_injected"] = self.inject_cookies(self._browser, cookies)
 
             # Step 7: Inject localStorage if present and enabled
-            local_storage_by_origin = self._local_storage_by_origin(package, site_config)
+            local_storage_by_origin = (
+                [] if ProfileArtifactManager.web_storage_is_superseded(package)
+                else self._local_storage_by_origin(package, site_config)
+            )
             result["local_storage_total"] = sum(len(entries) for _, entries in local_storage_by_origin)
             if inject_local_storage:
                 for origin, local_storage in local_storage_by_origin:

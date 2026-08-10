@@ -471,6 +471,9 @@ class SessionPackager:
         if "metadata" not in package:
             package["metadata"] = {}
 
+        if "profile_artifacts" not in package:
+            package["profile_artifacts"] = []
+
         # Add cookie count to metadata if missing
         if "cookie_count" not in package.get("metadata", {}):
             package["metadata"]["cookie_count"] = len(package.get("cookies", []))

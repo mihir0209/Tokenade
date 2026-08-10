@@ -93,6 +93,19 @@ def cmd_launch(args):
             print(f"[ERROR] Session load failed: {e}")
             return
 
+        from tokenade.core.artifacts import ProfileArtifactManager, SessionPolicyError
+        try:
+            ProfileArtifactManager.preflight(
+                session,
+                purpose="launch",
+                acknowledge_exclusive_move=bool(getattr(args, "acknowledge_exclusive_move", False)),
+                allow_single_use=bool(getattr(args, "claim_single_use", False)),
+            )
+        except (SessionPolicyError, ValueError) as exc:
+            print(f"[ERROR] {exc}")
+            print("   Browser was not launched.")
+            return
+
         metadata = session.get("metadata") if isinstance(session.get("metadata"), dict) else {}
         required_plugins = metadata.get("required_plugins", [])
         if not isinstance(required_plugins, list):
@@ -269,13 +282,16 @@ def cmd_launch(args):
                 print(f"   [DIR] Clean profile (session inject): {profile_dir}")
             else:
                 print(f"   [DIR] Profile: {profile_dir}")
-            if session and site_handler:
-                restore = site_handler.restore_profile_data(session, profile_dir, "cloak")
-                if not restore.success:
-                    print(f"[ERROR] Site-specific storage restore failed: {restore.error}")
+            if session and session.get("profile_artifacts"):
+                try:
+                    restored = ProfileArtifactManager.restore(
+                        session, profile_dir, "cloak",
+                        allow_single_use=bool(getattr(args, "claim_single_use", False)),
+                    )
+                    print(f"   [OK] Restored {restored['restored']} profile artifact(s)")
+                except Exception as exc:
+                    print(f"[ERROR] Profile artifact restore failed: {exc}")
                     return
-                if restore.data:
-                    print(f"   [OK] Restored {restore.data.get('file_count', 0)} site-specific profile files")
             # Pick a free port if default is busy
             cdp_port = int(args.port or 9222)
             try:
@@ -399,13 +415,16 @@ def cmd_launch(args):
                     else:
                         print(f"   [WARN] Profile copy failed, using fresh profile")
 
-            if session and site_handler:
-                restore = site_handler.restore_profile_data(session, profile_dir, system_browser)
-                if not restore.success:
-                    print(f"[ERROR] Site-specific storage restore failed: {restore.error}")
+            if session and session.get("profile_artifacts"):
+                try:
+                    restored = ProfileArtifactManager.restore(
+                        session, profile_dir, system_browser,
+                        allow_single_use=bool(getattr(args, "claim_single_use", False)),
+                    )
+                    print(f"   [OK] Restored {restored['restored']} profile artifact(s)")
+                except Exception as exc:
+                    print(f"[ERROR] Profile artifact restore failed: {exc}")
                     return
-                if restore.data:
-                    print(f"   [OK] Restored {restore.data.get('file_count', 0)} site-specific profile files")
 
             browser = launcher.launch(
                 browser=system_browser,
@@ -739,18 +758,7 @@ def cmd_launch(args):
                     session_data = next(iter(session_by_origin.values())) or {}
                 local_data = local_data or session.get("local_storage", {})
                 session_data = session_data or session.get("session_storage", {})
-                plugin_payloads = session.get("plugin_data", {})
-                profile_storage_authoritative = bool(
-                    isinstance(plugin_payloads, dict)
-                    and any(
-                        isinstance(payload, dict)
-                        and any(
-                            str(name).startswith("Local Storage/leveldb/")
-                            for name in (payload.get("files") or {})
-                        )
-                        for payload in plugin_payloads.values()
-                    )
-                )
+                profile_storage_authoritative = ProfileArtifactManager.web_storage_is_superseded(session)
                 if profile_storage_authoritative:
                     local_data = {}
                     session_data = {}

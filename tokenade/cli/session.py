@@ -366,6 +366,8 @@ def cmd_load(args):
             profile_dir=args.profile_dir,
             inject_local_storage=not args.no_local_storage,
             site_config=site_config,
+            acknowledge_exclusive_move=bool(getattr(args, "acknowledge_exclusive_move", False)),
+            allow_single_use=bool(getattr(args, "claim_single_use", False)),
         )
 
         if result["success"]:

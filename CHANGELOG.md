@@ -4,6 +4,20 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.93] - 2026-08-10
+
+### Added
+- First-class versioned profile artifacts with safe inspection and transactional restore.
+- Core access modes: clone, exclusive move, single use, and relink required.
+- `tokenade inspect` for redacted Session capability and policy reporting.
+- Fail-closed cross-repository release orchestration with Cloudflare preview validation.
+
+### Security
+- Gateway, proxy, SDK, load, launch, and runtime paths now reject unsupported restricted artifacts.
+- Mixed legacy/current artifact payloads fail closed.
+
+---
+
 ## [1.1.92] - 2026-08-09
 
 ### Security

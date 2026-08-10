@@ -84,6 +84,13 @@ def cmd_share(args):
     sharer = SessionSharer(config)
 
     if args.share_action == "create":
+        from tokenade.core.artifacts import ProfileArtifactManager
+        from tokenade.core.importer.session_packager import SessionPackager
+        inspection = ProfileArtifactManager.inspect(SessionPackager().load(args.session))
+        if not args.json:
+            print(f"Access mode: {inspection.access_mode.value}")
+            for warning in inspection.warnings:
+                print(f"[WARN] {warning}")
         result = sharer.share_session(
             session_file=args.session,
             password=args.password,
@@ -110,6 +117,16 @@ def cmd_share(args):
         )
 
         if data:
+            try:
+                from tokenade.core.artifacts import ProfileArtifactManager
+                package = json.loads(data.decode("utf-8"))
+                inspection = ProfileArtifactManager.inspect(package)
+                if not args.json:
+                    print(f"Access mode: {inspection.access_mode.value}")
+                    for warning in inspection.warnings:
+                        print(f"[WARN] {warning}")
+            except Exception:
+                pass
             if args.json:
                 print(json.dumps({"success": True, "size": len(data)}, indent=2))
             else:

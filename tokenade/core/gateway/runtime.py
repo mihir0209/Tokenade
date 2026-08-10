@@ -389,11 +389,15 @@ class GatewayRuntime:
         self.context_factory.close()
 
     def _load_package(self, path: str) -> Dict[str, Any]:
-        session_path = Path(path).expanduser()
-        with open(session_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
+        from tokenade.core.artifacts import ProfileArtifactManager
+        from tokenade.core.importer.session_packager import SessionPackager
+        data = SessionPackager().load(str(Path(path).expanduser()))
         if not isinstance(data, dict):
             raise GatewayRuntimeError(f"invalid session package: {path}")
+        try:
+            ProfileArtifactManager.preflight(data, purpose="gateway")
+        except Exception as exc:
+            raise GatewayRuntimeError(str(exc)) from exc
         return data
 
     def _inject_cookies(self, context: Any, cookies: list[Dict[str, Any]]) -> int:

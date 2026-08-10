@@ -12,6 +12,49 @@ from typing import Optional
 logger = logging.getLogger("tokenade")
 
 
+def cmd_inspect(args):
+    """Inspect a Session without exposing or activating credentials."""
+    from tokenade.core.artifacts import ProfileArtifactManager
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    try:
+        package = SessionPackager().load(
+            args.session,
+            password=getattr(args, "decrypt_password", None),
+        )
+        inspection = ProfileArtifactManager.inspect(package)
+    except Exception as exc:
+        print(f"[ERROR] Session inspection failed: {exc}")
+        return
+
+    data = inspection.as_dict()
+    if getattr(args, "json", False):
+        print(json.dumps(data, indent=2))
+        return
+
+    print("\n" + "=" * 64)
+    print("TOKENADE - Session Inspection")
+    print("=" * 64)
+    print(f"Site: {data['site']}")
+    print(f"Format: {data['format_version']}")
+    print(f"Auth status: {data['auth_status']}")
+    print(f"Created: {data['created_at']}")
+    print(f"Access mode: {data['access_mode']}")
+    print(f"Cookies: {data['cookie_count']}")
+    print(f"Tokens: {data['token_count']}")
+    print(f"localStorage origins: {data['local_storage_origins']}")
+    print(f"sessionStorage origins: {data['session_storage_origins']}")
+    artifacts = data["profile_artifacts"]
+    print(f"Profile artifacts: {artifacts['count']} ({artifacts['uncompressed_bytes']} bytes)")
+    if artifacts["owners"]:
+        print(f"Artifact owners: {', '.join(artifacts['owners'])}")
+    for requirement in data["required_plugins"]:
+        version = f" {requirement['version']}" if requirement.get("version") else ""
+        print(f"Required plugin: {requirement['name']}{version}")
+    for warning in data["warnings"]:
+        print(f"[WARN] {warning}")
+
+
 def cmd_sessions(args):
     """Manage multiple sessions."""
     from tokenade.core.importer.session_manager import SessionManager

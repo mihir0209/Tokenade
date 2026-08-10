@@ -744,8 +744,10 @@ class GatewayControlPlane:
                 logger.warning("Plugin '%s' not loaded or not a refresher", plugin_name)
                 return
 
-            with open(session_path, encoding="utf-8") as f:
-                session_data = json.load(f)
+            from tokenade.core.artifacts import ProfileArtifactManager
+            from tokenade.core.importer.session_packager import SessionPackager
+            session_data = SessionPackager().load(session_path)
+            ProfileArtifactManager.preflight(session_data, purpose="refresh")
 
             if not refresher.can_refresh(session_data):
                 logger.info("Plugin '%s' cannot refresh session %s", plugin_name, session_path)

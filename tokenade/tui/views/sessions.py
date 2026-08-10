@@ -215,6 +215,15 @@ def load_sessions(sessions_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
                 "url": detect_session_url(data),
                 "corrupt": False,
             })
+            try:
+                from tokenade.core.artifacts import ProfileArtifactManager
+                inspection = ProfileArtifactManager.inspect(data)
+                entry["access_mode"] = inspection.access_mode.value
+                entry["profile_artifact_count"] = inspection.artifact_count
+                entry["access_warnings"] = list(inspection.warnings)
+            except Exception:
+                entry["access_mode"] = "unknown"
+                entry["profile_artifact_count"] = 0
         except Exception:
             entry["corrupt"] = True
             entry["auth"] = "corrupt"
@@ -303,7 +312,7 @@ class SessionTile(Widget if _OK else object):
         else:
             yield Static(
                 f"{s.get('site', '?')} · {s.get('cookies', 0)} ck · "
-                f"{health:.0f}% · {s.get('auth', '?')}",
+                f"{health:.0f}% · {s.get('auth', '?')} · {s.get('access_mode', 'clone')}",
                 classes="st-meta",
             )
         yield Horizontal(

@@ -58,6 +58,8 @@ class TokenadeProxy:
     """
 
     def __init__(self, session_package: Dict, config: Optional[ProxyConfig] = None):
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(session_package, purpose="proxy")
         self.config = config or ProxyConfig()
         self.session = session_package
 

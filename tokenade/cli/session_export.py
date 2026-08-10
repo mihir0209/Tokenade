@@ -544,7 +544,16 @@ def cmd_export(args):
     )
 
     if profile_data:
-        package.setdefault("plugin_data", {})[site_handler.name] = profile_data
+        from tokenade import __version__
+        from tokenade.core.artifacts import ProfileArtifactManager
+        package.setdefault("profile_artifacts", []).append(
+            ProfileArtifactManager.package_plugin_payload(
+                site_handler.name,
+                getattr(site_handler, "version", None) or "0",
+                profile_data,
+                tokenade_requirement=f">={__version__}",
+            )
+        )
         package.setdefault("metadata", {}).setdefault("required_plugins", []).append({
             "name": site_handler.name,
             "min_version": getattr(site_handler, "version", None) or "0",

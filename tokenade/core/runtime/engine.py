@@ -770,8 +770,10 @@ def create_engine_from_session(session_file: str) -> RuntimeEngine:
     Returns:
         Configured RuntimeEngine
     """
-    with open(session_file, "r") as f:
-        session = json.load(f)
+    from tokenade.core.artifacts import ProfileArtifactManager
+    from tokenade.core.importer.session_packager import SessionPackager
+    session = SessionPackager().load(session_file)
+    ProfileArtifactManager.preflight(session, purpose="runtime")
 
     config = RuntimeConfig(
         fingerprint=session.get("fingerprint"),

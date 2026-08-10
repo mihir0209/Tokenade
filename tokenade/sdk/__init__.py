@@ -102,10 +102,13 @@ class SessionProxy:
 
     def _load_session(self) -> Dict:
         if isinstance(self.session, dict):
-            return self.session
-        from tokenade.core.importer.session_packager import SessionPackager
-
-        return SessionPackager().load(str(self.session))
+            package = self.session
+        else:
+            from tokenade.core.importer.session_packager import SessionPackager
+            package = SessionPackager().load(str(self.session))
+        from tokenade.core.artifacts import ProfileArtifactManager
+        ProfileArtifactManager.preflight(package, purpose="proxy")
+        return package
 
     def _start_cdp(self, *, wait: float) -> None:
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig

@@ -8,6 +8,7 @@ import time
 
 from tokenade.cli.session import cmd_extract, cmd_load, cmd_transfer, cmd_inject_profile
 from tokenade.cli.session_export import cmd_export, cmd_convert
+from tokenade.cli.handlers.session_ops import cmd_inspect
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
 from tokenade.cli.management import (
@@ -29,6 +30,7 @@ from tokenade.cli.advanced import (
 
 VISIBLE_COMMANDS = (
     "config",
+    "inspect",
     "run",
     "test",
     "fingerprint",
@@ -1493,6 +1495,11 @@ Commands:
     extract_parser = subparsers.add_parser("extract", help="Extract tokens")
     extract_parser.add_argument("--visible", action="store_true", help="Show browser window")
 
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect Session policy and capabilities safely")
+    inspect_parser.add_argument("-s", "--session", required=True, help="Session file path")
+    inspect_parser.add_argument("--decrypt-password", help="Password for an encrypted Session")
+    inspect_parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
     # Transfer
     transfer_parser = subparsers.add_parser("transfer", help="Transfer session")
     transfer_parser.add_argument("-s", "--session", required=True, help="Session file path")
@@ -1596,6 +1603,8 @@ Commands:
     load_parser.add_argument("--visible", action="store_true", help="Show browser window")
     load_parser.add_argument("--profile-dir", help="Browser profile directory")
     load_parser.add_argument("--no-local-storage", action="store_true", help="Skip localStorage injection if present")
+    load_parser.add_argument("--acknowledge-exclusive-move", action="store_true", help="Confirm source retirement for an exclusive move")
+    load_parser.add_argument("--claim-single-use", action="store_true", help="Consume a locally single-use Session")
 
     # Inject Profile
     inject_parser = subparsers.add_parser("inject-profile", help="Inject cookies directly into browser profile")
@@ -2151,6 +2160,7 @@ Commands:
         "--acknowledge-exclusive-move", action="store_true",
         help="Confirm the source linked-device profile is closed and will not be used concurrently",
     )
+    launch_parser.add_argument("--claim-single-use", action="store_true", help="Consume a locally single-use Session")
 
     # Refresh Browser (cookie-based session refresh)
     refresh_browser_parser = subparsers.add_parser("refresh-browser", help="Refresh session through a browser-backed flow")
@@ -2620,6 +2630,7 @@ def main():
         "config": cmd_config,
         "run": cmd_run,
         "gateway": cmd_gateway,
+        "inspect": cmd_inspect,
         "extract": cmd_extract,
         "transfer": cmd_transfer,
         "test": cmd_test,

@@ -212,6 +212,7 @@ def cmd_launch(
     proxy: str = "",
     port: int = 0,
     profile: str = "",
+    acknowledge_exclusive_move: bool = False,
 ) -> List[str]:
     args = ["launch", "-s", session_file, "-b", browser]
     if visible:
@@ -226,6 +227,8 @@ def cmd_launch(
         args.extend(["-p", str(port)])
     if profile:
         args.extend(["--profile", profile])
+    if acknowledge_exclusive_move:
+        args.append("--acknowledge-exclusive-move")
     return args
 
 
@@ -235,6 +238,7 @@ def cmd_load(
     visible: bool = True,
     validate: bool = False,
     stealth_level: str = "maximum",
+    acknowledge_exclusive_move: bool = False,
 ) -> List[str]:
     args = [
         "load",
@@ -245,6 +249,8 @@ def cmd_load(
         args.append("--visible")
     if validate:
         args.append("--validate")
+    if acknowledge_exclusive_move:
+        args.append("--acknowledge-exclusive-move")
     return args
 
 
