@@ -25,10 +25,10 @@ def test_release_refuses_dirty_worktree(monkeypatch, tmp_path):
 
 def test_release_refuses_unpushed_head(monkeypatch, tmp_path):
     release = load_release_module()
-    responses = iter(["main", "", "head", "remote"])
+    responses = iter(["main", "", "codeberg/main", "head", "remote"])
     monkeypatch.setattr(release, "output", lambda *args, **kwargs: next(responses))
     monkeypatch.setattr(release, "run", lambda *args, **kwargs: None)
-    with pytest.raises(SystemExit, match="origin/main"):
+    with pytest.raises(SystemExit, match="codeberg/main"):
         release.require_clean_pushed(tmp_path)
 
 

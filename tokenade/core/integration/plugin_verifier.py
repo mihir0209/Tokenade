@@ -129,7 +129,12 @@ class PluginVerifier:
 
         checksums = {}
         for filepath in sorted(plugin_dir.rglob("*")):
-            if filepath.is_file() and not filepath.name.startswith("."):
+            if (
+                filepath.is_file()
+                and not filepath.name.startswith(".")
+                and "__pycache__" not in filepath.parts
+                and filepath.suffix not in {".pyc", ".pyo"}
+            ):
                 rel_path = str(filepath.relative_to(plugin_dir))
                 try:
                     checksums[rel_path] = self._compute_sha256(filepath)

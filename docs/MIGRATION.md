@@ -180,4 +180,4 @@ pip install secretstorage
 - Read the full README: `README.md`
 - Check architecture docs: `.agent/plans/`
 - Review code: `.agent/reviews/`
-- Open an issue: https://github.com/mihir0209/tokenade/issues
+- Open an issue: https://codeberg.org/mihir0209/tokenade/issues

@@ -14,10 +14,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.93
+# tokenade 1.1.94
 ```
 
-This guide tracks the published PyPI line around `tokenade==1.1.93` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install.
+This guide tracks the published PyPI line around `tokenade==1.1.94` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install.
 
 ## Quick Start
 
@@ -374,10 +374,10 @@ tokenade plugin list
 If GitHub's `main` raw-content cache is stale immediately after a marketplace update, add a pinned GitHub registry for the current commit and install from it:
 
 ```bash
-tokenade plugin registry add github-current \
-  https://raw.githubusercontent.com/mihir0209/tokenade-plugins/<commit-sha>
+tokenade plugin registry add cloudflare-current \
+  https://tokenade-plugins.pages.dev
 
-tokenade plugin install discord-handler --registry github-current
+tokenade plugin install discord-handler --registry cloudflare-current
 ```
 
 **`plugin list` output:**

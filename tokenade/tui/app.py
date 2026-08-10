@@ -1359,7 +1359,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             cfg = load_config()
             try:
                 self.query_one("#current-registry").update(
-                    "active: https://github.com/mihir0209/tokenade-plugins"
+                    "active: https://tokenade-plugins.pages.dev"
                 )
             except Exception:
                 pass

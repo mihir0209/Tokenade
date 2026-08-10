@@ -558,7 +558,7 @@ SKIP_HEADERS = {
 
 `plugin_registry.py:41-250` — GitHub-hosted plugin registry:
 
-- Registry URL: `https://raw.githubusercontent.com/mihir0209/tokenade-plugins/main`
+- Registry URL: `https://tokenade-plugins.pages.dev`
 - Local cache: `~/.tokenade/plugins/.registry_cache.json` (1-hour TTL)
 - Plugin metadata: name, version, description, author, type, entry_point
 

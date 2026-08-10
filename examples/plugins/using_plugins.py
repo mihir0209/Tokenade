@@ -175,7 +175,7 @@ def example_plugin_dev_workflow():
     print("   tokenade plugin info my-plugin")
     print()
     print("5. Publish to registry:")
-    print("   - Fork github.com/mihir0209/tokenade-plugins")
+    print("   - Fork codeberg.org/mihir0209/tokenade-plugins")
     print("   - Add your plugin to plugins.json")
     print("   - Submit a PR")
 

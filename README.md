@@ -10,7 +10,6 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/tokenade.svg)](https://pypi.org/project/tokenade/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://static.pepy.tech/badge/tokenade/month)](https://pepy.tech/projects/tokenade)
-[![CI](https://img.shields.io/github/actions/workflow/status/mihir0209/tokenade/ci.yml?branch=main&label=CI)](https://github.com/mihir0209/tokenade/actions)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 ```bash
@@ -266,7 +265,7 @@ These matter more than flag trivia. Follow them and most “broken session” re
 ## Installation (dev)
 
 ```bash
-git clone https://github.com/mihir0209/tokenade.git
+git clone https://codeberg.org/mihir0209/tokenade.git
 cd tokenade
 pip install -e ".[dev]"
 pytest   # suite under tokenade/tests/

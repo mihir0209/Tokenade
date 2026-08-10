@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/mihir0209/Tokenade.git
+git clone https://codeberg.org/mihir0209/tokenade.git
 cd Tokenade
 python3 -m venv .venv
 source .venv/bin/activate

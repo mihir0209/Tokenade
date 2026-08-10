@@ -1157,4 +1157,4 @@ tokenade validate -d sessions/
 tokenade health -s session.tokenade
 ```
 
-Report issues at: https://github.com/mihir0209/Tokenade/issues
+Report issues at: https://codeberg.org/mihir0209/tokenade/issues

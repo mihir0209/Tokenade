@@ -36,11 +36,13 @@ def require_clean_pushed(repo: Path) -> str:
         raise SystemExit(f"{repo}: release requires main branch")
     if output("git", "status", "--porcelain=v1", "--untracked-files=all", cwd=repo):
         raise SystemExit(f"{repo}: worktree is not clean")
-    run("git", "fetch", "--prune", "origin", cwd=repo)
+    upstream = output("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", cwd=repo)
+    remote_name = upstream.split("/", 1)[0]
+    run("git", "fetch", "--prune", remote_name, cwd=repo)
     head = output("git", "rev-parse", "HEAD", cwd=repo)
-    remote = output("git", "rev-parse", "origin/main", cwd=repo)
+    remote = output("git", "rev-parse", upstream, cwd=repo)
     if head != remote:
-        raise SystemExit(f"{repo}: HEAD must equal origin/main")
+        raise SystemExit(f"{repo}: HEAD must equal {upstream}")
     return head
 
 

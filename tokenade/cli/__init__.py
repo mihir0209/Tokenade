@@ -515,6 +515,10 @@ def cmd_plugin(args):
         if results["updated"]:
             for item in results["updated"]:
                 print(f"   [OK] {item}")
+                if not dry_run:
+                    from tokenade.core.integration.plugin_verifier import PluginVerifier
+                    updated_name = item.split()[0]
+                    PluginVerifier().register_plugin(updated_name)
         if results["skipped"] and (name or force):
             for item in results["skipped"]:
                 print(f"   [SKIP] Skipped (up to date): {item}")

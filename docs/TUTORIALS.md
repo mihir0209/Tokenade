@@ -28,7 +28,7 @@ Comprehensive, step-by-step tutorials covering every feature of Tokenade.
 ### Step 1: Install Tokenade
 
 ```bash
-git clone https://github.com/mihir0209/tokenade.git
+git clone https://codeberg.org/mihir0209/tokenade.git
 cd tokenade
 pip install -e ".[dev]"
 playwright install chromium --with-deps

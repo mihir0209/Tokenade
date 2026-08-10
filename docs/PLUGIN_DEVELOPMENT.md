@@ -273,7 +273,7 @@ tokenade plugin verify my-plugin
 
 1. Create a GitHub repository with your plugin
 2. Add a `plugin.json` manifest
-3. Submit a PR to [mihir0209/tokenade-plugins](https://github.com/mihir0209/tokenade-plugins)
+3. Submit a PR to [mihir0209/tokenade-plugins](https://codeberg.org/mihir0209/tokenade-plugins)
 
 ### Plugin Repository Structure
 
@@ -303,7 +303,7 @@ my-plugins-repo/
 
 ## Examples
 
-See the official plugins at [mihir0209/tokenade-plugins](https://github.com/mihir0209/tokenade-plugins):
+See the official plugins at [mihir0209/tokenade-plugins](https://codeberg.org/mihir0209/tokenade-plugins):
 
 - `oauth2` — OAuth2 refresh (Google, GitHub, Microsoft)
 - `google-handler` — Google site handler
