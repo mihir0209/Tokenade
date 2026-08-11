@@ -510,6 +510,7 @@ class TestMonitorDaemonE2E:
 # Analytics E2E
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="Legacy identifying analytics writer is disabled")
 class TestAnalyticsE2E:
     def test_record_and_report(self, tmp_path):
         from tokenade.core.monitoring.analytics import SessionAnalytics

@@ -49,14 +49,21 @@ class SessionLoader:
             Package dictionary
         """
         from tokenade.core.importer.session_packager import SessionPackager
+
         path = Path(file_path)
         package = SessionPackager().load(str(path))
 
-        logger.info(f"Loaded session package: {path} ({len(package.get('cookies', []))} cookies)")
+        logger.info(
+            f"Loaded session package: {path} ({len(package.get('cookies', []))} cookies)"
+        )
         return package
 
-    def apply_fingerprint(self, browser_manager, fingerprint: Optional[Dict] = None,
-                          stealth_level: str = "maximum") -> bool:
+    def apply_fingerprint(
+        self,
+        browser_manager,
+        fingerprint: Optional[Dict] = None,
+        stealth_level: str = "maximum",
+    ) -> bool:
         """
         Apply fingerprint with stealth spoofing to browser.
 
@@ -114,8 +121,12 @@ class SessionLoader:
         logger.info(f"Injected {injected}/{len(cookies)} cookies")
         return injected
 
-    def inject_local_storage(self, browser_manager, local_storage: Dict[str, str],
-                             origin: Optional[str] = None) -> int:
+    def inject_local_storage(
+        self,
+        browser_manager,
+        local_storage: Dict[str, str],
+        origin: Optional[str] = None,
+    ) -> int:
         """
         Inject localStorage into browser context.
 
@@ -137,7 +148,9 @@ class SessionLoader:
         # Navigate to origin if specified
         if origin:
             try:
-                browser_manager.navigate(origin, wait_until="domcontentloaded", timeout=15000)
+                browser_manager.navigate(
+                    origin, wait_until="domcontentloaded", timeout=15000
+                )
                 logger.info(f"Navigated to origin for localStorage injection: {origin}")
             except Exception as e:
                 logger.warning(f"Failed to navigate to origin {origin}: {e}")
@@ -146,7 +159,8 @@ class SessionLoader:
         try:
             # Batch inject all localStorage entries
             # Use page.evaluate with a data parameter to avoid serialization issues
-            result = browser_manager.evaluate("""
+            result = browser_manager.evaluate(
+                """
                 (data) => {
                     let count = 0;
                     for (const [key, value] of Object.entries(data)) {
@@ -159,7 +173,9 @@ class SessionLoader:
                     }
                     return count;
                 }
-            """, local_storage)
+            """,
+                local_storage,
+            )
 
             if isinstance(result, int):
                 injected = result
@@ -167,11 +183,15 @@ class SessionLoader:
                 # Fallback: inject one by one
                 for key, value in local_storage.items():
                     try:
-                        browser_manager.evaluate("""
+                        browser_manager.evaluate(
+                            """
                             (key, value) => {
                                 localStorage.setItem(key, value);
                             }
-                        """, key, value)
+                        """,
+                            key,
+                            value,
+                        )
                         injected += 1
                     except Exception as e:
                         logger.debug(f"Failed to inject localStorage key {key}: {e}")
@@ -251,8 +271,12 @@ class SessionLoader:
         # Navigate to the page first if URL provided
         if validate_url:
             try:
-                logger.info(f"Navigating to {validate_url} for validation (wait {wait_seconds}s)")
-                browser_manager.navigate(validate_url, wait_until="domcontentloaded", timeout=30000)
+                logger.info(
+                    f"Navigating to {validate_url} for validation (wait {wait_seconds}s)"
+                )
+                browser_manager.navigate(
+                    validate_url, wait_until="domcontentloaded", timeout=30000
+                )
                 time.sleep(wait_seconds)
             except Exception as e:
                 logger.warning(f"Navigation failed: {e}")
@@ -261,17 +285,19 @@ class SessionLoader:
         validator = SessionValidator()
         return validator.validate(browser_manager, site_config)
 
-    def load(self,
-             file_path: str,
-             target_fp_name: Optional[str] = None,
-             stealth_level: str = "maximum",
-             validate: bool = True,
-             visible: bool = False,
-             profile_dir: Optional[str] = None,
-             inject_local_storage: bool = True,
-             site_config: Optional[Dict] = None,
-             acknowledge_exclusive_move: bool = False,
-             allow_single_use: bool = False) -> Dict:
+    def load(
+        self,
+        file_path: str,
+        target_fp_name: Optional[str] = None,
+        stealth_level: str = "maximum",
+        validate: bool = True,
+        visible: bool = False,
+        profile_dir: Optional[str] = None,
+        inject_local_storage: bool = True,
+        site_config: Optional[Dict] = None,
+        acknowledge_exclusive_move: bool = False,
+        allow_single_use: bool = False,
+    ) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
 
@@ -303,6 +329,7 @@ class SessionLoader:
             # Step 1: Load package
             package = self.load_file(file_path)
             from tokenade.core.artifacts import ProfileArtifactManager
+
             ProfileArtifactManager.preflight(
                 package,
                 purpose="load",
@@ -322,6 +349,7 @@ class SessionLoader:
             }
             if package.get("profile_artifacts") and not profile_dir:
                 import tempfile
+
                 profile_dir = tempfile.mkdtemp(prefix="tokenade-load-artifacts-")
             if profile_dir:
                 config_kwargs["user_data_dir"] = profile_dir
@@ -346,7 +374,9 @@ class SessionLoader:
 
             # Step 5: Apply source fingerprint from package (if no target specified)
             if not target_fp_name and package.get("fingerprint"):
-                self.apply_fingerprint(self._browser, package["fingerprint"], stealth_level)
+                self.apply_fingerprint(
+                    self._browser, package["fingerprint"], stealth_level
+                )
 
             # Step 6: Inject cookies
             cookies = package.get("cookies", [])
@@ -354,10 +384,13 @@ class SessionLoader:
 
             # Step 7: Inject localStorage if present and enabled
             local_storage_by_origin = (
-                [] if ProfileArtifactManager.web_storage_is_superseded(package)
+                []
+                if ProfileArtifactManager.web_storage_is_superseded(package)
                 else self._local_storage_by_origin(package, site_config)
             )
-            result["local_storage_total"] = sum(len(entries) for _, entries in local_storage_by_origin)
+            result["local_storage_total"] = sum(
+                len(entries) for _, entries in local_storage_by_origin
+            )
             if inject_local_storage:
                 for origin, local_storage in local_storage_by_origin:
                     if not local_storage:
@@ -382,11 +415,31 @@ class SessionLoader:
                 result["validation"] = self.validate_session(self._browser, site_config)
                 result["cookies_injected"] > 0
                 has_local_storage = result["local_storage_injected"] > 0
-                result["success"] = result["validation"].get("valid", False) or has_local_storage
+                result["success"] = (
+                    result["validation"].get("valid", False) or has_local_storage
+                )
             else:
-                result["success"] = result["cookies_injected"] > 0 or result["local_storage_injected"] > 0
+                result["success"] = (
+                    result["cookies_injected"] > 0
+                    or result["local_storage_injected"] > 0
+                )
 
             logger.info(f"Session load complete: {result['success']}")
+            from tokenade.core.analytics import record_local
+
+            record_local(
+                "load",
+                "success" if result["success"] else "failure",
+                dimensions={
+                    "browser_family": "chromium",
+                    "visible": bool(visible),
+                    "validation_requested": bool(validate),
+                    "storage_present": bool(
+                        result["local_storage_total"]
+                        or package.get("profile_artifacts")
+                    ),
+                },
+            )
 
         except Exception as e:
             error_msg = str(e).lower()
@@ -395,7 +448,9 @@ class SessionLoader:
                 hint = f" Session file not found: {file_path}"
             elif "json" in error_msg or "decode" in error_msg:
                 hint = f" Invalid .tokenade file format: {file_path}"
-            elif "browser" in error_msg and ("launch" in error_msg or "start" in error_msg):
+            elif "browser" in error_msg and (
+                "launch" in error_msg or "start" in error_msg
+            ):
                 hint = " Install browser: playwright install chromium"
             elif "permission denied" in error_msg:
                 hint = f" Check file permissions for: {file_path}"
@@ -422,8 +477,12 @@ class SessionLoader:
     ) -> list[tuple[Optional[str], Dict[str, str]]]:
         """Return localStorage entries grouped by exact v3 origin, falling back to legacy flat storage."""
         grouped: list[tuple[Optional[str], Dict[str, str]]] = []
-        storage = package.get("storage") if isinstance(package.get("storage"), dict) else {}
-        local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+        storage = (
+            package.get("storage") if isinstance(package.get("storage"), dict) else {}
+        )
+        local_by_origin = (
+            storage.get("local") if isinstance(storage.get("local"), dict) else {}
+        )
         for origin, entries in local_by_origin.items():
             if isinstance(origin, str) and isinstance(entries, dict) and entries:
                 grouped.append((origin, entries))
@@ -436,7 +495,9 @@ class SessionLoader:
             grouped.append((self._infer_origin(package, site_config), legacy))
         return grouped
 
-    def _infer_origin(self, package: Dict, site_config: Optional[Dict] = None) -> Optional[str]:
+    def _infer_origin(
+        self, package: Dict, site_config: Optional[Dict] = None
+    ) -> Optional[str]:
         """Infer the origin URL from package data or site config for localStorage injection."""
         site_handler = self._site_handler_metadata(package)
         if site_handler:
@@ -474,6 +535,7 @@ class SessionLoader:
 
         # Try to get from site_configs first
         from tokenade.core.importer.site_configs import get_site_config
+
         preset = get_site_config(site_name)
         if preset:
             return preset
@@ -483,12 +545,16 @@ class SessionLoader:
         if site_handler:
             domains = list(site_handler.get("export_domains") or [])
         if not domains:
-            domains = list({c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")})
+            domains = list(
+                {c.get("domain", "").lstrip(".") for c in cookies if c.get("domain")}
+            )
 
         auth_cookie_names = []
         for c in cookies:
             name = c.get("name", "")
-            if any(kw in name.lower() for kw in ("session", "token", "auth", "sid", "csrf")):
+            if any(
+                kw in name.lower() for kw in ("session", "token", "auth", "sid", "csrf")
+            ):
                 auth_cookie_names.append(name)
 
         return {

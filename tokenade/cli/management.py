@@ -6,6 +6,7 @@ External imports of tokenade.cli.management.cmd_* remain valid.
 Modules re-exported below so existing tests can patch
 ``tokenade.cli.management.time`` / helpers without breaking.
 """
+
 import json  # noqa: F401
 import logging
 import os  # noqa: F401
@@ -22,10 +23,17 @@ from tokenade.cli.handlers.infrastructure import (  # noqa: F401
     cmd_k8s,
 )
 from tokenade.cli.handlers.ci import (  # noqa: F401
-    cmd_cicd, cmd_ci, cmd_autopsy, cmd_cloak, cmd_tui,
+    cmd_cicd,
+    cmd_ci,
+    cmd_autopsy,
+    cmd_cloak,
+    cmd_tui,
 )
 from tokenade.cli.handlers.misc import (  # noqa: F401
-    cmd_monitor, cmd_analytics, cmd_daemon, _health_bar,
+    cmd_monitor,
+    cmd_analytics,
+    cmd_daemon,
+    _health_bar,
 )
 
 # Session + browser ops (P1 split)
@@ -68,18 +76,23 @@ from tokenade.cli.handlers.browser_ops import (  # noqa: F401
 def cmd_vault(args):
     """Handle vault commands."""
     from tokenade.core.vault import SessionVault, VaultConfig
-    
+
     config = VaultConfig(
-        vault_path=getattr(args, 'vault_path', None) or "~/.tokenade/vault",
+        vault_path=getattr(args, "vault_path", None) or "~/.tokenade/vault",
+        master_key=os.environ.get("TOKENADE_VAULT_KEY"),
     )
-    
+
     vault = SessionVault(config)
-    
+
+    if not getattr(args, "vault_action", None):
+        print("Error: vault action is required", file=sys.stderr)
+        raise SystemExit(2)
     if args.vault_action == "store":
         result = vault.store(
             name=args.name,
             data=open(args.file, "rb").read(),
-            metadata={"source": args.file},
+            metadata={},
+            replace=getattr(args, "replace", False),
         )
         if args.json:
             print(json.dumps(result.to_dict(), indent=2))
@@ -88,22 +101,23 @@ def cmd_vault(args):
                 print(f"Stored '{args.name}' in vault")
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
-    
+
     elif args.vault_action == "retrieve":
         result = vault.retrieve(
             name=args.name,
-            output_path=getattr(args, 'output', None),
+            output_path=getattr(args, "output", None),
+            overwrite=getattr(args, "overwrite", False),
         )
         if args.json:
             print(json.dumps(result.to_dict(), indent=2))
         else:
             if result.success:
                 print(f"Retrieved '{args.name}'")
-                if getattr(args, 'output', None):
+                if getattr(args, "output", None):
                     print(f"Saved to: {args.output}")
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
-    
+
     elif args.vault_action == "delete":
         result = vault.delete(args.name)
         if args.json:
@@ -113,7 +127,7 @@ def cmd_vault(args):
                 print(f"Deleted '{args.name}'")
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
-    
+
     elif args.vault_action == "list":
         result = vault.list_entries()
         if args.json:
@@ -124,7 +138,7 @@ def cmd_vault(args):
                     print(f"  {entry['name']}: created={entry['created_at']}")
             else:
                 print("No entries in vault")
-    
+
     elif args.vault_action == "rotate":
         result = vault.rotate_key()
         if args.json:
@@ -134,9 +148,12 @@ def cmd_vault(args):
                 print(f"Rotated key: {result.message}")
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
-    
+
     elif args.vault_action == "backup":
-        result = vault.backup(getattr(args, 'name', None))
+        result = vault.backup(
+            getattr(args, "name", None),
+            passphrase=os.environ.get("TOKENADE_VAULT_BACKUP_PASSPHRASE"),
+        )
         if args.json:
             print(json.dumps(result.to_dict(), indent=2))
         else:
@@ -144,9 +161,12 @@ def cmd_vault(args):
                 print(f"Created backup: {result.message}")
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
-    
+
     elif args.vault_action == "restore":
-        result = vault.restore(args.name)
+        result = vault.restore(
+            args.name,
+            passphrase=os.environ.get("TOKENADE_VAULT_BACKUP_PASSPHRASE"),
+        )
         if args.json:
             print(json.dumps(result.to_dict(), indent=2))
         else:
@@ -155,20 +175,33 @@ def cmd_vault(args):
             else:
                 print(f"Error: {result.message}", file=sys.stderr)
 
+    elif args.vault_action == "verify":
+        result = vault.verify()
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2))
+        else:
+            print(result.message)
+
+    else:
+        raise SystemExit(2)
+
+    if not result.success:
+        raise SystemExit(1)
+
 
 def cmd_dashboard(args):
     """Handle dashboard commands."""
     from tokenade.core.dashboard import DashboardServer, DashboardConfig
-    
+
     config = DashboardConfig(
-        host=getattr(args, 'host', None) or "127.0.0.1",
-        port=getattr(args, 'port', None) or 8080,
-        title=getattr(args, 'title', None) or "Tokenade Session Monitor",
-        refresh_interval=getattr(args, 'refresh', None) or 10,
+        host=getattr(args, "host", None) or "127.0.0.1",
+        port=getattr(args, "port", None) or 8080,
+        title=getattr(args, "title", None) or "Tokenade Session Monitor",
+        refresh_interval=getattr(args, "refresh", None) or 10,
     )
-    
+
     server = DashboardServer(config)
-    
+
     if args.dashboard_action == "start":
         print(f"Starting dashboard at http://{config.host}:{config.port}")
         print("Press Ctrl+C to stop")
@@ -177,11 +210,11 @@ def cmd_dashboard(args):
         except KeyboardInterrupt:
             print("\nStopping dashboard...")
             server.stop()
-    
+
     elif args.dashboard_action == "status":
         import urllib.request
         import urllib.error
-        
+
         try:
             url = f"http://{config.host}:{config.port}/api/health"
             with urllib.request.urlopen(url) as response:
@@ -190,16 +223,16 @@ def cmd_dashboard(args):
         except urllib.error.URLError as e:
             print(f"Dashboard not running: {e}", file=sys.stderr)
             sys.exit(1)
-    
+
     elif args.dashboard_action == "sessions":
         import urllib.request
         import urllib.error
-        
+
         try:
             url = f"http://{config.host}:{config.port}/api/sessions"
             with urllib.request.urlopen(url) as response:
                 data = json.loads(response.read())
-                if getattr(args, 'json', False):
+                if getattr(args, "json", False):
                     print(json.dumps(data, indent=2))
                 else:
                     if not data:
@@ -213,19 +246,47 @@ def cmd_dashboard(args):
 
 
 __all__ = [
-    "cmd_sessions", "cmd_health", "cmd_health_report", "cmd_refresh",
-    "cmd_share", "cmd_unshare", "cmd_import", "cmd_sync",
-    "cmd_monitor", "cmd_analytics", "cmd_daemon",
-    "cmd_validate_session", "cmd_encrypted_refresh",
-    "cmd_refresh_oauth", "cmd_oauth_config", "cmd_batch_refresh",
-    "cmd_launch", "cmd_refresh_browser", "cmd_accounts",
-    "cmd_versions", "cmd_rollback", "cmd_session_diff", "cmd_logs",
-    "cmd_mobile_import", "cmd_clone_profile",
-    "cmd_container", "cmd_k8s", "cmd_fleet",
-    "cmd_cicd", "cmd_ci", "cmd_autopsy", "cmd_cloak", "cmd_tui",
-    "cmd_vault", "cmd_dashboard",
-    "_resolve_upstream_proxy", "_health_bar",
-    "_refresh_session_cookies", "_detect_url_from_cookies",
-    "_accounts_list", "_accounts_status", "_accounts_refresh",
+    "cmd_sessions",
+    "cmd_health",
+    "cmd_health_report",
+    "cmd_refresh",
+    "cmd_share",
+    "cmd_unshare",
+    "cmd_import",
+    "cmd_sync",
+    "cmd_monitor",
+    "cmd_analytics",
+    "cmd_daemon",
+    "cmd_validate_session",
+    "cmd_encrypted_refresh",
+    "cmd_refresh_oauth",
+    "cmd_oauth_config",
+    "cmd_batch_refresh",
+    "cmd_launch",
+    "cmd_refresh_browser",
+    "cmd_accounts",
+    "cmd_versions",
+    "cmd_rollback",
+    "cmd_session_diff",
+    "cmd_logs",
+    "cmd_mobile_import",
+    "cmd_clone_profile",
+    "cmd_container",
+    "cmd_k8s",
+    "cmd_fleet",
+    "cmd_cicd",
+    "cmd_ci",
+    "cmd_autopsy",
+    "cmd_cloak",
+    "cmd_tui",
+    "cmd_vault",
+    "cmd_dashboard",
+    "_resolve_upstream_proxy",
+    "_health_bar",
+    "_refresh_session_cookies",
+    "_detect_url_from_cookies",
+    "_accounts_list",
+    "_accounts_status",
+    "_accounts_refresh",
     "_run_post_refresh_plugins",
 ]

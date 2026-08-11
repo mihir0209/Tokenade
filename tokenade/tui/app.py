@@ -24,11 +24,21 @@ try:
     from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
     from textual.screen import Screen
     from textual.widgets import (
-        Button, Footer, Header, Input, Rule, Static,
-        TabbedContent, TabPane, Select, Switch, DirectoryTree,
+        Button,
+        Footer,
+        Header,
+        Input,
+        Rule,
+        Static,
+        TabbedContent,
+        TabPane,
+        Select,
+        Switch,
+        DirectoryTree,
     )
     from textual.widget import Widget
     from textual import on
+
     _TEXTUAL_AVAILABLE = True
 except ImportError:
     _TEXTUAL_AVAILABLE = False
@@ -102,21 +112,41 @@ except ImportError:
     def on(*a, **k):
         def decorator(f):
             return f
+
         return decorator
 
 
 from tokenade.tui.config import (
-    TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, ANALYTICS_DIR, PLUGINS_DIR,
-    REQUESTS_DIR, APP_TITLE, APP_SUBTITLE, MAX_SESSIONS_DISPLAY,
+    TOKENADE_DIR,
+    SESSIONS_DIR,
+    VAULT_DIR,
+    ANALYTICS_DIR,
+    PLUGINS_DIR,
+    REQUESTS_DIR,
+    APP_TITLE,
+    APP_SUBTITLE,
+    MAX_SESSIONS_DISPLAY,
 )
 from tokenade.tui.views.export import ExportView
 from tokenade.tui.views.convert import ConvertView
 from tokenade.tui.views.marketplace import (
-    MarketplaceView, PluginCard, format_plugin_detail,
+    MarketplaceView,
+    PluginCard,
+    format_plugin_detail,
 )
 from tokenade.tui.views.installed import InstalledView, InstalledRow
-from tokenade.tui.views.sessions import SessionsView, SessionTile, load_sessions, detect_session_url
-from tokenade.tui.views.gateway import GatewayView, gateway_request_options, ROUTING_STRATEGIES, ROUTE_SCOPES
+from tokenade.tui.views.sessions import (
+    SessionsView,
+    SessionTile,
+    load_sessions,
+    detect_session_url,
+)
+from tokenade.tui.views.gateway import (
+    GatewayView,
+    gateway_request_options,
+    ROUTING_STRATEGIES,
+    ROUTE_SCOPES,
+)
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
 from tokenade.tui.views.share import ShareView, session_select_options
@@ -132,6 +162,10 @@ from tokenade.tui.cli_runner import (
     cmd_export,
     cmd_convert,
     cmd_gateway,
+    cmd_vault,
+    cmd_sync_peer,
+    cmd_sync_action,
+    cmd_analytics,
     format_cli_display,
     format_receive_help,
     copy_text,
@@ -175,6 +209,7 @@ class PluginDetailScreen(Screen if _TEXTUAL_AVAILABLE else object):
         # Enrich from registry if thin
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             full = PluginRegistry().get_plugin_details(p.get("name", ""))
             if full:
                 merged = dict(full)
@@ -191,7 +226,11 @@ class PluginDetailScreen(Screen if _TEXTUAL_AVAILABLE else object):
         )
         with ScrollableContainer(id="detail-scroll"):
             for i, line in enumerate(format_plugin_detail(p)):
-                cls = "detail-line" if line and not line.startswith(" ") else "detail-meta"
+                cls = (
+                    "detail-line"
+                    if line and not line.startswith(" ")
+                    else "detail-meta"
+                )
                 if not line:
                     yield Static(" ", classes="detail-meta")
                 else:
@@ -420,6 +459,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _load_plugins(self):
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             registry = PluginRegistry()
             self._plugins = registry.get_popular(limit=100) or []
         except Exception as e:
@@ -429,6 +469,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _load_installed(self):
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
+
             loader = PluginLoader()
             loader.load_all()
             self._installed = [
@@ -473,10 +514,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             grid.remove_children()
             installed_names = {p["name"] for p in self._installed}
             if not self._plugins:
-                grid.mount(Static(
-                    "  No plugins available. Check registry connection.",
-                    classes="card-meta",
-                ))
+                grid.mount(
+                    Static(
+                        "  No plugins available. Check registry connection.",
+                        classes="card-meta",
+                    )
+                )
                 return
             for p in self._plugins:
                 name = p.get("name", "")
@@ -489,10 +532,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             container = self.query_one("#installed-list")
             container.remove_children()
             if not self._installed:
-                container.mount(Static(
-                    "No plugins installed. Open Marketplace to install.",
-                    classes="card-meta",
-                ))
+                container.mount(
+                    Static(
+                        "No plugins installed. Open Marketplace to install.",
+                        classes="card-meta",
+                    )
+                )
                 return
             # Sort: active first, then name
             rows = sorted(
@@ -521,15 +566,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             grid.remove_children()
             self._refresh_session_browser_select()
             if not self._sessions:
-                grid.mount(Static(
-                    f"No sessions in {SESSIONS_DIR}",
-                    classes="card-meta",
-                ))
+                grid.mount(
+                    Static(
+                        f"No sessions in {SESSIONS_DIR}",
+                        classes="card-meta",
+                    )
+                )
                 self._set_selected_session(None)
                 return
             sel_name = (
-                self._selected_session.get("name")
-                if self._selected_session else None
+                self._selected_session.get("name") if self._selected_session else None
             )
             # Drop selection if file gone
             if sel_name and not any(s["name"] == sel_name for s in self._sessions):
@@ -562,8 +608,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 prev = None
             sel.set_options(opts)
             values = [v for _, v in opts]
-            pick = prev if prev in values else (
-                "cloak" if "cloak" in values else (values[0] if values else None)
+            pick = (
+                prev
+                if prev in values
+                else ("cloak" if "cloak" in values else (values[0] if values else None))
             )
             if pick is not None:
                 sel.value = pick
@@ -662,6 +710,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             # Re-parse file in case list entry is stale
             try:
                 import json as _json
+
                 with open(session["file"], encoding="utf-8") as fh:
                     data = _json.load(fh)
                 url = detect_session_url(data) if isinstance(data, dict) else ""
@@ -710,7 +759,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             pass
         # Fallback Static
         try:
-            prev = str(getattr(log, "renderable", None) or getattr(log, "content", "") or "")
+            prev = str(
+                getattr(log, "renderable", None) or getattr(log, "content", "") or ""
+            )
             if prev in ("CLI output appears here", ""):
                 merged = text
             else:
@@ -742,14 +793,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             ok = True
             methods.append(method)
         # Always surface in share result + session log so user can select/copy
-        self._session_cli_log(f"[clipboard:{'+'.join(methods) or 'none'}]\n{text[:2000]}")
+        self._session_cli_log(
+            f"[clipboard:{'+'.join(methods) or 'none'}]\n{text[:2000]}"
+        )
         try:
             container = self.query_one("#share-result")
             container.mount(Static("— copied text —", classes="card-meta"))
             # chunk long URLs so they wrap in the TUI
             chunk = 100
             for i in range(0, min(len(text), 4000), chunk):
-                container.mount(Static(text[i:i + chunk], classes="session-card"))
+                container.mount(Static(text[i : i + chunk], classes="session-card"))
         except Exception:
             pass
         if ok:
@@ -803,7 +856,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception:
             return ""
 
-    def _run_session_cli(self, args: List[str], *, background: bool = False, title: str = ""):
+    def _run_session_cli(
+        self, args: List[str], *, background: bool = False, title: str = ""
+    ):
         cmdline = " ".join(args)
         self._session_cli_log(f"$ python3 -m tokenade {cmdline}")
         self.notify(f"Running {title or args[0]}…", timeout=2)
@@ -831,10 +886,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception(
+                    "Failed to marshal Session CLI completion to UI thread"
+                )
 
         # refresh-browser can take a while (navigate + wait); allow 4 min
-        timeout = None if background else (240 if (args and args[0] == "refresh-browser") else 180)
+        timeout = (
+            None
+            if background
+            else (240 if (args and args[0] == "refresh-browser") else 180)
+        )
         run_tokenade_async(
             args,
             on_done=_done,
@@ -860,7 +921,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception:
             pass
         try:
-            prev = str(getattr(log, "renderable", None) or getattr(log, "content", "") or "")
+            prev = str(
+                getattr(log, "renderable", None) or getattr(log, "content", "") or ""
+            )
             log.update((prev + "\n" + text).strip())
         except Exception:
             pass
@@ -916,9 +979,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _gateway_request_summary(self, data: Dict[str, Any]) -> str:
         gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
-        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        sessions = (
+            data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        )
         routing = data.get("routing") if isinstance(data.get("routing"), dict) else {}
-        runtime = gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        runtime = (
+            gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        )
         url = self._gateway_runtime_url(data) or "(none)"
         sessions_dir = sessions.get("dir", "?")
         pattern = sessions.get("pattern", "*.tokenade")
@@ -939,7 +1006,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _gateway_runtime_url(self, data: Dict[str, Any]) -> str:
         gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
-        runtime = gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        runtime = (
+            gateway.get("runtime") if isinstance(gateway.get("runtime"), dict) else {}
+        )
         for key in ("url", "start_url", "target_url"):
             val = runtime.get(key)
             if isinstance(val, str) and val.startswith("http"):
@@ -950,8 +1019,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 return val
         return ""
 
-    def _gateway_request_session_files(self, data: Dict[str, Any], request_file: str) -> List[Path]:
-        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+    def _gateway_request_session_files(
+        self, data: Dict[str, Any], request_file: str
+    ) -> List[Path]:
+        sessions = (
+            data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        )
         sessions_dir = sessions.get("dir")
         pattern = sessions.get("pattern") or "*.tokenade"
         if not isinstance(sessions_dir, str) or not sessions_dir.strip():
@@ -963,19 +1036,27 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             regex = re.compile(str(pattern))
         except re.error:
             try:
-                return sorted(path for path in root.glob(str(pattern)) if path.is_file())
+                return sorted(
+                    path for path in root.glob(str(pattern)) if path.is_file()
+                )
             except Exception:
                 return []
         try:
             return sorted(
-                path for path in root.iterdir()
-                if path.is_file() and (regex.search(path.name) or regex.search(str(path)))
+                path
+                for path in root.iterdir()
+                if path.is_file()
+                and (regex.search(path.name) or regex.search(str(path)))
             )
         except Exception:
             return []
 
-    def _gateway_session_options(self, data: Dict[str, Any], request_file: str) -> List[tuple[str, str]]:
-        sessions = data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+    def _gateway_session_options(
+        self, data: Dict[str, Any], request_file: str
+    ) -> List[tuple[str, str]]:
+        sessions = (
+            data.get("sessions") if isinstance(data.get("sessions"), dict) else {}
+        )
         sessions_dir = sessions.get("dir")
         if not isinstance(sessions_dir, str) or not sessions_dir.strip():
             return [("No sessions dir configured", "")]
@@ -991,9 +1072,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     session_data = json.load(handle)
                 if not isinstance(session_data, dict):
                     continue
-                meta = session_data.get("metadata") if isinstance(session_data.get("metadata"), dict) else {}
+                meta = (
+                    session_data.get("metadata")
+                    if isinstance(session_data.get("metadata"), dict)
+                    else {}
+                )
                 selector = str(meta.get("session_id") or path.stem)
-                site = str(session_data.get("site_name") or session_data.get("site") or "unknown")
+                site = str(
+                    session_data.get("site_name")
+                    or session_data.get("site")
+                    or "unknown"
+                )
                 cookies = len(session_data.get("cookies") or [])
                 abs_path = str(path.resolve())
                 label = f"{selector} · {site} · {cookies} cookies"
@@ -1006,8 +1095,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         try:
             request_path = str(Path(request_file).expanduser())
             data = self._gateway_load_request(request_path)
-            gateway = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
-            routing = data.get("routing") if isinstance(data.get("routing"), dict) else {}
+            gateway = (
+                data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
+            )
+            routing = (
+                data.get("routing") if isinstance(data.get("routing"), dict) else {}
+            )
             host = str(gateway.get("host") or "127.0.0.1")
             port = str(gateway.get("port") or "9222")
             strategy = str(routing.get("strategy") or "round-robin")
@@ -1019,7 +1112,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.query_one("#gateway-port-input").value = port
                 self.query_one("#gateway-url-input").value = configured_url
                 session_select = self.query_one("#gateway-session-select")
-                session_select.set_options(session_options or [("No sessions matched request", "")])
+                session_select.set_options(
+                    session_options or [("No sessions matched request", "")]
+                )
                 if session_options:
                     session_select.value = session_options[0][1]
                 strategy_select = self.query_one("#gateway-strategy-select")
@@ -1031,7 +1126,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 scope_values = [val for _, val in ROUTE_SCOPES]
                 if default_scope in scope_values:
                     scope_select.value = default_scope
-                self.query_one("#gateway-request-summary").update(self._gateway_request_summary(data))
+                self.query_one("#gateway-request-summary").update(
+                    self._gateway_request_summary(data)
+                )
             except Exception:
                 pass
             self._gateway_set_status(f"Gateway request loaded · {host}:{port}")
@@ -1095,7 +1192,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             return {}
         return {"path": raw}
 
-    def _gateway_post(self, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _gateway_post(
+        self, path: str, payload: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         data = json.dumps(payload or {}).encode("utf-8")
         request = urllib.request.Request(
             f"{self._gateway_base_url()}{path}",
@@ -1107,7 +1206,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             return json.loads(response.read().decode("utf-8"))
 
     def _gateway_get(self, path: str) -> Dict[str, Any]:
-        with urllib.request.urlopen(f"{self._gateway_base_url()}{path}", timeout=10) as response:
+        with urllib.request.urlopen(
+            f"{self._gateway_base_url()}{path}", timeout=10
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def _gateway_render_state(self):
@@ -1125,7 +1226,14 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             ]
             for context in contexts:
                 session = context.get("session") or {}
-                marker = "active" if session.get("id") == (self._gateway_status_data.get("runtime") or {}).get("active_context_id") else "inactive"
+                marker = (
+                    "active"
+                    if session.get("id")
+                    == (self._gateway_status_data.get("runtime") or {}).get(
+                        "active_context_id"
+                    )
+                    else "inactive"
+                )
                 lease = "leased" if context.get("leased") else "unleased"
                 lines.append(
                     f"- {session.get('path', session.get('id', 'unknown'))} · {marker} · "
@@ -1151,16 +1259,28 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception("Failed to marshal Gateway state to UI thread")
 
-        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-state").start()
+        threading.Thread(
+            target=_worker, daemon=True, name="tokenade-gateway-state"
+        ).start()
 
-    def _gateway_run_http(self, label: str, method: str, path: str, payload: Optional[Dict[str, Any]] = None):
+    def _gateway_run_http(
+        self,
+        label: str,
+        method: str,
+        path: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ):
         def _worker():
             status_data: Dict[str, Any] = {}
             contexts_data: Dict[str, Any] = {}
             try:
-                result = self._gateway_post(path, payload) if method == "POST" else self._gateway_get(path)
+                result = (
+                    self._gateway_post(path, payload)
+                    if method == "POST"
+                    else self._gateway_get(path)
+                )
                 text = json.dumps(result, indent=2, ensure_ascii=False)
                 ok = bool(result.get("success", True))
             except Exception as exc:
@@ -1192,11 +1312,15 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception("Failed to marshal Gateway response to UI thread")
 
-        threading.Thread(target=_worker, daemon=True, name="tokenade-gateway-http").start()
+        threading.Thread(
+            target=_worker, daemon=True, name="tokenade-gateway-http"
+        ).start()
 
-    def _gateway_refresh_requests(self, *, notify: bool = True, apply_first: bool = False):
+    def _gateway_refresh_requests(
+        self, *, notify: bool = True, apply_first: bool = False
+    ):
         try:
             sel = self.query_one("#gateway-request-select")
             opts = gateway_request_options()
@@ -1246,7 +1370,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify(f"Missing request file: {request_file}", severity="error")
             return
         if self._gateway_pid:
-            self.notify(f"Gateway already running pid={self._gateway_pid}", severity="warning")
+            self.notify(
+                f"Gateway already running pid={self._gateway_pid}", severity="warning"
+            )
             return
         self._gateway_apply_request_file(str(request_path))
         args = cmd_gateway(str(request_path))
@@ -1265,14 +1391,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     self.notify("Gateway running", timeout=3)
                 else:
                     self.notify("Gateway launch failed", severity="error", timeout=5)
-                self._gateway_log((result.output or result.stdout or "(no output)")[-4000:])
+                self._gateway_log(
+                    (result.output or result.stdout or "(no output)")[-4000:]
+                )
                 if result.log_path:
                     self._gateway_log(f"(full log: {result.log_path})")
 
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception("Failed to marshal Gateway launch to UI thread")
 
         run_tokenade_async(args, on_done=_done, background=True)
 
@@ -1309,7 +1437,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
         selector.update(self._gateway_open_payload())
         selector["scope"] = "open-target"
-        self._gateway_run_http("select dropdown + open", "POST", "/route/select", selector)
+        self._gateway_run_http(
+            "select dropdown + open", "POST", "/route/select", selector
+        )
 
     def _update_vault(self):
         try:
@@ -1317,7 +1447,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             container.remove_children()
             try:
                 from tokenade.core.vault.vault import SessionVault, VaultConfig
-                vault = SessionVault(VaultConfig(vault_path=str(VAULT_DIR)))
+
+                vault = SessionVault(
+                    VaultConfig(
+                        vault_path=str(VAULT_DIR),
+                        master_key=os.environ.get("TOKENADE_VAULT_KEY"),
+                    )
+                )
                 result = vault.list_entries()
                 entries = result.data if result.success and result.data else []
                 if not entries:
@@ -1325,37 +1461,46 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     return
                 for entry in entries:
                     name = entry.get("name", "?")
+                    entry_id = entry.get("entry_id", "")
                     created = entry.get("created_at", 0)
                     created_s = (
                         time.strftime("%Y-%m-%d %H:%M", time.localtime(created))
-                        if created else "?"
+                        if created
+                        else "?"
                     )
-                    container.mount(Static(
-                        f"  {name}  •  created: {created_s}",
-                        classes="session-card",
-                    ))
-                    container.mount(Horizontal(
-                        Button(
-                            "Retrieve",
-                            variant="primary",
-                            compact=True,
-                            id=f"vault-retrieve-{name}",
-                        ),
-                        Button(
-                            "Delete",
-                            variant="error",
-                            compact=True,
-                            id=f"vault-delete-{name}",
-                        ),
-                    ))
+                    container.mount(
+                        Static(
+                            f"  {name}  •  created: {created_s}",
+                            classes="session-card",
+                        )
+                    )
+                    container.mount(
+                        Horizontal(
+                            Button(
+                                "Retrieve",
+                                variant="primary",
+                                compact=True,
+                                id=f"vault-retrieve-{entry_id}",
+                            ),
+                            Button(
+                                "Delete",
+                                variant="error",
+                                compact=True,
+                                id=f"vault-delete-{entry_id}",
+                            ),
+                        )
+                    )
             except Exception as e:
-                container.mount(Static(f"  Vault unavailable: {e}", classes="session-card"))
+                container.mount(
+                    Static(f"  Vault unavailable: {e}", classes="session-card")
+                )
         except Exception as e:
             logger.debug("Vault update failed: %s", e)
 
     def _update_settings(self):
         try:
             from tokenade.core.config import load_config
+
             cfg = load_config()
             try:
                 self.query_one("#current-registry").update(
@@ -1421,6 +1566,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             remote_line = "Remote share: unknown"
             try:
                 from tokenade.core.sharing.supabase_store import SupabaseConfig
+
                 sc = SupabaseConfig.from_env()
                 if not sc.enabled:
                     remote_line = "Remote share: OFF (full URL still works offline)"
@@ -1434,7 +1580,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 exp = cfg.get("default_browser") or "auto-detect"
                 vis = "visible" if cfg.get("visible") else "headless"
-                enc = "encrypt-default" if cfg.get("encrypt_by_default") else "plaintext-default"
+                enc = (
+                    "encrypt-default"
+                    if cfg.get("encrypt_by_default")
+                    else "plaintext-default"
+                )
                 summary = (
                     f"export={exp}  ·  load={auto_b}  ·  stealth={stealth}  ·  "
                     f"proxy={proxy_host}:{proxy_port} ({vis})  ·  {enc}\n{remote_line}"
@@ -1448,6 +1598,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _share_remote_status_text(self) -> str:
         try:
             from tokenade.core.sharing.supabase_store import SupabaseConfig
+
             try:
                 offline = bool(self.query_one("#share-no-remote").value)
             except Exception:
@@ -1465,7 +1616,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _update_share_remote_status(self) -> None:
         try:
-            self.query_one("#share-remote-status").update(self._share_remote_status_text())
+            self.query_one("#share-remote-status").update(
+                self._share_remote_status_text()
+            )
         except Exception:
             pass
 
@@ -1505,6 +1658,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def install_plugin(self, name: str):
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             ok = PluginRegistry().install(name)
             if ok:
                 self.notify(f"Installed: {name}", timeout=3)
@@ -1517,6 +1671,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def uninstall_plugin(self, name: str):
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             ok = PluginRegistry().uninstall(name)
             if ok:
                 self.notify(f"Uninstalled: {name}", timeout=3)
@@ -1529,6 +1684,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _reload_plugin(self, name: str):
         try:
             from tokenade.core.integration.plugin_loader import PluginLoader
+
             loaded = PluginLoader().reload(name)
             if loaded:
                 self.notify(f"Reloaded: {name}", timeout=3)
@@ -1560,26 +1716,37 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             plugin = next((p for p in self._plugins if p.get("name") == name), None)
             if plugin:
                 self.push_screen(PluginDetailScreen(plugin))
-        elif btn_id in ("sync-plugins", "sync-plugins-settings", "refresh-installed", "refresh-all"):
+        elif btn_id in (
+            "sync-plugins",
+            "sync-plugins-settings",
+            "refresh-installed",
+            "refresh-all",
+        ):
             self._load_data()
             self.notify("Refreshed", timeout=2)
         elif btn_id == "vault-refresh":
             self._update_vault()
             self.notify("Vault refreshed", timeout=2)
+        elif btn_id == "vault-store":
+            self._vault_store()
+        elif btn_id == "vault-verify":
+            self._vault_command("verify")
         elif btn_id == "vault-rotate-key":
             self._vault_rotate_key()
         elif btn_id == "vault-backup":
             self._vault_backup()
+        elif btn_id == "vault-restore":
+            self._vault_restore()
         elif btn_id.startswith("vault-retrieve-"):
             self._vault_retrieve(btn_id.removeprefix("vault-retrieve-"))
         elif btn_id.startswith("vault-delete-"):
             self._vault_delete(btn_id.removeprefix("vault-delete-"))
+        elif btn_id == "sync-save-peer":
+            self._sync_save_peer()
         elif btn_id == "sync-status":
             self._sync_status()
-        elif btn_id == "sync-push":
-            self._sync_push()
-        elif btn_id == "sync-pull":
-            self._sync_pull()
+        elif btn_id == "sync-plan":
+            self._sync_plan()
         elif btn_id == "sync-bidir":
             self._sync_bidirectional()
         elif btn_id == "share-create":
@@ -1594,6 +1761,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._refresh_share_sessions()
         elif btn_id == "analytics-report":
             self._analytics_report()
+        elif btn_id == "analytics-status":
+            self._analytics_command("status")
+        elif btn_id == "analytics-enable":
+            self._analytics_command("enable")
+        elif btn_id == "analytics-disable":
+            self._analytics_command("disable")
         elif btn_id == "analytics-csv":
             self._analytics_export_csv()
         elif btn_id == "analytics-cleanup":
@@ -1652,7 +1825,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "gateway-sessions":
             self._gateway_run_http("sessions", "GET", "/sessions")
         elif btn_id == "gateway-route-next":
-            self._gateway_run_http("route next", "POST", "/route/next", self._gateway_route_payload())
+            self._gateway_run_http(
+                "route next", "POST", "/route/next", self._gateway_route_payload()
+            )
         elif btn_id == "gateway-route-select":
             payload = self._gateway_selector()
             if not payload:
@@ -1661,7 +1836,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             payload.update(self._gateway_route_payload())
             self._gateway_run_http("route select", "POST", "/route/select", payload)
         elif btn_id == "gateway-open-tab":
-            self._gateway_run_http("open", "POST", "/tabs/new", self._gateway_open_payload())
+            self._gateway_run_http(
+                "open", "POST", "/tabs/new", self._gateway_open_payload()
+            )
         elif btn_id == "gateway-next-tab":
             self._gateway_next_tab()
         elif btn_id == "gateway-select-tab":
@@ -1704,6 +1881,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         query = (event.value or "").strip().lower()
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             if query:
                 self._plugins = PluginRegistry().search(query=query) or []
             else:
@@ -1725,71 +1903,143 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     # ── Vault Actions ─────────────────────────────────────────
 
-    def _vault_rotate_key(self):
+    def _run_feature_cli(self, args, log_id, on_success=None, env=None):
         try:
-            from tokenade.core.vault.vault import SessionVault, VaultConfig
-            result = SessionVault(VaultConfig(vault_path=str(VAULT_DIR))).rotate_key()
-            if result.success:
-                self.notify(result.message or "Vault key rotated", timeout=3)
-                self._update_vault()
+            log = self.query_one(log_id)
+            redacted = []
+            hide_next = False
+            for value in args:
+                if hide_next:
+                    redacted.append("***")
+                    hide_next = False
+                else:
+                    redacted.append(value)
+                    hide_next = value in {"--key", "--passphrase", "--encrypt-password"}
+            log.write(
+                f"[bold cyan]$ tokenade {format_cli_display(redacted)}[/bold cyan]"
+            )
+        except Exception:
+            log = None
+
+        def render_done(result):
+            if log:
+                if result.stdout:
+                    log.write(result.stdout.rstrip())
+                if result.stderr:
+                    log.write(f"[red]{result.stderr.rstrip()}[/red]")
+            if result.ok:
+                self.notify("Operation completed", timeout=2)
+                if on_success:
+                    on_success()
             else:
-                self.notify(result.message or "Key rotation failed", severity="error")
-        except Exception as e:
-            self.notify(f"Key rotation error: {e}", severity="error")
+                self.notify(
+                    result.error or f"Command failed ({result.returncode})",
+                    severity="error",
+                )
+
+        def done(result):
+            self.call_from_thread(render_done, result)
+
+        run_tokenade_async(args, done, env=env)
+
+    def _vault_key(self):
+        return os.environ.get("TOKENADE_VAULT_KEY", "")
+
+    def _vault_store(self):
+        name = self.query_one("#vault-name").value.strip()
+        file = self.query_one("#vault-file").value.strip()
+        if not name or not file:
+            self.notify("Entry name and Session path are required", severity="warning")
+            return
+        self._run_feature_cli(
+            cmd_vault(
+                "store",
+                vault_path=str(VAULT_DIR),
+                name=name,
+                file=file,
+            ),
+            "#vault-log",
+            self._update_vault,
+            env={"TOKENADE_VAULT_KEY": self._vault_key()},
+        )
+
+    def _vault_command(self, action, **kwargs):
+        secret_passphrase = kwargs.pop("secret_passphrase", "")
+        self._run_feature_cli(
+            cmd_vault(action, vault_path=str(VAULT_DIR), **kwargs),
+            "#vault-log",
+            self._update_vault,
+            env={
+                "TOKENADE_VAULT_KEY": self._vault_key(),
+                **(
+                    {"TOKENADE_VAULT_BACKUP_PASSPHRASE": secret_passphrase}
+                    if secret_passphrase
+                    else {}
+                ),
+            },
+        )
+
+    def _vault_rotate_key(self):
+        self._vault_command("rotate")
 
     def _vault_backup(self):
-        try:
-            from tokenade.core.vault.vault import SessionVault, VaultConfig
-            result = SessionVault(VaultConfig(vault_path=str(VAULT_DIR))).backup()
-            if result.success:
-                self.notify(result.message or "Vault backed up", timeout=3)
-            else:
-                self.notify(result.message or "Backup failed", severity="error")
-        except Exception as e:
-            self.notify(f"Backup error: {e}", severity="error")
+        password = self.query_one("#vault-passphrase").value
+        if not password:
+            self.notify("Backup passphrase is required", severity="warning")
+            return
+        self._vault_command("backup", secret_passphrase=password)
 
-    def _vault_retrieve(self, name: str):
-        try:
-            from tokenade.core.vault.vault import SessionVault, VaultConfig
-            out = SESSIONS_DIR / f"{name}.tokenade"
-            result = SessionVault(VaultConfig(vault_path=str(VAULT_DIR))).retrieve(
-                name, output_path=str(out),
-            )
-            if result.success:
-                self.notify(f"Retrieved to {out.name}", timeout=3)
-                self._load_sessions()
-                self._update_sessions()
-            else:
-                self.notify(result.message or "Retrieve failed", severity="error")
-        except Exception as e:
-            self.notify(f"Retrieve error: {e}", severity="error")
+    def _vault_restore(self):
+        password = self.query_one("#vault-passphrase").value
+        if not password:
+            self.notify("Restore passphrase is required", severity="warning")
+            return
+        backups = sorted(
+            (VAULT_DIR / "backups").glob("*.tvbak"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not backups:
+            self.notify("No Vault backups found", severity="warning")
+            return
+        self._vault_command("restore", name=str(backups[0]), secret_passphrase=password)
 
-    def _vault_delete(self, name: str):
-        try:
-            from tokenade.core.vault.vault import SessionVault, VaultConfig
-            result = SessionVault(VaultConfig(vault_path=str(VAULT_DIR))).delete(name)
-            if result.success:
-                self.notify(f"Deleted vault entry: {name}", timeout=3)
-                self._update_vault()
-            else:
-                self.notify(result.message or "Delete failed", severity="error")
-        except Exception as e:
-            self.notify(f"Delete error: {e}", severity="error")
+    def _vault_retrieve(self, entry_id: str):
+        out = SESSIONS_DIR / f"vault-{entry_id[:12]}.tokenade"
+        self._run_feature_cli(
+            cmd_vault(
+                "retrieve",
+                vault_path=str(VAULT_DIR),
+                name=entry_id,
+                output=str(out),
+            ),
+            "#vault-log",
+            lambda: (self._load_sessions(), self._update_sessions()),
+            env={"TOKENADE_VAULT_KEY": self._vault_key()},
+        )
+
+    def _vault_delete(self, entry_id: str):
+        self._vault_command("delete", name=entry_id)
 
     # ── Sync Actions ──────────────────────────────────────────
 
-    def _get_sync_config(self):
-        host = self.query_one("#sync-host-input").value.strip()
-        path = self.query_one("#sync-path-input").value.strip()
-        if not host:
-            self.notify("Enter a remote host", severity="warning")
-            return None
-        from tokenade.core.sync.syncer import SyncConfig
-        return SyncConfig(
-            remote_host=host,
-            remote_path=path or "~/.tokenade/sessions",
-            local_path=str(SESSIONS_DIR),
-        )
+    def _sync_form(self):
+        return {
+            "name": self.query_one("#sync-peer-name").value.strip(),
+            "transport": str(self.query_one("#sync-transport").value),
+            "path": self.query_one("#sync-path-input").value.strip(),
+            "host": self.query_one("#sync-host-input").value.strip(),
+            "user": self.query_one("#sync-user-input").value.strip(),
+            "identity": self.query_one("#sync-identity-input").value.strip(),
+            "allow_plaintext": self.query_one("#sync-allow-plaintext").value,
+        }
+
+    def _sync_save_peer(self):
+        form = self._sync_form()
+        if not form["name"] or not form["path"]:
+            self.notify("Peer name and path required", severity="warning")
+            return
+        self._run_feature_cli(cmd_sync_peer("add", **form), "#sync-log")
 
     def _render_sync_dict(self, title: str, data: Dict[str, Any]):
         container = self.query_one("#sync-result")
@@ -1801,55 +2051,30 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             container.mount(Static(f"  {k}: {v}", classes="session-card"))
 
     def _sync_status(self):
-        try:
-            config = self._get_sync_config()
-            if not config:
-                return
-            from tokenade.core.sync.syncer import SessionSyncer
-            status = SessionSyncer(config).status()
-            self._render_sync_dict(f"Remote: {config.remote_host}", status)
-        except Exception as e:
-            self.notify(f"Sync status error: {e}", severity="error")
+        name = self._sync_form()["name"]
+        if not name:
+            self.notify("Peer name required", severity="warning")
+            return
+        self._run_feature_cli(cmd_sync_action("status", name), "#sync-log")
 
-    def _sync_push(self):
-        try:
-            config = self._get_sync_config()
-            if not config:
-                return
-            from tokenade.core.sync.syncer import SessionSyncer
-            result = SessionSyncer(config).push()
-            msg = getattr(result, "message", None) or str(result)
-            self.notify(f"Push: {msg}", timeout=3)
-        except Exception as e:
-            self.notify(f"Push error: {e}", severity="error")
-
-    def _sync_pull(self):
-        try:
-            config = self._get_sync_config()
-            if not config:
-                return
-            from tokenade.core.sync.syncer import SessionSyncer
-            result = SessionSyncer(config).pull()
-            msg = getattr(result, "message", None) or str(result)
-            self.notify(f"Pull: {msg}", timeout=3)
-            self._load_sessions()
-            self._update_sessions()
-        except Exception as e:
-            self.notify(f"Pull error: {e}", severity="error")
+    def _sync_plan(self):
+        name = self._sync_form()["name"]
+        if not name:
+            self.notify("Peer name required", severity="warning")
+            return
+        self._run_feature_cli(cmd_sync_action("plan", name), "#sync-log")
 
     def _sync_bidirectional(self):
-        try:
-            config = self._get_sync_config()
-            if not config:
-                return
-            from tokenade.core.sync.syncer import SessionSyncer
-            result = SessionSyncer(config).sync("bidirectional")
-            msg = getattr(result, "message", None) or str(result)
-            self.notify(f"Sync: {msg}", timeout=3)
-            self._load_sessions()
-            self._update_sessions()
-        except Exception as e:
-            self.notify(f"Sync error: {e}", severity="error")
+        form = self._sync_form()
+        name = form["name"]
+        if not name:
+            self.notify("Peer name required", severity="warning")
+            return
+        self._run_feature_cli(
+            cmd_sync_action("run", name, allow_plaintext=form["allow_plaintext"]),
+            "#sync-log",
+            lambda: (self._load_sessions(), self._update_sessions()),
+        )
 
     # ── Share Actions ─────────────────────────────────────────
 
@@ -1861,7 +2086,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             if not isinstance(sel, Static):
                 blank = getattr(Select, "NULL", Select.BLANK)
                 val = getattr(sel, "value", blank)
-                if val is not blank and val is not Select.BLANK and val not in (None, "", False):
+                if (
+                    val is not blank
+                    and val is not Select.BLANK
+                    and val not in (None, "", False)
+                ):
                     path_s = str(val)
         except Exception:
             pass
@@ -1892,7 +2121,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             max_uses = self.query_one("#share-max-uses-input").value.strip()
 
             if not path:
-                self.notify("Pick a session or paste a .tokenade path", severity="warning")
+                self.notify(
+                    "Pick a session or paste a .tokenade path", severity="warning"
+                )
                 return
             if not path.exists():
                 self.notify(f"Session not found: {path}", severity="error")
@@ -1907,7 +2138,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 expiry_hours = int(expiry) if expiry else 24
             except ValueError:
-                self.notify("Expiry must be a whole number of hours", severity="warning")
+                self.notify(
+                    "Expiry must be a whole number of hours", severity="warning"
+                )
                 return
             try:
                 max_uses_n = int(max_uses) if max_uses else 0
@@ -1915,7 +2148,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.notify("Max uses must be a whole number", severity="warning")
                 return
             if expiry_hours < 0 or max_uses_n < 0:
-                self.notify("Expiry and max uses cannot be negative", severity="warning")
+                self.notify(
+                    "Expiry and max uses cannot be negative", severity="warning"
+                )
                 return
 
             offline = False
@@ -1926,10 +2161,15 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
             from tokenade.core.sharing.supabase_store import SupabaseConfig
             from tokenade.core.sharing.url_shortener import (
-                SessionURLShortener, URLShortenerConfig,
+                SessionURLShortener,
+                URLShortenerConfig,
             )
 
-            sb_cfg = SupabaseConfig(url="", anon_key="", source="disabled") if offline else None
+            sb_cfg = (
+                SupabaseConfig(url="", anon_key="", source="disabled")
+                if offline
+                else None
+            )
             if not offline:
                 sb_cfg = SupabaseConfig.from_env()
                 # Soft-warn about public remote clamps
@@ -1979,17 +2219,15 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     "Tip: re-export with --domains for the site, or scp the .tokenade file.",
                 ):
                     container.mount(
-                        Static(line or " ", classes="session-card" if line else "card-meta")
+                        Static(
+                            line or " ", classes="session-card" if line else "card-meta"
+                        )
                     )
                 self.notify(str(err)[:80], severity="error", timeout=8)
                 return
 
             short_id = result.get("short_id", "")
-            full_url = (
-                result.get("full_url")
-                or result.get("original_url")
-                or ""
-            )
+            full_url = result.get("full_url") or result.get("original_url") or ""
             short_url = result.get("short_url") or f"tokenade://share/{short_id}"
             file_name = result.get("file_name") or path.name
             # Do not retain password in process state
@@ -2006,7 +2244,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 pass
 
             remote = bool(result.get("remote"))
-            transport = result.get("transport") or ("supabase" if remote else "embedded")
+            transport = result.get("transport") or (
+                "supabase" if remote else "embedded"
+            )
             help_text = format_receive_help(
                 short_id=short_id,
                 full_url=full_url or short_url,
@@ -2037,13 +2277,17 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                     else "Share ref (retrieve via short id + remote):"
                 ),
             ):
-                container.mount(Static(line or " ", classes="session-card" if line else "card-meta"))
+                container.mount(
+                    Static(line or " ", classes="session-card" if line else "card-meta")
+                )
             show_url = full_url or short_url
             for i in range(0, min(len(show_url), 4000), 100):
-                container.mount(Static(show_url[i:i + 100], classes="session-card"))
+                container.mount(Static(show_url[i : i + 100], classes="session-card"))
             if result.get("message"):
                 container.mount(Static(" ", classes="card-meta"))
-                container.mount(Static(str(result["message"])[:500], classes="card-meta"))
+                container.mount(
+                    Static(str(result["message"])[:500], classes="card-meta")
+                )
             container.mount(Static(" ", classes="card-meta"))
             for line in help_text.splitlines():
                 container.mount(Static(line or " ", classes="card-meta"))
@@ -2097,8 +2341,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.notify("Password required (min 8)", severity="warning")
                 return
             from tokenade.core.sharing.url_shortener import (
-                SessionURLShortener, URLShortenerConfig,
+                SessionURLShortener,
+                URLShortenerConfig,
             )
+
             result = SessionURLShortener(URLShortenerConfig()).retrieve_session(
                 ref,
                 password,
@@ -2110,14 +2356,18 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             if result.get("success"):
                 saved = result.get("output_path") or out or "?"
                 container.mount(Static(f"  Saved → {saved}", classes="session-card"))
-                container.mount(Static(
-                    f"  Next: python3 -m tokenade load --file {saved} --visible",
-                    classes="session-card",
-                ))
-                container.mount(Static(
-                    f"  Or:   python3 -m tokenade launch -s {saved} --visible",
-                    classes="session-card",
-                ))
+                container.mount(
+                    Static(
+                        f"  Next: python3 -m tokenade load --file {saved} --visible",
+                        classes="session-card",
+                    )
+                )
+                container.mount(
+                    Static(
+                        f"  Or:   python3 -m tokenade launch -s {saved} --visible",
+                        classes="session-card",
+                    )
+                )
                 self.notify(f"Received → {saved}", timeout=3)
                 self._load_sessions()
                 self._update_sessions()
@@ -2136,16 +2386,20 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         try:
             import time as _time
             from tokenade.core.sharing.url_shortener import (
-                SessionURLShortener, URLShortenerConfig,
+                SessionURLShortener,
+                URLShortenerConfig,
             )
+
             shares = SessionURLShortener(URLShortenerConfig()).list_shares()
             container = self.query_one("#share-result")
             container.remove_children()
             self._update_share_remote_status()
-            container.mount(Static(
-                f"  Local active shares ({len(shares)}) — remote not listable",
-                classes="card-meta",
-            ))
+            container.mount(
+                Static(
+                    f"  Local active shares ({len(shares)}) — remote not listable",
+                    classes="card-meta",
+                )
+            )
             if not shares:
                 container.mount(Static("  No active shares.", classes="session-card"))
                 return
@@ -2164,14 +2418,18 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 except Exception:
                     exp_s = "?"
                 revoked = " REVOKED" if share.get("revoked") else ""
-                container.mount(Static(
-                    f"  {sid}  •  uses {uses}/{max_s}  •  expires {exp_s}{revoked}",
-                    classes="session-card",
-                ))
-            container.mount(Static(
-                "  Tip: paste a short id above → Revoke  |  Cleanup strips expired embeds",
-                classes="card-meta",
-            ))
+                container.mount(
+                    Static(
+                        f"  {sid}  •  uses {uses}/{max_s}  •  expires {exp_s}{revoked}",
+                        classes="session-card",
+                    )
+                )
+            container.mount(
+                Static(
+                    "  Tip: paste a short id above → Revoke  |  Cleanup strips expired embeds",
+                    classes="card-meta",
+                )
+            )
         except Exception as e:
             self.notify(f"Share list error: {e}", severity="error")
 
@@ -2191,11 +2449,14 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             if "share/" in sid:
                 sid = sid.rstrip("/").split("share/")[-1].split("?")[0].strip()
             from tokenade.core.sharing.url_shortener import (
-                SessionURLShortener, URLShortenerConfig,
+                SessionURLShortener,
+                URLShortenerConfig,
             )
             from tokenade.core.sharing.supabase_store import (
-                SupabaseConfig, SupabaseShareStore,
+                SupabaseConfig,
+                SupabaseShareStore,
             )
+
             shortener = SessionURLShortener(URLShortenerConfig())
             local_ok = shortener.revoke(sid)
             remote_ok = False
@@ -2217,10 +2478,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 container.mount(Static(f"  {msg}", classes="session-card"))
                 self.notify(msg, timeout=3)
             else:
-                container.mount(Static(
-                    f"  Share not found locally or remote: {sid}",
-                    classes="session-card",
-                ))
+                container.mount(
+                    Static(
+                        f"  Share not found locally or remote: {sid}",
+                        classes="session-card",
+                    )
+                )
                 self.notify(f"Share not found: {sid}", severity="warning")
             self._share_list()
         except Exception as e:
@@ -2229,8 +2492,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _share_cleanup(self):
         try:
             from tokenade.core.sharing.url_shortener import (
-                SessionURLShortener, URLShortenerConfig,
+                SessionURLShortener,
+                URLShortenerConfig,
             )
+
             stats = SessionURLShortener(URLShortenerConfig()).cleanup_local_store()
             self.notify(
                 f"Cleaned shares: expired={stats.get('expired', 0)} "
@@ -2244,71 +2509,74 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     # ── Analytics Actions ─────────────────────────────────────
 
+    def _analytics_days(self):
+        try:
+            return max(1, int(self.query_one("#analytics-retention").value or "30"))
+        except ValueError:
+            return 30
+
+    def _analytics_command(self, action):
+        days = self._analytics_days()
+        output = str(ANALYTICS_DIR / "aggregate.csv")
+        self._run_feature_cli(
+            cmd_analytics(action, days=days, retention_days=days, output=output),
+            "#analytics-log",
+            self._analytics_report
+            if action in {"enable", "disable", "cleanup"}
+            else None,
+        )
+
     def _analytics_report(self):
         try:
-            from tokenade.core.analytics.engine import AnalyticsEngine
-            report = AnalyticsEngine().generate_report()
+            from tokenade.core.analytics.engine import AnalyticsConfig, LocalAnalytics
+
+            report = LocalAnalytics(
+                AnalyticsConfig(directory=str(ANALYTICS_DIR))
+            ).report(self._analytics_days())
             container = self.query_one("#analytics-result")
             container.remove_children()
-            container.mount(Static(
-                f"  Period: {report.period_days} days",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Total events: {report.total_events}",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Exports: {report.total_exports}",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Loads: {report.total_loads}",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Shares: {report.total_shares}",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Syncs: {report.total_syncs}",
-                classes="session-card",
-            ))
-            container.mount(Static(
-                f"  Success rate: {report.success_rate:.1%}",
-                classes="session-card",
-            ))
-            if report.top_sites:
-                container.mount(Static("  Top sites:", classes="session-card"))
-                for s in report.top_sites[:5]:
-                    site = s.get("site", "?") if isinstance(s, dict) else getattr(s, "site", "?")
-                    events = (
-                        s.get("events") or s.get("total_events") or 0
-                        if isinstance(s, dict) else getattr(s, "total_events", 0)
-                    )
-                    container.mount(Static(
-                        f"    {site}: {events} events",
+            outcomes = report["outcomes"]
+            rate = outcomes["success_rate"]
+            container.mount(
+                Static(
+                    f"  Period: {report['period_days']} days", classes="session-card"
+                )
+            )
+            container.mount(
+                Static(
+                    f"  Operations: {report['total_operations']}",
+                    classes="session-card",
+                )
+            )
+            container.mount(
+                Static(
+                    f"  Success: {outcomes['success']} · Failed: {outcomes['failure']} · Cancelled: {outcomes['cancelled']}",
+                    classes="session-card",
+                )
+            )
+            container.mount(
+                Static(
+                    f"  Success rate: {rate:.1%}"
+                    if rate is not None
+                    else "  Success rate: no completed operations",
+                    classes="session-card",
+                )
+            )
+            for operation, values in sorted(report["by_operation"].items()):
+                container.mount(
+                    Static(
+                        f"  {operation}: {values['total']} total · {values['failure']} failed · p50 {values['p50_ms'] or '-'} ms",
                         classes="session-card",
-                    ))
+                    )
+                )
         except Exception as e:
             self.notify(f"Analytics error: {e}", severity="error")
 
     def _analytics_export_csv(self):
-        try:
-            from tokenade.core.analytics.engine import AnalyticsEngine
-            csv_path = str(ANALYTICS_DIR / "export.csv")
-            AnalyticsEngine().export_csv(csv_path)
-            self.notify(f"Exported to {csv_path}", timeout=3)
-        except Exception as e:
-            self.notify(f"Export error: {e}", severity="error")
+        self._analytics_command("export")
 
     def _analytics_cleanup(self):
-        try:
-            from tokenade.core.analytics.engine import AnalyticsEngine
-            AnalyticsEngine().cleanup()
-            self.notify("Analytics cleaned up", timeout=3)
-        except Exception as e:
-            self.notify(f"Cleanup error: {e}", severity="error")
+        self._analytics_command("cleanup")
 
     # ── Session Actions ───────────────────────────────────────
 
@@ -2318,7 +2586,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._set_selected_session(session)
             url = (session.get("url") or "").strip()
             if session.get("corrupt"):
-                self.notify(f"Selected {name} (corrupt/empty — re-export)", severity="warning", timeout=4)
+                self.notify(
+                    f"Selected {name} (corrupt/empty — re-export)",
+                    severity="warning",
+                    timeout=4,
+                )
             elif url:
                 self.notify(f"Selected {name} → {url}", timeout=2)
             else:
@@ -2343,7 +2615,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         if session:
             try:
                 Path(session["file"]).unlink()
-                if self._selected_session and self._selected_session.get("name") == name:
+                if (
+                    self._selected_session
+                    and self._selected_session.get("name") == name
+                ):
                     self._set_selected_session(None)
                 self.notify(f"Deleted: {name}", timeout=3)
                 self._load_sessions()
@@ -2382,7 +2657,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         if not s:
             return
         if s.get("corrupt"):
-            self.notify("Session file is corrupt/empty — cannot refresh", severity="error")
+            self.notify(
+                "Session file is corrupt/empty — cannot refresh", severity="error"
+            )
             return
         self._run_session_cli(
             cmd_refresh_browser(
@@ -2426,7 +2703,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         if not s:
             return
         if s.get("corrupt"):
-            self.notify("Session file is corrupt/empty — cannot share", severity="error")
+            self.notify(
+                "Session file is corrupt/empty — cannot share", severity="error"
+            )
             return
         path = s["file"]
         name = s["name"]
@@ -2546,13 +2825,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             )
             cfg.save()
             try:
-                self.query_one("#settings-status").update(
-                    f"Saved → {cfg.config_path}"
-                )
+                self.query_one("#settings-status").update(f"Saved → {cfg.config_path}")
             except Exception:
                 pass
             try:
                 from tokenade.core.sharing.supabase_store import SupabaseConfig
+
                 sc = SupabaseConfig.from_env()
                 if not sc.enabled:
                     st = "Remote share: OFF (full URL still works offline)"
@@ -2574,6 +2852,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self.notify("Enter a registry URL", severity="warning")
                 return
             from tokenade.core.integration.plugin_registry import PluginRegistry
+
             reg = PluginRegistry()
             if hasattr(reg, "add_registry"):
                 reg.add_registry(url)
@@ -2636,12 +2915,20 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             prev = self._export_field("#export-browser-select")
             sel.set_options(opts)
             values = [v for _, v in opts]
-            pick = prev if prev in values else (
-                "firefox" if "firefox" in values else (values[0] if values else None)
+            pick = (
+                prev
+                if prev in values
+                else (
+                    "firefox"
+                    if "firefox" in values
+                    else (values[0] if values else None)
+                )
             )
             if pick is not None:
                 sel.value = pick
-            self._refresh_export_profile_select(str(pick or "firefox"), refresh_cache=refresh_cache)
+            self._refresh_export_profile_select(
+                str(pick or "firefox"), refresh_cache=refresh_cache
+            )
         except Exception as e:
             logger.debug("Export browser select refresh failed: %s", e)
 
@@ -2651,7 +2938,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         try:
             from tokenade.tui.views.export import export_profile_options
 
-            browser = browser or self._export_field("#export-browser-select") or "firefox"
+            browser = (
+                browser or self._export_field("#export-browser-select") or "firefox"
+            )
             sel = self.query_one("#export-profile-select")
             opts = export_profile_options(browser, refresh=refresh_cache)
             prev = self._export_field("#export-profile-select")
@@ -2674,7 +2963,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception as e:
             logger.debug("Export profile select refresh failed: %s", e)
 
-    def _run_export_cli(self, args: List[str], *, title: str = ""):
+    def _run_export_cli(self, args: List[str], *, title: str = "", env=None):
         cmdline = format_cli_display(args)
         self._export_cli_log(f"$ python3 -m tokenade {cmdline}")
         self.notify(f"Running {title or args[0]}…", timeout=2)
@@ -2694,7 +2983,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 self._export_cli_log(out[-4000:] if len(out) > 4000 else out)
                 if result.log_path:
                     self._export_cli_log(f"(full log: {result.log_path})")
-                if result.ok and args and args[0] in ("export", "convert") and "--list-profiles" not in args and "--list-handlers" not in args:
+                if (
+                    result.ok
+                    and args
+                    and args[0] in ("export", "convert")
+                    and "--list-profiles" not in args
+                    and "--list-handlers" not in args
+                ):
                     try:
                         self._load_sessions()
                         self._update_sessions()
@@ -2705,10 +3000,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception("Failed to marshal Export completion to UI thread")
 
         # Cookie/SQLite export can be slow on large profiles
-        run_tokenade_async(args, on_done=_done, timeout=300)
+        run_tokenade_async(args, on_done=_done, timeout=300, env=env)
 
     def _export_run(self):
         browser = self._export_field("#export-browser-select")
@@ -2732,7 +3027,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 output=output,
                 full=self._export_switch("#export-full-switch", True),
                 cdp_port=cdp,
-                encrypt_password=password,
+                encrypt_password="",
                 plugin=plugin,
                 proxy_plugin=proxy_plugin,
                 no_plugin=self._export_switch("#export-no-plugin-switch", False),
@@ -2741,6 +3036,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 ),
             ),
             title="export",
+            env={"TOKENADE_ENCRYPT_PASSWORD": password} if password else None,
         )
 
     def _export_list_profiles(self):
@@ -2845,11 +3141,24 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             if fmt and fmt not in ("unknown", "auto"):
                 try:
                     self.query_one("#convert-format-select").value = (
-                        fmt if fmt in {
-                            "json", "netscape", "curl", "playwright", "puppeteer",
-                            "cookie-editor", "cypress", "selenium", "header",
-                            "set-cookie", "har", "csv", "auto",
-                        } else "auto"
+                        fmt
+                        if fmt
+                        in {
+                            "json",
+                            "netscape",
+                            "curl",
+                            "playwright",
+                            "puppeteer",
+                            "cookie-editor",
+                            "cypress",
+                            "selenium",
+                            "header",
+                            "set-cookie",
+                            "har",
+                            "csv",
+                            "auto",
+                        }
+                        else "auto"
                     )
                 except Exception:
                     pass
@@ -2868,13 +3177,15 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             output = str(SESSIONS_DIR / f"{stem}.tokenade")
         fmt = self._convert_field("#convert-format-select") or "auto"
         password = self._convert_field("#convert-password-input")
-        encrypt = self._convert_switch("#convert-encrypt-switch", False) or bool(password)
+        encrypt = self._convert_switch("#convert-encrypt-switch", False) or bool(
+            password
+        )
         domain = self._convert_field("#convert-domain-input")
         args = cmd_convert(
             input_path=cookie_file,
             output=output,
             format_hint=fmt,
-            encrypt_password=password,
+            encrypt_password="",
             encrypt=encrypt and not password,
             domain=domain,
         )
@@ -2905,9 +3216,14 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(_ui)
             except Exception:
-                _ui()
+                logger.exception("Failed to marshal Convert completion to UI thread")
 
-        run_tokenade_async(args, on_done=_done, timeout=120)
+        run_tokenade_async(
+            args,
+            on_done=_done,
+            timeout=120,
+            env={"TOKENADE_ENCRYPT_PASSWORD": password} if password else None,
+        )
 
     def _refresh_export_plugin_selects(self):
         try:
@@ -3043,7 +3359,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             pass
         # Last share payload (buttons still preferred)
         try:
-            full = (self._last_share or {}).get("full_url") or (self._last_share or {}).get("url")
+            full = (self._last_share or {}).get("full_url") or (
+                self._last_share or {}
+            ).get("url")
             if full:
                 return str(full).strip()
         except Exception:
@@ -3066,7 +3384,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             return
         ok = self._copy_to_clipboard(text, label="Copied")
         if not ok:
-            self.notify("Clipboard failed — text is in the log panel", severity="warning")
+            self.notify(
+                "Clipboard failed — text is in the log panel", severity="warning"
+            )
 
     def action_copy_selection(self) -> None:
         """Copy selection / focused field / last share URL."""
@@ -3080,7 +3400,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             return
         ok = self._copy_to_clipboard(text, label="Copied")
         if not ok:
-            self.notify("Clipboard copy failed — use terminal select+copy", severity="warning")
+            self.notify(
+                "Clipboard copy failed — use terminal select+copy", severity="warning"
+            )
 
     def action_help_quit(self) -> None:
         """Override Textual default: Ctrl+C never quits."""
@@ -3193,6 +3515,7 @@ class PluginTaskWidget(Widget if _TEXTUAL_AVAILABLE else object):
     def render(self):
         try:
             from tokenade.core.context import SharedContext
+
             ctx = SharedContext()
             tasks = ctx.tasks.list_all() if hasattr(ctx.tasks, "list_all") else []
             active = [t for t in tasks if t.get("status") == "running"]
@@ -3255,6 +3578,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
     def on_mount(self) -> None:
         try:
             from tokenade.core.integration.plugin_config import PluginConfigManager
+
             mgr = PluginConfigManager()
             self._schema = mgr.get_schema(self.plugin_name) or {}
             self._values = dict(mgr.get_full_config(self.plugin_name) or {})
@@ -3279,6 +3603,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
                     )
                     try:
                         from textual.widgets import TextArea
+
                         lines = (
                             "\n".join(f"{k}={v}" for k, v in self._values.items())
                             if self._values
@@ -3294,7 +3619,9 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
                         box.mount(
                             Input(
                                 value=(
-                                    "\n".join(f"{k}={v}" for k, v in self._values.items())
+                                    "\n".join(
+                                        f"{k}={v}" for k, v in self._values.items()
+                                    )
                                     if self._values
                                     else ""
                                 ),
@@ -3316,7 +3643,9 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
                         box.mount(
                             Input(
                                 value=str(cur) if cur != "" else "",
-                                placeholder=str(default) if default not in (None, "") else key,
+                                placeholder=str(default)
+                                if default not in (None, "")
+                                else key,
                                 password=sensitive,
                                 id=f"pcfg-field-{key}",
                             )
@@ -3330,6 +3659,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
         if not _TEXTUAL_AVAILABLE:
             return
         from textual.containers import Vertical, Horizontal
+
         yield Vertical(
             Static(f"Configure: {self.plugin_name}", classes="card-title"),
             Static(
@@ -3341,7 +3671,9 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
             Static("", id="pcfg-status", classes="pcfg-hint"),
             Horizontal(
                 Button("Save", variant="success", compact=True, id="pcfg-save"),
-                Button("Reset defaults", variant="default", compact=True, id="pcfg-reset"),
+                Button(
+                    "Reset defaults", variant="default", compact=True, id="pcfg-reset"
+                ),
                 Button("Cancel", variant="default", compact=True, id="pcfg-cancel"),
                 classes="pcfg-actions",
             ),
@@ -3402,6 +3734,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
                 return str(raw).lower() in ("1", "true", "yes", "on")
             if t in ("list", "dict"):
                 import json as _json
+
                 return _json.loads(raw)
         except Exception:
             return raw
@@ -3410,6 +3743,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
     def action_save(self) -> None:
         try:
             from tokenade.core.integration.plugin_config import PluginConfigManager
+
             mgr = PluginConfigManager()
             values = self._collect()
             errors = mgr.validate_config(self.plugin_name, values)
@@ -3436,6 +3770,7 @@ class PluginConfigScreen(Screen if _TEXTUAL_AVAILABLE else object):
     def _reset(self) -> None:
         try:
             from tokenade.core.integration.plugin_config import PluginConfigManager
+
             mgr = PluginConfigManager()
             defaults = mgr.get_defaults(self.plugin_name)
             mgr.save_config(self.plugin_name, defaults)

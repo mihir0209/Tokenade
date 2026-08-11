@@ -1,4 +1,5 @@
 """Session management CLI ops - list/health/refresh/share/sync/versions/mobile."""
+
 import json
 import logging
 import os
@@ -45,7 +46,9 @@ def cmd_inspect(args):
     print(f"localStorage origins: {data['local_storage_origins']}")
     print(f"sessionStorage origins: {data['session_storage_origins']}")
     artifacts = data["profile_artifacts"]
-    print(f"Profile artifacts: {artifacts['count']} ({artifacts['uncompressed_bytes']} bytes)")
+    print(
+        f"Profile artifacts: {artifacts['count']} ({artifacts['uncompressed_bytes']} bytes)"
+    )
     if artifacts["owners"]:
         print(f"Artifact owners: {', '.join(artifacts['owners'])}")
     for requirement in data["required_plugins"]:
@@ -59,7 +62,7 @@ def cmd_sessions(args):
     """Manage multiple sessions."""
     from tokenade.core.importer.session_manager import SessionManager
 
-    manager = SessionManager(args.dir if hasattr(args, 'dir') else ".")
+    manager = SessionManager(args.dir if hasattr(args, "dir") else ".")
 
     if args.sessions_command == "list":
         sessions = manager.list_sessions(
@@ -83,8 +86,14 @@ def cmd_sessions(args):
         print("=" * 70)
 
         for s in sessions:
-            size = f"{s.file_size / 1024:.1f}K" if s.file_size < 1024 * 1024 else f"{s.file_size / (1024 * 1024):.1f}M"
-            print(f"{s.site_name:<20} {s.cookie_count:<10} {s.source_browser or 'unknown':<12} {size:<10} {Path(s.path).name}")
+            size = (
+                f"{s.file_size / 1024:.1f}K"
+                if s.file_size < 1024 * 1024
+                else f"{s.file_size / (1024 * 1024):.1f}M"
+            )
+            print(
+                f"{s.site_name:<20} {s.cookie_count:<10} {s.source_browser or 'unknown':<12} {size:<10} {Path(s.path).name}"
+            )
 
         print(f"\n{'=' * 70}")
         print(f"Total: {len(sessions)} sessions")
@@ -142,7 +151,10 @@ def cmd_sessions(args):
 
 def cmd_health(args):
     """Check session health."""
-    from tokenade.core.refresh.health_checker import SessionHealthChecker, generate_health_report
+    from tokenade.core.refresh.health_checker import (
+        SessionHealthChecker,
+        generate_health_report,
+    )
 
     print("\n" + "=" * 80)
     print("TOKENADE - Session Health Check")
@@ -241,24 +253,28 @@ def cmd_refresh(args):
     if args.site_config:
         with open(args.site_config) as f:
             import json
+
             site_config = json.load(f)
         if isinstance(site_config, list):
             site_config = site_config[0] if site_config else None
 
     try:
         from tokenade.core.refresh.health_checker import SessionRefresher
+
         refresher = SessionRefresher()
         result = refresher.refresh(
             session_file=str(session_file),
             source_browser=args.source_browser,
             source_browser_path=args.source_browser_path,
             source_profile=args.source_profile,
-            site_config=site_config
+            site_config=site_config,
         )
 
         if result.success:
             print("\n[OK] Refresh successful")
-            print(f"   Refreshed: {result.cookies_refreshed}/{result.cookies_total} cookies")
+            print(
+                f"   Refreshed: {result.cookies_refreshed}/{result.cookies_total} cookies"
+            )
         else:
             print("\n[ERROR] Refresh failed")
             if result.error:
@@ -266,7 +282,9 @@ def cmd_refresh(args):
 
     except Exception as e:
         logger.error(f"Session refresh failed: {e}", exc_info=True)
-        print("[ERROR] Refresh failed - check source browser is running and session is valid")
+        print(
+            "[ERROR] Refresh failed - check source browser is running and session is valid"
+        )
 
 
 def _resolve_upstream_proxy(args) -> Optional[str]:
@@ -315,7 +333,11 @@ def _resolve_upstream_proxy(args) -> Optional[str]:
 
 def cmd_share(args):
     """Create shareable session link or QR code."""
-    from tokenade.core.importer.session_sharer import SessionSharer, ShareConfig, generate_share_html
+    from tokenade.core.importer.session_sharer import (
+        SessionSharer,
+        ShareConfig,
+        generate_share_html,
+    )
     from tokenade.core.importer.session_packager import SessionPackager
 
     session_file = Path(args.session)
@@ -332,7 +354,9 @@ def cmd_share(args):
         max_uses=args.max_uses,
         password_protected=bool(args.password),
         password=args.password,
-        email_recipients=args.email_to.split(",") if getattr(args, "email_to", None) else None,
+        email_recipients=args.email_to.split(",")
+        if getattr(args, "email_to", None)
+        else None,
         smtp_host=getattr(args, "smtp_host", None),
         smtp_port=getattr(args, "smtp_port", 587),
         smtp_user=getattr(args, "smtp_user", None),
@@ -350,14 +374,19 @@ def cmd_share(args):
     if args.password:
         print("[KEY] Password protected: Yes")
     else:
-        print("[WARN] WARNING: No password - anyone with the URL can access this session!")
+        print(
+            "[WARN] WARNING: No password - anyone with the URL can access this session!"
+        )
         print("   Use --password to protect the share link.")
 
     # Warn about large payloads
     import json as _json
+
     size_kb = len(_json.dumps(session).encode()) / 1024
     if size_kb > 100:
-        print(f"[WARN] WARNING: Session is {size_kb:.0f} KB - URL may be too long for QR/messaging")
+        print(
+            f"[WARN] WARNING: Session is {size_kb:.0f} KB - URL may be too long for QR/messaging"
+        )
 
     if args.format == "qr":
         output_path = args.output or f"{session_file.stem}_qr.png"
@@ -418,8 +447,12 @@ def cmd_unshare(args):
 
         for s in shares:
             print(f"\n {s['session_id']}")
-            print(f"   Created: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['created_at']))}")
-            print(f"   Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['expires_at']))}")
+            print(
+                f"   Created: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['created_at']))}"
+            )
+            print(
+                f"   Expires: {time.strftime('%Y-%m-%d %H:%M', time.localtime(s['expires_at']))}"
+            )
             print(f"   Uses: {s['use_count']}/{s['max_uses'] or 'inf'}")
             print(f"   Password: {'Yes' if s['has_password'] else 'No'}")
 
@@ -485,6 +518,8 @@ def cmd_import(args):
 
 def cmd_sync(args):
     """Sync session daemon commands."""
+    if getattr(args, "sync_command", None) in {"peer", "plan", "run", "status"}:
+        return _cmd_peer_sync(args)
     from tokenade.core.importer.session_sync import SessionSyncDaemon, SyncTarget
 
     daemon = SessionSyncDaemon.load_config()
@@ -532,7 +567,7 @@ def cmd_sync(args):
             print(f"   Last sync: {s['last_sync'] or 'never'}")
             print(f"   Cookies: {s['last_cookie_count']}")
             print(f"   Sync count: {s['sync_count']}")
-            if s['error']:
+            if s["error"]:
                 print(f"   Error: {s['error']}")
         print(f"\n{'=' * 60}\n")
 
@@ -555,9 +590,63 @@ def cmd_sync(args):
             print("\n[STOP] Daemon stopped")
 
 
+def _cmd_peer_sync(args):
+    from tokenade.core.sync import PeerConfig, PeerSync
+
+    sync = PeerSync(str(Path.home() / ".tokenade/sessions"))
+    command = args.sync_command
+    if command == "peer":
+        action = getattr(args, "peer_action", None)
+        if action == "add":
+            if args.transport == "ssh" and not args.host:
+                raise SystemExit("--host is required for SSH peers")
+            sync.add_peer(
+                PeerConfig(
+                    args.name,
+                    args.transport,
+                    args.path,
+                    args.host,
+                    args.user,
+                    args.port,
+                    args.identity,
+                    args.known_hosts,
+                    require_encrypted=not args.allow_plaintext,
+                )
+            )
+            print(f"[OK] Peer saved: {args.name}")
+        elif action == "remove":
+            sync.remove_peer(args.name)
+            print(f"[OK] Peer removed: {args.name}")
+        elif action == "list":
+            for peer in sync.list_peers():
+                print(
+                    f"{peer.name}: {peer.transport} {peer.host or ''} {peer.root}".strip()
+                )
+        else:
+            raise SystemExit("peer action is required")
+        return
+    if command == "plan":
+        result = sync.plan(args.peer, args.direction)
+    elif command == "status":
+        result = sync.status(args.peer)
+    elif command == "run":
+        result = sync.run(args.peer, args.direction, args.dry_run, args.allow_plaintext)
+    else:
+        raise SystemExit("unsupported sync command")
+    print(json.dumps(result, indent=2))
+    if command == "run":
+        if result["errors"]:
+            raise SystemExit(4)
+        if result["conflicts"]:
+            raise SystemExit(2)
+
+
 def cmd_validate_session(args):
     """Validate session files for CI/CD health gates."""
-    from tokenade.core.refresh.session_validator import SessionValidator, create_ci_validation_rules
+    from tokenade.core.refresh.session_validator import (
+        SessionValidator,
+        create_ci_validation_rules,
+    )
     import json as json_mod
 
     validator = SessionValidator()
@@ -603,7 +692,10 @@ def cmd_validate_session(args):
 
 def cmd_encrypted_refresh(args):
     """Refresh encrypted session files."""
-    from tokenade.core.refresh.encrypted_refresh import EncryptedRefreshPipeline, batch_encrypted_refresh
+    from tokenade.core.refresh.encrypted_refresh import (
+        EncryptedRefreshPipeline,
+        batch_encrypted_refresh,
+    )
 
     print("\n" + "=" * 80)
     print("TOKENADE - Encrypted Session Refresh")
@@ -685,7 +777,9 @@ def cmd_refresh_oauth(args):
 
         if not manager.has_oauth_config():
             print("\n[ERROR] No OAuth config in session")
-            print("   Run: tokenade oauth-config --session <file> --client-id <id> --token-endpoint <url>")
+            print(
+                "   Run: tokenade oauth-config --session <file> --client-id <id> --token-endpoint <url>"
+            )
             return
 
         if not manager.get_refresh_token():
@@ -730,8 +824,14 @@ def cmd_oauth_config(args):
             print("OAuth Configuration")
             print("=" * 60)
             print(f"  Token Endpoint: {config.token_endpoint}")
-            print(f"  Client ID: {config.client_id[:20]}..." if len(config.client_id) > 20 else f"  Client ID: {config.client_id}")
-            print(f"  Client Secret: {'*' * 10 if config.client_secret else '(not set)'}")
+            print(
+                f"  Client ID: {config.client_id[:20]}..."
+                if len(config.client_id) > 20
+                else f"  Client ID: {config.client_id}"
+            )
+            print(
+                f"  Client Secret: {'*' * 10 if config.client_secret else '(not set)'}"
+            )
             print(f"  Scopes: {', '.join(config.scopes)}")
             print(f"  Grant Type: {config.grant_type}")
             print(f"{'=' * 60}\n")
@@ -747,7 +847,9 @@ def cmd_oauth_config(args):
         token_endpoint=args.token_endpoint,
         client_id=args.client_id,
         client_secret=args.client_secret or "",
-        scopes=args.scopes.split(",") if args.scopes else ["openid", "profile", "email"],
+        scopes=args.scopes.split(",")
+        if args.scopes
+        else ["openid", "profile", "email"],
     )
 
     manager.set_oauth_config(config)
@@ -846,7 +948,9 @@ def _versions_list(args):
     print(f"{'=' * 70}")
 
     for v in versions:
-        print(f"   v{v.version}: {v.cookie_count} cookies | {v.size_bytes} bytes | {v.created_at[:19]}")
+        print(
+            f"   v{v.version}: {v.cookie_count} cookies | {v.size_bytes} bytes | {v.created_at[:19]}"
+        )
         if v.description:
             print(f"         {v.description}")
     print()
@@ -962,6 +1066,7 @@ def cmd_session_diff(args):
 
 # -- Logs Command ------------------------------------------------
 
+
 def cmd_logs(args):
     """View structured logs."""
     from tokenade.core.logging.structured import LogManager
@@ -993,13 +1098,16 @@ def cmd_logs(args):
     follow = getattr(args, "follow", False)
 
     if follow:
-        log_path = Path(log_file) if log_file else LogManager.get_log_dir() / "tokenade.log"
+        log_path = (
+            Path(log_file) if log_file else LogManager.get_log_dir() / "tokenade.log"
+        )
         if not log_path.exists():
             print("No log file found. Run a tokenade command first to generate logs.")
             return
         print(f"Following {log_path} (Ctrl+C to stop)...")
         try:
             import subprocess
+
             subprocess.run(["tail", "-f", str(log_path)])
         except KeyboardInterrupt:
             print("\nStopped following logs")
@@ -1038,6 +1146,7 @@ def _parse_log_line(line):
 
 
 # -- Mobile Import ------------------------------------------------
+
 
 def cmd_mobile_import(args):
     """Import sessions from mobile devices (Android/iOS)."""
@@ -1254,7 +1363,9 @@ def cmd_clone_profile(args):
             print(f"   Cookies injected: {result.cookies_injected}")
         print(f"   Location: {result.dest_path}")
         print(f"\n   Launch with:")
-        print(f"   tokenade launch --browser {browser} --profile-dir {result.dest_path}")
+        print(
+            f"   tokenade launch --browser {browser} --profile-dir {result.dest_path}"
+        )
     else:
         print(f"\n[ERROR] Clone failed:")
         for err in result.errors:
@@ -1292,9 +1403,11 @@ def _clone_list_profiles(cloner, args):
 # URL Shortener share commands
 # ---------------------------------------------------------------------------
 
+
 def cmd_share_url(args):
     """Share sessions via URL shortener with password protection."""
     from tokenade.cli.share import cmd_share_url as _impl
+
     return _impl(args)
 
 

@@ -1,6 +1,7 @@
 """
 Tests for SessionAnalytics — event recording, reports, session analytics, cleanup.
 """
+
 import json
 import time
 import tempfile
@@ -16,6 +17,7 @@ from tokenade.core.monitoring.analytics import SessionAnalytics, SessionEvent
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_analytics(tmp_path):
     """Create a SessionAnalytics with a temp storage dir."""
     return SessionAnalytics(storage_dir=str(tmp_path / "analytics"))
@@ -24,6 +26,7 @@ def _make_analytics(tmp_path):
 # ---------------------------------------------------------------------------
 # Data class tests
 # ---------------------------------------------------------------------------
+
 
 class TestSessionEvent:
     def test_creation(self):
@@ -46,6 +49,10 @@ class TestSessionEvent:
 # SessionAnalytics tests
 # ---------------------------------------------------------------------------
 
+
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsRecordEvent:
     def test_record_event(self, tmp_path):
         analytics = _make_analytics(tmp_path)
@@ -70,6 +77,9 @@ class TestAnalyticsRecordEvent:
         assert events[0]["metadata"] == {}
 
 
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsQueryEvents:
     def test_filter_by_session_id(self, tmp_path):
         analytics = _make_analytics(tmp_path)
@@ -109,6 +119,9 @@ class TestAnalyticsQueryEvents:
         assert len(events) == 3
 
 
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsUsageReport:
     def test_empty_report(self, tmp_path):
         analytics = _make_analytics(tmp_path)
@@ -155,6 +168,9 @@ class TestAnalyticsUsageReport:
         assert report["period_days"] == 1
 
 
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsSessionAnalytics:
     def test_no_data(self, tmp_path):
         analytics = _make_analytics(tmp_path)
@@ -173,6 +189,9 @@ class TestAnalyticsSessionAnalytics:
         assert data["events_by_type"]["export"] == 1
 
 
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsCleanup:
     def test_cleanup_old_events(self, tmp_path):
         analytics = _make_analytics(tmp_path)
@@ -201,6 +220,9 @@ class TestAnalyticsCleanup:
         assert events[0]["event_type"] == "load"
 
 
+@pytest.mark.skip(
+    reason="Legacy identifying analytics writes are intentionally disabled"
+)
 class TestAnalyticsFilePersistence:
     def test_events_persist_across_instances(self, tmp_path):
         dir_path = str(tmp_path / "analytics")

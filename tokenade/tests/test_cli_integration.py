@@ -2,6 +2,7 @@
 Integration tests for CLI workflows — end-to-end command execution.
 Tests that CLI commands produce correct output and side effects.
 """
+
 import json
 import time
 import tempfile
@@ -17,11 +18,19 @@ from tokenade.cli import main
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_session_file(tmp_dir, filename="test.tokenade", site_name="example.com"):
     session = {
         "cookies": [
-            {"name": "sid", "domain": ".example.com", "expires": time.time() + 3600,
-             "secure": True, "httpOnly": True, "sameSite": "Lax", "value": "abc"},
+            {
+                "name": "sid",
+                "domain": ".example.com",
+                "expires": time.time() + 3600,
+                "secure": True,
+                "httpOnly": True,
+                "sameSite": "Lax",
+                "value": "abc",
+            },
         ],
         "site_name": site_name,
         "metadata": {"site_name": site_name},
@@ -36,6 +45,7 @@ def _make_session_file(tmp_dir, filename="test.tokenade", site_name="example.com
 def _run_cli(*args, capsys):
     """Run the CLI with given args and capture output."""
     import sys
+
     with patch("sys.argv", ["tokenade", *args]):
         try:
             main()
@@ -47,6 +57,7 @@ def _run_cli(*args, capsys):
 # ---------------------------------------------------------------------------
 # Health command
 # ---------------------------------------------------------------------------
+
 
 class TestHealthCommand:
     def test_health_single_session(self, tmp_path, capsys):
@@ -69,6 +80,7 @@ class TestHealthCommand:
 # Sessions command
 # ---------------------------------------------------------------------------
 
+
 class TestSessionsCommand:
     def test_sessions_list(self, tmp_path, capsys):
         _make_session_file(str(tmp_path), "s1.tokenade", "site1.com")
@@ -83,7 +95,9 @@ class TestSessionsCommand:
 
     def test_sessions_stats(self, tmp_path, capsys):
         _make_session_file(str(tmp_path), "s1.tokenade")
-        out = _run_cli("sessions", "stats", str(Path(tmp_path) / "s1.tokenade"), capsys=capsys)
+        out = _run_cli(
+            "sessions", "stats", str(Path(tmp_path) / "s1.tokenade"), capsys=capsys
+        )
         assert "Session Statistics" in out.out
 
 
@@ -91,14 +105,19 @@ class TestSessionsCommand:
 # Monitor command
 # ---------------------------------------------------------------------------
 
+
 class TestMonitorCommand:
     def test_monitor_status_no_sessions(self, tmp_path, capsys):
-        out = _run_cli("monitor", "status", "--sessions-dir", str(tmp_path), capsys=capsys)
+        out = _run_cli(
+            "monitor", "status", "--sessions-dir", str(tmp_path), capsys=capsys
+        )
         assert "No sessions found" in out.out
 
     def test_monitor_status_with_sessions(self, tmp_path, capsys):
         _make_session_file(str(tmp_path))
-        out = _run_cli("monitor", "status", "--sessions-dir", str(tmp_path), capsys=capsys)
+        out = _run_cli(
+            "monitor", "status", "--sessions-dir", str(tmp_path), capsys=capsys
+        )
         assert "Session Monitor Status" in out.out
 
     def test_monitor_history_empty(self, capsys):
@@ -110,28 +129,34 @@ class TestMonitorCommand:
 # Analytics command
 # ---------------------------------------------------------------------------
 
-class TestAnalyticsCommand:
-    def test_analytics_report_empty(self, capsys):
-        out = _run_cli("analytics", "report", capsys=capsys)
-        assert "total_events" in out.out
 
-    def test_analytics_report_json(self, capsys):
+class TestAnalyticsCommand:
+    def test_analytics_report_empty(self, capsys, tmp_path, monkeypatch):
+        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
+        out = _run_cli("analytics", "report", capsys=capsys)
+        assert "total_operations" in out.out
+
+    def test_analytics_report_json(self, capsys, tmp_path, monkeypatch):
+        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
         out = _run_cli("analytics", "report", "--json", capsys=capsys)
         data = json.loads(out.out)
-        assert data["total_events"] == 0
+        assert data["total_operations"] == 0
 
-    def test_analytics_session_no_data(self, capsys):
-        out = _run_cli("analytics", "session", "nonexistent", capsys=capsys)
-        assert "tokenade analytics" in out.out
+    def test_analytics_status_disabled(self, capsys, tmp_path, monkeypatch):
+        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
+        out = _run_cli("analytics", "status", capsys=capsys)
+        assert json.loads(out.out)["enabled"] is False
 
-    def test_analytics_cleanup(self, capsys):
+    def test_analytics_cleanup(self, capsys, tmp_path, monkeypatch):
+        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
         out = _run_cli("analytics", "cleanup", capsys=capsys)
-        assert "Analytics data cleaned up" in out.out
+        assert json.loads(out.out)["removed"] == 0
 
 
 # ---------------------------------------------------------------------------
 # Config command
 # ---------------------------------------------------------------------------
+
 
 class TestConfigCommand:
     def test_config_show(self, capsys):
@@ -147,6 +172,7 @@ class TestConfigCommand:
 # Version
 # ---------------------------------------------------------------------------
 
+
 class TestVersion:
     def test_version(self, capsys):
         out = _run_cli("--version", capsys=capsys)
@@ -157,15 +183,19 @@ class TestVersion:
 # Refresh command
 # ---------------------------------------------------------------------------
 
+
 class TestRefreshCommand:
     def test_refresh_missing_session(self, capsys):
-        out = _run_cli("refresh", "-s", "/nonexistent.tokenade", "-b", "firefox", capsys=capsys)
+        out = _run_cli(
+            "refresh", "-s", "/nonexistent.tokenade", "-b", "firefox", capsys=capsys
+        )
         assert "not found" in out.out.lower() or "❌" in out.out
 
 
 # ---------------------------------------------------------------------------
 # Encrypt / Decrypt commands
 # ---------------------------------------------------------------------------
+
 
 class TestEncryptDecrypt:
     def test_encrypt_missing_file(self, capsys):
@@ -181,6 +211,7 @@ class TestEncryptDecrypt:
 # Plugin command
 # ---------------------------------------------------------------------------
 
+
 class TestPluginCommand:
     def test_plugin_list(self, capsys):
         out = _run_cli("plugin", "list", capsys=capsys)
@@ -190,6 +221,7 @@ class TestPluginCommand:
 # ---------------------------------------------------------------------------
 # Completion command
 # ---------------------------------------------------------------------------
+
 
 class TestCompletionCommand:
     def test_bash_completion(self, capsys):

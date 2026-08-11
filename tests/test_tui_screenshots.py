@@ -6,6 +6,7 @@ real data (marketplace plugins, sessions, vault entries, etc.).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -39,7 +40,12 @@ def isolated_tokenade(tmp_path, monkeypatch):
         "site_name": "example.com",
         "auth_status": "logged_in",
         "cookies": [
-            {"name": "sid", "value": "abc", "domain": ".example.com", "expires": 9999999999},
+            {
+                "name": "sid",
+                "value": "abc",
+                "domain": ".example.com",
+                "expires": 9999999999,
+            },
             {"name": "old", "value": "x", "domain": ".example.com", "expires": 1},
         ],
     }
@@ -48,30 +54,59 @@ def isolated_tokenade(tmp_path, monkeypatch):
     monkeypatch.setenv("TOKENADE_DIR", str(root))
     monkeypatch.setenv("TOKENADE_SESSIONS_DIR", str(sessions))
     monkeypatch.setenv("TOKENADE_VAULT_DIR", str(vault))
+    monkeypatch.setenv("TOKENADE_VAULT_KEY", base64.b64encode(b"k" * 32).decode())
     monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(analytics))
     monkeypatch.setenv("TOKENADE_PLUGINS_DIR", str(plugins))
 
     # Reload config module so paths pick up env
     import importlib
     import tokenade.tui.config as cfg
+
     importlib.reload(cfg)
     import tokenade.tui.views.sessions as sess_mod
+
     importlib.reload(sess_mod)
     import tokenade.tui.views.marketplace as mkt_mod
+
     importlib.reload(mkt_mod)
     import tokenade.tui.views.installed as inst_mod
+
     importlib.reload(inst_mod)
     import tokenade.tui.views.share as share_mod
+
     importlib.reload(share_mod)
     import tokenade.tui.views.settings as set_mod
+
     importlib.reload(set_mod)
     import tokenade.tui.app as app_mod
+
     importlib.reload(app_mod)
 
     # Seed vault with one entry
     from tokenade.core.vault.vault import SessionVault, VaultConfig
-    v = SessionVault(VaultConfig(vault_path=str(vault)))
+
+    v = SessionVault(
+        VaultConfig(
+            vault_path=str(vault), master_key=base64.b64encode(b"k" * 32).decode()
+        )
+    )
     v.store("vault-demo", b'{"cookies":[]}', metadata={"site": "demo"})
+
+    from tokenade.core.analytics import AnalyticsConfig, LocalAnalytics
+
+    a = LocalAnalytics(AnalyticsConfig(enabled=True, directory=str(analytics)))
+    for _ in range(5):
+        a.record(
+            "export",
+            "success",
+            dimensions={
+                "browser_family": "chromium",
+                "source_kind": "profile",
+                "encrypted": True,
+                "cookie_count_bucket": "1-10",
+                "storage_present": False,
+            },
+        )
 
     return {
         "root": root,
@@ -134,12 +169,15 @@ class TestTUIScreenshots:
             },
         ]
         app_mod = isolated_tokenade["app_mod"]
-        with patch(
-            "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
-            return_value=fake_plugins,
-        ), patch(
-            "tokenade.core.integration.plugin_registry.PluginRegistry.search",
-            return_value=fake_plugins,
+        with (
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
+                return_value=fake_plugins,
+            ),
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.search",
+                return_value=fake_plugins,
+            ),
         ):
             app = app_mod.TokenadeTUI()
             async with app.run_test(size=(120, 40)) as pilot:
@@ -184,9 +222,13 @@ class TestTUIScreenshots:
                     host = app.query_one("#sessions-list")
                 tiles = list(host.query("SessionTile"))
                 text_blob = _widget_text(host)
-                assert tiles or "example-session" in text_blob or "example-session" in svg
+                assert (
+                    tiles or "example-session" in text_blob or "example-session" in svg
+                )
                 if tiles:
-                    assert any(t.session.get("name") == "example-session" for t in tiles)
+                    assert any(
+                        t.session.get("name") == "example-session" for t in tiles
+                    )
 
     @pytest.mark.asyncio
     async def test_vault_tab_lists_entries(self, isolated_tokenade):
@@ -225,7 +267,9 @@ class TestTUIScreenshots:
                 svg = _svg_text(app)
                 _save_shot("04-settings", svg)
                 sessions_txt = str(app.query_one("#settings-sessions-dir").content)
-                assert str(cfg.SESSIONS_DIR) in sessions_txt or "sessions" in sessions_txt
+                assert (
+                    str(cfg.SESSIONS_DIR) in sessions_txt or "sessions" in sessions_txt
+                )
                 assert "/tmp/real-sessions" not in sessions_txt
                 assert "/tmp/real-sessions" not in svg
                 # Real controls present
@@ -236,14 +280,17 @@ class TestTUIScreenshots:
     @pytest.mark.asyncio
     async def test_share_list_renders(self, isolated_tokenade):
         app_mod = isolated_tokenade["app_mod"]
-        with patch(
-            "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
-            return_value=[],
-        ), patch(
-            "tokenade.core.sharing.url_shortener.SessionURLShortener.list_shares",
-            return_value=[
-                {"short_id": "abc123xyz", "current_uses": 0, "max_uses": 5},
-            ],
+        with (
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
+                return_value=[],
+            ),
+            patch(
+                "tokenade.core.sharing.url_shortener.SessionURLShortener.list_shares",
+                return_value=[
+                    {"short_id": "abc123xyz", "current_uses": 0, "max_uses": 5},
+                ],
+            ),
         ):
             app = app_mod.TokenadeTUI()
             async with app.run_test(size=(120, 40)) as pilot:
@@ -283,12 +330,15 @@ class TestTUIScreenshots:
             "verified": False,
             "_registry": "official",
         }
-        with patch(
-            "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
-            return_value=[plugin],
-        ), patch(
-            "tokenade.core.integration.plugin_registry.PluginRegistry.get_plugin_details",
-            return_value=plugin,
+        with (
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
+                return_value=[plugin],
+            ),
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.get_plugin_details",
+                return_value=plugin,
+            ),
         ):
             app = app_mod.TokenadeTUI()
             async with app.run_test(size=(120, 40)) as pilot:
@@ -306,24 +356,9 @@ class TestTUIScreenshots:
     @pytest.mark.asyncio
     async def test_analytics_report_renders(self, isolated_tokenade):
         app_mod = isolated_tokenade["app_mod"]
-        from tokenade.core.analytics.engine import AnalyticsReport
-
-        fake = AnalyticsReport(
-            period_days=30,
-            total_events=12,
-            total_exports=5,
-            total_loads=4,
-            total_shares=2,
-            total_syncs=1,
-            success_rate=0.95,
-            top_sites=[{"site": "example.com", "events": 7}],
-        )
         with patch(
             "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
             return_value=[],
-        ), patch(
-            "tokenade.core.analytics.engine.AnalyticsEngine.generate_report",
-            return_value=fake,
         ):
             app = app_mod.TokenadeTUI()
             async with app.run_test(size=(120, 40)) as pilot:
@@ -335,7 +370,7 @@ class TestTUIScreenshots:
                 svg = _svg_text(app)
                 _save_shot("06-analytics", svg)
                 text_blob = _widget_text(app.query_one("#analytics-result"))
-                assert "Total events: 12" in text_blob or "12" in text_blob
+                assert "Operations: 5" in text_blob or "5" in text_blob
 
 
 @pytest.mark.skipif(not _textual_available, reason="textual not installed")
@@ -345,6 +380,7 @@ class TestConfigPaths:
         monkeypatch.delenv("TOKENADE_SESSIONS_DIR", raising=False)
         import importlib
         import tokenade.tui.config as cfg
+
         importlib.reload(cfg)
         assert cfg.SESSIONS_DIR == Path.home() / ".tokenade" / "sessions"
         assert cfg.VAULT_DIR == Path.home() / ".tokenade" / "vault"
@@ -352,13 +388,18 @@ class TestConfigPaths:
 
     def test_load_sessions_helper(self, tmp_path):
         from tokenade.tui.views.sessions import load_sessions
+
         sdir = tmp_path / "sessions"
         sdir.mkdir()
-        (sdir / "a.tokenade").write_text(json.dumps({
-            "site_name": "a.com",
-            "auth_status": "logged_in",
-            "cookies": [{"expires": 9999999999}],
-        }))
+        (sdir / "a.tokenade").write_text(
+            json.dumps(
+                {
+                    "site_name": "a.com",
+                    "auth_status": "logged_in",
+                    "cookies": [{"expires": 9999999999}],
+                }
+            )
+        )
         rows = load_sessions(sdir)
         assert len(rows) == 1
         assert rows[0]["name"] == "a"

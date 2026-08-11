@@ -59,7 +59,8 @@ class TestCliRunner:
         assert "--domains" in args and "google.com" in args
         assert "--output" in args and "/tmp/x.tokenade" in args
         assert "--full" in args
-        assert "--encrypt-password" in args
+        assert "--encrypt-password" not in args
+        assert "secret" not in args
         assert "--collect-fingerprint" in args
         bare = cmd_export(browser_name="chrome", full=False, no_plugin=True)
         assert "--full" not in bare

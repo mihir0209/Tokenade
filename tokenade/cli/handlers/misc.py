@@ -27,7 +27,9 @@ def cmd_monitor(args):
     """Session monitoring management."""
     from pathlib import Path
 
-    action = getattr(args, "monitor_command", None) or getattr(args, "monitor_action", None)
+    action = getattr(args, "monitor_command", None) or getattr(
+        args, "monitor_action", None
+    )
 
     if action == "start":
         _monitor_start(args)
@@ -40,7 +42,9 @@ def cmd_monitor(args):
     elif action == "predict":
         _monitor_predict(args)
     else:
-        print("[ERROR] Specify a monitor subcommand: status, start, stop, history, predict")
+        print(
+            "[ERROR] Specify a monitor subcommand: status, start, stop, history, predict"
+        )
 
 
 def _monitor_start(args):
@@ -88,6 +92,7 @@ def _monitor_stop():
     """Stop a running monitor (by PID file)."""
     import os
     import signal
+
     pid_file = Path("~/.tokenade/monitor.pid").expanduser()
     if not pid_file.exists():
         print("[ERROR] No monitor process found (no PID file)")
@@ -186,21 +191,35 @@ def _monitor_predict(args):
 
 
 def cmd_analytics(args):
-    """Session usage analytics."""
-    from tokenade.core.monitoring.analytics import SessionAnalytics
+    """Privacy-safe local analytics commands."""
+    from tokenade.core.analytics import LocalAnalytics
 
-    analytics = SessionAnalytics()
-
-    if args.analytics_command == "report":
-        days = getattr(args, "days", 30)
-        report = analytics.get_usage_report(days=days)
-        print(json.dumps(report, indent=2))
-    elif args.analytics_command == "cleanup":
-        analytics.cleanup()
-        print("[OK] Analytics data cleaned up")
+    analytics = LocalAnalytics()
+    command = getattr(args, "analytics_command", None)
+    if command == "status":
+        result = analytics.status()
+    elif command == "enable":
+        analytics.enable(args.retention_days)
+        result = analytics.status()
+    elif command == "disable":
+        analytics.disable()
+        result = analytics.status()
+    elif command == "report":
+        result = analytics.report(args.days)
+    elif command == "inspect":
+        result = analytics.inspect(args.days, args.limit)
+    elif command == "export":
+        result = {
+            "output": str(analytics.export_csv(args.output, args.days, args.raw)),
+            "raw": args.raw,
+        }
+    elif command == "cleanup":
+        result = {"removed": analytics.cleanup(args.max_age)}
+    elif command == "delete":
+        result = {"deleted": analytics.delete_all()}
     else:
-        print("Usage: tokenade analytics {report|cleanup}")
-        print("Usage: tokenade analytics {report|cleanup}")
+        raise SystemExit("analytics action is required")
+    print(json.dumps(result, indent=2))
 
 
 def cmd_daemon(args):
@@ -217,8 +236,9 @@ def cmd_daemon(args):
         print("[OK] Daemon stopped")
     elif args.daemon_action == "status":
         import json
+
         status = daemon.status()
-        if hasattr(args, 'json') and args.json:
+        if hasattr(args, "json") and args.json:
             print(json.dumps(status, indent=2))
         else:
             print("=" * 60)

@@ -14,10 +14,10 @@ Verify:
 
 ```bash
 tokenade --version
-# tokenade 1.1.94
+# tokenade 1.2.0
 ```
 
-This guide tracks the published PyPI line around `tokenade==1.1.94` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install.
+This guide tracks the published PyPI line around `tokenade==1.2.0` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install. See `VAULT_SYNC_ANALYTICS.md` for the mature local data workflows.
 
 ## Quick Start
 

@@ -179,6 +179,9 @@ tokenade encrypt -i discord.tokenade -o discord.tokenade.enc -p "my-secret"
 
 Full command list: `tokenade --help` and `tokenade <command> -h`. Start with [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); release hardening work is tracked in [`docs/RELEASE_HARDENING.md`](docs/RELEASE_HARDENING.md).
 
+Mature Vault, peer Sync, and local Analytics workflows are documented in
+[`docs/VAULT_SYNC_ANALYTICS.md`](docs/VAULT_SYNC_ANALYTICS.md).
+
 ---
 
 ## What works (evidence-based)

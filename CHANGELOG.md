@@ -4,6 +4,19 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-08-10
+
+### Added
+- Transactional keyring-backed Session Vault with portable encrypted backups.
+- Hash-based local/strict-SSH peer Sync with persisted three-way conflict state.
+- Opt-in privacy-safe local SQLite Analytics with real operation instrumentation.
+- End-to-end Vault, Sync, and Analytics CLI/TUI workflows.
+
+### Removed
+- Unsafe mtime conflict resolution, fail-open Vault crypto, and identifying JSONL analytics.
+
+---
+
 ## [1.1.94] - 2026-08-10
 
 ### Changed

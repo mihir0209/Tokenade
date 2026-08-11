@@ -95,7 +95,9 @@ def run_tokenade(
     run_env.setdefault("PYTHONUNBUFFERED", "1")
 
     if background:
-        log_path = _bg_log_dir() / f"{int(time.time())}_{args[0] if args else 'cmd'}.log"
+        log_path = (
+            _bg_log_dir() / f"{int(time.time())}_{args[0] if args else 'cmd'}.log"
+        )
         try:
             log_f = open(log_path, "w", buffering=1)
             log_f.write(f"$ {format_cli_display(argv)}\n\n")
@@ -161,8 +163,8 @@ def run_tokenade(
             stderr=completed.stderr or "",
         )
     except subprocess.TimeoutExpired as e:
-        out = (e.stdout or b"")
-        err = (e.stderr or b"")
+        out = e.stdout or b""
+        err = e.stderr or b""
         if isinstance(out, bytes):
             out = out.decode(errors="replace")
         if isinstance(err, bytes):
@@ -184,11 +186,12 @@ def run_tokenade_async(
     on_done: Callable[[CliResult], None],
     timeout: Optional[float] = None,
     background: bool = False,
+    env: Optional[dict] = None,
 ) -> threading.Thread:
     """Fire-and-forget worker thread; calls on_done(result) on completion."""
 
     def _worker():
-        result = run_tokenade(args, timeout=timeout, background=background)
+        result = run_tokenade(args, timeout=timeout, background=background, env=env)
         try:
             on_done(result)
         except Exception:
@@ -201,6 +204,87 @@ def run_tokenade_async(
 
 def cmd_health(session_file: str) -> List[str]:
     return ["health", "-s", session_file]
+
+
+def cmd_vault(
+    action: str,
+    *,
+    vault_path: str,
+    name: str = "",
+    file: str = "",
+    output: str = "",
+    replace: bool = False,
+    overwrite: bool = False,
+) -> List[str]:
+    args = ["vault", "--vault-path", vault_path]
+    args.append(action)
+    if action in {"store", "retrieve", "delete", "restore"} and name:
+        args.append(name)
+    if action == "store":
+        args.append(file)
+    if output:
+        args.extend(["--output", output])
+    if replace:
+        args.append("--replace")
+    if overwrite:
+        args.append("--overwrite")
+    args.append("--json")
+    return args
+
+
+def cmd_sync_peer(
+    action: str,
+    *,
+    name: str,
+    transport: str = "local",
+    path: str = "",
+    host: str = "",
+    user: str = "",
+    identity: str = "",
+    allow_plaintext: bool = False,
+) -> List[str]:
+    if action == "add":
+        args = ["sync", "peer", "add", name, "--transport", transport, "--path", path]
+        if host:
+            args.extend(["--host", host])
+        if user:
+            args.extend(["--user", user])
+        if identity:
+            args.extend(["--identity", identity])
+        if allow_plaintext:
+            args.append("--allow-plaintext")
+        return args
+    return ["sync", "peer", action, name]
+
+
+def cmd_sync_action(
+    action: str, peer: str, *, direction: str = "two-way", allow_plaintext: bool = False
+) -> List[str]:
+    args = ["sync", action, peer]
+    if action in {"plan", "run"}:
+        args.extend(["--direction", direction, "--json"])
+    if action == "run" and allow_plaintext:
+        args.append("--allow-plaintext")
+    if action == "status":
+        args.append("--json")
+    return args
+
+
+def cmd_analytics(
+    action: str, *, days: int = 30, retention_days: int = 30, output: str = ""
+) -> List[str]:
+    args = ["analytics", action]
+    if action == "enable":
+        args.extend(["--retention-days", str(retention_days)])
+    elif action in {"report", "inspect"}:
+        args.extend(["--days", str(days)])
+    elif action == "cleanup":
+        args.extend(["--max-age", str(days)])
+    elif action == "export":
+        args.extend(["--output", output, "--days", str(days)])
+    elif action == "delete":
+        args.append("--yes")
+    return args
 
 
 def cmd_launch(
@@ -242,8 +326,10 @@ def cmd_load(
 ) -> List[str]:
     args = [
         "load",
-        "--file", session_file,
-        "--stealth-level", stealth_level,
+        "--file",
+        session_file,
+        "--stealth-level",
+        stealth_level,
     ]
     if visible:
         args.append("--visible")
@@ -309,8 +395,6 @@ def cmd_export(
         args.append("--full")
     if cdp_port not in ("", None, 0, "0"):
         args.extend(["--cdp-port", str(cdp_port)])
-    if encrypt_password:
-        args.extend(["--encrypt-password", encrypt_password])
     if plugin:
         args.extend(["--plugin", plugin])
     if proxy_plugin:
@@ -339,8 +423,6 @@ def cmd_convert(
         args.extend(["--format", format_hint])
     if encrypt:
         args.append("--encrypt")
-    if encrypt_password:
-        args.extend(["--encrypt-password", encrypt_password])
     if domain:
         args.extend(["--domain", domain])
     return args
@@ -446,6 +528,7 @@ def copy_text(text: str) -> tuple[bool, str]:
     # 4) OSC 52 (works in many modern terminals / tmux with set-clipboard)
     try:
         import base64
+
         b64 = base64.b64encode(text.encode()).decode()
         # wrap for tmux if needed
         seq = f"\033]52;c;{b64}\a"

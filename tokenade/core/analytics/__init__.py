@@ -1,4 +1,19 @@
-"""Session analytics engine."""
-from tokenade.core.analytics.engine import AnalyticsEngine, AnalyticsEvent, AnalyticsReport, SiteStats
+"""Privacy-safe local analytics."""
 
-__all__ = ["AnalyticsEngine", "AnalyticsEvent", "AnalyticsReport", "SiteStats"]
+from tokenade.core.analytics.engine import (
+    AnalyticsConfig,
+    AnalyticsEngine,
+    AnalyticsOperation,
+    AnalyticsOutcome,
+    LocalAnalytics,
+    record_local,
+)
+
+__all__ = [
+    "AnalyticsConfig",
+    "AnalyticsEngine",
+    "AnalyticsOperation",
+    "AnalyticsOutcome",
+    "LocalAnalytics",
+    "record_local",
+]

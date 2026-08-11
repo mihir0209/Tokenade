@@ -4,6 +4,7 @@ Session Analytics — Track usage events, generate reports.
 Records export, load, refresh, health_check, and proxy events.
 Provides usage reports and session lifetime metrics.
 """
+
 import json
 import time
 import logging
@@ -18,9 +19,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SessionEvent:
     """A recorded session event."""
+
     timestamp: float
     session_id: str
-    event_type: str  # export, load, refresh, health_check, proxy_start, proxy_stop, error
+    event_type: (
+        str  # export, load, refresh, health_check, proxy_start, proxy_stop, error
+    )
     metadata: Dict = field(default_factory=dict)
 
 
@@ -28,14 +32,17 @@ class SessionAnalytics:
     """Track and report on session usage patterns."""
 
     EVENT_TYPES = (
-        "export", "load", "refresh", "health_check",
-        "proxy_start", "proxy_stop", "error",
+        "export",
+        "load",
+        "refresh",
+        "health_check",
+        "proxy_start",
+        "proxy_stop",
+        "error",
     )
 
     def __init__(self, storage_dir: Optional[str] = None):
-        self.storage_dir = Path(
-            storage_dir or "~/.tokenade/analytics"
-        ).expanduser()
+        self.storage_dir = Path(storage_dir or "~/.tokenade/analytics").expanduser()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self._events_file = self.storage_dir / "events.jsonl"
         self._sessions_file = self.storage_dir / "sessions.json"
@@ -46,7 +53,10 @@ class SessionAnalytics:
         event_type: str,
         metadata: Optional[Dict] = None,
     ):
-        """Record a session event."""
+        """Deprecated identifying writer; use tokenade.core.analytics.LocalAnalytics."""
+        raise RuntimeError(
+            "SessionAnalytics is disabled because its legacy schema stores identifiers and arbitrary metadata"
+        )
         event = SessionEvent(
             timestamp=time.time(),
             session_id=session_id,
@@ -109,13 +119,14 @@ class SessionAnalytics:
             "total_sessions": len(sessions),
             "events_by_type": dict(events_by_type),
             "top_sessions": [
-                {"session_id": sid, "event_count": count}
-                for sid, count in top_sessions
+                {"session_id": sid, "event_count": count} for sid, count in top_sessions
             ],
             "daily_activity": daily_activity,
             "avg_session_lifetime_hours": round(
                 sum(lifetimes.values()) / len(lifetimes) / 3600, 1
-            ) if lifetimes else 0.0,
+            )
+            if lifetimes
+            else 0.0,
         }
 
     def get_session_analytics(self, session_id: str) -> Dict:
@@ -138,25 +149,12 @@ class SessionAnalytics:
         }
 
     def cleanup(self, max_age_days: int = 90):
-        """Remove events older than max_age_days."""
-        cutoff = time.time() - (max_age_days * 86400)
-        events = self._load_events()
-        kept = [e for e in events if e["timestamp"] >= cutoff]
-        self._save_events(kept)
-        removed = len(events) - len(kept)
-        if removed:
-            logger.info(f"Cleaned up {removed} old analytics events")
+        raise RuntimeError(
+            "SessionAnalytics is disabled; use LocalAnalytics cleanup/delete commands"
+        )
 
     def _append_event(self, event: SessionEvent):
-        """Append an event to the events file."""
-        record = {
-            "timestamp": event.timestamp,
-            "session_id": event.session_id,
-            "event_type": event.event_type,
-            "metadata": event.metadata,
-        }
-        with open(self._events_file, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        raise RuntimeError("Legacy identifying analytics persistence is disabled")
 
     def _load_events(self) -> List[Dict]:
         """Load all events from the events file."""
@@ -174,10 +172,7 @@ class SessionAnalytics:
         return events
 
     def _save_events(self, events: List[Dict]):
-        """Save events to the events file."""
-        with open(self._events_file, "w") as f:
-            for e in events:
-                f.write(json.dumps(e) + "\n")
+        raise RuntimeError("Legacy identifying analytics persistence is disabled")
 
     def _calculate_lifetimes(self, events: List[Dict]) -> Dict[str, float]:
         """Calculate session lifetimes from first to last event."""
