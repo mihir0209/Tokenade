@@ -126,34 +126,6 @@ class TestMonitorCommand:
 
 
 # ---------------------------------------------------------------------------
-# Analytics command
-# ---------------------------------------------------------------------------
-
-
-class TestAnalyticsCommand:
-    def test_analytics_report_empty(self, capsys, tmp_path, monkeypatch):
-        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
-        out = _run_cli("analytics", "report", capsys=capsys)
-        assert "total_operations" in out.out
-
-    def test_analytics_report_json(self, capsys, tmp_path, monkeypatch):
-        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
-        out = _run_cli("analytics", "report", "--json", capsys=capsys)
-        data = json.loads(out.out)
-        assert data["total_operations"] == 0
-
-    def test_analytics_status_disabled(self, capsys, tmp_path, monkeypatch):
-        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
-        out = _run_cli("analytics", "status", capsys=capsys)
-        assert json.loads(out.out)["enabled"] is False
-
-    def test_analytics_cleanup(self, capsys, tmp_path, monkeypatch):
-        monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(tmp_path))
-        out = _run_cli("analytics", "cleanup", capsys=capsys)
-        assert json.loads(out.out)["removed"] == 0
-
-
-# ---------------------------------------------------------------------------
 # Config command
 # ---------------------------------------------------------------------------
 

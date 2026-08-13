@@ -42,7 +42,7 @@ except ImportError:
         pass
 
 
-from tokenade.tui.config import TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, ANALYTICS_DIR, PLUGINS_DIR
+from tokenade.tui.config import TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, PLUGINS_DIR
 from tokenade.tui.views.base import BaseView
 
 
@@ -191,14 +191,13 @@ class SettingsView(BaseView):
             Vertical(
                 Static("Directories", classes="section-title"),
                 Static(
-                    "Where Tokenade keeps jars, vault ciphertext, analytics, and plugins on this machine.",
+                    "Where Tokenade keeps sessions, vault ciphertext, and plugins on this machine.",
                     classes="section-help",
                 ),
                 Vertical(
                     Static(f"home       {TOKENADE_DIR}", id="settings-tokenade-dir", classes="path-line"),
                     Static(f"sessions   {SESSIONS_DIR}", id="settings-sessions-dir", classes="path-line"),
                     Static(f"vault      {VAULT_DIR}", id="settings-vault-dir", classes="path-line"),
-                    Static(f"analytics  {ANALYTICS_DIR}", id="settings-analytics-dir", classes="path-line"),
                     Static(f"plugins    {PLUGINS_DIR}", id="settings-plugins-dir", classes="path-line"),
                     classes="path-grid",
                 ),

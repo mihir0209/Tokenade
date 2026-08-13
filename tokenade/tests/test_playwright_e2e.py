@@ -8,7 +8,6 @@ Tests the full tokenade pipeline with actual Chromium browser:
 - Session health with real cookie expiry
 - Session rotation with real sessions
 - Monitor daemon lifecycle
-- Analytics recording
 """
 import json
 import time
@@ -504,56 +503,6 @@ class TestMonitorDaemonE2E:
 
         events = monitor.get_event_history()
         assert isinstance(events, list)
-
-
-# ---------------------------------------------------------------------------
-# Analytics E2E
-# ---------------------------------------------------------------------------
-
-@pytest.mark.skip(reason="Legacy identifying analytics writer is disabled")
-class TestAnalyticsE2E:
-    def test_record_and_report(self, tmp_path):
-        from tokenade.core.monitoring.analytics import SessionAnalytics
-
-        analytics = SessionAnalytics(storage_dir=str(tmp_path / "analytics"))
-
-        # Record a series of events
-        analytics.record_event("gmail", "export", {"browser": "firefox"})
-        analytics.record_event("gmail", "load")
-        analytics.record_event("github", "export")
-        analytics.record_event("gmail", "refresh")
-
-        report = analytics.get_usage_report()
-        assert report["total_events"] == 4
-        assert report["total_sessions"] == 2
-        assert report["events_by_type"]["export"] == 2
-
-    def test_session_analytics(self, tmp_path):
-        from tokenade.core.monitoring.analytics import SessionAnalytics
-
-        analytics = SessionAnalytics(storage_dir=str(tmp_path / "analytics"))
-
-        analytics.record_event("s1", "export")
-        analytics.record_event("s1", "load")
-        analytics.record_event("s1", "health_check")
-
-        data = analytics.get_session_analytics("s1")
-        assert data["total_events"] == 3
-        assert "lifespan_hours" in data
-
-    def test_analytics_persistence(self, tmp_path):
-        from tokenade.core.monitoring.analytics import SessionAnalytics
-
-        storage = str(tmp_path / "analytics")
-
-        a1 = SessionAnalytics(storage_dir=storage)
-        a1.record_event("s1", "export")
-        a1.record_event("s2", "load")
-
-        # New instance should see the events
-        a2 = SessionAnalytics(storage_dir=storage)
-        events = a2.get_events()
-        assert len(events) == 2
 
 
 # ---------------------------------------------------------------------------

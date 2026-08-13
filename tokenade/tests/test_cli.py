@@ -216,7 +216,6 @@ class TestParserSurface(unittest.TestCase):
         "sync",
         "monitor",
         "container",
-        "analytics",
         "refresh-oauth",
         "oauth-config",
         "batch-refresh",

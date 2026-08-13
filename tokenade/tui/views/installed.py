@@ -79,7 +79,8 @@ class InstalledRow(Widget if _OK else object):
         name = p.get("name", "?")
         version = p.get("version", "?")
         state = p.get("state", "unknown")
-        enabled = "on" if p.get("enabled") else "off"
+        enabled_value = p.get("enabled")
+        enabled = "unknown" if enabled_value is None else "on" if enabled_value else "off"
         err = p.get("error")
         info = f"{name}  v{version}  [{state}]  {enabled}"
         if err:

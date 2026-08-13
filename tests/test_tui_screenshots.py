@@ -31,9 +31,8 @@ def isolated_tokenade(tmp_path, monkeypatch):
     root = tmp_path / ".tokenade"
     sessions = root / "sessions"
     vault = root / "vault"
-    analytics = root / "analytics"
     plugins = root / "plugins"
-    for d in (sessions, vault, analytics, plugins):
+    for d in (sessions, vault, plugins):
         d.mkdir(parents=True)
 
     sample = {
@@ -55,7 +54,6 @@ def isolated_tokenade(tmp_path, monkeypatch):
     monkeypatch.setenv("TOKENADE_SESSIONS_DIR", str(sessions))
     monkeypatch.setenv("TOKENADE_VAULT_DIR", str(vault))
     monkeypatch.setenv("TOKENADE_VAULT_KEY", base64.b64encode(b"k" * 32).decode())
-    monkeypatch.setenv("TOKENADE_ANALYTICS_DIR", str(analytics))
     monkeypatch.setenv("TOKENADE_PLUGINS_DIR", str(plugins))
 
     # Reload config module so paths pick up env
@@ -92,27 +90,10 @@ def isolated_tokenade(tmp_path, monkeypatch):
     )
     v.store("vault-demo", b'{"cookies":[]}', metadata={"site": "demo"})
 
-    from tokenade.core.analytics import AnalyticsConfig, LocalAnalytics
-
-    a = LocalAnalytics(AnalyticsConfig(enabled=True, directory=str(analytics)))
-    for _ in range(5):
-        a.record(
-            "export",
-            "success",
-            dimensions={
-                "browser_family": "chromium",
-                "source_kind": "profile",
-                "encrypted": True,
-                "cookie_count_bucket": "1-10",
-                "storage_present": False,
-            },
-        )
-
     return {
         "root": root,
         "sessions": sessions,
         "vault": vault,
-        "analytics": analytics,
         "app_mod": app_mod,
         "cfg": cfg,
     }
@@ -182,9 +163,16 @@ class TestTUIScreenshots:
             app = app_mod.TokenadeTUI()
             async with app.run_test(size=(120, 40)) as pilot:
                 await pilot.pause()
-                # Force reload after mount in case first load raced
-                app._load_data()
+                app.action_show_marketplace()
                 await pilot.pause()
+                for _ in range(20):
+                    try:
+                        host = app.query_one("#plugin-grid")
+                    except Exception:
+                        host = app.query_one("#plugin-list")
+                    if list(host.query("PluginCard")):
+                        break
+                    await pilot.pause(0.05)
                 svg = _svg_text(app)
                 _save_shot("01-marketplace", svg)
                 # Prefer grid; fall back to list
@@ -248,6 +236,25 @@ class TestTUIScreenshots:
                 _save_shot("03-vault", svg)
                 text_blob = _widget_text(app.query_one("#vault-list"))
                 assert "vault-demo" in text_blob or "vault-demo" in svg
+                for selector in (
+                    "#vault-passphrase",
+                    "#vault-backup",
+                    "#vault-restore",
+                    "#vault-verify",
+                ):
+                    widget = app.query_one(selector)
+                    assert widget.region.width > 0
+                    assert widget.region.y < app.screen.region.height
+                log = app.query_one("#vault-log")
+                assert log.region.height <= app.screen.region.height * 0.30
+                selector = app.query_one("#vault-session-select")
+                assert selector.region.width > 0
+                app._refresh_vault_session_select()
+                selector.value = str(isolated_tokenade["sessions"] / "example-session.tokenade")
+                await pilot.pause()
+                assert app.query_one("#vault-file").value.endswith(
+                    "example-session.tokenade"
+                )
 
     @pytest.mark.asyncio
     async def test_settings_shows_canonical_paths(self, isolated_tokenade):
@@ -354,24 +361,64 @@ class TestTUIScreenshots:
                 assert "authentication" in body or "authentication" in svg
 
     @pytest.mark.asyncio
-    async def test_analytics_report_renders(self, isolated_tokenade):
+    async def test_sync_plan_rejects_unknown_peer_without_subprocess(self, isolated_tokenade):
+        app_mod = isolated_tokenade["app_mod"]
+        with (
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
+                return_value=[],
+            ),
+            patch.object(app_mod, "run_tokenade_async") as runner,
+        ):
+            app = app_mod.TokenadeTUI()
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app.action_show_sync()
+                await pilot.pause()
+                path = app.query_one("#sync-path-input")
+                assert path.region.width > 0
+                assert path.region.y < app.screen.region.height
+                log = app.query_one("#sync-log")
+                assert log.region.height <= app.screen.region.height * 0.30
+                app.query_one("#sync-peer-name").value = "missing-peer"
+                await pilot.click("#sync-plan")
+                await pilot.pause()
+
+                assert "not configured" in _widget_text(
+                    app.query_one("#sync-result")
+                )
+
+        runner.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vault_and_sync_primary_actions_remain_visible_on_compact_terminal(
+        self, isolated_tokenade
+    ):
         app_mod = isolated_tokenade["app_mod"]
         with patch(
             "tokenade.core.integration.plugin_registry.PluginRegistry.get_popular",
             return_value=[],
         ):
             app = app_mod.TokenadeTUI()
-            async with app.run_test(size=(120, 40)) as pilot:
+            async with app.run_test(size=(80, 24)) as pilot:
                 await pilot.pause()
-                app.action_show_analytics()
+                app.action_show_vault()
                 await pilot.pause()
-                app._analytics_report()
-                await pilot.pause()
-                svg = _svg_text(app)
-                _save_shot("06-analytics", svg)
-                text_blob = _widget_text(app.query_one("#analytics-result"))
-                assert "Operations: 5" in text_blob or "5" in text_blob
+                for selector in ("#vault-backup", "#vault-restore", "#vault-verify"):
+                    widget = app.query_one(selector)
+                    assert widget.region.width > 0
+                    assert widget.region.y < app.screen.region.height
+                vault_log = app.query_one("#vault-log")
+                assert vault_log.region.height <= app.screen.region.height * 0.30
 
+                app.action_show_sync()
+                await pilot.pause()
+                for selector in ("#sync-save-peer", "#sync-plan", "#sync-bidir"):
+                    widget = app.query_one(selector)
+                    assert widget.region.width > 0
+                    assert widget.region.y < app.screen.region.height
+                sync_log = app.query_one("#sync-log")
+                assert sync_log.region.height <= app.screen.region.height * 0.30
 
 @pytest.mark.skipif(not _textual_available, reason="textual not installed")
 class TestConfigPaths:

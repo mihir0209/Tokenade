@@ -27,16 +27,6 @@ tokenade load --file discord.tokenade
 
 ---
 
-## Screenshots
-
-| TUI · Export | TUI · Sessions |
-|:---:|:---:|
-| ![Export](docs/assets/screenshots/tui-export.svg) | ![Sessions](docs/assets/screenshots/tui-sessions.svg) |
-| **TUI · Share** | **TUI · Convert** |
-| ![Share](docs/assets/screenshots/tui-share.svg) | ![Convert](docs/assets/screenshots/tui-convert.svg) |
-| **TUI · Marketplace** | **TUI · Settings** |
-| ![Marketplace](docs/assets/screenshots/tui-marketplace.svg) | ![Settings](docs/assets/screenshots/tui-settings.svg) |
-
 ```bash
 pip install 'tokenade[tui]'
 tokenade tui
@@ -84,7 +74,7 @@ These surfaces **exist and run**, but are still being hardened. Expect rough edg
 
 | Area | What’s real today | Still unfinished |
 |------|-------------------|------------------|
-| **TUI** (`tokenade tui`) | Export, Sessions, Share, Convert (file tree), Gateway, Vault/Sync shells, plugins, Settings | Polish, analytics depth, broader QA on Windows terminals |
+| **TUI** (`tokenade tui`) | Export, Sessions, Share, Convert (file tree), Gateway, Vault/Sync, plugins, Settings | Polish and broader QA on Windows terminals |
 | **Convert** | JSON, Netscape, curl, Playwright, Puppeteer, Cookie-Editor, Cypress, Selenium, Cookie/Set-Cookie headers, HAR, CSV → `.tokenade` | More exotic vendor dumps as they show up |
 | **Browser extension** (`extension/`) | Live cookie export, optional tab `localStorage`, default **`.tokenade`**, Cookie-Editor/Netscape alts | Store publish, Firefox packaging, multi-origin storage parity with CLI handlers |
 | **Chromium forks in CLI** | Vivaldi/Opera cookie path allowlisted | Full multi-profile battle-testing |
@@ -179,8 +169,8 @@ tokenade encrypt -i discord.tokenade -o discord.tokenade.enc -p "my-secret"
 
 Full command list: `tokenade --help` and `tokenade <command> -h`. Start with [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); release hardening work is tracked in [`docs/RELEASE_HARDENING.md`](docs/RELEASE_HARDENING.md).
 
-Mature Vault, peer Sync, and local Analytics workflows are documented in
-[`docs/VAULT_SYNC_ANALYTICS.md`](docs/VAULT_SYNC_ANALYTICS.md).
+Mature Vault and peer Sync workflows are documented in
+[`docs/VAULT_SYNC.md`](docs/VAULT_SYNC.md).
 
 ---
 
@@ -446,7 +436,7 @@ tokenade tui
 | `3` | **Share** — password share-url create/receive (password never uploaded) |
 | `4` | **Convert** — DirectoryTree file picker + industry formats → `.tokenade` |
 | `5` | **Gateway** — dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/select/open/cleanup runtime contexts from request settings (`gateway.runtime.url`) |
-| `6`–`9` / `0` | Vault, Sync, Analytics, Plugins, Settings |
+| `6`–`8` / `0` | Vault, Sync, Plugins, Settings |
 
 **Copy:** drag to select text in logs and labels. **Ctrl+C does not quit** (shows a hint). Use **Ctrl+Shift+C** (or your terminal’s copy) for selection; **Ctrl+Q** or **q** to quit.
 

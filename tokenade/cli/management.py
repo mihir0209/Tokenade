@@ -12,6 +12,7 @@ import logging
 import os  # noqa: F401
 import sys  # noqa: F401
 import time  # noqa: F401 - patched by tests as management.time
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("tokenade")
@@ -31,7 +32,6 @@ from tokenade.cli.handlers.ci import (  # noqa: F401
 )
 from tokenade.cli.handlers.misc import (  # noqa: F401
     cmd_monitor,
-    cmd_analytics,
     cmd_daemon,
     _health_bar,
 )
@@ -75,22 +75,66 @@ from tokenade.cli.handlers.browser_ops import (  # noqa: F401
 
 def cmd_vault(args):
     """Handle vault commands."""
-    from tokenade.core.vault import SessionVault, VaultConfig
+    from tokenade.core.vault import SessionVault, VaultConfig, VaultResult
 
     config = VaultConfig(
         vault_path=getattr(args, "vault_path", None) or "~/.tokenade/vault",
         master_key=os.environ.get("TOKENADE_VAULT_KEY"),
     )
 
-    vault = SessionVault(config)
-
     if not getattr(args, "vault_action", None):
         print("Error: vault action is required", file=sys.stderr)
         raise SystemExit(2)
+    if args.vault_action == "migrate":
+        migration_config = VaultConfig(
+            vault_path=config.vault_path,
+            backup_path=config.backup_path,
+            max_backups=config.max_backups,
+        )
+        result = SessionVault.migrate_legacy(
+            migration_config,
+            passphrase=os.environ.get("TOKENADE_VAULT_BACKUP_PASSPHRASE"),
+        )
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2))
+        else:
+            print(result.message, file=sys.stdout if result.success else sys.stderr)
+        if not result.success:
+            raise SystemExit(1)
+        return
+
+    source = None
+    if args.vault_action == "store":
+        source = Path(args.file).expanduser()
+        if not source.is_absolute():
+            source = Path.cwd() / source
+        if not source.is_file():
+            result = VaultResult(False, f"Session file not found: {source}")
+            if args.json:
+                print(json.dumps(result.to_dict(), indent=2))
+            else:
+                print(f"Error: {result.message}", file=sys.stderr)
+            raise SystemExit(1)
+
+    try:
+        vault = SessionVault(config)
+    except RuntimeError as exc:
+        message = str(exc)
+        if "system keyring" in message:
+            message += (
+                ". This Vault was opened without its original key. Restore the "
+                "TOKENADE_VAULT_KEY used to create it or restore a passphrase-encrypted backup."
+            )
+        if getattr(args, "json", False):
+            print(json.dumps({"success": False, "error": message}, indent=2))
+        else:
+            print(f"Error: {message}", file=sys.stderr)
+        raise SystemExit(1)
+
     if args.vault_action == "store":
         result = vault.store(
             name=args.name,
-            data=open(args.file, "rb").read(),
+            data=source.read_bytes(),
             metadata={},
             replace=getattr(args, "replace", False),
         )
@@ -255,7 +299,6 @@ __all__ = [
     "cmd_import",
     "cmd_sync",
     "cmd_monitor",
-    "cmd_analytics",
     "cmd_daemon",
     "cmd_validate_session",
     "cmd_encrypted_refresh",

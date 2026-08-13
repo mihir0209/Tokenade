@@ -747,38 +747,6 @@ def cmd_export(args):
         saved_path = packager.save(package, output)
         print(f"\n[SAVE] Exported: {saved_path}")
 
-    from tokenade.core.analytics import record_local
-
-    cookie_count = len(cookies)
-    cookie_bucket = (
-        "0"
-        if cookie_count == 0
-        else "1-10"
-        if cookie_count <= 10
-        else "11-50"
-        if cookie_count <= 50
-        else "51-200"
-        if cookie_count <= 200
-        else "200+"
-    )
-    record_local(
-        "export",
-        "success",
-        dimensions={
-            "browser_family": "firefox" if browser_name == "firefox" else "chromium",
-            "source_kind": "cdp"
-            if cdp_port
-            else "plugin"
-            if site_handler
-            else "profile",
-            "encrypted": bool(encrypt_password),
-            "cookie_count_bucket": cookie_bucket,
-            "storage_present": bool(
-                storage["local"] or storage["session"] or profile_data
-            ),
-        },
-    )
-
     print(f"   Site: {package['site_name']}")
     print(f"   Auth: {package['auth_status']}")
     print(f"   Cookies: {package['metadata']['cookie_count']}")

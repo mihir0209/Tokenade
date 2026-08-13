@@ -17,7 +17,7 @@ tokenade --version
 # tokenade 1.2.0
 ```
 
-This guide tracks the published PyPI line around `tokenade==1.2.0` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install. See `VAULT_SYNC_ANALYTICS.md` for the mature local data workflows.
+This guide tracks the published PyPI line around `tokenade==1.2.0` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install. See `VAULT_SYNC.md` for the mature local data workflows.
 
 ## Quick Start
 
@@ -72,11 +72,11 @@ Exit code is non-zero. CLI commands still work without the extra.
 | `3` | Share | share-url create & receive; password never leaves the machine |
 | `4` | Convert | Embedded directory tree + multi-format → `.tokenade` |
 | `5` | Gateway | Dropdown JSON from `~/.tokenade/requests`, browse from `~/Downloads`, launch in background, route/select/open/cleanup runtime contexts from request settings (`gateway.runtime.url`) |
-| `6`–`9`, `0` | Vault, Sync, Analytics, Plugins, Settings | Depth varies; some panes are thinner than Export/Share |
+| `6`–`8`, `0` | Vault, Sync, Plugins, Settings | Depth varies; some panes are thinner than Export/Share |
 
 **Copy / quit:** Mouse-select text in logs and labels. **Ctrl+C does nothing harmful** (hint only: use **Ctrl+Shift+C** to copy selection, **Ctrl+Q** or **q** to quit). Terminal-native copy still works.
 
-**Status:** TUI is **usable and experimental** — under active polish (layout, Windows terminals, analytics). Core export/load/share-url are the production-hardened paths.
+**Status:** TUI is **usable and experimental** — under active polish for layout and Windows terminals. Core export/load/share-url are the production-hardened paths.
 
 ### `tokenade convert`
 
@@ -672,7 +672,6 @@ tokenade test -s session.tokenade --target-fp default
 | `tokenade import` | Legacy import from URL (prefer `share-url retrieve`) |
 | `tokenade proxy` | Start CDP proxy with donor session |
 | `tokenade monitor` | Monitor session health in real-time |
-| `tokenade analytics` | Session usage analytics |
 | `tokenade completion` | Generate shell completion scripts |
 | `tokenade refresh-oauth` | Refresh OAuth tokens |
 | `tokenade daemon` | Auto-refresh daemon (background) |
@@ -861,26 +860,6 @@ sessions = vault.list_sessions()
 
 # Rotate encryption key
 vault.rotate_key()
-```
-
-### Session Analytics
-
-```python
-from tokenade.core.analytics.engine import AnalyticsEngine
-
-engine = AnalyticsEngine()
-
-# Record events
-engine.record_event("export", {"site": "twitter", "cookies": 113})
-engine.record_event("load", {"site": "twitter"})
-
-# Generate report
-report = engine.generate_report()
-print(f"Total events: {report.total_events}")
-print(f"Success rate: {report.success_rate:.1%}")
-
-# Export to CSV
-engine.export_csv("analytics.csv")
 ```
 
 ### Session Sharing

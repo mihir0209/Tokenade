@@ -270,23 +270,6 @@ def cmd_sync_action(
     return args
 
 
-def cmd_analytics(
-    action: str, *, days: int = 30, retention_days: int = 30, output: str = ""
-) -> List[str]:
-    args = ["analytics", action]
-    if action == "enable":
-        args.extend(["--retention-days", str(retention_days)])
-    elif action in {"report", "inspect"}:
-        args.extend(["--days", str(days)])
-    elif action == "cleanup":
-        args.extend(["--max-age", str(days)])
-    elif action == "export":
-        args.extend(["--output", output, "--days", str(days)])
-    elif action == "delete":
-        args.append("--yes")
-    return args
-
-
 def cmd_launch(
     session_file: str,
     *,

@@ -3,7 +3,7 @@ Tokenade TUI — Interactive terminal interface.
 
 Provides a rich terminal UI for browsing the plugin marketplace,
 managing installed plugins, viewing sessions, vault, sync, sharing,
-and analytics.
+and settings.
 
 Usage:
     tokenade tui                    # Launch full TUI
@@ -12,7 +12,7 @@ Requires: pip install textual
 """
 
 from tokenade.tui.config import (
-    TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, ANALYTICS_DIR, PLUGINS_DIR,
+    TOKENADE_DIR, SESSIONS_DIR, VAULT_DIR, PLUGINS_DIR,
     APP_TITLE, APP_SUBTITLE,
 )
 from tokenade.tui.app import run_tui, TokenadeTUI
@@ -34,6 +34,5 @@ __all__ = [
     "TOKENADE_DIR",
     "SESSIONS_DIR",
     "VAULT_DIR",
-    "ANALYTICS_DIR",
     "PLUGINS_DIR",
 ]

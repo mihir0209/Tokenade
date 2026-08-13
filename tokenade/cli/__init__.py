@@ -20,7 +20,6 @@ from tokenade.cli.management import (
     cmd_unshare,
     cmd_sync,
     cmd_monitor,
-    cmd_analytics,
     cmd_refresh_oauth,
     cmd_oauth_config,
     cmd_batch_refresh,
@@ -2759,48 +2758,6 @@ Commands:
     )
     monitor_predict_parser.add_argument("--session", "-s", help="Single session file")
 
-    # Analytics
-    analytics_parser = subparsers.add_parser(
-        "analytics", help="Privacy-safe local operation analytics"
-    )
-    analytics_sub = analytics_parser.add_subparsers(
-        dest="analytics_command", help="Analytics commands"
-    )
-
-    analytics_report_parser = analytics_sub.add_parser(
-        "report", help="Show usage report"
-    )
-    analytics_report_parser.add_argument(
-        "--days", "-d", type=int, default=30, help="Report period in days"
-    )
-    analytics_report_parser.add_argument(
-        "--json", dest="json_output", action="store_true", help="Output as JSON"
-    )
-
-    analytics_cleanup_parser = analytics_sub.add_parser(
-        "cleanup", help="Remove old analytics data"
-    )
-    analytics_cleanup_parser.add_argument(
-        "--max-age", type=int, default=90, help="Max age in days"
-    )
-    analytics_sub.add_parser("status", help="Show local analytics status")
-    analytics_enable = analytics_sub.add_parser("enable", help="Enable local analytics")
-    analytics_enable.add_argument("--retention-days", type=int, default=30)
-    analytics_sub.add_parser("disable", help="Disable future analytics collection")
-    analytics_inspect = analytics_sub.add_parser(
-        "inspect", help="Inspect sanitized events"
-    )
-    analytics_inspect.add_argument("--days", type=int, default=7)
-    analytics_inspect.add_argument("--limit", type=int, default=100)
-    analytics_export = analytics_sub.add_parser("export", help="Export aggregate CSV")
-    analytics_export.add_argument("--output", required=True)
-    analytics_export.add_argument("--days", type=int, default=30)
-    analytics_export.add_argument("--raw", action="store_true")
-    analytics_delete = analytics_sub.add_parser(
-        "delete", help="Delete local analytics data"
-    )
-    analytics_delete.add_argument("--yes", action="store_true", required=True)
-
     # Shell Completion
     completion_parser = subparsers.add_parser(
         "completion", help="Generate shell completion scripts"
@@ -3761,6 +3718,11 @@ Commands:
     vault_verify = vault_sub.add_parser("verify", help="Verify every encrypted entry")
     vault_verify.add_argument("--json", action="store_true", help="JSON output")
 
+    vault_migrate = vault_sub.add_parser(
+        "migrate", help="Migrate the legacy on-disk Vault format"
+    )
+    vault_migrate.add_argument("--json", action="store_true", help="JSON output")
+
     # Dashboard
     dashboard_parser = subparsers.add_parser(
         "dashboard", help="Session monitoring web dashboard"
@@ -3910,7 +3872,6 @@ Commands:
         "sync",
         "monitor",
         "container",
-        "analytics",
         "refresh-oauth",
         "oauth-config",
         "batch-refresh",
@@ -4002,7 +3963,6 @@ def main():
         "import": cmd_import,
         "sync": cmd_sync,
         "monitor": cmd_monitor,
-        "analytics": cmd_analytics,
         "validate-rules": cmd_validate_rules,
         "diff": cmd_diff,
         "plugin": cmd_plugin,

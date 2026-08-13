@@ -120,7 +120,6 @@ from tokenade.tui.config import (
     TOKENADE_DIR,
     SESSIONS_DIR,
     VAULT_DIR,
-    ANALYTICS_DIR,
     PLUGINS_DIR,
     REQUESTS_DIR,
     APP_TITLE,
@@ -150,7 +149,6 @@ from tokenade.tui.views.gateway import (
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
 from tokenade.tui.views.share import ShareView, session_select_options
-from tokenade.tui.views.analytics import AnalyticsView
 from tokenade.tui.views.settings import SettingsView
 from tokenade.tui.cli_runner import (
     run_tokenade,
@@ -165,7 +163,6 @@ from tokenade.tui.cli_runner import (
     cmd_vault,
     cmd_sync_peer,
     cmd_sync_action,
-    cmd_analytics,
     format_cli_display,
     format_receive_help,
     copy_text,
@@ -277,9 +274,27 @@ if _TEXTUAL_AVAILABLE:
                     continue
             return out
 
+    class TokenadeSessionDirectoryTree(DirectoryTree):
+        """Directory picker scoped to .tokenade Session files."""
+
+        def filter_paths(self, paths):
+            out = []
+            for path in paths:
+                try:
+                    if path.name.startswith(".") and path != Path.home() / ".tokenade":
+                        continue
+                    if path.is_dir() or path.suffix.lower() == ".tokenade":
+                        out.append(path)
+                except OSError:
+                    continue
+            return out
+
 else:
 
     class JsonRequestDirectoryTree(DirectoryTree):
+        pass
+
+    class TokenadeSessionDirectoryTree(DirectoryTree):
         pass
 
 
@@ -361,6 +376,85 @@ class GatewayRequestPickerScreen(Screen if _TEXTUAL_AVAILABLE else object):
         self.app.push_screen(GatewayRequestPickerScreen(Path("/")))
 
 
+class VaultSessionPickerScreen(Screen if _TEXTUAL_AVAILABLE else object):
+    """Popup picker for Session files to store in the Vault."""
+
+    DEFAULT_CSS = """
+    VaultSessionPickerScreen { align: center middle; }
+    VaultSessionPickerScreen #vault-picker-box {
+        width: 80%; height: 80%; padding: 1 2;
+        background: $surface; border: tall $primary;
+    }
+    VaultSessionPickerScreen #vault-session-tree {
+        height: 1fr; background: $surface-darken-1;
+        border: tall $primary-background-lighten-2;
+    }
+    VaultSessionPickerScreen .picker-title { text-style: bold; color: $primary; height: 1; }
+    VaultSessionPickerScreen .picker-meta { color: $text-muted; height: 1; }
+    VaultSessionPickerScreen .picker-actions { height: 3; margin-top: 1; }
+    VaultSessionPickerScreen .picker-actions Button { margin-right: 1; }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), Binding("b", "cancel", "Back")]
+
+    def __init__(self, root: Optional[Path] = None, **kwargs):
+        if _TEXTUAL_AVAILABLE:
+            super().__init__(**kwargs)
+        self.root = Path(root or SESSIONS_DIR).expanduser()
+        if not self.root.is_dir():
+            self.root = Path.home()
+
+    def compose(self) -> "ComposeResult":
+        if not _TEXTUAL_AVAILABLE:
+            return
+        with Vertical(id="vault-picker-box"):
+            yield Static("Select Session To Store", classes="picker-title")
+            yield Static(str(self.root), classes="picker-meta")
+            yield TokenadeSessionDirectoryTree(
+                str(self.root), id="vault-session-tree"
+            )
+            yield Horizontal(
+                Button("Sessions", variant="primary", id="vault-picker-sessions"),
+                Button("Home", variant="default", id="vault-picker-home"),
+                Button("Downloads", variant="default", id="vault-picker-downloads"),
+                Button("/", variant="default", id="vault-picker-root"),
+                Button("Cancel", variant="default", id="vault-picker-cancel"),
+                classes="picker-actions",
+            )
+
+    def action_cancel(self):
+        self.app.pop_screen()
+
+    def _open(self, root: Path):
+        self.app.pop_screen()
+        self.app.push_screen(VaultSessionPickerScreen(root))
+
+    @on(DirectoryTree.FileSelected, "#vault-session-tree")
+    def on_file_selected(self, event: DirectoryTree.FileSelected):
+        self.app._vault_apply_session_file(Path(event.path))
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#vault-picker-sessions")
+    def on_sessions(self):
+        self._open(SESSIONS_DIR)
+
+    @on(Button.Pressed, "#vault-picker-home")
+    def on_home(self):
+        self._open(Path.home())
+
+    @on(Button.Pressed, "#vault-picker-downloads")
+    def on_downloads(self):
+        self._open(Path.home() / "Downloads")
+
+    @on(Button.Pressed, "#vault-picker-root")
+    def on_root(self):
+        self._open(Path("/"))
+
+    @on(Button.Pressed, "#vault-picker-cancel")
+    def on_cancel(self):
+        self.app.pop_screen()
+
+
 class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     """Tokenade Terminal UI Application."""
 
@@ -371,7 +465,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     Screen { background: $surface-darken-1; }
     TabPane { align: left top; }
     #plugin-list, #installed-list, #sessions-list,
-    #vault-list, #sync-result, #share-result, #analytics-result,
+    #vault-list, #sync-result, #share-result,
     #settings-body, #export-cli-log, #convert-cli-log {
         height: 1fr; overflow-y: auto; padding: 0;
         align: left top;
@@ -402,8 +496,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         Binding("5", "show_gateway", "Gateway"),
         Binding("6", "show_vault", "Vault"),
         Binding("7", "show_sync", "Sync"),
-        Binding("8", "show_analytics", "Analytics"),
-        Binding("9", "show_installed", "Plugins"),
+        Binding("8", "show_installed", "Plugins"),
         Binding("0", "show_settings", "Settings"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False),
@@ -439,7 +532,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             yield TabPane("Gateway", GatewayView(), id="tab-gateway")
             yield TabPane("Vault", VaultView(), id="tab-vault")
             yield TabPane("Sync", SyncView(), id="tab-sync")
-            yield TabPane("Analytics", AnalyticsView(), id="tab-analytics")
             yield TabPane("Installed plugins", InstalledView(), id="tab-installed")
             yield TabPane("Marketplace", MarketplaceView(), id="tab-marketplace")
             yield TabPane("Settings", SettingsView(), id="tab-settings")
@@ -451,10 +543,71 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     # ── Data Loading ──────────────────────────────────────────
 
     def _load_data(self):
-        self._load_plugins()
         self._load_installed()
-        self._load_sessions()
-        self._update_all_views()
+        self._load_sessions_async()
+        self._load_plugins_async()
+
+    def _load_sessions_async(self):
+        """Parse Session metadata away from the Textual message loop."""
+
+        def worker():
+            try:
+                sessions = load_sessions(SESSIONS_DIR)
+            except Exception as exc:
+                logger.debug("Failed to load sessions: %s", exc)
+                sessions = []
+
+            def update():
+                self._sessions = sessions
+                try:
+                    tabs = self.query_one("#main-tabs")
+                    if tabs.active == "tab-sessions":
+                        self._update_sessions()
+                except Exception:
+                    pass
+
+            try:
+                self.call_from_thread(update)
+            except Exception:
+                logger.debug("Session metadata arrived after TUI shutdown")
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="tokenade-sessions",
+        ).start()
+
+    def _load_plugins_async(self):
+        """Fetch the remote Marketplace without delaying the first TUI frame."""
+
+        def worker():
+            try:
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+
+                plugins = PluginRegistry().get_popular(limit=100) or []
+            except Exception as exc:
+                logger.debug("Failed to load plugins: %s", exc)
+                plugins = []
+
+            def update():
+                self._plugins = plugins
+                try:
+                    tabs = self.query_one("#main-tabs")
+                    if tabs.active == "tab-marketplace":
+                        self._update_marketplace()
+                except Exception:
+                    pass
+
+            try:
+                self.call_from_thread(update)
+            except Exception:
+                logger.debug("Marketplace result arrived after TUI shutdown")
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="tokenade-marketplace",
+        ).start()
 
     def _load_plugins(self):
         try:
@@ -468,21 +621,19 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _load_installed(self):
         try:
-            from tokenade.core.integration.plugin_loader import PluginLoader
+            from tokenade.core.integration.plugin_registry import PluginRegistry
 
-            loader = PluginLoader()
-            loader.load_all()
             self._installed = [
                 {
                     "name": p.name,
-                    "enabled": p.enabled,
+                    "enabled": None,
                     "version": p.version,
-                    "state": p.state.value if p.state else "unknown",
-                    "error": p.error,
-                    "config": p.config or {},
-                    "health": getattr(p, "health", None),
+                    "state": "installed",
+                    "error": None,
+                    "config": {},
+                    "health": None,
                 }
-                for p in loader.list_all()
+                for p in PluginRegistry().list_installed()
             ]
         except Exception as e:
             logger.debug("Failed to load installed: %s", e)
@@ -664,6 +815,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             blank = getattr(Select, "NULL", Select.BLANK)
             val = event.value
             if val is blank or val in (None, False):
+                return
+            if cid == "vault-session-select":
+                self._vault_apply_session_file(Path(str(val)))
                 return
             if cid == "session-browser-select":
                 self._refresh_session_profile_select(str(val))
@@ -1445,6 +1599,25 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         try:
             container = self.query_one("#vault-list")
             container.remove_children()
+            backups = sorted(
+                (VAULT_DIR / "backups").glob("*.tvbak"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            try:
+                backup_status = self.query_one("#vault-backup-status")
+                if backups:
+                    newest = time.strftime(
+                        "%Y-%m-%d %H:%M",
+                        time.localtime(backups[0].stat().st_mtime),
+                    )
+                    backup_status.update(
+                        f"{len(backups)} encrypted backup(s) · newest {newest} · {backups[0].name}"
+                    )
+                else:
+                    backup_status.update("No backups created yet.")
+            except Exception:
+                pass
             try:
                 from tokenade.core.vault.vault import SessionVault, VaultConfig
 
@@ -1468,31 +1641,38 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                         if created
                         else "?"
                     )
+                    size = entry.get("size", 0)
                     container.mount(
-                        Static(
-                            f"  {name}  •  created: {created_s}",
+                        Vertical(
+                            Static(name, classes="card-title"),
+                            Static(
+                                f"Created {created_s} · {size:,} bytes",
+                                classes="card-meta",
+                            ),
+                            Horizontal(
+                                Button(
+                                    "Retrieve Session",
+                                    variant="primary",
+                                    compact=True,
+                                    id=f"vault-retrieve-{entry_id}",
+                                ),
+                                Button(
+                                    "Delete From Vault",
+                                    variant="error",
+                                    compact=True,
+                                    id=f"vault-delete-{entry_id}",
+                                ),
+                                classes="action-row",
+                            ),
                             classes="session-card",
                         )
                     )
-                    container.mount(
-                        Horizontal(
-                            Button(
-                                "Retrieve",
-                                variant="primary",
-                                compact=True,
-                                id=f"vault-retrieve-{entry_id}",
-                            ),
-                            Button(
-                                "Delete",
-                                variant="error",
-                                compact=True,
-                                id=f"vault-delete-{entry_id}",
-                            ),
-                        )
-                    )
             except Exception as e:
+                message = f"  Vault unavailable: {e}"
+                if "Legacy vault detected" in str(e):
+                    message += "\n  Choose Migrate Legacy above to preserve and convert its entries."
                 container.mount(
-                    Static(f"  Vault unavailable: {e}", classes="session-card")
+                    Static(message, classes="session-card")
                 )
         except Exception as e:
             logger.debug("Vault update failed: %s", e)
@@ -1512,7 +1692,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                 ("#settings-tokenade-dir", f"home       {TOKENADE_DIR}"),
                 ("#settings-sessions-dir", f"sessions   {SESSIONS_DIR}"),
                 ("#settings-vault-dir", f"vault      {VAULT_DIR}"),
-                ("#settings-analytics-dir", f"analytics  {ANALYTICS_DIR}"),
                 ("#settings-plugins-dir", f"plugins    {PLUGINS_DIR}"),
             ):
                 try:
@@ -1729,6 +1908,10 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify("Vault refreshed", timeout=2)
         elif btn_id == "vault-store":
             self._vault_store()
+        elif btn_id == "vault-browse":
+            self.push_screen(VaultSessionPickerScreen(SESSIONS_DIR))
+        elif btn_id == "vault-migrate":
+            self._vault_migrate()
         elif btn_id == "vault-verify":
             self._vault_command("verify")
         elif btn_id == "vault-rotate-key":
@@ -1759,18 +1942,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._share_revoke()
         elif btn_id == "share-refresh-sessions":
             self._refresh_share_sessions()
-        elif btn_id == "analytics-report":
-            self._analytics_report()
-        elif btn_id == "analytics-status":
-            self._analytics_command("status")
-        elif btn_id == "analytics-enable":
-            self._analytics_command("enable")
-        elif btn_id == "analytics-disable":
-            self._analytics_command("disable")
-        elif btn_id == "analytics-csv":
-            self._analytics_export_csv()
-        elif btn_id == "analytics-cleanup":
-            self._analytics_cleanup()
         elif btn_id.startswith("health-"):
             self._session_health(btn_id.removeprefix("health-"))
         elif btn_id.startswith("delete-"):
@@ -1940,7 +2111,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         def done(result):
             self.call_from_thread(render_done, result)
 
-        run_tokenade_async(args, done, env=env)
+        run_tokenade_async(args, on_done=done, env=env)
 
     def _vault_key(self):
         return os.environ.get("TOKENADE_VAULT_KEY", "")
@@ -1962,6 +2133,24 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._update_vault,
             env={"TOKENADE_VAULT_KEY": self._vault_key()},
         )
+
+    def _vault_apply_session_file(self, path: Path):
+        path = path.expanduser().resolve()
+        try:
+            self.query_one("#vault-file").value = str(path)
+            name = self.query_one("#vault-name")
+            if not name.value.strip():
+                name.value = path.stem
+        except Exception as exc:
+            self.notify(f"Could not select Session: {exc}", severity="error")
+
+    def _refresh_vault_session_select(self):
+        try:
+            select = self.query_one("#vault-session-select")
+            options = session_select_options(SESSIONS_DIR)
+            select.set_options(options)
+        except Exception as exc:
+            logger.debug("Vault Session selector refresh failed: %s", exc)
 
     def _vault_command(self, action, **kwargs):
         secret_passphrase = kwargs.pop("secret_passphrase", "")
@@ -1988,6 +2177,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify("Backup passphrase is required", severity="warning")
             return
         self._vault_command("backup", secret_passphrase=password)
+
+    def _vault_migrate(self):
+        password = self.query_one("#vault-passphrase").value
+        if not password:
+            self.notify("Recovery passphrase is required", severity="warning")
+            return
+        self._vault_command("migrate", secret_passphrase=password)
 
     def _vault_restore(self):
         password = self.query_one("#vault-passphrase").value
@@ -2037,9 +2233,25 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def _sync_save_peer(self):
         form = self._sync_form()
         if not form["name"] or not form["path"]:
-            self.notify("Peer name and path required", severity="warning")
+            self._render_sync_message("Peer name and repository path are required")
+            self.notify("Peer name and repository path are required", severity="warning")
             return
-        self._run_feature_cli(cmd_sync_peer("add", **form), "#sync-log")
+        if form["transport"] == "ssh" and not form["host"]:
+            self._render_sync_message("SSH host is required for an SSH/SFTP peer")
+            self.notify("SSH host is required", severity="warning")
+            return
+        self._run_feature_cli(
+            cmd_sync_peer("add", **form),
+            "#sync-log",
+            lambda: self._render_sync_message(
+                f"Peer '{form['name']}' saved. Preview the plan before running Sync."
+            ),
+        )
+
+    def _render_sync_message(self, message: str):
+        result = self.query_one("#sync-result")
+        result.remove_children()
+        result.mount(Static(f"  {message}", classes="session-card"))
 
     def _render_sync_dict(self, title: str, data: Dict[str, Any]):
         container = self.query_one("#sync-result")
@@ -2058,9 +2270,33 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._run_feature_cli(cmd_sync_action("status", name), "#sync-log")
 
     def _sync_plan(self):
-        name = self._sync_form()["name"]
+        form = self._sync_form()
+        name = form["name"]
         if not name:
             self.notify("Peer name required", severity="warning")
+            return
+        from tokenade.core.sync import PeerSync
+
+        if name not in {peer.name for peer in PeerSync(str(SESSIONS_DIR)).list_peers()}:
+            message = f"Peer '{name}' is not configured. Save the peer first."
+            self.notify(
+                message,
+                severity="warning",
+            )
+            result = self.query_one("#sync-result")
+            result.remove_children()
+            result.mount(
+                Static(
+                    f"  {message}\n  Enter the peer path and connection details, then click Save Peer before Preview Plan.",
+                    classes="session-card",
+                )
+            )
+            try:
+                self.query_one("#sync-log").write(
+                    f"[yellow]Peer '{name}' is not configured. Enter its path and click Save Peer before Preview Plan.[/yellow]"
+                )
+            except Exception:
+                pass
             return
         self._run_feature_cli(cmd_sync_action("plan", name), "#sync-log")
 
@@ -2506,77 +2742,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._share_list()
         except Exception as e:
             self.notify(f"Cleanup error: {e}", severity="error")
-
-    # ── Analytics Actions ─────────────────────────────────────
-
-    def _analytics_days(self):
-        try:
-            return max(1, int(self.query_one("#analytics-retention").value or "30"))
-        except ValueError:
-            return 30
-
-    def _analytics_command(self, action):
-        days = self._analytics_days()
-        output = str(ANALYTICS_DIR / "aggregate.csv")
-        self._run_feature_cli(
-            cmd_analytics(action, days=days, retention_days=days, output=output),
-            "#analytics-log",
-            self._analytics_report
-            if action in {"enable", "disable", "cleanup"}
-            else None,
-        )
-
-    def _analytics_report(self):
-        try:
-            from tokenade.core.analytics.engine import AnalyticsConfig, LocalAnalytics
-
-            report = LocalAnalytics(
-                AnalyticsConfig(directory=str(ANALYTICS_DIR))
-            ).report(self._analytics_days())
-            container = self.query_one("#analytics-result")
-            container.remove_children()
-            outcomes = report["outcomes"]
-            rate = outcomes["success_rate"]
-            container.mount(
-                Static(
-                    f"  Period: {report['period_days']} days", classes="session-card"
-                )
-            )
-            container.mount(
-                Static(
-                    f"  Operations: {report['total_operations']}",
-                    classes="session-card",
-                )
-            )
-            container.mount(
-                Static(
-                    f"  Success: {outcomes['success']} · Failed: {outcomes['failure']} · Cancelled: {outcomes['cancelled']}",
-                    classes="session-card",
-                )
-            )
-            container.mount(
-                Static(
-                    f"  Success rate: {rate:.1%}"
-                    if rate is not None
-                    else "  Success rate: no completed operations",
-                    classes="session-card",
-                )
-            )
-            for operation, values in sorted(report["by_operation"].items()):
-                container.mount(
-                    Static(
-                        f"  {operation}: {values['total']} total · {values['failure']} failed · p50 {values['p50_ms'] or '-'} ms",
-                        classes="session-card",
-                    )
-                )
-        except Exception as e:
-            self.notify(f"Analytics error: {e}", severity="error")
-
-    def _analytics_export_csv(self):
-        self._analytics_command("export")
-
-    def _analytics_cleanup(self):
-        self._analytics_command("cleanup")
 
     # ── Session Actions ───────────────────────────────────────
 
@@ -3261,6 +3426,31 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     # ── Tab Navigation ────────────────────────────────────────
 
+    @on(TabbedContent.TabActivated, "#main-tabs")
+    def on_main_tab_activated(self, event: TabbedContent.TabActivated):
+        pane_id = event.pane.id
+        if pane_id == "tab-vault":
+            self.call_after_refresh(self._update_vault)
+            self.call_after_refresh(self._refresh_vault_session_select)
+        elif pane_id == "tab-sessions":
+            if self._sessions:
+                self.call_after_refresh(self._update_sessions)
+            else:
+                self._load_sessions_async()
+        elif pane_id == "tab-settings":
+            self.call_after_refresh(self._update_settings)
+        elif pane_id == "tab-installed":
+            self.call_after_refresh(self._update_installed)
+        elif pane_id == "tab-marketplace":
+            if self._plugins:
+                self.call_after_refresh(self._update_marketplace)
+            else:
+                self._load_plugins_async()
+        elif pane_id == "tab-gateway":
+            self.call_after_refresh(
+                lambda: self._gateway_refresh_requests(notify=False, apply_first=False)
+            )
+
     def action_show_export(self):
         self._activate_tab("tab-export")
 
@@ -3289,9 +3479,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     def action_show_gateway(self):
         self._activate_tab("tab-gateway")
 
-    def action_show_analytics(self):
-        self._activate_tab("tab-analytics")
-
     def action_show_settings(self):
         self._activate_tab("tab-settings")
 
@@ -3305,7 +3492,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def action_help(self):
         self.notify(
-            "tabs 1-9/0 · r refresh · select text then Ctrl+C / y · Ctrl+Q or q quit",
+            "tabs 1-8/0 · r refresh · select text then Ctrl+C / y · Ctrl+Q or q quit",
             timeout=6,
         )
 

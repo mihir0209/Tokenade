@@ -19,7 +19,6 @@ from tokenade.cli.handlers.ci import (  # noqa: F401
 )
 from tokenade.cli.handlers.misc import (  # noqa: F401
     cmd_monitor,
-    cmd_analytics,
     cmd_daemon,
 )
 from tokenade.cli.handlers.session_ops import (  # noqa: F401

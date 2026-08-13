@@ -1,5 +1,5 @@
 """
-Misc CLI commands - tui, daemon, analytics, monitor.
+Misc CLI commands - tui, daemon, and monitor.
 """
 
 import json
@@ -188,38 +188,6 @@ def _monitor_predict(args):
             print("insufficient data for prediction")
     else:
         print("insufficient data for prediction")
-
-
-def cmd_analytics(args):
-    """Privacy-safe local analytics commands."""
-    from tokenade.core.analytics import LocalAnalytics
-
-    analytics = LocalAnalytics()
-    command = getattr(args, "analytics_command", None)
-    if command == "status":
-        result = analytics.status()
-    elif command == "enable":
-        analytics.enable(args.retention_days)
-        result = analytics.status()
-    elif command == "disable":
-        analytics.disable()
-        result = analytics.status()
-    elif command == "report":
-        result = analytics.report(args.days)
-    elif command == "inspect":
-        result = analytics.inspect(args.days, args.limit)
-    elif command == "export":
-        result = {
-            "output": str(analytics.export_csv(args.output, args.days, args.raw)),
-            "raw": args.raw,
-        }
-    elif command == "cleanup":
-        result = {"removed": analytics.cleanup(args.max_age)}
-    elif command == "delete":
-        result = {"deleted": analytics.delete_all()}
-    else:
-        raise SystemExit("analytics action is required")
-    print(json.dumps(result, indent=2))
 
 
 def cmd_daemon(args):

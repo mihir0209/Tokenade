@@ -11,7 +11,6 @@ from tokenade.tui.views.sessions import SessionsView
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
 from tokenade.tui.views.share import ShareView
-from tokenade.tui.views.analytics import AnalyticsView
 from tokenade.tui.views.settings import SettingsView
 
 __all__ = [
@@ -24,6 +23,5 @@ __all__ = [
     "VaultView",
     "SyncView",
     "ShareView",
-    "AnalyticsView",
     "SettingsView",
 ]

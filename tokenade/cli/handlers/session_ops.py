@@ -625,14 +625,27 @@ def _cmd_peer_sync(args):
         else:
             raise SystemExit("peer action is required")
         return
-    if command == "plan":
-        result = sync.plan(args.peer, args.direction)
-    elif command == "status":
-        result = sync.status(args.peer)
-    elif command == "run":
-        result = sync.run(args.peer, args.direction, args.dry_run, args.allow_plaintext)
-    else:
-        raise SystemExit("unsupported sync command")
+    try:
+        if command == "plan":
+            result = sync.plan(args.peer, args.direction)
+        elif command == "status":
+            result = sync.status(args.peer)
+        elif command == "run":
+            result = sync.run(args.peer, args.direction, args.dry_run, args.allow_plaintext)
+        else:
+            raise SystemExit("unsupported sync command")
+    except KeyError:
+        print(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": f"Peer '{args.peer}' is not configured",
+                    "next_step": "Save the peer first, then preview the plan",
+                },
+                indent=2,
+            )
+        )
+        raise SystemExit(1)
     print(json.dumps(result, indent=2))
     if command == "run":
         if result["errors"]:

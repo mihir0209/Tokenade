@@ -425,21 +425,6 @@ class SessionLoader:
                 )
 
             logger.info(f"Session load complete: {result['success']}")
-            from tokenade.core.analytics import record_local
-
-            record_local(
-                "load",
-                "success" if result["success"] else "failure",
-                dimensions={
-                    "browser_family": "chromium",
-                    "visible": bool(visible),
-                    "validation_requested": bool(validate),
-                    "storage_present": bool(
-                        result["local_storage_total"]
-                        or package.get("profile_artifacts")
-                    ),
-                },
-            )
 
         except Exception as e:
             error_msg = str(e).lower()

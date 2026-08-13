@@ -61,17 +61,12 @@ except ImportError:
 
 from tokenade.tui.config import SESSIONS_DIR
 from tokenade.tui.views.base import BaseView
-from tokenade.tui.views.sessions import load_sessions
 
 
 def session_select_options(sessions_dir: Path | None = None) -> List[Tuple[str, str]]:
-    """Build Select options: (label, value=path)."""
-    rows = load_sessions(sessions_dir or SESSIONS_DIR)
-    opts: List[Tuple[str, str]] = []
-    for s in rows:
-        label = f"{s['name']}  ({s.get('site', '?')}, {s.get('cookies', 0)} ck)"
-        opts.append((label, s["file"]))
-    return opts
+    """List Session filenames without parsing payloads during TUI composition."""
+    root = Path(sessions_dir or SESSIONS_DIR)
+    return [(path.stem, str(path)) for path in sorted(root.glob("*.tokenade"))]
 
 
 if _OK:

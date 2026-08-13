@@ -1,4 +1,4 @@
-# Vault, Sync, And Analytics
+# Vault And Sync
 
 ## Session Vault
 
@@ -26,6 +26,10 @@ Properties:
 - Atomic writes and a cross-process Vault lock.
 - Journaled multi-entry key rotation with startup recovery.
 - Portable passphrase-encrypted backups.
+- Legacy migration requires the same user-supplied recovery passphrase and seals
+  the untouched old Vault into a uniquely named encrypted recovery archive.
+- `SessionVault.recover_legacy_archive(...)` decrypts that archive into a separate
+  directory without replacing the active Vault.
 - Duplicate names and output overwrite are rejected by default.
 - Legacy `master.key`/`entries.json` vaults fail closed and require migration.
 
@@ -69,28 +73,3 @@ Rules:
 
 The older `sync add/list/once/start` commands package browser sources and remain
 separate from peer repository synchronization.
-
-## Local Analytics
-
-Analytics is disabled by default, local-only, and has no network sink.
-
-```bash
-tokenade analytics enable --retention-days 30
-tokenade analytics status
-tokenade analytics report --days 30
-tokenade analytics inspect --days 7 --limit 100
-tokenade analytics export --output analytics.csv --days 30
-tokenade analytics cleanup --max-age 30
-tokenade analytics disable
-tokenade analytics delete --yes
-```
-
-Stored fields are limited to operation, outcome, UTC timestamp, optional duration,
-and operation-specific coarse dimensions. The schema rejects arbitrary fields.
-
-The canonical Analytics engine never stores raw Session names, paths, domains, URLs, cookies, tokens,
-storage keys/values, account identifiers, proxy credentials, share IDs, or error
-messages. Directory and database permissions are owner-only on Unix.
-
-Legacy `events.jsonl` is reported but never imported automatically because it may
-contain arbitrary sensitive metadata.

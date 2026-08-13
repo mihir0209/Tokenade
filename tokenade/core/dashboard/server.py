@@ -4,7 +4,7 @@ Session Monitoring Dashboard - Web UI for session monitoring.
 Provides a web-based dashboard for:
 - Real-time session status
 - Health monitoring
-- Usage analytics
+- Session status summary
 - Session management
 """
 
@@ -304,7 +304,7 @@ class DashboardServer:
     Features:
     - Real-time session status
     - Health monitoring
-    - Usage analytics
+    - Session status summary
     - Session management
     - Auto-refresh
     """
