@@ -102,52 +102,61 @@ class MultiSiteProxy:
         """Start all proxy instances and the master GUI."""
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
 
-        shared_session = await self._shared_pool.get_session()
-
-        for i, session in enumerate(self.sessions):
-            port = self.base_port + i + 1
-            site_name = session.get("site_name", f"site_{i}")
-            logger.info(f"Starting proxy for {site_name} on port {port}")
-
-            config = CDPProxyConfig(
-                port=port,
-                host=self.host,
-                headless=True,
-                timeout=30,
-                use_fingerprint=False,
-            )
-            proxy = CDPProxy(session, config)
-            proxy._shared_http_session = shared_session
-            self._proxies.append({"proxy": proxy, "port": port, "session": session})
-
-        # Start all proxies in background tasks
         tasks = []
-        for item in self._proxies:
-            tasks.append(asyncio.create_task(item["proxy"].start()))
-
-        # Wait for proxies to start
-        await asyncio.sleep(2)
-
-        # Start master GUI on base port
-        self._app = self._create_master_app()
-        runner = web.AppRunner(self._app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.host, self.base_port)
-        await site.start()
-
-        self._print_status()
-
+        runner = None
         try:
-            await asyncio.Event().wait()
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            pass
+            shared_session = await self._shared_pool.get_session()
+
+            for i, session in enumerate(self.sessions):
+                port = self.base_port + i + 1
+                site_name = session.get("site_name", f"site_{i}")
+                logger.info(f"Starting proxy for {site_name} on port {port}")
+
+                config = CDPProxyConfig(
+                    port=port,
+                    host=self.host,
+                    headless=True,
+                    timeout=30,
+                    use_fingerprint=False,
+                )
+                proxy = CDPProxy(session, config)
+                proxy._shared_http_session = shared_session
+                self._proxies.append({"proxy": proxy, "port": port, "session": session})
+
+            for item in self._proxies:
+                tasks.append(asyncio.create_task(item["proxy"].start()))
+
+            await asyncio.sleep(2)
+
+            self._app = self._create_master_app()
+            runner = web.AppRunner(self._app)
+            await runner.setup()
+            site = web.TCPSite(runner, self.host, self.base_port)
+            await site.start()
+
+            self._print_status()
+
+            try:
+                await asyncio.Event().wait()
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                pass
         finally:
             for item in self._proxies:
                 try:
                     await item["proxy"].shutdown()
                 except Exception:
                     pass
-            await runner.cleanup()
+            try:
+                if runner is not None:
+                    await runner.cleanup()
+            finally:
+                for task in tasks:
+                    if task is not None and not task.done():
+                        task.cancel()
+                live_tasks = [task for task in tasks if task is not None]
+                if live_tasks:
+                    await asyncio.gather(*live_tasks, return_exceptions=True)
+                await self._shared_pool.close()
 
     def _create_master_app(self) -> web.Application:
         """Create the master GUI application."""

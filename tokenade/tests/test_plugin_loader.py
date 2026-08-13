@@ -2,7 +2,7 @@
 
 import json
 
-from tokenade.core.integration.plugin_loader import PluginLoader, LoadedPlugin
+from tokenade.core.integration.plugin_loader import LoadedPlugin, PluginLoader, PluginState
 
 
 class TestLoadedPlugin:
@@ -178,6 +178,42 @@ class TestPluginLoaderLoadPlugin:
         })
         assert result is not None
         assert loader.get_validator("my-rule") is result.instance
+
+    def test_unconfigured_optional_plugin_does_not_run_on_configure_or_warn(
+        self, tmp_path, caplog
+    ):
+        plugin_dir = tmp_path / "webhook-notify"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "name": "webhook-notify",
+                    "version": "1.0",
+                    "type": "notification",
+                    "entry_point": "plugin.py",
+                    "entry_class": "WebhookPlugin",
+                    "config": {
+                        "schema": {
+                            "webhook_url": {"type": "string", "required": True}
+                        }
+                    },
+                }
+            )
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "class WebhookPlugin:\n"
+            "    def __init__(self): self.configured = False\n"
+            "    def on_configure(self, config): self.configured = True\n"
+        )
+
+        loader = PluginLoader(plugins_dir=tmp_path)
+        result = loader.load_by_name("webhook-notify")
+
+        assert result is not None
+        assert result.instance.configured is False
+        assert result.state == PluginState.LOADED
+        assert result.instance not in loader._notifications.values()
+        assert "config validation errors" not in caplog.text
 
     def test_load_no_entry_class(self, tmp_path):
         plugin_dir = tmp_path / "noclass"

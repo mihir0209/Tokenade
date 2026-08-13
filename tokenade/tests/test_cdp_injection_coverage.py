@@ -267,7 +267,7 @@ async def test_inject_via_raw_cdp_happy_path():
                 if call_count <= 6:
                     msg_id = call_count // 2 + 1
                     return json.dumps({"id": msg_id, "result": {}}).encode()
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx
@@ -307,7 +307,7 @@ async def test_inject_via_raw_cdp_no_fingerprint_uses_default_ua():
                 if call_count <= 6:
                     msg_id = call_count // 2 + 1
                     return json.dumps({"id": msg_id, "result": {}}).encode()
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx
@@ -349,7 +349,7 @@ async def test_inject_via_raw_cdp_cookie_same_site_variants():
                 if call_count <= 6:
                     msg_id = call_count // 2 + 1
                     return json.dumps({"id": msg_id, "result": {}}).encode()
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx
@@ -393,7 +393,7 @@ async def test_inject_via_raw_cdp_cookie_send_error_swallowed():
                 if call_count <= 6:
                     msg_id = call_count // 2 + 1
                     return json.dumps({"id": msg_id, "result": {}}).encode()
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
 
@@ -471,7 +471,7 @@ async def test_inject_via_raw_cdp_event_attached_to_target():
                         msg = self._messages[self._idx]
                         self._idx += 1
                         return msg
-                    raise asyncio.TimeoutError()
+                    raise asyncio.CancelledError()
 
                 # For run_in_executor which calls it directly in a thread
                 # We make the object directly callable as sync too
@@ -533,7 +533,7 @@ async def test_inject_via_raw_cdp_event_target_destroyed():
                     msg = all_msgs[call_count]
                     call_count += 1
                     return msg
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx
@@ -583,7 +583,7 @@ async def test_inject_via_raw_cdp_non_page_target_ignored():
                     msg = all_msgs[call_count]
                     call_count += 1
                     return msg
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx
@@ -642,7 +642,7 @@ async def test_inject_via_raw_cdp_event_other_error_swallowed():
                     msg = all_msgs[call_count]
                     call_count += 1
                     return msg
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
 
@@ -697,7 +697,7 @@ async def test_inject_via_raw_cdp_none_raw_continues():
                     msg = all_msgs[call_count]
                     call_count += 1
                     return msg
-                raise asyncio.TimeoutError
+                raise asyncio.CancelledError
 
             ws_ctx.recv = recv_seq
             mock_ws.connect.return_value = ws_ctx

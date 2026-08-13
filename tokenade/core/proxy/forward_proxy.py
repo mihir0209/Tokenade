@@ -179,9 +179,9 @@ class _ForwardProxyProtocol(asyncio.Protocol):
 
         # Parse headers from raw request
         headers = self._parse_headers(raw)
-        headers.pop("Proxy-Connection", None)
-        headers.pop("Proxy-Authorization", None)
-        headers.pop("Proxy-Host", None)
+        headers.pop("proxy-connection", None)
+        headers.pop("proxy-authorization", None)
+        headers.pop("proxy-host", None)
 
         if cookies:
             headers["cookie"] = cookies

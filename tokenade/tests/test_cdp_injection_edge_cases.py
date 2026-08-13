@@ -32,8 +32,7 @@ def _make_proxy(**overrides):
 
 
 class _RecvMsg(str):
-    """String that is also awaitable — works in both sync (run_in_executor)
-    and async (send_cdp_and_wait) contexts."""
+    """String that can be returned by the async WebSocket receive mock."""
 
     def __await__(self):
         async def _return():
@@ -42,9 +41,7 @@ class _RecvMsg(str):
 
 
 class _RecvHelper:
-    """Provides recv messages that work as both sync (run_in_executor) and
-    async (send_cdp_and_wait). __call__ is sync so run_in_executor gets a
-    real value; the returned _RecvMsg is awaitable for send_cdp_and_wait."""
+    """Provide awaitable messages to the WebSocket receive mock."""
 
     def __init__(self, messages):
         self._messages = list(messages)
@@ -60,7 +57,7 @@ class _RecvHelper:
             if isinstance(msg, _RecvMsg):
                 return msg
             return _RecvMsg(msg)
-        raise asyncio.TimeoutError()
+        raise asyncio.CancelledError()
 
 
 def _setup_raw_cdp(proxy, messages):

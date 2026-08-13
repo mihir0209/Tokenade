@@ -175,11 +175,14 @@ class TestFingerprintCollector:
             assert fp.language == "en-US"
 
     def test_collect_from_system_tzlocal_error(self):
+        mock_tzlocal = MagicMock()
+        mock_tzlocal.get_localzone.side_effect = RuntimeError("timezone unavailable")
         with patch.dict(os.environ, {}, clear=True):
             with patch("tokenade.core.fingerprint.manager.platform.system", return_value="Linux"):
                 with patch("tokenade.core.fingerprint.manager.platform.platform", return_value="Linux-5.0"):
-                    fp = FingerprintCollector.collect_from_system()
-                    assert fp.timezone == "UTC"
+                    with patch.dict("sys.modules", {"tzlocal": mock_tzlocal}):
+                        fp = FingerprintCollector.collect_from_system()
+                        assert fp.timezone == "UTC"
 
     def test_collect_from_system_tzlocal_success(self):
         mock_tzlocal = MagicMock()

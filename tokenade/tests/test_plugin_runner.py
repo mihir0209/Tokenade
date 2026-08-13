@@ -2,7 +2,9 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
+from tokenade.core.integration.plugin_loader import LoadedPlugin, PluginState
 from tokenade.core.integration.plugin_runner import PluginRunner
 
 
@@ -105,3 +107,27 @@ class TestPluginRunner:
         result = PluginRunner(tmp_path).run("missing", {})
         assert result.success is False
         assert result.error.code.value == "PLUGIN_LOAD_ERROR"
+
+    def test_rejects_plugin_that_is_not_active(self, tmp_path):
+        _write_plugin(tmp_path, PLUGIN_SOURCE, RUN_SPEC)
+        loaded = LoadedPlugin(
+            name="test-plugin",
+            version="1.0.0",
+            description="",
+            plugin_type="handler",
+            module=None,
+            entry_class=None,
+            instance=object(),
+            state=PluginState.LOADED,
+        )
+        with patch(
+            "tokenade.core.integration.plugin_loader.PluginLoader.load_by_name",
+            return_value=loaded,
+        ):
+            result = PluginRunner(tmp_path).run(
+                "test-plugin", {"session_file": "source.tokenade"}
+            )
+
+        assert result.success is False
+        assert result.error.code.value == "PLUGIN_LOAD_ERROR"
+        assert "not active" in result.error.message

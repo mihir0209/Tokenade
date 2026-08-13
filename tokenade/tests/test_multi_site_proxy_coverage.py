@@ -289,7 +289,7 @@ class TestMultiSiteProxyStart:
                                 mock_event = MagicMock()
                                 mock_event.wait = AsyncMock(side_effect=asyncio.CancelledError)
                                 mock_event_cls.return_value = mock_event
-                                with patch("asyncio.create_task"):
+                                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
                                     _run_async(proxy.start())
 
         assert len(proxy._proxies) == 1
@@ -317,7 +317,7 @@ class TestMultiSiteProxyStart:
                                 mock_event = MagicMock()
                                 mock_event.wait = AsyncMock(side_effect=asyncio.CancelledError)
                                 mock_event_cls.return_value = mock_event
-                                with patch("asyncio.create_task"):
+                                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
                                     _run_async(proxy.start())
 
         mock_cdp.shutdown.assert_called_once()
@@ -345,7 +345,7 @@ class TestMultiSiteProxyStart:
                                 mock_event = MagicMock()
                                 mock_event.wait = AsyncMock(side_effect=KeyboardInterrupt)
                                 mock_event_cls.return_value = mock_event
-                                with patch("asyncio.create_task"):
+                                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
                                     _run_async(proxy.start())
 
         mock_cdp.shutdown.assert_called_once()
@@ -372,7 +372,7 @@ class TestMultiSiteProxyStart:
                                 mock_event = MagicMock()
                                 mock_event.wait = AsyncMock(side_effect=asyncio.CancelledError)
                                 mock_event_cls.return_value = mock_event
-                                with patch("asyncio.create_task"):
+                                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
                                     _run_async(proxy.start())
 
         mock_cdp.shutdown.assert_called_once()
@@ -399,10 +399,33 @@ class TestMultiSiteProxyStart:
                                 mock_event = MagicMock()
                                 mock_event.wait = AsyncMock(side_effect=asyncio.CancelledError)
                                 mock_event_cls.return_value = mock_event
-                                with patch("asyncio.create_task"):
+                                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
                                     _run_async(proxy.start())
 
         assert len(proxy._proxies) == 3
         assert proxy._proxies[0]["port"] == 19401
         assert proxy._proxies[1]["port"] == 19402
         assert proxy._proxies[2]["port"] == 19403
+
+    def test_startup_failure_closes_shared_pool(self):
+        proxy = MultiSiteProxy([_make_session("site1")], base_port=19304)
+        mock_session = MagicMock()
+        mock_cdp = MagicMock()
+        mock_cdp.start = AsyncMock()
+        mock_cdp.shutdown = AsyncMock()
+        proxy._shared_pool.get_session = AsyncMock(return_value=mock_session)
+        proxy._shared_pool.close = AsyncMock()
+
+        with patch("tokenade.core.proxy.cdp_proxy.CDPProxy", return_value=mock_cdp):
+            with patch("tokenade.core.proxy.cdp_proxy.CDPProxyConfig"):
+                with patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
+                    with patch("asyncio.sleep", new_callable=AsyncMock, side_effect=RuntimeError("startup failed")):
+                        try:
+                            _run_async(proxy.start())
+                        except RuntimeError as exc:
+                            assert str(exc) == "startup failed"
+                        else:
+                            raise AssertionError("startup failure was swallowed")
+
+        mock_cdp.shutdown.assert_awaited_once()
+        proxy._shared_pool.close.assert_awaited_once()

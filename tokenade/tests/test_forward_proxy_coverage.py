@@ -31,6 +31,20 @@ def _make_protocol(proxy=None):
     return _ForwardProxyProtocol(proxy)
 
 
+def _make_http_session(body=b"ok", headers=None):
+    response = MagicMock()
+    response.status = 200
+    response.reason = "OK"
+    response.headers = headers or {}
+    response.read = AsyncMock(return_value=body)
+    request_context = MagicMock()
+    request_context.__aenter__ = AsyncMock(return_value=response)
+    request_context.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.request.return_value = request_context
+    return session
+
+
 # ===========================================================================
 # ForwardProxy unit tests
 # ===========================================================================
@@ -83,6 +97,7 @@ class TestProtocolDataReceived:
         with patch("asyncio.ensure_future") as ef:
             proto.data_received(b"GET / HTTP/1.1\r\nHost: ex\r\n\r\n")
             ef.assert_called_once()
+            ef.call_args.args[0].close()
 
 
 class TestProtocolProcess:
@@ -130,19 +145,24 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         mock_target_reader = AsyncMock()
+        mock_target_reader.read = AsyncMock(return_value=b"")
         mock_target_writer = MagicMock()
         mock_target_writer.write = MagicMock()
         mock_target_writer.drain = AsyncMock()
         mock_target_writer.close = MagicMock()
         mock_target_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as wf:
-            wf.return_value = (mock_target_reader, mock_target_writer)
+        with patch("asyncio.open_connection", new_callable=AsyncMock,
+                   return_value=(mock_target_reader, mock_target_writer)):
             with patch("asyncio.StreamReader"):
                 with patch("asyncio.StreamReaderProtocol"):
                     with patch("asyncio.get_event_loop"):
-                        with patch("asyncio.gather", new_callable=AsyncMock) as g:
-                            g.return_value = [None, None]
+                        async def consume_gather(*coroutines, **kwargs):
+                            for coroutine in coroutines:
+                                await coroutine
+                            return [None, None]
+
+                        with patch("asyncio.gather", new=consume_gather):
                             _run_async(proto._handle_connect(b"", "example.com:443"))
 
         assert proto.proxy.stats["requests"] == 1
@@ -152,7 +172,7 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         error = OSError("Connection refused")
-        with patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=error):
+        with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=error):
             _run_async(proto._handle_connect(b"", "example.com"))
 
         written = proto.transport.write.call_args[0][0]
@@ -164,7 +184,7 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         error = OSError("Name or service not known")
-        with patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=error):
+        with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=error):
             _run_async(proto._handle_connect(b"", "badhost.example.com:443"))
 
         written = proto.transport.write.call_args[0][0]
@@ -176,7 +196,7 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         error = OSError("Connection timed out")
-        with patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=error):
+        with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=error):
             _run_async(proto._handle_connect(b"", "slow.host:443"))
 
         assert b"502" in proto.transport.write.call_args[0][0]
@@ -187,7 +207,7 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         error = OSError("Network is unreachable")
-        with patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=error):
+        with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=error):
             _run_async(proto._handle_connect(b"", "unreachable.host:443"))
 
         assert b"502" in proto.transport.write.call_args[0][0]
@@ -197,7 +217,7 @@ class TestHandleConnect:
         proto.transport = MagicMock()
 
         error = OSError("Connection refused")
-        with patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=error):
+        with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=error):
             _run_async(proto._handle_connect(b"", "refused.host:443"))
 
         assert b"502" in proto.transport.write.call_args[0][0]
@@ -211,12 +231,17 @@ class TestHandleConnect:
         mock_target_writer.close = MagicMock()
         mock_target_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as wf:
-            wf.return_value = (mock_target_reader, mock_target_writer)
+        with patch("asyncio.open_connection", new_callable=AsyncMock,
+                   return_value=(mock_target_reader, mock_target_writer)):
             with patch("asyncio.StreamReader"):
                 with patch("asyncio.StreamReaderProtocol"):
                     with patch("asyncio.get_event_loop"):
-                        with patch("asyncio.gather", new_callable=AsyncMock, side_effect=OSError("gather failed")):
+                        async def failing_gather(*coroutines, **kwargs):
+                            for coroutine in coroutines:
+                                coroutine.close()
+                            raise OSError("gather failed")
+
+                        with patch("asyncio.gather", new=failing_gather):
                             _run_async(proto._handle_connect(b"", "example.com:443"))
 
         assert proto.proxy.stats["errors"] >= 1
@@ -237,8 +262,8 @@ class TestHandleConnect:
         mock_client_reader = AsyncMock()
         mock_client_reader.read = AsyncMock(side_effect=[b"data-to-target", b""])
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as wf:
-            wf.return_value = (mock_target_reader, mock_target_writer)
+        with patch("asyncio.open_connection", new_callable=AsyncMock,
+                   return_value=(mock_target_reader, mock_target_writer)):
             with patch("asyncio.StreamReader", return_value=mock_client_reader):
                 with patch("asyncio.StreamReaderProtocol"):
                     with patch("asyncio.get_event_loop"):
@@ -268,8 +293,8 @@ class TestHandleConnect:
         mock_target_writer.close = MagicMock()
         mock_target_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as wf:
-            wf.return_value = (mock_target_reader, mock_target_writer)
+        with patch("asyncio.open_connection", new_callable=AsyncMock,
+                   return_value=(mock_target_reader, mock_target_writer)):
             with patch("asyncio.StreamReader"):
                 with patch("asyncio.StreamReaderProtocol"):
                     with patch("asyncio.get_event_loop"):
@@ -300,16 +325,9 @@ class TestHandleHttp:
             b"Proxy-Connection: keep-alive\r\n"
             b"\r\n"
         )
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {"Content-Type": "text/html"}
-        mock_resp.read = AsyncMock(return_value=b"<html>OK</html>")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session(
+            body=b"<html>OK</html>", headers={"Content-Type": "text/html"}
+        )
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "http://example.com/page", raw))
@@ -337,16 +355,7 @@ class TestHandleHttp:
         mock_jar.get_for_request = MagicMock(return_value="sid=abc")
         proto.proxy._cookie_jar = mock_jar
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {}
-        mock_resp.read = AsyncMock(return_value=b"ok")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session()
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "http://example.com/", raw))
@@ -365,16 +374,7 @@ class TestHandleHttp:
             b"key=value"
         )
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {}
-        mock_resp.read = AsyncMock(return_value=b"ok")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session()
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("POST", "http://example.com/submit", raw))
@@ -387,21 +387,12 @@ class TestHandleHttp:
         proto.transport = MagicMock()
         raw = b"GET http://example.com/ HTTP/1.1\r\n\r\n"
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {
+        mock_session = _make_http_session(body=b"<html></html>", headers={
             "Transfer-Encoding": "chunked",
             "Content-Encoding": "gzip",
             "Connection": "close",
             "Content-Type": "text/html",
-        }
-        mock_resp.read = AsyncMock(return_value=b"<html></html>")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        })
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "http://example.com/", raw))
@@ -466,16 +457,7 @@ class TestHandleHttp:
             b"\r\n"
         )
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {}
-        mock_resp.read = AsyncMock(return_value=b"ok")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session()
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "/path?q=1", raw))
@@ -488,16 +470,7 @@ class TestHandleHttp:
         proto.transport = MagicMock()
         raw = b"GET http://example.com/ HTTP/1.1\r\n\r\n"
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {}
-        mock_resp.read = AsyncMock(return_value=b"ok")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session()
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "http://example.com/", raw))
@@ -514,27 +487,14 @@ class TestHandleHttp:
             b"\r\n"
         )
 
-        mock_session = AsyncMock()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.reason = "OK"
-        mock_resp.headers = {}
-        mock_resp.read = AsyncMock(return_value=b"ok")
-
-        mock_session.request = MagicMock()
-        mock_session.request.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_session.request.__aexit__ = AsyncMock(return_value=False)
+        mock_session = _make_http_session()
 
         with patch.object(proto.proxy, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             _run_async(proto._handle_http("GET", "http://example.com/", raw))
 
         call_kwargs = mock_session.request.call_args
         headers = call_kwargs[1]["headers"]
-        # _parse_headers lowercases keys; pop uses exact case so Proxy-Connection
-        # won't match "proxy-connection". But the raw header IS parsed and passed.
-        # The code pops "Proxy-Connection" (capital P) but key is "proxy-connection"
-        # so the pop is a no-op. Verify the header is still present (source code behavior).
-        assert "proxy-connection" in headers
+        assert "proxy-connection" not in headers
 
 
 # ===========================================================================
@@ -631,7 +591,8 @@ class TestForwardProxyStart:
         proxy = ForwardProxy(_make_session(), port=19999)
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_loop = AsyncMock()
-            mock_server = AsyncMock()
+            mock_server = MagicMock()
+            mock_server.wait_closed = AsyncMock()
             mock_loop.create_server = AsyncMock(return_value=mock_server)
             mock_get_loop.return_value = mock_loop
 
@@ -655,7 +616,8 @@ class TestForwardProxyStart:
 
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_loop = AsyncMock()
-            mock_server = AsyncMock()
+            mock_server = MagicMock()
+            mock_server.wait_closed = AsyncMock()
             mock_loop.create_server = AsyncMock(return_value=mock_server)
             mock_get_loop.return_value = mock_loop
 
@@ -673,7 +635,7 @@ class TestForwardProxyStart:
 
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_loop = AsyncMock()
-            mock_server = AsyncMock()
+            mock_server = MagicMock()
             mock_server.wait_closed = AsyncMock()
             mock_loop.create_server = AsyncMock(return_value=mock_server)
             mock_get_loop.return_value = mock_loop
@@ -692,7 +654,7 @@ class TestForwardProxyStart:
 
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_loop = AsyncMock()
-            mock_server = AsyncMock()
+            mock_server = MagicMock()
             mock_server.wait_closed = AsyncMock()
             mock_loop.create_server = AsyncMock(return_value=mock_server)
             mock_get_loop.return_value = mock_loop
@@ -712,7 +674,7 @@ class TestForwardProxyStart:
 
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_loop = AsyncMock()
-            mock_server = AsyncMock()
+            mock_server = MagicMock()
             mock_server.wait_closed = AsyncMock()
             mock_loop.create_server = AsyncMock(return_value=mock_server)
             mock_get_loop.return_value = mock_loop

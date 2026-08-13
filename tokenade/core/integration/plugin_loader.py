@@ -475,6 +475,7 @@ class PluginLoader:
                 logger.debug(f"Failed to register plugin in shared context: {e}")
 
         # T3.1/T5.2/T7.4: Wire on_configure() with PluginConfigManager
+        configuration_valid = True
         try:
             from tokenade.core.integration.plugin_config import PluginConfigManager
             from tokenade.plugin.api import PluginConfig
@@ -490,15 +491,18 @@ class PluginLoader:
                 plugin_config = PluginConfig(schema=schema, values=full_config)
                 errors = plugin_config.validate()
                 if errors:
-                    logger.warning(
-                        f"Plugin {name}: config validation errors: {errors}"
+                    configuration_valid = False
+                    loaded.config = full_config
+                    logger.debug(
+                        "Plugin %s is loaded but not configured: %s", name, errors
                     )
-                instance.on_configure(plugin_config)
-                loaded.config = full_config
-                loaded.state = PluginState.CONFIGURED
-                logger.debug(f"Plugin {name}: on_configure() called")
-                if ctx:
-                    ctx.plugins.set_config(name, full_config)
+                else:
+                    instance.on_configure(plugin_config)
+                    loaded.config = full_config
+                    loaded.state = PluginState.CONFIGURED
+                    logger.debug(f"Plugin {name}: on_configure() called")
+                    if ctx:
+                        ctx.plugins.set_config(name, full_config)
             else:
                 loaded.config = full_config
         except Exception as e:
@@ -509,6 +513,21 @@ class PluginLoader:
             )
             loaded.state = PluginState.FAILED
             loaded.error = str(e)
+
+        if not configuration_valid:
+            self._handlers = {k: v for k, v in self._handlers.items() if v is not instance}
+            self._exporters = {k: v for k, v in self._exporters.items() if v is not instance}
+            self._validators = {k: v for k, v in self._validators.items() if v is not instance}
+            self._refreshers = {k: v for k, v in self._refreshers.items() if v is not instance}
+            self._stealths = {k: v for k, v in self._stealths.items() if v is not instance}
+            self._proxies = {k: v for k, v in self._proxies.items() if v is not instance}
+            self._notifications = {
+                k: v for k, v in self._notifications.items() if v is not instance
+            }
+            self._captchas = {k: v for k, v in self._captchas.items() if v is not instance}
+            if ctx:
+                ctx.plugins.unregister(name)
+            return loaded
 
         # Transition to ACTIVE after all wiring succeeds
         if loaded.state != PluginState.FAILED:

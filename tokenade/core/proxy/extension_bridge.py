@@ -117,6 +117,7 @@ class ExtensionBridge:
 
     def send_session_update(self, session_data: Dict):
         """Send session update to all connected extensions."""
+        asyncio.get_running_loop()
         asyncio.create_task(self.broadcast({
             "type": "session_update",
             "data": session_data,

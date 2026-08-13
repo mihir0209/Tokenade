@@ -190,15 +190,9 @@ async def inject_via_raw_cdp(proxy: "CDPProxy"):
 
             # 3. Event loop — inject stealth into new targets
             logger.info(f"CDP monitor started: {len(cookies)} cookies, watching for targets")
-            loop = asyncio.get_event_loop()
-            _ws = ws
-
             while True:
                 try:
-                    raw = await asyncio.wait_for(
-                        loop.run_in_executor(None, _ws.recv),
-                        timeout=5
-                    )
+                    raw = await asyncio.wait_for(ws.recv(), timeout=5)
                     if raw is None:
                         continue
                     data = json_mod.loads(raw)

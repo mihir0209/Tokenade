@@ -77,12 +77,12 @@ class PluginRunner:
                     PluginRunErrorCode.LOAD_ERROR,
                     "plugin could not be loaded",
                 )
-            if loaded.state == PluginState.FAILED:
+            if loaded.state != PluginState.ACTIVE:
                 return self._error(
                     plugin_name,
                     selected_method,
                     PluginRunErrorCode.LOAD_ERROR,
-                    loaded.error or "plugin lifecycle failed",
+                    loaded.error or f"plugin is not active ({loaded.state.value})",
                 )
 
             operation = getattr(loaded.instance, selected_method, None)

@@ -2,6 +2,8 @@
 
 from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
+
 from tokenade.core.proxy.cdp_proxy import (
     CDPProxyConfig, _is_safe_url, _strip_duplicate_headers,
     _LenientProtocol, _LenientServerFactory,
@@ -190,8 +192,9 @@ class TestExtensionBridge:
         bridge._clients -= disconnected
         assert bad_client not in bridge._clients
 
-    def test_send_session_update_creates_task(self):
+    @pytest.mark.asyncio
+    async def test_send_session_update_creates_task(self):
         bridge = ExtensionBridge()
-        with patch("asyncio.create_task") as mock_task:
+        with patch("asyncio.create_task", side_effect=lambda coro: coro.close()) as mock_task:
             bridge.send_session_update({"cookies": []})
             mock_task.assert_called_once()
