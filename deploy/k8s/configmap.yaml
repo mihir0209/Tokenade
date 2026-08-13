@@ -11,4 +11,3 @@ data:
   TOKENADE_LOG_LEVEL: "info"
   TOKENADE_SESSIONS_DIR: "/data/sessions"
   TOKENADE_VAULT_DIR: "/data/vault"
-  TOKENADE_ANALYTICS_DIR: "/data/analytics"
