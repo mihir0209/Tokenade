@@ -161,7 +161,7 @@ class SFTPTransport:
         lock = f"{remote}.tokenade-sync-lock"
         owner = f"{uuid.uuid4().hex}:{time.time()}"
         try:
-            lock_handle = self.sftp.open(lock, "x")
+            lock_handle = self.sftp.open(lock, "wx")
             lock_handle.write(owner)
             lock_handle.close()
         except Exception as exc:
@@ -172,7 +172,7 @@ class SFTPTransport:
                 if time.time() - created <= 600:
                     raise RuntimeError("remote object is locked") from exc
                 self.sftp.remove(lock)
-                lock_handle = self.sftp.open(lock, "x")
+                lock_handle = self.sftp.open(lock, "wx")
                 lock_handle.write(owner)
                 lock_handle.close()
             except RuntimeError:
@@ -385,29 +385,6 @@ class PeerSync:
                 transport.close()
         result["duration_ms"] = (time.time() - started) * 1000
         self._record_run(result)
-        from tokenade.core.analytics import record_local
-
-        outcome = "failure" if result["errors"] or result["conflicts"] else "success"
-        bucket = (
-            "0"
-            if not result["synced"]
-            else "1-10"
-            if len(result["synced"]) <= 10
-            else "11+"
-        )
-        operation = (
-            "sync_push"
-            if direction == "push"
-            else "sync_pull"
-            if direction == "pull"
-            else "sync_two_way"
-        )
-        record_local(
-            operation,
-            outcome,
-            duration_ms=int(result["duration_ms"]),
-            dimensions={"file_count_bucket": bucket},
-        )
         return result
 
     def status(self, peer_name):

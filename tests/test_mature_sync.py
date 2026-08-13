@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from tokenade.core.sync import PeerConfig, PeerSync
+from tokenade.core.sync.peer import SFTPTransport
 
 
 def session(path: Path, marker: str):
@@ -154,3 +155,52 @@ def test_peer_and_baseline_persist_across_instances(tmp_path):
     second = PeerSync(str(tmp_path / "local"), str(tmp_path / "state"))
     assert second.list_peers()[0].name == "backup"
     assert second.plan("backup")["actions"][0]["action"] == "noop"
+
+
+def test_sftp_lock_is_opened_exclusive_and_writable(tmp_path, monkeypatch):
+    opened = []
+
+    class Handle:
+        def write(self, value):
+            assert value
+
+        def close(self):
+            pass
+
+        def read(self):
+            return b""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    class SFTP:
+        def open(self, path, mode):
+            opened.append(mode)
+            if mode == "x":
+                raise OSError("File not open for writing")
+            return Handle()
+
+        def put(self, source, destination):
+            pass
+
+        def chmod(self, path, mode):
+            pass
+
+        def posix_rename(self, source, destination):
+            pass
+
+        def remove(self, path):
+            pass
+
+    transport = SFTPTransport(PeerConfig("p", "ssh", "remote"))
+    transport.sftp = SFTP()
+    monkeypatch.setattr(transport, "list_objects", lambda: {})
+    source = tmp_path / "a.tokenade"
+    source.write_text("{}")
+
+    transport.upload_atomic(source, "a.tokenade", None)
+
+    assert opened[0] == "wx"

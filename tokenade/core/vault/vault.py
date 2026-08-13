@@ -98,6 +98,185 @@ class VaultEntry:
 
 
 class SessionVault:
+    @classmethod
+    def migrate_legacy(
+        cls, config: Optional[VaultConfig] = None, passphrase: Optional[str] = None
+    ) -> VaultResult:
+        config = config or VaultConfig()
+        if not passphrase:
+            return VaultResult(False, "Legacy migration requires a recovery passphrase")
+        vault_dir = Path(config.vault_path).expanduser().resolve()
+        migration_config = VaultConfig(
+            vault_path=str(vault_dir),
+            backup_path=config.backup_path,
+            max_backups=config.max_backups,
+        )
+        key_path = vault_dir / "master.key"
+        index_path = vault_dir / "entries.json"
+        if not key_path.is_file() or not index_path.is_file():
+            return VaultResult(False, "Legacy vault requires master.key and entries.json")
+
+        try:
+            key = key_path.read_bytes()
+            if len(key) != 32:
+                raise ValueError("legacy master.key must contain exactly 32 bytes")
+            index = json.loads(index_path.read_text())
+            if not isinstance(index, dict):
+                raise ValueError("legacy entries.json must contain an object")
+
+            plaintext_entries = []
+            failed_entries = []
+            for entry_id, metadata in index.items():
+                try:
+                    if not isinstance(metadata, dict):
+                        raise ValueError("invalid metadata")
+                    envelope_path = vault_dir / f"{entry_id}.enc"
+                    envelope = json.loads(envelope_path.read_text())
+                    nonce = base64.b64decode(envelope["iv"], validate=True)
+                    tag = base64.b64decode(envelope["tag"], validate=True)
+                    ciphertext = base64.b64decode(
+                        envelope["encrypted_data"], validate=True
+                    )
+                    data = AESGCM(key).decrypt(nonce, tag + ciphertext, None)
+                    if hashlib.sha256(data).hexdigest() != envelope.get("checksum"):
+                        raise ValueError("checksum mismatch")
+                    name = metadata.get("name") or entry_id
+                    cls._validate_name(name)
+                    plaintext_entries.append(
+                        (name, data, metadata.get("metadata", {}))
+                    )
+                except Exception as exc:
+                    failed_entries.append(
+                        {"entry_id": entry_id, "error": type(exc).__name__}
+                    )
+
+            if index and not plaintext_entries:
+                raise ValueError("no legacy entries could be decrypted")
+
+            archive = vault_dir.with_name(
+                f"{vault_dir.name}.legacy-{time.strftime('%Y%m%d-%H%M%S')}"
+            )
+            suffix = 2
+            while archive.exists() or archive.with_name(f"{archive.name}.tvbak").exists():
+                archive = vault_dir.with_name(
+                    f"{vault_dir.name}.legacy-{time.strftime('%Y%m%d-%H%M%S')}-{suffix}"
+                )
+                suffix += 1
+            os.replace(vault_dir, archive)
+            try:
+                migrated = cls(migration_config)
+                for name, data, metadata in plaintext_entries:
+                    result = migrated.store(name, data, metadata=metadata)
+                    if not result.success:
+                        raise RuntimeError(result.message)
+                verification = migrated.verify()
+                if not verification.success:
+                    raise RuntimeError(verification.message)
+                archive_bytes = io.BytesIO()
+                with zipfile.ZipFile(
+                    archive_bytes, "w", zipfile.ZIP_DEFLATED
+                ) as archive_zip:
+                    for path in archive.rglob("*"):
+                        if path.is_file():
+                            archive_zip.write(path, path.relative_to(archive))
+                salt = secrets.token_bytes(16)
+                recovery_key = hashlib.scrypt(
+                    passphrase.encode(),
+                    salt=salt,
+                    n=2**15,
+                    r=8,
+                    p=1,
+                    dklen=32,
+                    maxmem=64 * 1024 * 1024,
+                )
+                nonce = secrets.token_bytes(12)
+                sealed_archive = archive.with_name(f"{archive.name}.tvbak")
+                migrated._atomic_write_bytes(
+                    sealed_archive,
+                    b"TVLG1"
+                    + salt
+                    + nonce
+                    + AESGCM(recovery_key).encrypt(
+                        nonce,
+                        archive_bytes.getvalue(),
+                        b"tokenade-legacy-vault-backup-v1",
+                    ),
+                )
+                shutil.rmtree(archive)
+            except Exception:
+                shutil.rmtree(vault_dir, ignore_errors=True)
+                if archive.exists():
+                    os.replace(archive, vault_dir)
+                raise
+            message = f"Migrated {len(plaintext_entries)} legacy entries"
+            if failed_entries:
+                message += (
+                    f"; {len(failed_entries)} unrecoverable entries remain in the legacy archive"
+                )
+            return VaultResult(
+                True,
+                message,
+                metadata={
+                    "entries_migrated": len(plaintext_entries),
+                    "entries_skipped": len(failed_entries),
+                    "skipped_entries": failed_entries,
+                    "legacy_archive": str(sealed_archive),
+                },
+            )
+        except Exception as exc:
+            detail = str(exc) or type(exc).__name__
+            return VaultResult(False, f"Legacy migration failed: {detail}")
+
+    @classmethod
+    def recover_legacy_archive(
+        cls, archive_path: str, destination: str, passphrase: Optional[str] = None
+    ) -> VaultResult:
+        """Decrypt a migration archive into a separate legacy Vault directory."""
+        if not passphrase:
+            return VaultResult(False, "Legacy recovery requires the recovery passphrase")
+        source = Path(archive_path).expanduser().resolve()
+        target = Path(destination).expanduser().resolve()
+        if not source.is_file():
+            return VaultResult(False, f"Legacy archive not found: {source}")
+        if target.exists():
+            return VaultResult(False, f"Recovery destination already exists: {target}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        stage = Path(tempfile.mkdtemp(prefix=".legacy-recovery-", dir=str(target.parent)))
+        try:
+            raw = source.read_bytes()
+            if raw[:5] != b"TVLG1":
+                raise ValueError("invalid legacy archive format")
+            salt, nonce, ciphertext = raw[5:21], raw[21:33], raw[33:]
+            key = hashlib.scrypt(
+                passphrase.encode(),
+                salt=salt,
+                n=2**15,
+                r=8,
+                p=1,
+                dklen=32,
+                maxmem=64 * 1024 * 1024,
+            )
+            archive = AESGCM(key).decrypt(
+                nonce, ciphertext, b"tokenade-legacy-vault-backup-v1"
+            )
+            with zipfile.ZipFile(io.BytesIO(archive)) as archive_zip:
+                for item in archive_zip.infolist():
+                    path = Path(item.filename)
+                    if path.is_absolute() or ".." in path.parts:
+                        raise ValueError("unsafe legacy archive path")
+                archive_zip.extractall(stage)
+            if not (stage / "master.key").is_file() or not (stage / "entries.json").is_file():
+                raise ValueError("legacy archive is incomplete")
+            os.replace(stage, target)
+            return VaultResult(
+                True,
+                f"Recovered legacy Vault to: {target}",
+                metadata={"recovery_path": str(target)},
+            )
+        except Exception as exc:
+            shutil.rmtree(stage, ignore_errors=True)
+            return VaultResult(False, f"Legacy recovery failed: {exc}")
+
     def __init__(self, config: Optional[VaultConfig] = None):
         self.config = config or VaultConfig()
         self._vault_dir = Path(self.config.vault_path).expanduser().resolve()
@@ -176,9 +355,6 @@ class SessionVault:
                         destination.unlink(missing_ok=True)
                     self._reload_manifest()
                     raise
-            from tokenade.core.analytics import record_local
-
-            record_local("vault_store", "success", dimensions={"encrypted": True})
             return VaultResult(
                 True, f"Stored '{name}' in vault", metadata=entry.to_dict()
             )
@@ -201,9 +377,6 @@ class SessionVault:
                 if destination.exists() and not overwrite:
                     return VaultResult(False, f"Output already exists: {destination}")
                 self._atomic_write_bytes(destination, data)
-            from tokenade.core.analytics import record_local
-
-            record_local("vault_retrieve", "success")
             return VaultResult(
                 True,
                 f"Retrieved '{name}' from vault",
@@ -494,6 +667,10 @@ class SessionVault:
                         pass
                     raise
                 self._manifest = manifest
+                self._entries = {
+                    eid: VaultEntry(entry_id=eid, **data)
+                    for eid, data in manifest["entries"].items()
+                }
                 self._schedule_key_deletion(old_vault_id, old_key_id)
                 shutil.rmtree(backup_live)
                 restore_journal.unlink(missing_ok=True)
@@ -501,10 +678,6 @@ class SessionVault:
             self._manifest_path = self._vault_dir / "manifest.json"
             self._manifest = manifest
             self._key = restored_key
-            self._entries = {
-                eid: VaultEntry(entry_id=eid, **data)
-                for eid, data in manifest["entries"].items()
-            }
             return VaultResult(
                 True,
                 f"Restored from backup: {source.name}",
