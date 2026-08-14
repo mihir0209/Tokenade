@@ -420,6 +420,7 @@ class TestTUIScreenshots:
                 sync_log = app.query_one("#sync-log")
                 assert sync_log.region.height <= app.screen.region.height * 0.30
 
+
 @pytest.mark.skipif(not _textual_available, reason="textual not installed")
 class TestConfigPaths:
     def test_defaults_under_home_tokenade(self, monkeypatch):
