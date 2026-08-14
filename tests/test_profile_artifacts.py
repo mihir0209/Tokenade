@@ -3,7 +3,7 @@ import hashlib
 import json
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -194,23 +194,9 @@ def test_web_storage_supersession_is_declarative():
     assert ProfileArtifactManager.web_storage_is_superseded(session) is False
 
 
-def test_load_compatible_handler_rejects_inactive_plugin():
+def test_load_compatible_handler_rejects_inactive_plugin(inactive_plugin_loader):
     """CR-05: _load_compatible_handler rejects loaded-but-not-active plugins."""
-    from unittest.mock import MagicMock
-
-    from tokenade.core.integration.plugin_loader import PluginState
-
-    fake_loaded = MagicMock()
-    fake_loaded.is_active = False
-    fake_loaded.state = PluginState.LOADED
-
-    fake_loader = MagicMock()
-    fake_loader.get_manifest.return_value = {
-        "version": "1.0.0",
-        "dependencies": [],
-    }
-    fake_loader.is_disabled.return_value = False
-    fake_loader.load_by_name.return_value = fake_loaded
+    fake_loaded, fake_loader = inactive_plugin_loader
 
     artifact = {
         "owner": {"plugin": "test-plugin"},

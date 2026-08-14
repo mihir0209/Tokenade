@@ -705,21 +705,11 @@ class TestRefresherAutoDiscovery:
 # ── CR-05: cmd_launch ACTIVE guard for required plugins ──────────────────────
 
 
-def test_cmd_launch_reports_inactive_required_plugin():
+def test_cmd_launch_reports_inactive_required_plugin(inactive_plugin_loader):
     """cmd_launch must report a requirement failure for loaded-but-not-active plugins."""
     from tokenade.cli.handlers.browser_ops import cmd_launch
 
-    fake_loaded = MagicMock()
-    fake_loaded.is_active = False
-    fake_loaded.state = MagicMock(value="loaded")
-
-    fake_loader = MagicMock()
-    fake_loader.get_manifest.return_value = {
-        "version": "1.0.0",
-        "dependencies": [],
-    }
-    fake_loader.is_disabled.return_value = False
-    fake_loader.load_by_name.return_value = fake_loaded
+    fake_loaded, fake_loader = inactive_plugin_loader
 
     session = {
         "version": "3.0",

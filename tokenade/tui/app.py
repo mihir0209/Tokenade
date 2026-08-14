@@ -644,7 +644,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._plugins = []
 
     @staticmethod
-    def _installed_row(name, enabled, version, state, error, config, health=None):
+    def _installed_row(name, enabled, version, state, error, config):
         return {
             "name": name,
             "enabled": enabled,
@@ -652,7 +652,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             "state": state.value if hasattr(state, "value") else str(state),
             "error": error,
             "config": config or {},
-            "health": health,
+            "health": None,
         }
 
     def _load_installed(self):

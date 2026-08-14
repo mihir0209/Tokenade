@@ -28,6 +28,10 @@ _HELD_LOCKS: "set[Path]" = set()
 KEYRING_SERVICE = "tokenade-vault"
 
 
+def _exc_detail(exc: Exception) -> str:
+    return str(exc) or type(exc).__name__
+
+
 @dataclass
 class VaultConfig:
     vault_path: str = "~/.tokenade/vault"
@@ -229,7 +233,7 @@ class SessionVault:
                 },
             )
         except Exception as exc:
-            detail = SessionVault._exc_detail(exc)
+            detail = _exc_detail(exc)
             return VaultResult(False, f"Legacy migration failed: {detail}")
 
     @classmethod
@@ -286,7 +290,7 @@ class SessionVault:
             )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            detail = SessionVault._exc_detail(exc)
+            detail = _exc_detail(exc)
             return VaultResult(False, f"Legacy recovery failed: {detail}")
 
     def __init__(self, config: Optional[VaultConfig] = None):
@@ -517,7 +521,7 @@ class SessionVault:
                 shutil.rmtree(stage, ignore_errors=True)
             if "new_key_id" in locals():
                 self._delete_key(new_key_id)
-            detail = SessionVault._exc_detail(exc)
+            detail = _exc_detail(exc)
             return VaultResult(False, f"Key rotation failed: {detail}")
 
     def backup(
@@ -568,7 +572,7 @@ class SessionVault:
                 metadata={"backup_path": str(destination)},
             )
         except Exception as exc:
-            detail = SessionVault._exc_detail(exc)
+            detail = _exc_detail(exc)
             return VaultResult(False, f"Backup failed: {detail}")
 
     def restore(
@@ -723,7 +727,7 @@ class SessionVault:
             )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            detail = SessionVault._exc_detail(exc)
+            detail = _exc_detail(exc)
             return VaultResult(False, f"Restore failed: {detail}")
 
     def _load_or_create_manifest(self) -> Dict[str, Any]:
@@ -805,10 +809,6 @@ class SessionVault:
             vault_id == manifest.get("vault_id")
             and key_id == manifest.get("active_key_id")
         )
-
-    @staticmethod
-    def _exc_detail(exc: Exception) -> str:
-        return str(exc) or type(exc).__name__
 
     def _schedule_key_deletion(self, vault_id: str, key_id: str) -> None:
         if self.config.master_key:
