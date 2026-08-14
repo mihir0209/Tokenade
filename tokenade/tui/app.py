@@ -514,7 +514,6 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._installed: List[Dict] = []
         self._sessions: List[Dict] = []
         self._marketplace_generation: int = 0
-        self._installed_generation: int = 0
         self._marketplace_fetch_inflight: bool = False
         self._selected_session: Optional[Dict] = None
         self._last_share: Dict[str, Any] = {}
@@ -644,67 +643,51 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             logger.debug("Failed to load plugins: %s", e)
             self._plugins = []
 
+    @staticmethod
+    def _installed_row(name, enabled, version, state, error, config, health=None):
+        return {
+            "name": name,
+            "enabled": enabled,
+            "version": version,
+            "state": state.value if hasattr(state, "value") else str(state),
+            "error": error,
+            "config": config or {},
+            "health": health,
+        }
+
     def _load_installed(self):
         """List installed plugins off the message loop with accurate state."""
 
-        generation = self._installed_generation
-
         def worker():
             try:
-                from tokenade.core.integration.plugin_loader import PluginLoader, PluginState
-
-                registry_plugins = []
+                from tokenade.core.integration.plugin_loader import PluginLoader
                 from tokenade.core.integration.plugin_registry import PluginRegistry
 
                 registry_plugins = PluginRegistry().list_installed()
                 loader = PluginLoader()
                 installed = []
                 for p in registry_plugins:
-                    loaded = loader._loaded.get(p.name)
+                    loaded = loader.get_plugin(p.name)
                     if loaded is not None:
-                        state = loaded.state
                         installed.append(
-                            {
-                                "name": p.name,
-                                "enabled": loaded.enabled,
-                                "version": p.version,
-                                "state": state.value if isinstance(state, PluginState) else str(state),
-                                "error": loaded.error,
-                                "config": loaded.config or {},
-                                "health": None,
-                            }
+                            self._installed_row(
+                                p.name, loaded.enabled, p.version, loaded.state,
+                                loaded.error, loaded.config,
+                            )
                         )
-                    elif p.name in loader._disabled:
+                    elif loader.is_disabled(p.name):
                         installed.append(
-                            {
-                                "name": p.name,
-                                "enabled": False,
-                                "version": p.version,
-                                "state": "disabled",
-                                "error": None,
-                                "config": {},
-                                "health": None,
-                            }
+                            self._installed_row(p.name, False, p.version, "disabled", None, {})
                         )
                     else:
                         installed.append(
-                            {
-                                "name": p.name,
-                                "enabled": None,
-                                "version": p.version,
-                                "state": "unknown",
-                                "error": None,
-                                "config": {},
-                                "health": None,
-                            }
+                            self._installed_row(p.name, None, p.version, "unknown", None, {})
                         )
             except Exception as exc:
                 logger.debug("Failed to load installed: %s", exc)
                 installed = []
 
             def update():
-                if generation != self._installed_generation:
-                    return
                 self._installed = installed
                 try:
                     tabs = self.query_one("#main-tabs")

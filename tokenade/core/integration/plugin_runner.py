@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from tokenade.core.integration.plugin_loader import PluginLoader, PluginState
+from tokenade.core.integration.plugin_loader import PluginLoader
 from tokenade.plugin.api import (
     PluginResult,
     PluginRunEnvelope,
@@ -77,7 +77,7 @@ class PluginRunner:
                     PluginRunErrorCode.LOAD_ERROR,
                     "plugin could not be loaded",
                 )
-            if loaded.state != PluginState.ACTIVE:
+            if not loaded.is_active:
                 return self._error(
                     plugin_name,
                     selected_method,

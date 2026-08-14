@@ -381,7 +381,7 @@ class ProfileArtifactManager:
         owner = str(artifact["owner"]["plugin"])
         loader = PluginLoader()
         manifest = loader.get_manifest(owner)
-        if not manifest or owner in loader._disabled:
+        if not manifest or loader.is_disabled(owner):
             raise ArtifactError(f"required plugin is missing or disabled: {owner}")
         requirement = next(
             (item.get("version") for item in artifact["requirements"].get("plugins", []) if item.get("name") == owner),
@@ -395,9 +395,7 @@ class ProfileArtifactManager:
         loaded = loader.load_by_name(owner)
         if not loaded:
             raise ArtifactError(f"required plugin failed to load: {owner}")
-        from tokenade.core.integration.plugin_loader import PluginState
-
-        if loaded.state != PluginState.ACTIVE:
+        if not loaded.is_active:
             raise ArtifactError(
                 f"required plugin is not active: {owner} (state: {loaded.state.value})"
             )

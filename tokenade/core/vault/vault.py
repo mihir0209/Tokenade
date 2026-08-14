@@ -229,7 +229,7 @@ class SessionVault:
                 },
             )
         except Exception as exc:
-            detail = str(exc) or type(exc).__name__
+            detail = SessionVault._exc_detail(exc)
             return VaultResult(False, f"Legacy migration failed: {detail}")
 
     @classmethod
@@ -286,7 +286,7 @@ class SessionVault:
             )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            detail = str(exc) or type(exc).__name__
+            detail = SessionVault._exc_detail(exc)
             return VaultResult(False, f"Legacy recovery failed: {detail}")
 
     def __init__(self, config: Optional[VaultConfig] = None):
@@ -517,7 +517,7 @@ class SessionVault:
                 shutil.rmtree(stage, ignore_errors=True)
             if "new_key_id" in locals():
                 self._delete_key(new_key_id)
-            detail = str(exc) or type(exc).__name__
+            detail = SessionVault._exc_detail(exc)
             return VaultResult(False, f"Key rotation failed: {detail}")
 
     def backup(
@@ -568,7 +568,7 @@ class SessionVault:
                 metadata={"backup_path": str(destination)},
             )
         except Exception as exc:
-            detail = str(exc) or type(exc).__name__
+            detail = SessionVault._exc_detail(exc)
             return VaultResult(False, f"Backup failed: {detail}")
 
     def restore(
@@ -682,9 +682,8 @@ class SessionVault:
                     if self._vault_dir.exists():
                         shutil.rmtree(self._vault_dir)
                     os.replace(backup_live, self._vault_dir)
-                    if (old_vault_id, old_key_id) != (
-                        manifest["vault_id"],
-                        manifest["active_key_id"],
+                    if not SessionVault._is_current_vault(
+                        manifest, old_vault_id, old_key_id
                     ):
                         try:
                             self._delete_key_for(
@@ -700,9 +699,8 @@ class SessionVault:
                     eid: VaultEntry(entry_id=eid, **data)
                     for eid, data in manifest["entries"].items()
                 }
-                if (old_vault_id, old_key_id) != (
-                    manifest["vault_id"],
-                    manifest["active_key_id"],
+                if not SessionVault._is_current_vault(
+                    manifest, old_vault_id, old_key_id
                 ):
                     self._schedule_key_deletion(old_vault_id, old_key_id)
                 shutil.rmtree(backup_live)
@@ -725,7 +723,7 @@ class SessionVault:
             )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            detail = str(exc) or type(exc).__name__
+            detail = SessionVault._exc_detail(exc)
             return VaultResult(False, f"Restore failed: {detail}")
 
     def _load_or_create_manifest(self) -> Dict[str, Any]:
@@ -801,13 +799,21 @@ class SessionVault:
 
         keyring.delete_password(KEYRING_SERVICE, f"{vault_id}:{key_id}")
 
+    @staticmethod
+    def _is_current_vault(manifest: Dict[str, Any], vault_id: str, key_id: str) -> bool:
+        return (
+            vault_id == manifest.get("vault_id")
+            and key_id == manifest.get("active_key_id")
+        )
+
+    @staticmethod
+    def _exc_detail(exc: Exception) -> str:
+        return str(exc) or type(exc).__name__
+
     def _schedule_key_deletion(self, vault_id: str, key_id: str) -> None:
         if self.config.master_key:
             return
-        if (vault_id, key_id) == (
-            self._manifest.get("vault_id"),
-            self._manifest.get("active_key_id"),
-        ):
+        if SessionVault._is_current_vault(self._manifest, vault_id, key_id):
             return
         pending = self._manifest.setdefault("pending_key_deletions", [])
         item = {"vault_id": vault_id, "key_id": key_id}
@@ -819,14 +825,12 @@ class SessionVault:
     def _retry_key_deletions(self) -> None:
         if self.config.master_key:
             return
-        active = (
-            self._manifest.get("vault_id"),
-            self._manifest.get("active_key_id"),
-        )
         pending = list(self._manifest.get("pending_key_deletions", []))
         remaining = []
         for item in pending:
-            if (item.get("vault_id"), item.get("key_id")) == active:
+            if SessionVault._is_current_vault(
+                self._manifest, item.get("vault_id"), item.get("key_id")
+            ):
                 continue
             try:
                 self._delete_key_for(item["vault_id"], item["key_id"])

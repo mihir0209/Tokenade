@@ -73,6 +73,14 @@ class LocalTransport:
         return _meta(destination)
 
     def upload_atomic(self, source, name, expected_hash):
+        """Upload *source* to *name* under an advisory lock.
+
+        The lock is advisory: it prevents concurrent uploads through this
+        code path but does not stop a process that writes to the remote
+        filesystem directly.  A stale lock (older than 10 minutes) is
+        taken over; a fresh lock held by another writer causes the call
+        to fail closed.
+        """
         _valid_name(name)
         destination = self.root / name
         lock = self.root / f".{name}.tokenade-sync-lock"

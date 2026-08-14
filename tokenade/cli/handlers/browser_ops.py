@@ -152,7 +152,7 @@ def cmd_launch(args):
                 if not manifest:
                     requirement_failures.append((name or "unknown", "not installed"))
                     continue
-                if name in requirement_loader._disabled:
+                if requirement_loader.is_disabled(name):
                     requirement_failures.append((name, "disabled"))
                     continue
                 installed_version = str(manifest.get("version") or "0")
@@ -195,9 +195,7 @@ def cmd_launch(args):
                 if not loaded:
                     requirement_failures.append((name, "failed to load"))
                     continue
-                from tokenade.core.integration.plugin_loader import PluginState
-
-                if loaded.state != PluginState.ACTIVE:
+                if not loaded.is_active:
                     requirement_failures.append(
                         (name, f"plugin is not active (state: {loaded.state.value})")
                     )

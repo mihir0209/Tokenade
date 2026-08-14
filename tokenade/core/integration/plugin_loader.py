@@ -132,6 +132,10 @@ class LoadedPlugin:
     config: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
 
+    @property
+    def is_active(self) -> bool:
+        return self.state == PluginState.ACTIVE
+
 
 class PluginLoader:
     """Discover, load, and manage plugins."""
@@ -709,6 +713,10 @@ class PluginLoader:
         """
         plugin = self._loaded.get(name)
         return plugin.state if plugin else None
+
+    def is_disabled(self, name: str) -> bool:
+        """Whether a discovered plugin has been administratively disabled."""
+        return name in self._disabled
 
     def get_plugin(self, name: str) -> Optional[LoadedPlugin]:
         """Get a LoadedPlugin by name.

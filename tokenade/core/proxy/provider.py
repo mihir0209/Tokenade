@@ -52,9 +52,7 @@ class ProxyProviderResolver:
         loaded = self.loader.load_by_name(plugin.name)
         if loaded is None or loaded.instance is None:
             raise ProxyProviderError(_missing_provider_message(plugin.name))
-        from tokenade.core.integration.plugin_loader import PluginState
-
-        if loaded.state != PluginState.ACTIVE:
+        if not loaded.is_active:
             raise ProxyProviderError(
                 f"proxy provider plugin '{plugin.name}' is not active "
                 f"(state: {loaded.state.value})"
