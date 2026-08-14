@@ -195,6 +195,13 @@ def cmd_launch(args):
                 if not loaded:
                     requirement_failures.append((name, "failed to load"))
                     continue
+                from tokenade.core.integration.plugin_loader import PluginState
+
+                if loaded.state != PluginState.ACTIVE:
+                    requirement_failures.append(
+                        (name, f"plugin is not active (state: {loaded.state.value})")
+                    )
+                    continue
                 validator = getattr(loaded.instance, "validate_launch_requirements", None)
                 if validator:
                     validation = validator(session, browser_name)

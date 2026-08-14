@@ -1,6 +1,7 @@
 """Tests for plugin loader."""
 
 import json
+from unittest.mock import MagicMock, patch
 
 from tokenade.core.integration.plugin_loader import LoadedPlugin, PluginLoader, PluginState
 
@@ -214,6 +215,93 @@ class TestPluginLoaderLoadPlugin:
         assert result.state == PluginState.LOADED
         assert result.instance not in loader._notifications.values()
         assert "config validation errors" not in caplog.text
+
+    def test_unconfigured_plugin_publishes_no_events_and_skips_context(
+        self, tmp_path
+    ):
+        plugin_dir = tmp_path / "webhook-notify"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "name": "webhook-notify",
+                    "version": "1.0",
+                    "type": "notification",
+                    "entry_point": "plugin.py",
+                    "entry_class": "WebhookPlugin",
+                    "config": {
+                        "schema": {
+                            "webhook_url": {"type": "string", "required": True}
+                        }
+                    },
+                }
+            )
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "class WebhookPlugin:\n"
+            "    def on_configure(self, config): pass\n"
+        )
+
+        loader = PluginLoader(plugins_dir=tmp_path)
+        bus = MagicMock()
+        ctx = MagicMock()
+        with (
+            patch(
+                "tokenade.core.integration.plugin_loader._get_event_bus",
+                return_value=bus,
+            ),
+            patch(
+                "tokenade.core.integration.plugin_loader._get_shared_context",
+                return_value=ctx,
+            ),
+        ):
+            result = loader.load_by_name("webhook-notify")
+
+        assert result.state == PluginState.LOADED
+        bus.emit.assert_not_called()
+        ctx.plugins.register.assert_not_called()
+        assert not loader._notifications
+
+    def test_configured_plugin_publishes_loaded_and_registers_in_context(
+        self, tmp_path
+    ):
+        plugin_dir = tmp_path / "simple-notify"
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "name": "simple-notify",
+                    "version": "1.0",
+                    "type": "notification",
+                    "entry_point": "plugin.py",
+                    "entry_class": "SimplePlugin",
+                }
+            )
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "class SimplePlugin:\n"
+            "    def on_configure(self, config): pass\n"
+        )
+
+        loader = PluginLoader(plugins_dir=tmp_path)
+        bus = MagicMock()
+        ctx = MagicMock()
+        with (
+            patch(
+                "tokenade.core.integration.plugin_loader._get_event_bus",
+                return_value=bus,
+            ),
+            patch(
+                "tokenade.core.integration.plugin_loader._get_shared_context",
+                return_value=ctx,
+            ),
+        ):
+            result = loader.load_by_name("simple-notify")
+
+        assert result.state == PluginState.ACTIVE
+        bus.emit.assert_called_once()
+        ctx.plugins.register.assert_called_once()
+        assert loader._notifications.get("simple-notify") is result.instance
 
     def test_load_no_entry_class(self, tmp_path):
         plugin_dir = tmp_path / "noclass"

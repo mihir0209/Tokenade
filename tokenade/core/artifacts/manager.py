@@ -395,6 +395,12 @@ class ProfileArtifactManager:
         loaded = loader.load_by_name(owner)
         if not loaded:
             raise ArtifactError(f"required plugin failed to load: {owner}")
+        from tokenade.core.integration.plugin_loader import PluginState
+
+        if loaded.state != PluginState.ACTIVE:
+            raise ArtifactError(
+                f"required plugin is not active: {owner} (state: {loaded.state.value})"
+            )
         return loaded.instance
 
     @staticmethod

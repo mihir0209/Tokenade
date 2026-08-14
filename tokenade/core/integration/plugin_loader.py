@@ -404,6 +404,54 @@ class PluginLoader:
 
         self._loaded[name] = loaded
 
+        # T3.1/T5.2/T7.4: Wire on_configure() with PluginConfigManager.
+        # Configuration validation runs before registration and event
+        # publishing so an unconfigured or failed plugin is never exposed
+        # as available to consumers.
+        ctx = _get_shared_context()
+        configuration_valid = True
+        try:
+            from tokenade.core.integration.plugin_config import PluginConfigManager
+            from tokenade.plugin.api import PluginConfig
+
+            config_mgr = PluginConfigManager(plugins_dir=self.plugins_dir)
+            schema = config_mgr.get_schema(name) or meta.get("config", {}).get("schema", {})
+            full_config = config_mgr.get_full_config(name)
+
+            # If neither schema nor config exists, skip on_configure
+            if not schema and not full_config:
+                pass
+            elif hasattr(instance, "on_configure"):
+                plugin_config = PluginConfig(schema=schema, values=full_config)
+                errors = plugin_config.validate()
+                if errors:
+                    configuration_valid = False
+                    loaded.config = full_config
+                    logger.debug(
+                        "Plugin %s is loaded but not configured: %s", name, errors
+                    )
+                else:
+                    instance.on_configure(plugin_config)
+                    loaded.config = full_config
+                    loaded.state = PluginState.CONFIGURED
+                    logger.debug(f"Plugin {name}: on_configure() called")
+                    if ctx:
+                        ctx.plugins.set_config(name, full_config)
+            else:
+                loaded.config = full_config
+        except Exception as e:
+            logger.error(f"Plugin {name}: on_configure() failed: {e}", exc_info=True)
+            _emit_event(
+                "PLUGIN_ERROR",
+                {"plugin_name": name, "error": str(e), "hook": "on_configure"},
+            )
+            loaded.state = PluginState.FAILED
+            loaded.error = str(e)
+            return loaded
+
+        if not configuration_valid:
+            return loaded
+
         # Register by type
         if plugin_type == "handler":
             # Prefer site_config.json "name", then manifest site_name, then plugin name
@@ -474,64 +522,8 @@ class PluginLoader:
             except Exception as e:
                 logger.debug(f"Failed to register plugin in shared context: {e}")
 
-        # T3.1/T5.2/T7.4: Wire on_configure() with PluginConfigManager
-        configuration_valid = True
-        try:
-            from tokenade.core.integration.plugin_config import PluginConfigManager
-            from tokenade.plugin.api import PluginConfig
-
-            config_mgr = PluginConfigManager(plugins_dir=self.plugins_dir)
-            schema = config_mgr.get_schema(name) or meta.get("config", {}).get("schema", {})
-            full_config = config_mgr.get_full_config(name)
-
-            # If neither schema nor config exists, skip on_configure
-            if not schema and not full_config:
-                pass
-            elif hasattr(instance, "on_configure"):
-                plugin_config = PluginConfig(schema=schema, values=full_config)
-                errors = plugin_config.validate()
-                if errors:
-                    configuration_valid = False
-                    loaded.config = full_config
-                    logger.debug(
-                        "Plugin %s is loaded but not configured: %s", name, errors
-                    )
-                else:
-                    instance.on_configure(plugin_config)
-                    loaded.config = full_config
-                    loaded.state = PluginState.CONFIGURED
-                    logger.debug(f"Plugin {name}: on_configure() called")
-                    if ctx:
-                        ctx.plugins.set_config(name, full_config)
-            else:
-                loaded.config = full_config
-        except Exception as e:
-            logger.error(f"Plugin {name}: on_configure() failed: {e}", exc_info=True)
-            _emit_event(
-                "PLUGIN_ERROR",
-                {"plugin_name": name, "error": str(e), "hook": "on_configure"},
-            )
-            loaded.state = PluginState.FAILED
-            loaded.error = str(e)
-
-        if not configuration_valid:
-            self._handlers = {k: v for k, v in self._handlers.items() if v is not instance}
-            self._exporters = {k: v for k, v in self._exporters.items() if v is not instance}
-            self._validators = {k: v for k, v in self._validators.items() if v is not instance}
-            self._refreshers = {k: v for k, v in self._refreshers.items() if v is not instance}
-            self._stealths = {k: v for k, v in self._stealths.items() if v is not instance}
-            self._proxies = {k: v for k, v in self._proxies.items() if v is not instance}
-            self._notifications = {
-                k: v for k, v in self._notifications.items() if v is not instance
-            }
-            self._captchas = {k: v for k, v in self._captchas.items() if v is not instance}
-            if ctx:
-                ctx.plugins.unregister(name)
-            return loaded
-
         # Transition to ACTIVE after all wiring succeeds
-        if loaded.state != PluginState.FAILED:
-            loaded.state = PluginState.ACTIVE
+        loaded.state = PluginState.ACTIVE
 
         # T3.5b: Wire proxy plugins to ProxyManager (if available)
         if plugin_type == "proxy":

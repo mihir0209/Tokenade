@@ -5,12 +5,14 @@ import json
 import pytest
 
 from tokenade.core.proxy.provider import ProxyProviderError, ProxyProviderResolver, normalize_proxy_result
+from tokenade.core.integration.plugin_loader import PluginState
 from tokenade.core.request_config import parse_request_config
 
 
 class Loaded:
     def __init__(self, instance):
         self.instance = instance
+        self.state = PluginState.ACTIVE
 
 
 class FakeProvider:
@@ -33,14 +35,18 @@ class FakeProvider:
 
 
 class FakeLoader:
-    def __init__(self, provider=None):
+    def __init__(self, provider=None, state=None):
         self.provider = provider
+        self.state = state
         self.unloaded = []
 
     def load_by_name(self, name):
         if self.provider is None:
             return None
-        return Loaded(self.provider)
+        loaded = Loaded(self.provider)
+        if self.state is not None:
+            loaded.state = self.state
+        return loaded
 
     def unload(self, name):
         self.unloaded.append(name)
@@ -83,6 +89,13 @@ def test_missing_required_provider_fails_closed():
     resolver = ProxyProviderResolver(FakeLoader())
 
     with pytest.raises(ProxyProviderError, match="Required plugin not installed: brightdata"):
+        resolver.resolve(_plugin_request())
+
+
+def test_inactive_provider_fails_closed():
+    resolver = ProxyProviderResolver(FakeLoader(FakeProvider(), state=PluginState.LOADED))
+
+    with pytest.raises(ProxyProviderError, match="not active"):
         resolver.resolve(_plugin_request())
 
 
