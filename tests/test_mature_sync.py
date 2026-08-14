@@ -1,8 +1,12 @@
 import json
+import os
+import time
 from pathlib import Path
 
+import pytest
+
 from tokenade.core.sync import PeerConfig, PeerSync
-from tokenade.core.sync.peer import SFTPTransport
+from tokenade.core.sync.peer import LocalTransport, SFTPTransport
 
 
 def session(path: Path, marker: str):
@@ -264,3 +268,58 @@ def test_sftp_lock_is_opened_exclusive_and_writable(tmp_path, monkeypatch):
     transport.upload_atomic(source, "a.tokenade", None)
 
     assert opened[0] == "wx"
+
+
+# ── CR-09: advisory lock contention ───────────────────────────────────────────
+
+
+def test_upload_atomic_fails_closed_when_locked(tmp_path):
+    """A fresh lock held by another writer causes upload_atomic to fail closed."""
+    root = tmp_path / "remote"
+    root.mkdir()
+    source = tmp_path / "local" / "a.tokenade"
+    source.parent.mkdir()
+    source.write_text("{}")
+
+    lock = root / ".a.tokenade.tokenade-sync-lock"
+    lock.write_text("other-owner")
+
+    transport = LocalTransport(str(root))
+    with pytest.raises(RuntimeError, match="remote object is locked"):
+        transport.upload_atomic(source, "a.tokenade", None)
+
+
+def test_upload_atomic_takes_over_stale_lock(tmp_path):
+    """A stale lock (older than 10 minutes) is taken over and the upload succeeds."""
+    root = tmp_path / "remote"
+    root.mkdir()
+    source = tmp_path / "local" / "a.tokenade"
+    source.parent.mkdir()
+    source.write_text('{"site_name":"stale-takeover"}')
+
+    lock = root / ".a.tokenade.tokenade-sync-lock"
+    lock.write_text("stale-owner")
+    old = time.time() - 700
+    os.utime(lock, (old, old))
+
+    transport = LocalTransport(str(root))
+    meta = transport.upload_atomic(source, "a.tokenade", None)
+
+    assert meta.name == "a.tokenade"
+    assert (root / "a.tokenade").read_text() == '{"site_name":"stale-takeover"}'
+    assert not lock.exists()
+
+
+def test_upload_atomic_cleans_up_lock_on_success(tmp_path):
+    """The lock file is removed after a successful upload."""
+    root = tmp_path / "remote"
+    root.mkdir()
+    source = tmp_path / "local" / "a.tokenade"
+    source.parent.mkdir()
+    source.write_text("{}")
+
+    lock = root / ".a.tokenade.tokenade-sync-lock"
+    transport = LocalTransport(str(root))
+    transport.upload_atomic(source, "a.tokenade", None)
+
+    assert not lock.exists()

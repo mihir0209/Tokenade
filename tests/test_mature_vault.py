@@ -1,7 +1,10 @@
 import base64
 import hashlib
 import json
+import multiprocessing
 import secrets
+import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -493,3 +496,243 @@ def test_legacy_vault_recovery_rejects_wrong_passphrase(tmp_path):
 
     assert not result.success
     assert not (tmp_path / "recovered").exists()
+
+
+def _child_probe_vault(vault_dir, master_key, result_q):
+    """Single attempt from a fresh process: fork inherits the parent's
+    in-memory lock set, so clear it to simulate an external process."""
+    from tokenade.core.vault import SessionVault, VaultConfig
+    from tokenade.core.vault.vault import _HELD_LOCKS
+
+    _HELD_LOCKS.clear()
+    try:
+        vault = SessionVault(VaultConfig(vault_path=vault_dir, master_key=master_key))
+        result = vault.list_entries()
+        result_q.put(("ok", result.success))
+    except Exception as exc:
+        result_q.put(("err", str(exc)))
+
+
+def _child_poll_vault(vault_dir, master_key, result_q):
+    from tokenade.core.vault import SessionVault, VaultConfig
+    from tokenade.core.vault.vault import _HELD_LOCKS
+
+    _HELD_LOCKS.clear()
+    outcomes = []
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            vault = SessionVault(
+                VaultConfig(vault_path=vault_dir, master_key=master_key)
+            )
+            result = vault.list_entries()
+            outcomes.append(("ok", result.success))
+            break
+        except RuntimeError as exc:
+            outcomes.append(("locked", str(exc)))
+        except Exception as exc:
+            outcomes.append(("err", str(exc)))
+        time.sleep(0.02)
+    else:
+        outcomes.append(("timeout", "never succeeded"))
+    result_q.put(outcomes)
+
+
+def test_other_process_is_refused_while_vault_dir_locked(tmp_path):
+    root = tmp_path / "vault"
+    config = VaultConfig(vault_path=str(root), master_key=KEY)
+    vault = SessionVault(config)
+    assert vault.store("one", b"payload", metadata={}).success
+
+    ctx = multiprocessing.get_context("fork")
+    with SessionVault._vault_dir_lock(root):
+        queue = ctx.Queue()
+        child = ctx.Process(
+            target=_child_probe_vault, args=(str(root), KEY, queue)
+        )
+        child.start()
+        child.join(timeout=60)
+        assert child.exitcode == 0
+        kind, payload = queue.get(timeout=10)
+        assert kind == "err"
+        assert "locked by another process" in payload
+
+    queue2 = ctx.Queue()
+    child2 = ctx.Process(
+        target=_child_probe_vault, args=(str(root), KEY, queue2)
+    )
+    child2.start()
+    child2.join(timeout=60)
+    assert child2.exitcode == 0
+    kind, payload = queue2.get(timeout=10)
+    assert kind == "ok"
+    assert payload is True
+
+
+def test_operations_blocked_until_migration_completes(tmp_path):
+    root = tmp_path / "vault"
+    root.mkdir()
+    key = secrets.token_bytes(32)
+    data = b'{"site_name":"example.com","cookies":[]}'
+    entry_id = "legacy-entry"
+    nonce = secrets.token_bytes(12)
+    encrypted = AESGCM(key).encrypt(nonce, data, None)
+    (root / "master.key").write_bytes(key)
+    (root / "entries.json").write_text(
+        json.dumps(
+            {
+                entry_id: {
+                    "name": "example",
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "metadata": {"site": "example.com"},
+                }
+            }
+        )
+    )
+    (root / f"{entry_id}.enc").write_text(
+        json.dumps(
+            {
+                "encrypted_data": base64.b64encode(encrypted[16:]).decode(),
+                "iv": base64.b64encode(nonce).decode(),
+                "tag": base64.b64encode(encrypted[:16]).decode(),
+                "checksum": hashlib.sha256(data).hexdigest(),
+            }
+        )
+    )
+
+    real_write = SessionVault._atomic_write_bytes
+
+    def slow_seal_write(self, path, blob):
+        if str(path).endswith(".tvbak"):
+            time.sleep(0.2)
+        return real_write(self, path, blob)
+
+    ctx = multiprocessing.get_context("fork")
+    queue = ctx.Queue()
+    poller = ctx.Process(
+        target=_child_poll_vault, args=(str(root), KEY, queue)
+    )
+    poller.start()
+
+    keys = {}
+    with (
+        patch(
+            "keyring.set_password",
+            lambda service, name, value: keys.__setitem__(name, value),
+        ),
+        patch("keyring.get_password", lambda service, name: keys.get(name)),
+        patch(
+            "tokenade.core.vault.vault.SessionVault._atomic_write_bytes",
+            slow_seal_write,
+        ),
+    ):
+        result = SessionVault.migrate_legacy(
+            VaultConfig(vault_path=str(root), master_key=KEY),
+            passphrase="recovery password",
+        )
+        poller.join(timeout=30)
+        outcomes = queue.get(timeout=10)
+
+    assert result.success, result.message
+    assert poller.exitcode == 0
+    locked_seen = any(
+        kind == "locked" and "locked by another process" in payload
+        for kind, payload in outcomes
+    )
+    assert locked_seen, f"other process never hit the lock: {outcomes!r}"
+    assert outcomes[-1] == ("ok", True), outcomes
+
+
+def test_documented_vault_cli_commands_run(tmp_path, monkeypatch, capsys):
+    """CR-13: every vault CLI command documented in USER_GUIDE parses and runs."""
+    from argparse import Namespace
+
+    from tokenade.cli.management import cmd_vault
+
+    monkeypatch.setenv("TOKENADE_VAULT_KEY", KEY)
+    monkeypatch.setenv("TOKENADE_VAULT_BACKUP_PASSPHRASE", "test-passphrase")
+    vault_path = str(tmp_path / "vault")
+
+    session_file = tmp_path / "session.tokenade"
+    session_file.write_text('{"version":"3.0","site_name":"test","cookies":[]}')
+
+    cmd_vault(Namespace(
+        vault_action="store", vault_path=vault_path, name="test",
+        file=str(session_file), json=True, replace=False,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+
+    cmd_vault(Namespace(
+        vault_action="list", vault_path=vault_path, json=True,
+    ))
+    captured = capsys.readouterr()
+    assert "test" in captured.out
+
+    output_file = str(tmp_path / "retrieved.tokenade")
+    cmd_vault(Namespace(
+        vault_action="retrieve", vault_path=vault_path, name="test",
+        output=output_file, json=True, overwrite=False,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+    assert Path(output_file).read_text() == session_file.read_text()
+
+    cmd_vault(Namespace(
+        vault_action="verify", vault_path=vault_path, json=True,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+
+    cmd_vault(Namespace(
+        vault_action="backup", vault_path=vault_path, name="snap",
+        json=True,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+
+    cmd_vault(Namespace(
+        vault_action="restore", vault_path=vault_path, name="snap",
+        json=True,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+
+    cmd_vault(Namespace(
+        vault_action="delete", vault_path=vault_path, name="test",
+        json=True,
+    ))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["success"] is True
+
+
+def test_documented_vault_rotate_runs_on_explicit_key(tmp_path, monkeypatch, capsys):
+    """CR-13: vault rotate parses and runs; explicit-key vaults report cleanly."""
+    from argparse import Namespace
+
+    from tokenade.cli.management import cmd_vault
+
+    monkeypatch.setenv("TOKENADE_VAULT_KEY", KEY)
+    vault_path = str(tmp_path / "vault")
+
+    session_file = tmp_path / "s.tokenade"
+    session_file.write_text('{"version":"3.0","cookies":[]}')
+    cmd_vault(Namespace(
+        vault_action="store", vault_path=vault_path, name="x",
+        file=str(session_file), json=True, replace=False,
+    ))
+    capsys.readouterr()
+
+    try:
+        cmd_vault(Namespace(
+            vault_action="rotate", vault_path=vault_path, json=True,
+        ))
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("rotate on explicit-key vault should not succeed")
+    captured = capsys.readouterr()
+    body = json.loads(captured.out)
+    assert body["success"] is False
+    assert "rotate" in body["message"].lower()

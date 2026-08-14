@@ -700,3 +700,80 @@ class TestRefresherAutoDiscovery:
         # Assert refresher name never appears in output.
         assert "demo-refresh" not in output
         mock_loader_cls.assert_not_called()
+
+
+# ── CR-05: cmd_launch ACTIVE guard for required plugins ──────────────────────
+
+
+def test_cmd_launch_reports_inactive_required_plugin():
+    """cmd_launch must report a requirement failure for loaded-but-not-active plugins."""
+    from tokenade.cli.handlers.browser_ops import cmd_launch
+
+    fake_loaded = MagicMock()
+    fake_loaded.is_active = False
+    fake_loaded.state = MagicMock(value="loaded")
+
+    fake_loader = MagicMock()
+    fake_loader.get_manifest.return_value = {
+        "version": "1.0.0",
+        "dependencies": [],
+    }
+    fake_loader.is_disabled.return_value = False
+    fake_loader.load_by_name.return_value = fake_loaded
+
+    session = {
+        "version": "3.0",
+        "site_name": "test",
+        "auth_status": "logged_in",
+        "cookies": [],
+        "metadata": {
+            "required_plugins": [{"name": "test-plugin", "reason": "test"}]
+        },
+    }
+
+    args = Namespace(
+        browser="chrome",
+        session="/fake.tokenade",
+        url=None,
+        port=9222,
+        profile_dir=None,
+        visible=True,
+        headless=False,
+        extra_args="",
+        browser_path=None,
+        proxy=None,
+        proxy_file=None,
+        proxy_rotate=False,
+        proxy_strategy="health-weighted",
+        humanize=False,
+        geoip=False,
+        no_cloak=False,
+        profile=None,
+        decrypt_password=None,
+        plugin=None,
+        no_plugin=False,
+        acknowledge_exclusive_move=False,
+        claim_single_use=False,
+    )
+
+    with patch(
+        "tokenade.core.importer.session_packager.SessionPackager"
+    ) as mock_sp, patch(
+        "tokenade.core.artifacts.ProfileArtifactManager.preflight"
+    ), patch(
+        "tokenade.core.integration.plugin_loader.PluginLoader",
+        return_value=fake_loader,
+    ), patch(
+        "tokenade.core.integration.plugin_dependencies.check_runtime_dependencies"
+    ) as mock_rt, patch(
+        "tokenade.core.integration.plugin_dependencies.check_tokenade_compatibility"
+    ) as mock_compat:
+        mock_sp.return_value.load.return_value = session
+        mock_rt.return_value = MagicMock(ready=True, issues=[])
+        mock_compat.return_value = MagicMock(issues=[])
+        with capture_stdout() as buf:
+            cmd_launch(args)
+        output = buf.getvalue()
+
+    assert "test-plugin" in output
+    assert "not active" in output

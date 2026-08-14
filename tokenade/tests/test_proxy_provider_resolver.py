@@ -14,6 +14,10 @@ class Loaded:
         self.instance = instance
         self.state = PluginState.ACTIVE
 
+    @property
+    def is_active(self) -> bool:
+        return self.state == PluginState.ACTIVE
+
 
 class FakeProvider:
     def __init__(self):

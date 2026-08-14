@@ -2,10 +2,11 @@
 
 import asyncio
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
+from tokenade.core.proxy.cdp_proxy import CDPProxy
 from tokenade.core.proxy.multi_site_proxy import (
     MultiSiteProxy,
     SharedConnectionPool,
@@ -297,6 +298,16 @@ class TestMultiSiteProxyStart:
         site.start = AsyncMock()
         return site
 
+    @staticmethod
+    def _spec_cdp(start_side_effect=None, stop_side_effect=None):
+        """Spec-backed CDPProxy mock: fails if the real lifecycle API diverges."""
+        cdp = create_autospec(CDPProxy, instance=True)
+        cdp.start = AsyncMock(
+            side_effect=start_side_effect or _stall_forever
+        )
+        cdp.stop = AsyncMock(side_effect=stop_side_effect)
+        return cdp
+
     @contextmanager
     def _env(self, mock_cdp, mock_runner=None, mock_site=None):
         with patch(
@@ -312,10 +323,8 @@ class TestMultiSiteProxyStart:
                         with patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_fast_sleep):
                             yield
 
-    def _running_proxy(self, mock_cdp):
-        mock_cdp.start = AsyncMock(side_effect=_stall_forever)
-        mock_cdp.stop = AsyncMock()
-        return mock_cdp
+    def _running_proxy(self):
+        return self._spec_cdp()
 
     def _cancelled_event(self):
         event = MagicMock()
@@ -329,7 +338,7 @@ class TestMultiSiteProxyStart:
         mock_runner.cleanup = AsyncMock()
         mock_site = MagicMock()
         mock_site.start = AsyncMock()
-        mock_cdp = self._running_proxy(MagicMock())
+        mock_cdp = self._running_proxy()
 
         with self._env(mock_cdp, mock_runner, mock_site):
             with patch("asyncio.Event", return_value=self._cancelled_event()):
@@ -350,17 +359,13 @@ class TestMultiSiteProxyStart:
         mock_runner.cleanup = AsyncMock()
         mock_site = MagicMock()
         mock_site.start = AsyncMock()
-        first = MagicMock()
-        second = MagicMock()
+        first = self._spec_cdp()
+        second = self._spec_cdp()
 
         def _proxy_for(session, config):
             return first if session.get("site_name") == "site1" else second
 
         with patch("tokenade.core.proxy.cdp_proxy.CDPProxy", side_effect=_proxy_for):
-            first.start = AsyncMock(side_effect=_stall_forever)
-            first.stop = AsyncMock()
-            second.start = AsyncMock(side_effect=_stall_forever)
-            second.stop = AsyncMock()
             with patch("tokenade.core.proxy.cdp_proxy.CDPProxyConfig"):
                 with patch(
                     "tokenade.core.proxy.multi_site_proxy.web.AppRunner",
@@ -387,9 +392,7 @@ class TestMultiSiteProxyStart:
         proxy = MultiSiteProxy(
             [_make_session("a"), _make_session("b", ".b.com")], base_port=19302
         )
-        mock_cdp = MagicMock()
-        mock_cdp.start = AsyncMock(side_effect=RuntimeError("boom"))
-        mock_cdp.stop = AsyncMock()
+        mock_cdp = self._spec_cdp(start_side_effect=RuntimeError("boom"))
         proxy._shared_pool.get_session = AsyncMock()
         proxy._shared_pool.close = AsyncMock()
 
@@ -414,7 +417,7 @@ class TestMultiSiteProxyStart:
         mock_runner.cleanup = AsyncMock()
         mock_site = MagicMock()
         mock_site.start = AsyncMock()
-        mock_cdp = self._running_proxy(MagicMock())
+        mock_cdp = self._running_proxy()
         event = MagicMock()
         event.wait = AsyncMock(side_effect=KeyboardInterrupt)
 
@@ -426,8 +429,7 @@ class TestMultiSiteProxyStart:
 
     def test_start_exception_during_stop_is_swallowed(self):
         proxy = MultiSiteProxy([_make_session("site1")], base_port=19304)
-        mock_cdp = self._running_proxy(MagicMock())
-        mock_cdp.stop = AsyncMock(side_effect=RuntimeError("stop failed"))
+        mock_cdp = self._spec_cdp(stop_side_effect=RuntimeError("stop failed"))
 
         with self._env(mock_cdp):
             with patch("asyncio.Event", return_value=self._cancelled_event()):
@@ -442,7 +444,7 @@ class TestMultiSiteProxyStart:
             _make_session("c", ".c.com"),
         ]
         proxy = MultiSiteProxy(sessions, base_port=19400)
-        mock_cdp = self._running_proxy(MagicMock())
+        mock_cdp = self._running_proxy()
 
         with self._env(mock_cdp):
             with patch("asyncio.Event", return_value=self._cancelled_event()):
@@ -456,9 +458,7 @@ class TestMultiSiteProxyStart:
     def test_startup_failure_closes_shared_pool(self):
         proxy = MultiSiteProxy([_make_session("site1")], base_port=19305)
         mock_session = MagicMock()
-        mock_cdp = MagicMock()
-        mock_cdp.start = AsyncMock()
-        mock_cdp.stop = AsyncMock()
+        mock_cdp = self._spec_cdp()
         proxy._shared_pool.get_session = AsyncMock(return_value=mock_session)
         proxy._shared_pool.close = AsyncMock()
 

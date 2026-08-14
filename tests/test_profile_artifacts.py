@@ -192,3 +192,39 @@ def test_web_storage_supersession_is_declarative():
     session = make_session()
     session["profile_artifacts"][0]["supersedes"] = []
     assert ProfileArtifactManager.web_storage_is_superseded(session) is False
+
+
+def test_load_compatible_handler_rejects_inactive_plugin():
+    """CR-05: _load_compatible_handler rejects loaded-but-not-active plugins."""
+    from unittest.mock import MagicMock
+
+    from tokenade.core.integration.plugin_loader import PluginState
+
+    fake_loaded = MagicMock()
+    fake_loaded.is_active = False
+    fake_loaded.state = PluginState.LOADED
+
+    fake_loader = MagicMock()
+    fake_loader.get_manifest.return_value = {
+        "version": "1.0.0",
+        "dependencies": [],
+    }
+    fake_loader.is_disabled.return_value = False
+    fake_loader.load_by_name.return_value = fake_loaded
+
+    artifact = {
+        "owner": {"plugin": "test-plugin"},
+        "requirements": {
+            "plugins": [{"name": "test-plugin", "version": ">=1.0.0"}]
+        },
+    }
+
+    with patch(
+        "tokenade.core.integration.plugin_loader.PluginLoader",
+        return_value=fake_loader,
+    ), patch(
+        "tokenade.core.integration.plugin_dependencies.check_runtime_dependencies"
+    ) as mock_rt:
+        mock_rt.return_value = MagicMock(ready=True)
+        with pytest.raises(ArtifactError, match="not active"):
+            ProfileArtifactManager._load_compatible_handler(artifact)
