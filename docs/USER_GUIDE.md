@@ -472,28 +472,38 @@ Secure encrypted storage for sessions with key rotation.
 
 ```bash
 # Store a session
-tokenade vault store /path/to/session.tokenade --name "twitter-fresh"
+tokenade vault store twitter-fresh /path/to/session.tokenade
 
 # Retrieve a session
-tokenade vault retrieve "twitter-fresh" --output retrieved.tokenade
+tokenade vault retrieve twitter-fresh --output retrieved.tokenade
 
 # List stored sessions
 tokenade vault list
 
 # Delete a session
-tokenade vault delete "twitter-fresh"
+tokenade vault delete twitter-fresh
+
+# Verify every encrypted entry
+tokenade vault verify
 
 # Rotate encryption key
-tokenade vault rotate-key
+tokenade vault rotate
 
 # Backup vault
-tokenade vault backup --output vault-backup.tar.gz
+tokenade vault backup --name monthly
 
 # Restore vault
-tokenade vault restore --input vault-backup.tar.gz
+tokenade vault restore monthly
+
+# Migrate a legacy on-disk Vault format
+tokenade vault migrate
 ```
 
 Sessions are encrypted with AES-256-GCM. The vault supports key rotation without data loss.
+
+Desktop use defaults to the OS keyring. Headless use must provide the key via
+`TOKENADE_VAULT_KEY` (a base64-encoded 32-byte value). Passphrase-encrypted
+backups use `TOKENADE_VAULT_BACKUP_PASSPHRASE`.
 
 ### `tokenade sync-remote`
 
@@ -849,14 +859,17 @@ from tokenade.core.vault.vault import SessionVault
 
 vault = SessionVault()
 
-# Store a session
-vault.store("twitter.tokenade", name="twitter-fresh")
+# Store a session (read the file yourself; replace=True overwrites an entry)
+vault.store("twitter-fresh", open("twitter.tokenade", "rb").read())
 
 # Retrieve a session
 vault.retrieve("twitter-fresh", output_path="retrieved.tokenade")
 
 # List stored sessions
-sessions = vault.list_sessions()
+entries = vault.list_entries()
+
+# Verify every encrypted entry
+vault.verify()
 
 # Rotate encryption key
 vault.rotate_key()

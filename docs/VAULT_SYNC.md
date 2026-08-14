@@ -16,7 +16,7 @@ tokenade vault backup --name monthly
 tokenade vault restore monthly
 ```
 
-Desktop use defaults to the OS keyring. Headless use must provide `--key` or
+Desktop use defaults to the OS keyring. Headless use must provide
 `TOKENADE_VAULT_KEY`. The key is never stored beside the vault.
 
 Properties:
