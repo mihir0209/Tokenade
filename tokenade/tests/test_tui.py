@@ -1,7 +1,10 @@
 """Tests for Phase 58 — Interactive TUI."""
 
 import json
+import threading
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -451,3 +454,138 @@ class TestRichComponents:
             if not query or query in searchable:
                 results.append(p["name"])
         assert len(results) == 2
+
+
+# ─── Installed / Marketplace startup behavior (CR-11, CR-12) ───────────────
+
+class TestInstalledStateAccuracy:
+    def test_manifest_only_row_renders_unknown_state(self):
+        pytest.importorskip("textual")
+        from textual.widgets import Static
+        from tokenade.tui.views.installed import InstalledRow
+
+        row = InstalledRow(
+            {
+                "name": "example-plugin",
+                "version": "0.0.1",
+                "state": "unknown",
+                "enabled": None,
+                "error": None,
+            }
+        )
+        info = next(w for w in row.compose() if isinstance(w, Static))
+        rendered = str(info.render())
+        assert "example-plugin" in rendered
+        assert "v0.0.1" in rendered
+        assert "[unknown]" in rendered
+
+    def test_disabled_plugin_row_renders_disabled_state(self):
+        pytest.importorskip("textual")
+        from textual.widgets import Static
+        from tokenade.tui.views.installed import InstalledRow
+
+        row = InstalledRow(
+            {
+                "name": "example-plugin",
+                "version": "1.2.0",
+                "state": "disabled",
+                "enabled": False,
+                "error": None,
+            }
+        )
+        info = next(w for w in row.compose() if isinstance(w, Static))
+        rendered = str(info.render())
+        assert "[disabled]" in rendered
+        assert "off" in rendered
+
+    def test_active_plugin_row_renders_active_state(self):
+        pytest.importorskip("textual")
+        from textual.widgets import Static
+        from tokenade.tui.views.installed import InstalledRow
+
+        row = InstalledRow(
+            {
+                "name": "example-plugin",
+                "version": "2.0.0",
+                "state": "active",
+                "enabled": True,
+                "error": None,
+            }
+        )
+        info = next(w for w in row.compose() if isinstance(w, Static))
+        rendered = str(info.render())
+        assert "[active]" in rendered
+        assert "on" in rendered
+
+
+class TestPluginDataLoading:
+    def _app(self):
+        pytest.importorskip("textual")
+        from tokenade.tui.app import TokenadeTUI
+
+        return TokenadeTUI()
+
+    def test_load_installed_does_not_block_on_registry(self):
+        app = self._app()
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking_list():
+            started.set()
+            release.wait(2)
+            return []
+
+        with (
+            patch(
+                "tokenade.core.integration.plugin_registry.PluginRegistry"
+            ) as reg_cls,
+            patch("tokenade.core.integration.plugin_loader.PluginLoader"),
+        ):
+            reg_cls.return_value.list_installed.side_effect = blocking_list
+            t0 = time.monotonic()
+            app._load_installed()
+            dt = time.monotonic() - t0
+            assert started.wait(1)
+            assert dt < 0.5
+        release.set()
+
+    def test_on_search_does_not_block_event_loop(self):
+        app = self._app()
+        started = threading.Event()
+        release = threading.Event()
+
+        class FakeRegistry:
+            def search(self, query):
+                started.set()
+                release.wait(2)
+                return []
+
+        with patch(
+            "tokenade.core.integration.plugin_registry.PluginRegistry", FakeRegistry
+        ):
+            t0 = time.monotonic()
+            app.on_search(SimpleNamespace(value="foo"))
+            dt = time.monotonic() - t0
+            assert started.wait(1)
+            assert dt < 0.5
+        release.set()
+
+    def test_marketplace_fetch_not_duplicated_while_inflight(self):
+        app = self._app()
+        release = threading.Event()
+        calls = []
+
+        class FakeRegistry:
+            def get_popular(self, limit=None):
+                calls.append("get_popular")
+                release.wait(2)
+                return []
+
+        with patch(
+            "tokenade.core.integration.plugin_registry.PluginRegistry", FakeRegistry
+        ):
+            app._load_plugins_async()
+            app._load_plugins_async()
+            release.set()
+            time.sleep(0.2)
+        assert calls == ["get_popular"]

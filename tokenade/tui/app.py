@@ -513,6 +513,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         self._plugins: List[Dict] = []
         self._installed: List[Dict] = []
         self._sessions: List[Dict] = []
+        self._marketplace_generation: int = 0
+        self._installed_generation: int = 0
+        self._marketplace_fetch_inflight: bool = False
         self._selected_session: Optional[Dict] = None
         self._last_share: Dict[str, Any] = {}
         self._gateway_pid: int = 0
@@ -579,17 +582,36 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def _load_plugins_async(self):
         """Fetch the remote Marketplace without delaying the first TUI frame."""
+        self._search_plugins_async("")
+
+    def _search_plugins_async(self, query: str):
+        if self._marketplace_fetch_inflight:
+            return
+        generation = self._marketplace_generation + 1
+        self._marketplace_generation = generation
+        self._marketplace_fetch_inflight = True
 
         def worker():
             try:
                 from tokenade.core.integration.plugin_registry import PluginRegistry
 
-                plugins = PluginRegistry().get_popular(limit=100) or []
+                if query:
+                    plugins = PluginRegistry().search(query=query) or []
+                else:
+                    plugins = PluginRegistry().get_popular(limit=100) or []
+                error = None
             except Exception as exc:
                 logger.debug("Failed to load plugins: %s", exc)
                 plugins = []
+                error = exc
 
             def update():
+                self._marketplace_fetch_inflight = False
+                if generation != self._marketplace_generation:
+                    return
+                if error is not None:
+                    self.notify(f"Search error: {error}", severity="error")
+                    return
                 self._plugins = plugins
                 try:
                     tabs = self.query_one("#main-tabs")
@@ -601,6 +623,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             try:
                 self.call_from_thread(update)
             except Exception:
+                self._marketplace_fetch_inflight = False
                 logger.debug("Marketplace result arrived after TUI shutdown")
 
         threading.Thread(
@@ -610,6 +633,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         ).start()
 
     def _load_plugins(self):
+        self._marketplace_generation += 1
+        self._marketplace_fetch_inflight = False
         try:
             from tokenade.core.integration.plugin_registry import PluginRegistry
 
@@ -620,24 +645,84 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._plugins = []
 
     def _load_installed(self):
-        try:
-            from tokenade.core.integration.plugin_registry import PluginRegistry
+        """List installed plugins off the message loop with accurate state."""
 
-            self._installed = [
-                {
-                    "name": p.name,
-                    "enabled": None,
-                    "version": p.version,
-                    "state": "installed",
-                    "error": None,
-                    "config": {},
-                    "health": None,
-                }
-                for p in PluginRegistry().list_installed()
-            ]
-        except Exception as e:
-            logger.debug("Failed to load installed: %s", e)
-            self._installed = []
+        generation = self._installed_generation
+
+        def worker():
+            try:
+                from tokenade.core.integration.plugin_loader import PluginLoader, PluginState
+
+                registry_plugins = []
+                from tokenade.core.integration.plugin_registry import PluginRegistry
+
+                registry_plugins = PluginRegistry().list_installed()
+                loader = PluginLoader()
+                installed = []
+                for p in registry_plugins:
+                    loaded = loader._loaded.get(p.name)
+                    if loaded is not None:
+                        state = loaded.state
+                        installed.append(
+                            {
+                                "name": p.name,
+                                "enabled": loaded.enabled,
+                                "version": p.version,
+                                "state": state.value if isinstance(state, PluginState) else str(state),
+                                "error": loaded.error,
+                                "config": loaded.config or {},
+                                "health": None,
+                            }
+                        )
+                    elif p.name in loader._disabled:
+                        installed.append(
+                            {
+                                "name": p.name,
+                                "enabled": False,
+                                "version": p.version,
+                                "state": "disabled",
+                                "error": None,
+                                "config": {},
+                                "health": None,
+                            }
+                        )
+                    else:
+                        installed.append(
+                            {
+                                "name": p.name,
+                                "enabled": None,
+                                "version": p.version,
+                                "state": "unknown",
+                                "error": None,
+                                "config": {},
+                                "health": None,
+                            }
+                        )
+            except Exception as exc:
+                logger.debug("Failed to load installed: %s", exc)
+                installed = []
+
+            def update():
+                if generation != self._installed_generation:
+                    return
+                self._installed = installed
+                try:
+                    tabs = self.query_one("#main-tabs")
+                    if tabs.active == "tab-installed":
+                        self._update_installed()
+                except Exception:
+                    pass
+
+            try:
+                self.call_from_thread(update)
+            except Exception:
+                logger.debug("Installed list arrived after TUI shutdown")
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="tokenade-installed",
+        ).start()
 
     def _load_sessions(self):
         try:
@@ -2050,16 +2135,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     @on(Input.Submitted, "#search-input")
     def on_search(self, event: Input.Submitted):
         query = (event.value or "").strip().lower()
-        try:
-            from tokenade.core.integration.plugin_registry import PluginRegistry
-
-            if query:
-                self._plugins = PluginRegistry().search(query=query) or []
-            else:
-                self._plugins = PluginRegistry().get_popular(limit=100) or []
-            self._update_marketplace()
-        except Exception as e:
-            self.notify(f"Search error: {e}", severity="error")
+        self._search_plugins_async(query)
 
     @on(Select.Changed, "#gateway-request-select")
     def on_gateway_request_changed(self, event: Select.Changed):

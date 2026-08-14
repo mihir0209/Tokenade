@@ -85,7 +85,7 @@ class InstalledRow(Widget if _OK else object):
         info = f"{name}  v{version}  [{state}]  {enabled}"
         if err:
             info += f"  ·  {str(err)[:40]}"
-        yield Static(info, classes="inst-info")
+        yield Static(info, markup=False, classes="inst-info")
         yield Horizontal(
             Button("Reload", variant="default", compact=True, id=f"reload-{name}"),
             Button("Config", variant="default", compact=True, id=f"configure-{name}"),
