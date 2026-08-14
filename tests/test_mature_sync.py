@@ -323,3 +323,66 @@ def test_upload_atomic_cleans_up_lock_on_success(tmp_path):
     transport.upload_atomic(source, "a.tokenade", None)
 
     assert not lock.exists()
+
+
+# ── CR-09: SFTPTransport lock contention ──────────────────────────────────────
+
+
+def test_sftp_fresh_lock_fails_closed(tmp_path):
+    """CR-09: SFTPTransport fails closed when the lock is fresh (not stale)."""
+    from unittest.mock import MagicMock
+
+    config = PeerConfig("peer", "sftp", "/remote/root", host="h", user="u")
+    transport = SFTPTransport(config)
+
+    recent_time = str(time.time())
+
+    def fake_open(path, mode):
+        if mode == "wx":
+            raise OSError("lock exists")
+        if mode == "r":
+            f = MagicMock()
+            f.read.return_value = f"owner:{recent_time}".encode()
+            return f
+        return MagicMock()
+
+    transport.sftp = MagicMock()
+    transport.sftp.open = fake_open
+
+    source = tmp_path / "source.tokenade"
+    source.write_text("{}")
+
+    with pytest.raises(RuntimeError, match="remote object is locked"):
+        transport.upload_atomic(source, "a.tokenade", None)
+
+
+def test_sftp_stale_lock_ownership_change_fails_closed(tmp_path):
+    """CR-09: SFTPTransport re-reads the lock before takeover and fails closed
+    if another writer acquired it between the stale read and the removal."""
+    from unittest.mock import MagicMock
+
+    config = PeerConfig("peer", "sftp", "/remote/root", host="h", user="u")
+    transport = SFTPTransport(config)
+
+    reads = iter([
+        b"stale-owner:0.0",
+        b"new-owner:9999999999.0",
+    ])
+
+    def fake_open(path, mode):
+        if mode == "wx":
+            raise OSError("lock exists")
+        if mode == "r":
+            f = MagicMock()
+            f.read.return_value = next(reads)
+            return f
+        return MagicMock()
+
+    transport.sftp = MagicMock()
+    transport.sftp.open = fake_open
+
+    source = tmp_path / "source.tokenade"
+    source.write_text("{}")
+
+    with pytest.raises(RuntimeError, match="remote object is locked"):
+        transport.upload_atomic(source, "a.tokenade", None)

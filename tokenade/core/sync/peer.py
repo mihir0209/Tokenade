@@ -173,6 +173,15 @@ class SFTPTransport:
         return _meta(destination)
 
     def upload_atomic(self, source, name, expected_hash):
+        """Upload *source* to *name* under an advisory lock.
+
+        The lock is advisory: it prevents concurrent uploads through this
+        code path but does not stop a process that writes to the remote
+        filesystem directly.  A stale lock (older than 10 minutes) is
+        taken over only after a re-read confirms the owner hasn't changed;
+        a fresh lock or an ownership change during recovery causes the
+        call to fail closed.
+        """
         _valid_name(name)
         remote = f"{self.config.root}/{name}"
         lock = f"{remote}.tokenade-sync-lock"
