@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from tokenade.core.vault import SessionVault, VaultConfig
@@ -176,6 +177,125 @@ def test_keyring_backed_restore_preserves_restored_manifest_entries(tmp_path):
         assert reopened.retrieve("one").data == b"one"
 
 
+def test_restore_into_same_vault_preserves_active_key_and_entries(tmp_path):
+    keys = {}
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "keyring.set_password",
+            lambda service, name, value: keys.__setitem__(name, value),
+        ),
+        patch("keyring.get_password", lambda service, name: keys.get(name)),
+        patch("keyring.delete_password", lambda service, name: keys.pop(name, None)),
+    ):
+        config = VaultConfig(
+            vault_path=str(tmp_path / "vault"),
+            backup_path=str(tmp_path / "backups"),
+        )
+        source = SessionVault(config)
+        assert source.store("one", b"one").success
+        backup = source.backup("portable", passphrase="recovery password")
+        assert backup.success, backup.message
+        assert source.store("two", b"two").success
+
+        result = source.restore(
+            backup.metadata["backup_path"], passphrase="recovery password"
+        )
+        assert result.success, result.message
+        assert source.retrieve("one").data == b"one"
+
+        reopened = SessionVault(config)
+        assert {entry["name"] for entry in reopened.list_entries().data} == {"one"}
+        manifest = json.loads((tmp_path / "vault/manifest.json").read_text())
+        active = f"{manifest['vault_id']}:{manifest['active_key_id']}"
+        assert active in keys
+        assert (manifest["vault_id"], manifest["active_key_id"]) not in [
+            (pending["vault_id"], pending["key_id"])
+            for pending in manifest["pending_key_deletions"]
+        ]
+        assert not (tmp_path / "vault.pre-restore").exists()
+
+
+def test_restore_into_same_vault_preserves_existing_backups(tmp_path):
+    keys = {}
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "keyring.set_password",
+            lambda service, name, value: keys.__setitem__(name, value),
+        ),
+        patch("keyring.get_password", lambda service, name: keys.get(name)),
+        patch("keyring.delete_password", lambda service, name: keys.pop(name, None)),
+    ):
+        config = VaultConfig(vault_path=str(tmp_path / "vault"))
+        source = SessionVault(config)
+        assert source.store("one", b"one").success
+        first = source.backup("first", passphrase="recovery password")
+        second = source.backup("second", passphrase="recovery password")
+        assert first.success and second.success
+        assert source.store("two", b"two").success
+
+        result = source.restore("first", passphrase="recovery password")
+        assert result.success, result.message
+
+        backups = sorted(
+            path.name for path in (tmp_path / "vault/backups").glob("*.tvbak")
+        )
+        assert backups == ["first.tvbak", "second.tvbak"]
+        reopened = SessionVault(config)
+        assert {entry["name"] for entry in reopened.list_entries().data} == {"one"}
+
+
+def test_restore_into_different_vault_removes_old_key_from_keyring(tmp_path):
+    keys = {}
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "keyring.set_password",
+            lambda service, name, value: keys.__setitem__(name, value),
+        ),
+        patch("keyring.get_password", lambda service, name: keys.get(name)),
+        patch("keyring.delete_password", lambda service, name: keys.pop(name, None)),
+    ):
+        source = SessionVault(
+            VaultConfig(
+                vault_path=str(tmp_path / "source"),
+                backup_path=str(tmp_path / "backups"),
+            )
+        )
+        assert source.store("one", b"one").success
+        backup = source.backup("portable", passphrase="recovery password")
+        assert backup.success, backup.message
+
+        target = SessionVault(
+            VaultConfig(
+                vault_path=str(tmp_path / "target"),
+                backup_path=str(tmp_path / "backups"),
+            )
+        )
+        old_identity = (
+            f"{target._manifest['vault_id']}:{target._manifest['active_key_id']}"
+        )
+        assert old_identity in keys
+
+        result = target.restore(
+            backup.metadata["backup_path"], passphrase="recovery password"
+        )
+        assert result.success, result.message
+        assert old_identity not in keys
+
+        reopened = SessionVault(
+            VaultConfig(
+                vault_path=str(tmp_path / "target"),
+                backup_path=str(tmp_path / "backups"),
+            )
+        )
+        assert reopened.retrieve("one").data == b"one"
+
+
 def test_backup_is_portable_with_passphrase(tmp_path):
     store = vault(tmp_path)
     assert store.store("one", b"portable").success
@@ -202,7 +322,23 @@ def test_wrong_backup_passphrase_does_not_change_vault(tmp_path):
     backup = store.backup("portable", passphrase="correct")
     result = store.restore(backup.metadata["backup_path"], passphrase="wrong")
     assert not result.success
+    assert "incorrect passphrase or corrupted backup" in result.message
     assert store.retrieve("one").data == b"original"
+
+
+def test_first_use_keyring_failure_removes_fresh_vault(tmp_path):
+    from unittest.mock import patch
+
+    with patch("keyring.set_password", side_effect=RuntimeError("no keyring backend")):
+        with pytest.raises(RuntimeError) as excinfo:
+            SessionVault(
+                VaultConfig(
+                    vault_path=str(tmp_path / "vault"),
+                    backup_path=str(tmp_path / "backups"),
+                )
+            )
+    assert "TOKENADE_VAULT_KEY" in str(excinfo.value)
+    assert not (tmp_path / "vault").exists()
 
 
 def test_duplicate_names_require_replace(tmp_path):
@@ -277,7 +413,7 @@ def test_legacy_vault_migration_preserves_entries_and_source_archive(tmp_path):
     ):
         result = SessionVault.migrate_legacy(config, passphrase="recovery password")
         migrated_data = SessionVault(
-            VaultConfig(vault_path=str(root))
+            VaultConfig(vault_path=str(root), master_key=KEY)
         ).retrieve("example").data
 
     assert result.success, result.message
@@ -336,7 +472,7 @@ def test_legacy_vault_migration_archives_and_reports_corrupt_entries(tmp_path):
     ):
         result = SessionVault.migrate_legacy(config, passphrase="recovery password")
         migrated_data = SessionVault(
-            VaultConfig(vault_path=str(root))
+            VaultConfig(vault_path=str(root), master_key=KEY)
         ).retrieve("good").data
 
     assert result.success, result.message

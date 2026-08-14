@@ -18,10 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 SCHEMA_VERSION = 1
+
+_HELD_LOCKS = set()
 KEYRING_SERVICE = "tokenade-vault"
 
 
@@ -110,6 +113,7 @@ class SessionVault:
             vault_path=str(vault_dir),
             backup_path=config.backup_path,
             max_backups=config.max_backups,
+            master_key=config.master_key,
         )
         key_path = vault_dir / "master.key"
         index_path = vault_dir / "entries.json"
@@ -162,52 +166,53 @@ class SessionVault:
                     f"{vault_dir.name}.legacy-{time.strftime('%Y%m%d-%H%M%S')}-{suffix}"
                 )
                 suffix += 1
-            os.replace(vault_dir, archive)
-            try:
-                migrated = cls(migration_config)
-                for name, data, metadata in plaintext_entries:
-                    result = migrated.store(name, data, metadata=metadata)
-                    if not result.success:
-                        raise RuntimeError(result.message)
-                verification = migrated.verify()
-                if not verification.success:
-                    raise RuntimeError(verification.message)
-                archive_bytes = io.BytesIO()
-                with zipfile.ZipFile(
-                    archive_bytes, "w", zipfile.ZIP_DEFLATED
-                ) as archive_zip:
-                    for path in archive.rglob("*"):
-                        if path.is_file():
-                            archive_zip.write(path, path.relative_to(archive))
-                salt = secrets.token_bytes(16)
-                recovery_key = hashlib.scrypt(
-                    passphrase.encode(),
-                    salt=salt,
-                    n=2**15,
-                    r=8,
-                    p=1,
-                    dklen=32,
-                    maxmem=64 * 1024 * 1024,
-                )
-                nonce = secrets.token_bytes(12)
-                sealed_archive = archive.with_name(f"{archive.name}.tvbak")
-                migrated._atomic_write_bytes(
-                    sealed_archive,
-                    b"TVLG1"
-                    + salt
-                    + nonce
-                    + AESGCM(recovery_key).encrypt(
-                        nonce,
-                        archive_bytes.getvalue(),
-                        b"tokenade-legacy-vault-backup-v1",
-                    ),
-                )
-                shutil.rmtree(archive)
-            except Exception:
-                shutil.rmtree(vault_dir, ignore_errors=True)
-                if archive.exists():
-                    os.replace(archive, vault_dir)
-                raise
+            with SessionVault._vault_dir_lock(vault_dir):
+                os.replace(vault_dir, archive)
+                try:
+                    migrated = cls(migration_config)
+                    for name, data, metadata in plaintext_entries:
+                        result = migrated.store(name, data, metadata=metadata)
+                        if not result.success:
+                            raise RuntimeError(result.message)
+                    verification = migrated.verify()
+                    if not verification.success:
+                        raise RuntimeError(verification.message)
+                    archive_bytes = io.BytesIO()
+                    with zipfile.ZipFile(
+                        archive_bytes, "w", zipfile.ZIP_DEFLATED
+                    ) as archive_zip:
+                        for path in archive.rglob("*"):
+                            if path.is_file():
+                                archive_zip.write(path, path.relative_to(archive))
+                    salt = secrets.token_bytes(16)
+                    recovery_key = hashlib.scrypt(
+                        passphrase.encode(),
+                        salt=salt,
+                        n=2**15,
+                        r=8,
+                        p=1,
+                        dklen=32,
+                        maxmem=64 * 1024 * 1024,
+                    )
+                    nonce = secrets.token_bytes(12)
+                    sealed_archive = archive.with_name(f"{archive.name}.tvbak")
+                    migrated._atomic_write_bytes(
+                        sealed_archive,
+                        b"TVLG1"
+                        + salt
+                        + nonce
+                        + AESGCM(recovery_key).encrypt(
+                            nonce,
+                            archive_bytes.getvalue(),
+                            b"tokenade-legacy-vault-backup-v1",
+                        ),
+                    )
+                    shutil.rmtree(archive)
+                except Exception:
+                    shutil.rmtree(vault_dir, ignore_errors=True)
+                    if archive.exists():
+                        os.replace(archive, vault_dir)
+                    raise
             message = f"Migrated {len(plaintext_entries)} legacy entries"
             if failed_entries:
                 message += (
@@ -273,9 +278,16 @@ class SessionVault:
                 f"Recovered legacy Vault to: {target}",
                 metadata={"recovery_path": str(target)},
             )
+        except InvalidTag:
+            shutil.rmtree(stage, ignore_errors=True)
+            return VaultResult(
+                False,
+                "Legacy recovery failed: incorrect passphrase or corrupted archive",
+            )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            return VaultResult(False, f"Legacy recovery failed: {exc}")
+            detail = str(exc) or type(exc).__name__
+            return VaultResult(False, f"Legacy recovery failed: {detail}")
 
     def __init__(self, config: Optional[VaultConfig] = None):
         self.config = config or VaultConfig()
@@ -505,7 +517,8 @@ class SessionVault:
                 shutil.rmtree(stage, ignore_errors=True)
             if "new_key_id" in locals():
                 self._delete_key(new_key_id)
-            return VaultResult(False, f"Key rotation failed: {exc}")
+            detail = str(exc) or type(exc).__name__
+            return VaultResult(False, f"Key rotation failed: {detail}")
 
     def backup(
         self, name: Optional[str] = None, passphrase: Optional[str] = None
@@ -555,7 +568,8 @@ class SessionVault:
                 metadata={"backup_path": str(destination)},
             )
         except Exception as exc:
-            return VaultResult(False, f"Backup failed: {exc}")
+            detail = str(exc) or type(exc).__name__
+            return VaultResult(False, f"Backup failed: {detail}")
 
     def restore(
         self, backup_name: str, passphrase: Optional[str] = None
@@ -620,6 +634,15 @@ class SessionVault:
                 )
                 if backup_live.exists():
                     shutil.rmtree(backup_live)
+                backup_stash = None
+                if (
+                    self._vault_dir in self._backup_dir.parents
+                    and self._backup_dir.exists()
+                ):
+                    backup_stash = self._vault_dir.parent / (
+                        f".{self._vault_dir.name}.backups-" + uuid.uuid4().hex
+                    )
+                    os.replace(self._backup_dir, backup_stash)
                 restore_journal = (
                     self._vault_dir.parent / f".{self._vault_dir.name}.restore.json"
                 )
@@ -631,8 +654,8 @@ class SessionVault:
                         "phase": "prepared",
                         "new_vault_id": manifest["vault_id"],
                         "new_key_id": manifest["active_key_id"],
-                        "old_vault_id": self._manifest["vault_id"],
-                        "old_key_id": self._manifest["active_key_id"],
+                        "old_vault_id": old_vault_id,
+                        "old_key_id": old_key_id,
                     },
                 )
                 os.replace(self._vault_dir, backup_live)
@@ -651,28 +674,40 @@ class SessionVault:
                             "phase": "committed",
                             "new_vault_id": manifest["vault_id"],
                             "new_key_id": manifest["active_key_id"],
-                            "old_vault_id": self._manifest["vault_id"],
-                            "old_key_id": self._manifest["active_key_id"],
+                            "old_vault_id": old_vault_id,
+                            "old_key_id": old_key_id,
                         },
                     )
                 except Exception:
                     if self._vault_dir.exists():
                         shutil.rmtree(self._vault_dir)
                     os.replace(backup_live, self._vault_dir)
-                    try:
-                        self._delete_key_for(
-                            manifest["vault_id"], manifest["active_key_id"]
-                        )
-                    except Exception:
-                        pass
+                    if (old_vault_id, old_key_id) != (
+                        manifest["vault_id"],
+                        manifest["active_key_id"],
+                    ):
+                        try:
+                            self._delete_key_for(
+                                manifest["vault_id"], manifest["active_key_id"]
+                            )
+                        except Exception:
+                            pass
+                    if backup_stash is not None:
+                        self._restore_backup_stash(backup_stash)
                     raise
                 self._manifest = manifest
                 self._entries = {
                     eid: VaultEntry(entry_id=eid, **data)
                     for eid, data in manifest["entries"].items()
                 }
-                self._schedule_key_deletion(old_vault_id, old_key_id)
+                if (old_vault_id, old_key_id) != (
+                    manifest["vault_id"],
+                    manifest["active_key_id"],
+                ):
+                    self._schedule_key_deletion(old_vault_id, old_key_id)
                 shutil.rmtree(backup_live)
+                if backup_stash is not None:
+                    self._restore_backup_stash(backup_stash)
                 restore_journal.unlink(missing_ok=True)
             self._entries_dir = self._vault_dir / "entries"
             self._manifest_path = self._vault_dir / "manifest.json"
@@ -683,9 +718,15 @@ class SessionVault:
                 f"Restored from backup: {source.name}",
                 metadata={"entries_restored": len(self._entries)},
             )
+        except InvalidTag:
+            shutil.rmtree(stage, ignore_errors=True)
+            return VaultResult(
+                False, "Restore failed: incorrect passphrase or corrupted backup"
+            )
         except Exception as exc:
             shutil.rmtree(stage, ignore_errors=True)
-            return VaultResult(False, f"Restore failed: {exc}")
+            detail = str(exc) or type(exc).__name__
+            return VaultResult(False, f"Restore failed: {detail}")
 
     def _load_or_create_manifest(self) -> Dict[str, Any]:
         if self._manifest_path.exists():
@@ -702,7 +743,12 @@ class SessionVault:
             "pending_key_deletions": [],
         }
         key = self._explicit_key() or secrets.token_bytes(32)
-        self._store_key(key_id, key, vault_id=vault_id)
+        try:
+            self._store_key(key_id, key, vault_id=vault_id)
+        except Exception:
+            if not self.config.master_key:
+                shutil.rmtree(self._vault_dir, ignore_errors=True)
+            raise
         self._atomic_write_json(self._manifest_path, manifest)
         return manifest
 
@@ -712,9 +758,15 @@ class SessionVault:
             return explicit
         import keyring
 
-        value = keyring.get_password(
-            KEYRING_SERVICE, f"{self._manifest['vault_id']}:{key_id}"
-        )
+        try:
+            value = keyring.get_password(
+                KEYRING_SERVICE, f"{self._manifest['vault_id']}:{key_id}"
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Vault key is unavailable from the system keyring: "
+                f"the keyring backend failed to read it ({type(exc).__name__})"
+            ) from exc
         if not value:
             raise RuntimeError("Vault key is unavailable from the system keyring")
         return base64.b64decode(value)
@@ -726,11 +778,18 @@ class SessionVault:
             return
         import keyring
 
-        keyring.set_password(
-            KEYRING_SERVICE,
-            f"{vault_id or self._manifest['vault_id']}:{key_id}",
-            base64.b64encode(key).decode(),
-        )
+        try:
+            keyring.set_password(
+                KEYRING_SERVICE,
+                f"{vault_id or self._manifest['vault_id']}:{key_id}",
+                base64.b64encode(key).decode(),
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Vault key could not be stored in the system keyring; "
+                f"the keyring backend failed ({type(exc).__name__}). "
+                "Set TOKENADE_VAULT_KEY to use an explicit key instead"
+            ) from exc
 
     def _delete_key(self, key_id: str) -> None:
         self._delete_key_for(self._manifest["vault_id"], key_id)
@@ -745,6 +804,11 @@ class SessionVault:
     def _schedule_key_deletion(self, vault_id: str, key_id: str) -> None:
         if self.config.master_key:
             return
+        if (vault_id, key_id) == (
+            self._manifest.get("vault_id"),
+            self._manifest.get("active_key_id"),
+        ):
+            return
         pending = self._manifest.setdefault("pending_key_deletions", [])
         item = {"vault_id": vault_id, "key_id": key_id}
         if item not in pending:
@@ -755,9 +819,15 @@ class SessionVault:
     def _retry_key_deletions(self) -> None:
         if self.config.master_key:
             return
+        active = (
+            self._manifest.get("vault_id"),
+            self._manifest.get("active_key_id"),
+        )
         pending = list(self._manifest.get("pending_key_deletions", []))
         remaining = []
         for item in pending:
+            if (item.get("vault_id"), item.get("key_id")) == active:
+                continue
             try:
                 self._delete_key_for(item["vault_id"], item["key_id"])
             except Exception:
@@ -887,9 +957,16 @@ class SessionVault:
         ):
             raise ValueError("unsupported or corrupt vault manifest")
 
-    @contextmanager
     def _lock(self):
-        lock = self._vault_dir.parent / f".{self._vault_dir.name}.lock"
+        return SessionVault._vault_dir_lock(self._vault_dir)
+
+    @staticmethod
+    @contextmanager
+    def _vault_dir_lock(vault_dir: Path):
+        lock = vault_dir.parent / f".{vault_dir.name}.lock"
+        if lock in _HELD_LOCKS:
+            yield
+            return
         owner = f"{os.getpid()}:{uuid.uuid4().hex}"
         for attempt in range(2):
             try:
@@ -897,13 +974,15 @@ class SessionVault:
                 os.write(fd, owner.encode())
                 break
             except FileExistsError as exc:
-                if attempt or self._pid_lock_alive(lock):
+                if attempt or SessionVault._pid_lock_alive(lock):
                     raise RuntimeError("vault is locked by another process") from exc
                 lock.unlink(missing_ok=True)
         os.close(fd)
+        _HELD_LOCKS.add(lock)
         try:
             yield
         finally:
+            _HELD_LOCKS.discard(lock)
             try:
                 if lock.read_text() == owner:
                     lock.unlink(missing_ok=True)
@@ -956,6 +1035,12 @@ class SessionVault:
         for backup in backups[self.config.max_backups :]:
             backup.unlink()
 
+    def _restore_backup_stash(self, backup_stash: Path) -> None:
+        self._backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        for child in backup_stash.iterdir():
+            os.replace(child, self._backup_dir / child.name)
+        shutil.rmtree(backup_stash, ignore_errors=True)
+
     def _recover_transaction(self):
         restore_journal = (
             self._vault_dir.parent / f".{self._vault_dir.name}.restore.json"
@@ -968,17 +1053,25 @@ class SessionVault:
                 if self._vault_dir.exists():
                     shutil.rmtree(self._vault_dir)
                 os.replace(backup, self._vault_dir)
-                try:
-                    self._delete_key_for(data["new_vault_id"], data["new_key_id"])
-                except Exception:
-                    return
+                if (data.get("old_vault_id"), data.get("old_key_id")) != (
+                    data.get("new_vault_id"),
+                    data.get("new_key_id"),
+                ):
+                    try:
+                        self._delete_key_for(data["new_vault_id"], data["new_key_id"])
+                    except Exception:
+                        return
             elif self._vault_dir.exists() and backup.exists():
                 shutil.rmtree(backup)
             if phase == "committed":
-                try:
-                    self._delete_key_for(data["old_vault_id"], data["old_key_id"])
-                except Exception:
-                    return
+                if (data.get("old_vault_id"), data.get("old_key_id")) != (
+                    data.get("new_vault_id"),
+                    data.get("new_key_id"),
+                ):
+                    try:
+                        self._delete_key_for(data["old_vault_id"], data["old_key_id"])
+                    except Exception:
+                        return
             restore_journal.unlink(missing_ok=True)
         journal = self._vault_dir / "transaction.json"
         old = self._vault_dir / "entries.old"

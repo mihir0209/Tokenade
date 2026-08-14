@@ -90,6 +90,7 @@ def cmd_vault(args):
             vault_path=config.vault_path,
             backup_path=config.backup_path,
             max_backups=config.max_backups,
+            master_key=config.master_key,
         )
         result = SessionVault.migrate_legacy(
             migration_config,
