@@ -162,6 +162,15 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-14
+
+- Closed the vault/sync runtime end-to-end review: all findings CR-01..CR-15 fixed with regression tests; strict full suite (`-W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`) green on `tests/` + `tokenade/tests/`.
+- Pushed 6 fix commits plus all 16 release tags (`v1.1.x`, `v3.x`, `v4.x`, `v5.7.0`) to Codeberg and GitHub. GitHub Actions is disabled at the account level (zero runs ever recorded; manual dispatch returns 422) — accepted, no CI gate.
+- Witnessed the CR-01 critical path with the repo-local CLI: `vault store` → `backup` → same-vault `restore` → `retrieve` → `verify` on a live vault; roundtrip byte-identical and `backups/` survives restores. Explicit-key `rotate` refusal and keyring fail-closed message are pre-existing intended behavior.
+- Built `dist/tokenade-1.2.0` artifacts (`python3 -m build`); `scripts/check_wheel_contents.py` OK; installed the wheel in a clean venv: `tokenade --version` => 1.2.0, vault CR-01 path green from the wheel, `plugin sync` installed 18 marketplace plugins, `plugin list` shows unconfigured `webhook-notify` as `[loaded]` (intended state accuracy).
+- Lint triage on the changed files: flake8 (repo flags `--max-line-length=120 --ignore=E501,W503,E203`) shows 50 pre-existing findings and none introduced by the review fixes; mypy shows the same pre-existing error set (190/44-files with repo config) and no new errors; the local `black`/`mypy` launchers were broken installs and were repaired via `pip install --user --break-system-packages pathspec black`.
+- sdist `tokenade-1.2.0.tar.gz` installs and runs in a clean venv.
+
 ### 2026-08-09
 
 - Bumped Tokenade to `1.1.90` for end-to-end WhatsApp Web Session portability.
