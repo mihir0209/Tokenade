@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 SCHEMA_VERSION = 1
 
-_HELD_LOCKS = set()
+_HELD_LOCKS: "set[Path]" = set()
 KEYRING_SERVICE = "tokenade-vault"
 
 
