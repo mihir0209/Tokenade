@@ -148,6 +148,66 @@ def test_failed_plaintext_pull_removes_temporary_file(tmp_path):
     assert not list((tmp_path / "local").glob(".*.tmp"))
 
 
+def test_encrypted_detection_rejects_spoofed_magic_header(tmp_path):
+    sync = engine(tmp_path, require_encrypted=True)
+    spoofed = tmp_path / "local/spoof.tokenade"
+    spoofed.write_bytes(b"TOKENADE_ENCRYPTED" + b"\x00" * 69)
+    result = sync.run("backup")
+    assert "plaintext upload blocked" in result["errors"][0]["error"]
+    assert not (tmp_path / "remote/spoof.tokenade").exists()
+
+
+def test_encrypted_detection_rejects_truncated_envelope(tmp_path):
+    from tokenade.core.crypto.encryptor import TokenadeEncryptor
+
+    sync = engine(tmp_path, require_encrypted=True)
+    real = TokenadeEncryptor().encrypt(b'{"site_name":"x"}', "password123")
+    truncated = tmp_path / "local/trunc.tokenade"
+    truncated.write_bytes(real[:30])
+    result = sync.run("backup")
+    assert "plaintext upload blocked" in result["errors"][0]["error"]
+    assert not (tmp_path / "remote/trunc.tokenade").exists()
+
+
+def test_encrypted_detection_accepts_real_envelope(tmp_path):
+    from tokenade.core.crypto.encryptor import TokenadeEncryptor
+
+    sync = engine(tmp_path, require_encrypted=True)
+    real = TokenadeEncryptor().encrypt(
+        b'{"site_name":"x","cookies":[]}', "password123"
+    )
+    (tmp_path / "local/real.tokenade").write_bytes(real)
+    result = sync.run("backup")
+    assert result["errors"] == []
+    assert (tmp_path / "remote/real.tokenade").exists()
+
+
+def test_remove_peer_clears_baselines_and_history(tmp_path):
+    sync = engine(tmp_path)
+    session(tmp_path / "local/a.tokenade", "base")
+    sync.run("backup")
+    assert sync._base("backup") != {}
+    sync.remove_peer("backup")
+    assert sync.list_peers() == []
+    assert sync._base("backup") == {}
+
+
+def test_recreated_file_after_both_sides_deleted_pushes(tmp_path):
+    sync = engine(tmp_path)
+    session(tmp_path / "local/a.tokenade", "base")
+    sync.run("backup")
+    (tmp_path / "local/a.tokenade").unlink()
+    (tmp_path / "remote/a.tokenade").unlink()
+    sync.run("backup")
+    assert sync._base("backup") == {}
+    session(tmp_path / "local/a.tokenade", "recreated")
+    plan = sync.plan("backup")
+    assert plan["actions"][0]["action"] == "push"
+    result = sync.run("backup")
+    assert result["errors"] == []
+    assert (tmp_path / "remote/a.tokenade").exists()
+
+
 def test_peer_and_baseline_persist_across_instances(tmp_path):
     first = engine(tmp_path)
     session(tmp_path / "local/a.tokenade", "base")

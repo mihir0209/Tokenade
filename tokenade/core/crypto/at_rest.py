@@ -8,20 +8,41 @@ when encryption is configured. Uses TokenadeEncryptor (AES-256-GCM).
 
 import logging
 import os
+import struct
 import sys
 from pathlib import Path
 from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
+_ENCRYPTED_MAGIC = b"TOKENADE_ENCRYPTED"
+_ENCRYPTED_HEADER_SIZE = len(_ENCRYPTED_MAGIC) + 4  # magic + version
+_MIN_ENCRYPTED_SIZE = (
+    _ENCRYPTED_HEADER_SIZE + 16 + 12 + 16  # salt + nonce + AES-GCM tag
+)
+
 
 def is_encrypted_file(file_path: str) -> bool:
-    """Check if a file is encrypted by looking for the TOKENADE_ENCRYPTED magic header."""
+    """Check if a file is a structurally valid encrypted session file.
+
+    A file only counts as encrypted when it carries the TOKENADE_ENCRYPTED
+    magic header, a supported envelope version, and at least a full envelope
+    (salt + nonce + GCM tag) of payload. A file that merely starts with the
+    magic bytes is treated as plaintext so it cannot bypass encryption
+    guarantees.
+    """
     try:
         with open(file_path, "rb") as f:
-            header = f.read(20)
-        return header.startswith(b"TOKENADE_ENCRYPTED")
-    except (OSError, IOError):
+            header = f.read(_ENCRYPTED_HEADER_SIZE)
+        if len(header) < _ENCRYPTED_HEADER_SIZE or not header.startswith(
+            _ENCRYPTED_MAGIC
+        ):
+            return False
+        version = struct.unpack(">I", header[len(_ENCRYPTED_MAGIC):])[0]
+        if version not in (1, 2):
+            return False
+        return os.path.getsize(file_path) >= _MIN_ENCRYPTED_SIZE
+    except (OSError, IOError, struct.error):
         return False
 
 

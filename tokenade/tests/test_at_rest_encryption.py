@@ -60,6 +60,20 @@ class TestIsEncryptedFile:
         from tokenade.core.crypto.at_rest import is_encrypted_file
         assert not is_encrypted_file(str(fpath))
 
+    def test_spoofed_magic_header_is_not_encrypted(self, tmp_dir):
+        fpath = tmp_dir / "spoof.tokenade"
+        fpath.write_bytes(b"TOKENADE_ENCRYPTED" + b"\x00" * 69)
+
+        from tokenade.core.crypto.at_rest import is_encrypted_file
+        assert not is_encrypted_file(str(fpath))
+
+    def test_unsupported_version_is_not_encrypted(self, tmp_dir):
+        fpath = tmp_dir / "version.tokenade"
+        fpath.write_bytes(b"TOKENADE_ENCRYPTED" + b"\x00\x00\x00\x09" + b"\x00" * 65)
+
+        from tokenade.core.crypto.at_rest import is_encrypted_file
+        assert not is_encrypted_file(str(fpath))
+
 
 class TestEncryptDecryptRoundTrip:
     """Test encrypt/decrypt round trip for session data."""

@@ -171,10 +171,20 @@ class SFTPTransport:
                     created = float(existing.rsplit(":", 1)[-1])
                 if time.time() - created <= 600:
                     raise RuntimeError("remote object is locked") from exc
+                with self.sftp.open(lock, "r") as handle:
+                    rechecked = handle.read().decode()
+                if rechecked != existing:
+                    raise RuntimeError("remote object is locked") from exc
                 self.sftp.remove(lock)
-                lock_handle = self.sftp.open(lock, "wx")
-                lock_handle.write(owner)
-                lock_handle.close()
+                try:
+                    lock_handle = self.sftp.open(lock, "wx")
+                    lock_handle.write(owner)
+                    lock_handle.close()
+                except Exception as takeover_exc:
+                    raise RuntimeError("remote object is locked") from takeover_exc
+                with self.sftp.open(lock, "r") as handle:
+                    if handle.read().decode() != owner:
+                        raise RuntimeError("remote object is locked")
             except RuntimeError:
                 raise
             except Exception as recovery_exc:
@@ -233,6 +243,9 @@ class PeerSync:
         peers = self._peers()
         peers.pop(name, None)
         self._atomic_json(self.config_path, peers)
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("DELETE FROM object_state WHERE peer=?", (name,))
+            db.execute("DELETE FROM runs WHERE peer=?", (name,))
 
     def list_peers(self):
         return [PeerConfig(**data) for _, data in sorted(self._peers().items())]
@@ -377,6 +390,8 @@ class PeerSync:
                                 temp.unlink(missing_ok=True)
                         elif item["action"] == "noop" and item["local"]:
                             self._set_base(peer_name, name, item["local"])
+                        elif item["action"] == "noop":
+                            self._clear_base(peer_name, name)
                     except Exception as exc:
                         result["errors"].append(
                             {"name": item["name"], "error": str(exc)}
@@ -445,6 +460,12 @@ class PeerSync:
         with sqlite3.connect(self.db_path) as db:
             db.execute(
                 "INSERT OR REPLACE INTO object_state VALUES(?,?,?)", (peer, name, value)
+            )
+
+    def _clear_base(self, peer, name):
+        with sqlite3.connect(self.db_path) as db:
+            db.execute(
+                "DELETE FROM object_state WHERE peer=? AND name=?", (peer, name)
             )
 
     def _record_run(self, result):
@@ -535,13 +556,7 @@ def _atomic_copy(source, destination):
 def _encrypted(path):
     from tokenade.core.crypto.at_rest import is_encrypted_file
 
-    if not is_encrypted_file(str(path)):
-        return False
-    try:
-        raw = path.read_bytes()
-        return len(raw) > 48 and raw.startswith(b"TOKENADE_ENCRYPTED")
-    except OSError:
-        return False
+    return is_encrypted_file(str(path))
 
 
 def _pid_alive(path: Path) -> bool:
