@@ -98,6 +98,14 @@ class MultiSiteProxy:
         self._app = None
         self._shared_pool = SharedConnectionPool()
 
+    def _on_proxy_task_done(self, task):
+        if task.cancelled():
+            return
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
+
     async def start(self):
         """Start all proxy instances and the master GUI."""
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
@@ -124,9 +132,26 @@ class MultiSiteProxy:
                 self._proxies.append({"proxy": proxy, "port": port, "session": session})
 
             for item in self._proxies:
-                tasks.append(asyncio.create_task(item["proxy"].start()))
+                task = asyncio.create_task(item["proxy"].start())
+                task.add_done_callback(self._on_proxy_task_done)
+                tasks.append(task)
 
             await asyncio.sleep(2)
+
+            for task, item in zip(tasks, self._proxies):
+                if not task.done() or task.cancelled():
+                    continue
+                site_name = item["session"].get("site_name", "unknown")
+                try:
+                    exception = task.exception()
+                except asyncio.CancelledError:
+                    continue
+                detail = f": {exception}" if exception is not None else (
+                    " exited unexpectedly"
+                )
+                raise RuntimeError(
+                    f"Proxy for site '{site_name}' failed to start{detail}"
+                )
 
             self._app = self._create_master_app()
             runner = web.AppRunner(self._app)
@@ -141,21 +166,23 @@ class MultiSiteProxy:
             except (KeyboardInterrupt, asyncio.CancelledError):
                 pass
         finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except BaseException:
+                    pass
             for item in self._proxies:
                 try:
-                    await item["proxy"].shutdown()
+                    await item["proxy"].stop()
                 except Exception:
                     pass
             try:
                 if runner is not None:
                     await runner.cleanup()
             finally:
-                for task in tasks:
-                    if task is not None and not task.done():
-                        task.cancel()
-                live_tasks = [task for task in tasks if task is not None]
-                if live_tasks:
-                    await asyncio.gather(*live_tasks, return_exceptions=True)
                 await self._shared_pool.close()
 
     def _create_master_app(self) -> web.Application:

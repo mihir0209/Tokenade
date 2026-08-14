@@ -174,7 +174,10 @@ def cmd_proxy_legacy(args):
 
         from tokenade.core.proxy.multi_site_proxy import MultiSiteProxy
         proxy = MultiSiteProxy(sessions, base_port=args.port, host=args.host)
-        asyncio.run(proxy.start())
+        try:
+            asyncio.run(proxy.start())
+        except RuntimeError as exc:
+            print(f"\n[ERROR] {exc}")
         return
 
     if not args.session:
