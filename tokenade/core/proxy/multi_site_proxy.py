@@ -116,7 +116,8 @@ class MultiSiteProxy:
             shared_session = await self._shared_pool.get_session()
 
             for i, session in enumerate(self.sessions):
-                port = self.base_port + i + 1
+                # Each CDPProxy also reserves port + 1 for Chromium's CDP endpoint.
+                port = self.base_port + (i * 2) + 1
                 site_name = session.get("site_name", f"site_{i}")
                 logger.info(f"Starting proxy for {site_name} on port {port}")
 
@@ -136,22 +137,22 @@ class MultiSiteProxy:
                 task.add_done_callback(self._on_proxy_task_done)
                 tasks.append(task)
 
-            await asyncio.sleep(2)
-
-            for task, item in zip(tasks, self._proxies):
-                if not task.done() or task.cancelled():
-                    continue
-                site_name = item["session"].get("site_name", "unknown")
-                try:
-                    exception = task.exception()
-                except asyncio.CancelledError:
-                    continue
-                detail = f": {exception}" if exception is not None else (
-                    " exited unexpectedly"
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=30)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError("Timed out starting multi-site proxies") from exc
+            except Exception as exc:
+                failed_site = next(
+                    (
+                        item["session"].get("site_name", "unknown")
+                        for task, item in zip(tasks, self._proxies)
+                        if task.done() and not task.cancelled() and task.exception() is not None
+                    ),
+                    "unknown",
                 )
                 raise RuntimeError(
-                    f"Proxy for site '{site_name}' failed to start{detail}"
-                )
+                    f"Proxy for site '{failed_site}' failed to start: {exc}"
+                ) from exc
 
             self._app = self._create_master_app()
             runner = web.AppRunner(self._app)

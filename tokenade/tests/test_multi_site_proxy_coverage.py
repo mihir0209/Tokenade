@@ -277,13 +277,6 @@ class TestPrintStatus:
 # (CDPProxy/CDPProxyConfig are imported locally inside start())
 # ===========================================================================
 
-_real_event_cls = asyncio.Event
-
-
-async def _stall_forever():
-    await _real_event_cls().wait()
-
-
 class TestMultiSiteProxyStart:
     @staticmethod
     def _default_runner():
@@ -302,9 +295,7 @@ class TestMultiSiteProxyStart:
     def _spec_cdp(start_side_effect=None, stop_side_effect=None):
         """Spec-backed CDPProxy mock: fails if the real lifecycle API diverges."""
         cdp = create_autospec(CDPProxy, instance=True)
-        cdp.start = AsyncMock(
-            side_effect=start_side_effect or _stall_forever
-        )
+        cdp.start = AsyncMock(side_effect=start_side_effect)
         cdp.stop = AsyncMock(side_effect=stop_side_effect)
         return cdp
 
@@ -348,6 +339,19 @@ class TestMultiSiteProxyStart:
         assert proxy._app is not None
         mock_cdp.stop.assert_awaited_once()
         mock_runner.cleanup.assert_awaited_once()
+
+    def test_completed_child_start_is_ready(self):
+        """CDPProxy.start returns after initialization; completion means ready."""
+        proxy = MultiSiteProxy([_make_session("site1")], base_port=19306)
+        mock_cdp = self._spec_cdp()
+
+        with self._env(mock_cdp):
+            with patch("asyncio.Event", return_value=self._cancelled_event()):
+                _run_async(proxy.start())
+
+        mock_cdp.start.assert_awaited_once()
+        mock_cdp.stop.assert_awaited_once()
+        assert proxy._app is not None
 
     def test_start_stops_each_proxy_on_exit(self):
         proxy = MultiSiteProxy(
@@ -452,29 +456,26 @@ class TestMultiSiteProxyStart:
 
         assert len(proxy._proxies) == 3
         assert proxy._proxies[0]["port"] == 19401
-        assert proxy._proxies[1]["port"] == 19402
-        assert proxy._proxies[2]["port"] == 19403
+        assert proxy._proxies[1]["port"] == 19403
+        assert proxy._proxies[2]["port"] == 19405
 
     def test_startup_failure_closes_shared_pool(self):
         proxy = MultiSiteProxy([_make_session("site1")], base_port=19305)
         mock_session = MagicMock()
         mock_cdp = self._spec_cdp()
+        mock_runner = self._default_runner()
+        mock_runner.setup = AsyncMock(side_effect=RuntimeError("startup failed"))
         proxy._shared_pool.get_session = AsyncMock(return_value=mock_session)
         proxy._shared_pool.close = AsyncMock()
 
-        with self._env(mock_cdp):
-            with patch(
-                "asyncio.sleep",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("startup failed"),
-            ):
-                with patch("asyncio.Event", return_value=self._cancelled_event()):
-                    try:
-                        _run_async(proxy.start())
-                    except RuntimeError as exc:
-                        assert str(exc) == "startup failed"
-                    else:
-                        raise AssertionError("startup failure was swallowed")
+        with self._env(mock_cdp, mock_runner=mock_runner):
+            with patch("asyncio.Event", return_value=self._cancelled_event()):
+                try:
+                    _run_async(proxy.start())
+                except RuntimeError as exc:
+                    assert str(exc) == "startup failed"
+                else:
+                    raise AssertionError("startup failure was swallowed")
 
         mock_cdp.stop.assert_awaited_once()
         proxy._shared_pool.close.assert_awaited_once()
