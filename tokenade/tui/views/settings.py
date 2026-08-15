@@ -3,7 +3,7 @@
 try:
     from textual.app import ComposeResult
     from textual.containers import Horizontal, ScrollableContainer, Vertical
-    from textual.widgets import Static, Button, Input, Rule, Select, Label, Switch
+    from textual.widgets import Static, Button, Input, RichLog, Rule, Select, Label, Switch
     _OK = True
 except ImportError:
     _OK = False
@@ -27,6 +27,9 @@ except ImportError:
         pass
 
     class Input:
+        pass
+
+    class RichLog:
         pass
 
     class Rule:
@@ -174,6 +177,17 @@ class SettingsView(BaseView):
         border: tall $accent;
         color: $text;
     }
+    SettingsView #vault-passphrase {
+        border: tall $accent;
+        background: $surface-lighten-1;
+    }
+    SettingsView #settings-vault-log {
+        height: 8;
+        min-height: 5;
+        margin-top: 1;
+        border-top: tall $primary-background-lighten-2;
+        background: $surface-darken-1;
+    }
     """
 
     def compose(self) -> "ComposeResult":
@@ -265,6 +279,33 @@ class SettingsView(BaseView):
                 Input(placeholder="127.0.0.1", id="settings-proxy-host"),
                 Label("Proxy port", classes="field-label"),
                 Input(placeholder="9222", id="settings-proxy-port"),
+                classes="settings-section",
+            ),
+            Vertical(
+                Static("Vault backup & recovery", classes="section-title"),
+                Static(
+                    "Backups are created only when requested. The recovery passphrase encrypts the complete portable .tvbak archive.",
+                    classes="section-help",
+                ),
+                Label("Recovery passphrase", classes="field-label"),
+                Input(
+                    placeholder="Enter recovery passphrase",
+                    password=True,
+                    id="vault-passphrase",
+                ),
+                Horizontal(
+                    Button("Create backup", variant="primary", compact=True, id="vault-backup"),
+                    Button("Restore latest", variant="default", compact=True, id="vault-restore"),
+                    Button("Verify", variant="default", compact=True, id="vault-verify"),
+                    classes="field-row",
+                ),
+                Static("Checking local backups...", id="vault-backup-status", classes="status-line"),
+                Horizontal(
+                    Button("Rotate key", variant="default", compact=True, id="vault-rotate-key"),
+                    Button("Migrate legacy Vault", variant="warning", compact=True, id="vault-migrate"),
+                    classes="field-row",
+                ),
+                RichLog(id="settings-vault-log", wrap=True, markup=True, max_lines=200),
                 classes="settings-section",
             ),
             Vertical(

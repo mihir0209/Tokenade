@@ -16,8 +16,20 @@ from tokenade.tui.views.base import BaseView
 class VaultView(BaseView):
     DEFAULT_CSS = """
     VaultView { height: 1fr; layout: vertical; }
-    VaultView #vault-workspace {
-        height: 1fr; min-height: 8; overflow-y: auto; padding: 0 1;
+    VaultView #vault-panes {
+        height: 1fr; min-height: 8; width: 100%; layout: horizontal;
+    }
+    VaultView #vault-store-pane,
+    VaultView #vault-sessions-pane {
+        width: 1fr; height: 1fr; padding: 0 1 1 1;
+        overflow-y: auto; overflow-x: hidden;
+    }
+    VaultView #vault-store-pane {
+        border-right: heavy $primary;
+        padding-right: 2;
+    }
+    VaultView #vault-sessions-pane {
+        padding-left: 2;
     }
     VaultView .vault-section {
         height: auto; margin: 0 0 1 0; padding: 0 1;
@@ -31,18 +43,10 @@ class VaultView(BaseView):
     VaultView .field-row Select { width: 1fr; margin-right: 1; }
     VaultView .action-row { height: 3; }
     VaultView .action-row Button { margin-right: 1; }
-    VaultView #vault-primary-actions {
-        height: 3; padding: 0 1;
-    }
-    VaultView #vault-primary-actions Input { width: 1fr; margin-right: 1; }
-    VaultView #vault-primary-actions Button { margin-right: 1; }
-    VaultView #vault-list { height: auto; min-height: 5; }
+    VaultView #vault-list { height: auto; min-height: 5; width: 100%; }
     VaultView #vault-log {
         height: 28%; min-height: 5; max-height: 30%;
         border-top: tall $primary-background-lighten-2; background: $surface;
-    }
-    VaultView #vault-passphrase {
-        border: tall $accent; background: $surface-lighten-1;
     }
     """
 
@@ -53,33 +57,8 @@ class VaultView(BaseView):
             "Session Vault",
             f"Encrypted local storage at {VAULT_DIR}",
         )
-        yield Label(
-            "Recovery passphrase",
-            classes="field-label",
-        )
-        yield Horizontal(
-            Input(
-                placeholder="Enter recovery passphrase",
-                password=True,
-                id="vault-passphrase",
-            ),
-            Button(
-                "Create backup",
-                variant="primary",
-                compact=True,
-                id="vault-backup",
-            ),
-            Button(
-                "Restore latest",
-                variant="default",
-                compact=True,
-                id="vault-restore",
-            ),
-            Button("Verify", variant="default", compact=True, id="vault-verify"),
-            id="vault-primary-actions",
-        )
-        with ScrollableContainer(id="vault-workspace"):
-            with Vertical(classes="vault-section"):
+        with Horizontal(id="vault-panes"):
+            with ScrollableContainer(id="vault-store-pane"):
                 yield Static("Store a Session", classes="section-title")
                 yield Static(
                     "Choose a display name and an existing .tokenade Session file.",
@@ -123,30 +102,7 @@ class VaultView(BaseView):
                     classes="action-row",
                 )
 
-            with Vertical(classes="vault-section"):
-                yield Static("Backup And Recovery", classes="section-title")
-                yield Static(
-                    "Backups are created only when requested. Your passphrase encrypts the complete portable .tvbak archive.",
-                    classes="section-help",
-                )
-                yield Static("Checking local backups...", id="vault-backup-status")
-                yield Horizontal(
-                    Button(
-                        "Rotate key",
-                        variant="default",
-                        compact=True,
-                        id="vault-rotate-key",
-                    ),
-                    Button(
-                        "Migrate legacy Vault",
-                        variant="warning",
-                        compact=True,
-                        id="vault-migrate",
-                    ),
-                    classes="action-row",
-                )
-
-            with Vertical(classes="vault-section"):
+            with ScrollableContainer(id="vault-sessions-pane"):
                 yield Static("Stored Sessions", classes="section-title")
                 yield Static(
                     "Retrieve writes a usable Session into your Sessions directory. Delete removes only the selected Vault entry.",

@@ -465,7 +465,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
     Screen { background: $surface-darken-1; }
     TabPane { align: left top; }
     #plugin-list, #installed-list, #sessions-list,
-    #vault-list, #sync-result, #share-result,
+    #vault-list, #sync-result, #share-result, #settings-vault-log,
     #settings-body, #export-cli-log, #convert-cli-log {
         height: 1fr; overflow-y: auto; padding: 0;
         align: left top;
@@ -1981,7 +1981,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "vault-migrate":
             self._vault_migrate()
         elif btn_id == "vault-verify":
-            self._vault_command("verify")
+            self._vault_command("verify", log_selector="#settings-vault-log")
         elif btn_id == "vault-rotate-key":
             self._vault_rotate_key()
         elif btn_id == "vault-backup":
@@ -2113,6 +2113,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._settings_save()
         elif btn_id == "settings-reload":
             self._update_settings()
+            self._update_vault()
             self.notify("Settings reloaded", timeout=2)
 
     @on(Input.Submitted, "#search-input")
@@ -2211,11 +2212,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         except Exception as exc:
             logger.debug("Vault Session selector refresh failed: %s", exc)
 
-    def _vault_command(self, action, **kwargs):
+    def _vault_command(self, action, *, log_selector="#vault-log", **kwargs):
         secret_passphrase = kwargs.pop("secret_passphrase", "")
         self._run_feature_cli(
             cmd_vault(action, vault_path=str(VAULT_DIR), **kwargs),
-            "#vault-log",
+            log_selector,
             self._update_vault,
             env={
                 "TOKENADE_VAULT_KEY": self._vault_key(),
@@ -2228,21 +2229,29 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         )
 
     def _vault_rotate_key(self):
-        self._vault_command("rotate")
+        self._vault_command("rotate", log_selector="#settings-vault-log")
 
     def _vault_backup(self):
         password = self.query_one("#vault-passphrase").value
         if not password:
             self.notify("Backup passphrase is required", severity="warning")
             return
-        self._vault_command("backup", secret_passphrase=password)
+        self._vault_command(
+            "backup",
+            secret_passphrase=password,
+            log_selector="#settings-vault-log",
+        )
 
     def _vault_migrate(self):
         password = self.query_one("#vault-passphrase").value
         if not password:
             self.notify("Recovery passphrase is required", severity="warning")
             return
-        self._vault_command("migrate", secret_passphrase=password)
+        self._vault_command(
+            "migrate",
+            secret_passphrase=password,
+            log_selector="#settings-vault-log",
+        )
 
     def _vault_restore(self):
         password = self.query_one("#vault-passphrase").value
@@ -2257,7 +2266,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         if not backups:
             self.notify("No Vault backups found", severity="warning")
             return
-        self._vault_command("restore", name=str(backups[0]), secret_passphrase=password)
+        self._vault_command(
+            "restore",
+            name=str(backups[0]),
+            secret_passphrase=password,
+            log_selector="#settings-vault-log",
+        )
 
     def _vault_retrieve(self, entry_id: str):
         out = SESSIONS_DIR / f"vault-{entry_id[:12]}.tokenade"
@@ -3540,6 +3554,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
 
     def action_show_settings(self):
         self._activate_tab("tab-settings")
+        self.call_after_refresh(self._update_vault)
 
     def action_refresh(self):
         self._load_data()

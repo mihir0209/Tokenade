@@ -162,6 +162,14 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-16
+
+- Moved Vault backup/recovery controls, recovery passphrase, verify, key rotation, and legacy migration to Settings without changing their command handlers or passphrase environment handling.
+- Reworked the Vault tab into a two-column workspace: Store Session on the left and independently scrollable Stored Sessions on the right; the operation log remains below.
+- Real two-Session multi-site proxy witness against `reddit-default.tokenade` and `github-default.tokenade` found and fixed two production defects: successful `CDPProxy.start()` completion was misclassified as failure, and adjacent child allocation overlapped each child's Chromium CDP port. Child HTTP ports now use `base+1`, `base+3`, ... while even offsets remain reserved for Chromium CDP.
+- Repeated witness passed: master GUI/API and both child HTTP endpoints served successfully; API reported both Sessions and correct cookie counts; cancellation closed master, both child HTTP ports, and both Chromium CDP ports.
+- Strict full suite, exact CI flake8 commands, compileall, and diff hygiene passed after the final fixes. Vault/Settings mounted-layout tests cover desktop and compact terminal behavior.
+
 ### 2026-08-14
 
 - Closed the vault/sync runtime end-to-end review: all findings CR-01..CR-15 fixed with regression tests; strict full suite (`-W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`) green on `tests/` + `tokenade/tests/`.

@@ -236,15 +236,11 @@ class TestTUIScreenshots:
                 _save_shot("03-vault", svg)
                 text_blob = _widget_text(app.query_one("#vault-list"))
                 assert "vault-demo" in text_blob or "vault-demo" in svg
-                for selector in (
-                    "#vault-passphrase",
-                    "#vault-backup",
-                    "#vault-restore",
-                    "#vault-verify",
-                ):
-                    widget = app.query_one(selector)
-                    assert widget.region.width > 0
-                    assert widget.region.y < app.screen.region.height
+                store_pane = app.query_one("#vault-store-pane")
+                sessions_pane = app.query_one("#vault-sessions-pane")
+                assert store_pane.region.width > 0
+                assert sessions_pane.region.width > 0
+                assert sessions_pane.region.x > store_pane.region.x
                 log = app.query_one("#vault-log")
                 assert log.region.height <= app.screen.region.height * 0.30
                 selector = app.query_one("#vault-session-select")
@@ -283,6 +279,16 @@ class TestTUIScreenshots:
                 assert app.query_one("#settings-save") is not None
                 assert app.query_one("#settings-automation-browser") is not None
                 assert app.query_one("#settings-stealth-level") is not None
+                for selector in (
+                    "#vault-passphrase",
+                    "#vault-backup",
+                    "#vault-restore",
+                    "#vault-verify",
+                    "#vault-rotate-key",
+                    "#vault-migrate",
+                ):
+                    assert app.query_one(selector) is not None
+                assert app.query_one("#settings-vault-log") is not None
 
     @pytest.mark.asyncio
     async def test_share_list_renders(self, isolated_tokenade):
@@ -391,7 +397,7 @@ class TestTUIScreenshots:
         runner.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_vault_and_sync_primary_actions_remain_visible_on_compact_terminal(
+    async def test_vault_settings_and_sync_actions_work_on_compact_terminal(
         self, isolated_tokenade
     ):
         app_mod = isolated_tokenade["app_mod"]
@@ -404,12 +410,24 @@ class TestTUIScreenshots:
                 await pilot.pause()
                 app.action_show_vault()
                 await pilot.pause()
-                for selector in ("#vault-backup", "#vault-restore", "#vault-verify"):
+                for selector in ("#vault-store", "#vault-refresh"):
                     widget = app.query_one(selector)
                     assert widget.region.width > 0
                     assert widget.region.y < app.screen.region.height
                 vault_log = app.query_one("#vault-log")
                 assert vault_log.region.height <= app.screen.region.height * 0.30
+
+                app.action_show_settings()
+                await pilot.pause()
+                backup = app.query_one("#vault-backup")
+                app.query_one("#settings-body").scroll_to_widget(
+                    backup, animate=False
+                )
+                await pilot.pause()
+                for selector in ("#vault-backup", "#vault-restore", "#vault-verify"):
+                    widget = app.query_one(selector)
+                    assert widget.region.width > 0
+                    assert widget.region.y < app.screen.region.height
 
                 app.action_show_sync()
                 await pilot.pause()
