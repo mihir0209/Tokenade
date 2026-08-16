@@ -172,6 +172,14 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-16 — 1.2.3
+
+- Implemented `sessionStorage` injection and partitioned storage support in `SessionLoader`.
+- Refactored `browser_ops.py` launch flow to consolidate tab cookie/stealth/storage injection through `SessionLoader.inject_into_cdp_tab`.
+- Added multi-site proxy observability endpoints (`GET /api/status` and `GET /api/health`) with structured metrics, port mappings, and startup timing.
+- Enhanced witness scripts with structured reporting and full cleanup validation.
+- All strict test suites, flake8 linting, compile checks, and end-to-end multi-site/browser portability witnesses passed.
+
 ### 2026-08-16 — 1.2.2
 
 - Fixed browser-level CDP cookie injection to use `Storage.setCookies`; removed invalid Page-domain commands from the browser session. Real Reddit/GitHub multi-site witness starts without the previous direct-CDP warning or context fallback.

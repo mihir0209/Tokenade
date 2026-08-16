@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokenade"
-version = "1.2.2"
+version = "1.2.3"
 description = "Portable browser sessions: export cookies & storage to .tokenade, then launch, proxy, or share on another machine"
 readme = "README.md"
 license = {text = "MIT"}
