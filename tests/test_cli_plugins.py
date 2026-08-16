@@ -231,6 +231,54 @@ class TestCmdLaunchNoPlugin:
                 # PluginExporter should never have been instantiated
                 mock_exporter.assert_not_called()
 
+    def test_firefox_session_uses_session_loader(self):
+        from tokenade.cli.handlers.browser_ops import cmd_launch
+
+        args = Namespace(
+            browser="firefox", session="/tmp/session.tokenade", url=None,
+            port=9222, profile_dir="/tmp/firefox-profile", visible=False,
+            headless=True, extra_args="", browser_path=None, proxy=None,
+            proxy_file=None, proxy_rotate=False, proxy_strategy="health-weighted",
+            humanize=False, geoip=False, no_cloak=False, profile=None,
+            decrypt_password=None, plugin=None, no_plugin=True,
+            acknowledge_exclusive_move=False, claim_single_use=False,
+        )
+        session = {"site_name": "test", "cookies": [{"name": "a", "value": "1"}]}
+
+        with patch(
+            "tokenade.core.importer.session_packager.SessionPackager.load",
+            return_value=session,
+        ), patch(
+            "tokenade.core.artifacts.ProfileArtifactManager.preflight"
+        ), patch(
+            "tokenade.cli.handlers.browser_ops._resolve_upstream_proxy",
+            return_value=None,
+        ), patch(
+            "tokenade.core.importer.session_loader.SessionLoader"
+        ) as loader_cls, patch(
+            "tokenade.core.browser.undetectable.SystemBrowserLauncher"
+        ) as system_launcher:
+            loader_cls.return_value.load.return_value = {
+                "success": True,
+                "cookies_injected": 1,
+                "cookies_total": 1,
+            }
+            cmd_launch(args)
+
+        loader_cls.return_value.load.assert_called_once_with(
+            "/tmp/session.tokenade",
+            validate=False,
+            visible=False,
+            profile_dir="/tmp/firefox-profile",
+            inject_local_storage=True,
+            acknowledge_exclusive_move=False,
+            allow_single_use=False,
+            browser_type="firefox",
+            proxy=None,
+            target_url=None,
+        )
+        system_launcher.assert_not_called()
+
 
 # ── T9.3: plugin list shows lifecycle state & health ─────────────────────────
 

@@ -159,7 +159,7 @@ class SessionLoader:
         try:
             # Batch inject all localStorage entries
             # Use page.evaluate with a data parameter to avoid serialization issues
-            result = browser_manager.evaluate(
+            result = browser_manager.evaluate_with_arg(
                 """
                 (data) => {
                     let count = 0;
@@ -183,14 +183,13 @@ class SessionLoader:
                 # Fallback: inject one by one
                 for key, value in local_storage.items():
                     try:
-                        browser_manager.evaluate(
+                        browser_manager.evaluate_with_arg(
                             """
-                            (key, value) => {
-                                localStorage.setItem(key, value);
+                            (entry) => {
+                                localStorage.setItem(entry[0], entry[1]);
                             }
                         """,
-                            key,
-                            value,
+                            [key, value],
                         )
                         injected += 1
                     except Exception as e:
@@ -297,6 +296,9 @@ class SessionLoader:
         site_config: Optional[Dict] = None,
         acknowledge_exclusive_move: bool = False,
         allow_single_use: bool = False,
+        browser_type: str = "cloakbrowser",
+        proxy: Optional[Dict[str, str]] = None,
+        target_url: Optional[str] = None,
     ) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
@@ -310,6 +312,9 @@ class SessionLoader:
             profile_dir: Browser profile directory
             inject_local_storage: Whether to inject localStorage if present in package
             site_config: Site configuration dict with validate_url, login_indicator_css, etc.
+            browser_type: Browser backend requested from BrowserFactory
+            proxy: Optional Playwright proxy configuration
+            target_url: Final product URL and storage-origin scope
 
         Returns:
             Load result dict
@@ -344,9 +349,13 @@ class SessionLoader:
 
             # Step 2: Prepare browser config
             config_kwargs = {
+                "browser_type": browser_type,
                 "headless": not visible,
                 "stealth_level": stealth_level,
+                "force_playwright": browser_type in ("firefox", "webkit"),
             }
+            if proxy:
+                config_kwargs["proxy"] = proxy
             if package.get("profile_artifacts") and not profile_dir:
                 import tempfile
 
@@ -355,7 +364,10 @@ class SessionLoader:
                 config_kwargs["user_data_dir"] = profile_dir
             if package.get("profile_artifacts"):
                 ProfileArtifactManager.restore(
-                    package, profile_dir, "cloak", allow_single_use=allow_single_use
+                    package,
+                    profile_dir,
+                    browser_type,
+                    allow_single_use=allow_single_use,
                 )
 
             # Step 3: Apply target fingerprint if specified
@@ -388,6 +400,20 @@ class SessionLoader:
                 if ProfileArtifactManager.web_storage_is_superseded(package)
                 else self._local_storage_by_origin(package, site_config)
             )
+            if target_url:
+                from urllib.parse import urlparse
+
+                target = urlparse(target_url)
+                target_origin = (
+                    f"{target.scheme}://{target.netloc}"
+                    if target.scheme and target.netloc
+                    else ""
+                )
+                local_storage_by_origin = [
+                    (origin, entries)
+                    for origin, entries in local_storage_by_origin
+                    if not origin or origin.rstrip("/") == target_origin.rstrip("/")
+                ]
             result["local_storage_total"] = sum(
                 len(entries) for _, entries in local_storage_by_origin
             )
@@ -404,6 +430,11 @@ class SessionLoader:
                 origin = self._infer_origin(package, site_config)
                 result["local_storage_injected"] = self.inject_local_storage(
                     self._browser, local_storage, origin=origin
+                )
+
+            if target_url:
+                self._browser.navigate(
+                    target_url, wait_until="domcontentloaded", timeout=30000
                 )
 
             # Step 8: Validate if requested
@@ -436,7 +467,7 @@ class SessionLoader:
             elif "browser" in error_msg and (
                 "launch" in error_msg or "start" in error_msg
             ):
-                hint = " Install browser: playwright install chromium"
+                hint = f" Install browser: playwright install {browser_type}"
             elif "permission denied" in error_msg:
                 hint = f" Check file permissions for: {file_path}"
 
@@ -468,9 +499,34 @@ class SessionLoader:
         local_by_origin = (
             storage.get("local") if isinstance(storage.get("local"), dict) else {}
         )
+        from urllib.parse import urlparse
+
+        cookie_domains = {
+            str(cookie.get("domain") or "").lstrip(".").lower()
+            for cookie in package.get("cookies", [])
+            if cookie.get("domain")
+        }
+        site_name = str(package.get("site_name") or "").lower()
+        if site_name and "." in site_name:
+            cookie_domains.add(site_name.lstrip("."))
+
         for origin, entries in local_by_origin.items():
-            if isinstance(origin, str) and isinstance(entries, dict) and entries:
-                grouped.append((origin, entries))
+            if not isinstance(origin, str) or not isinstance(entries, dict) or not entries:
+                continue
+            if "^partitionKey=" in origin:
+                continue
+            parsed = urlparse(origin)
+            host = (parsed.hostname or "").lower()
+            if not parsed.scheme or not host:
+                continue
+            if cookie_domains and not any(
+                host == domain
+                or host.endswith(f".{domain}")
+                or domain.endswith(f".{host}")
+                for domain in cookie_domains
+            ):
+                continue
+            grouped.append((origin, entries))
 
         if grouped:
             return grouped

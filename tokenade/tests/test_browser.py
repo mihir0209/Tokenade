@@ -41,6 +41,11 @@ class TestBrowserConfig(unittest.TestCase):
         self.assertIn("--disable-blink-features=AutomationControlled", config.args)
         self.assertIn("--enable-automation", config.ignore_default_args)
 
+    def test_firefox_excludes_chromium_only_args(self):
+        config = BrowserConfig(browser_type="firefox")
+        self.assertNotIn("--no-sandbox", config.args)
+        self.assertNotIn("--disable-blink-features=AutomationControlled", config.args)
+
     def test_custom_args(self):
         """Test custom args merge with defaults."""
         config = BrowserConfig(args=["--custom-flag"])

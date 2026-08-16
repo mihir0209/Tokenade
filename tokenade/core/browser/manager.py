@@ -46,15 +46,16 @@ class BrowserConfig:
     def __post_init__(self):
         """Apply default anti-detection args if not overridden."""
         default_args = []
-        if self.no_sandbox:
+        chromium_family = self.browser_type not in ("firefox", "webkit")
+        if self.no_sandbox and chromium_family:
             default_args.append("--no-sandbox")
-        if self.disable_dev_shm_usage:
+        if self.disable_dev_shm_usage and chromium_family:
             default_args.append("--disable-dev-shm-usage")
-        if self.no_first_run:
+        if self.no_first_run and chromium_family:
             default_args.append("--no-first-run")
-        if self.no_default_browser_check:
+        if self.no_default_browser_check and chromium_family:
             default_args.append("--no-default-browser-check")
-        if self.disable_blink_features:
+        if self.disable_blink_features and chromium_family:
             default_args.append("--disable-blink-features=AutomationControlled")
 
         # Merge with user args (user args take precedence)

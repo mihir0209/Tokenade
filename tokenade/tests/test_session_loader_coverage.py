@@ -126,24 +126,25 @@ class TestInjectLocalStorage:
     def test_with_origin_navigation(self):
         loader = SessionLoader()
         bm = MagicMock()
-        bm.evaluate.return_value = 2
+        bm.evaluate_with_arg.return_value = 2
         result = loader.inject_local_storage(bm, {"k1": "v1", "k2": "v2"},
-                                             origin="https://example.com")
+                                              origin="https://example.com")
         assert result == 2
         bm.navigate.assert_called_once()
+        bm.evaluate_with_arg.assert_called_once()
 
     def test_navigation_failure(self):
         loader = SessionLoader()
         bm = MagicMock()
         bm.navigate.side_effect = Exception("nav failed")
-        bm.evaluate.return_value = 1
+        bm.evaluate_with_arg.return_value = 1
         result = loader.inject_local_storage(bm, {"k": "v"}, origin="https://x.com")
         assert result == 1
 
     def test_fallback_one_by_one(self):
         loader = SessionLoader()
         bm = MagicMock()
-        bm.evaluate.return_value = "not_an_int"
+        bm.evaluate_with_arg.return_value = "not_an_int"
         result = loader.inject_local_storage(bm, {"k1": "v1"})
         assert result == 1
 
@@ -151,7 +152,7 @@ class TestInjectLocalStorage:
         loader = SessionLoader()
         bm = MagicMock()
         # First call returns non-int (triggers fallback), second raises
-        bm.evaluate.side_effect = ["not_an_int", Exception("eval failed")]
+        bm.evaluate_with_arg.side_effect = ["not_an_int", Exception("eval failed")]
         result = loader.inject_local_storage(bm, {"k1": "v1", "k2": "v2"})
         assert result == 0
 
@@ -159,7 +160,7 @@ class TestInjectLocalStorage:
         loader = SessionLoader()
         bm = MagicMock()
         bm.navigate.side_effect = None
-        bm.evaluate.side_effect = Exception("eval failed")
+        bm.evaluate_with_arg.side_effect = Exception("eval failed")
         result = loader.inject_local_storage(bm, {"k": "v"})
         assert result == 0
 
@@ -376,6 +377,90 @@ class TestLoadWorkflow:
         assert result["success"] is True
         assert result["cookies_injected"] == 1
 
+    @patch("tokenade.core.importer.session_loader.BrowserFactory")
+    def test_firefox_backend_is_explicit(self, MockFactory, tmp_path):
+        path = _write_package(tmp_path, _make_package())
+        MockFactory.create.return_value = MagicMock()
+
+        result = SessionLoader().load(
+            path,
+            validate=False,
+            browser_type="firefox",
+            profile_dir=str(tmp_path / "profile"),
+        )
+
+        assert result["success"] is True
+        kwargs = MockFactory.create.call_args.kwargs
+        assert kwargs["browser_type"] == "firefox"
+        assert kwargs["force_playwright"] is True
+        assert kwargs["user_data_dir"] == str(tmp_path / "profile")
+
+    @patch("tokenade.core.importer.session_loader.BrowserFactory")
+    def test_target_url_filters_storage_and_navigates_last(self, MockFactory, tmp_path):
+        package = _make_package(
+            cookies=[
+                {
+                    "name": "session",
+                    "value": "v",
+                    "domain": ".github.com",
+                    "path": "/",
+                }
+            ]
+        )
+        package["storage"] = {
+            "local": {
+                "https://github.com": {"github": "1"},
+                "https://support.github.com": {"support": "1"},
+            }
+        }
+        path = _write_package(tmp_path, package)
+        mock_bm = MagicMock()
+        MockFactory.create.return_value = mock_bm
+        loader = SessionLoader()
+
+        with patch.object(loader, "inject_local_storage", return_value=1) as inject:
+            result = loader.load(
+                path,
+                validate=False,
+                browser_type="firefox",
+                target_url="https://github.com",
+            )
+
+        assert result["success"] is True
+        inject.assert_called_once_with(
+            mock_bm, {"github": "1"}, origin="https://github.com"
+        )
+        mock_bm.navigate.assert_called_with(
+            "https://github.com", wait_until="domcontentloaded", timeout=30000
+        )
+
+    def test_storage_origins_reject_partition_keys_and_unrelated_sites(self):
+        package = _make_package(
+            cookies=[
+                {
+                    "name": "session",
+                    "value": "v",
+                    "domain": ".github.com",
+                    "path": "/",
+                }
+            ]
+        )
+        package["storage"] = {
+            "local": {
+                "https://github.com": {"github": "1"},
+                "https://support.github.com": {"support": "1"},
+                "https://github.com^partitionKey=%28https%2Cexample.com%29": {
+                    "partitioned": "1"
+                },
+                "https://unrelated.example": {"unrelated": "1"},
+            }
+        }
+
+        assert SessionLoader()._local_storage_by_origin(package) == [
+            ("https://github.com", {"github": "1"}),
+            ("https://support.github.com", {"support": "1"}),
+        ]
+
     @patch("tokenade.core.importer.session_loader.time")
     @patch("tokenade.core.importer.session_loader.SessionValidator")
     @patch("tokenade.core.importer.session_loader.BrowserFactory")
@@ -440,7 +525,16 @@ class TestLoadWorkflow:
 
     @patch("tokenade.core.importer.session_loader.BrowserFactory")
     def test_with_v3_storage_local_by_origin(self, MockFactory, tmp_path):
-        package = _make_package()
+        package = _make_package(
+            cookies=[
+                {
+                    "name": "session",
+                    "value": "v",
+                    "domain": ".api.hcnsec.cn",
+                    "path": "/",
+                }
+            ]
+        )
         package.pop("local_storage", None)
         package["storage"] = {"local": {"https://api.hcnsec.cn": {"token": "v1", "user": "v2"}}}
         path = _write_package(tmp_path, package)

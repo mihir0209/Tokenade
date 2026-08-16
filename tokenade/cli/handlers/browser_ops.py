@@ -252,6 +252,47 @@ def cmd_launch(args):
         print(f"[PROXY] Upstream proxy: {upstream_proxy}")
 
     try:
+        if browser_name == "firefox":
+            if not session_path:
+                print("[ERROR] Firefox launch requires --session")
+                return
+            from tokenade.core.importer.session_loader import SessionLoader
+
+            proxy = {"server": upstream_proxy} if upstream_proxy else None
+            loader = SessionLoader()
+            result = loader.load(
+                session_path,
+                validate=False,
+                visible=args.visible,
+                profile_dir=args.profile_dir,
+                inject_local_storage=True,
+                acknowledge_exclusive_move=bool(
+                    getattr(args, "acknowledge_exclusive_move", False)
+                ),
+                allow_single_use=bool(getattr(args, "claim_single_use", False)),
+                browser_type="firefox",
+                proxy=proxy,
+                target_url=args.url,
+            )
+            if not result.get("success"):
+                print(f"[ERROR] Firefox Session load failed: {result.get('error')}")
+                return
+            print(
+                f"[OK] Firefox Session loaded: {result['cookies_injected']}/"
+                f"{result['cookies_total']} cookies"
+            )
+            if args.visible and loader._browser:
+                print("Press Ctrl+C to close Firefox")
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    print("\n[STOP] Closing Firefox...")
+                finally:
+                    loader._browser.close()
+                    loader._browser = None
+            return
+
         # --- CloakBrowser path (project default) ---
         if browser_name == "cloak" and not getattr(args, "no_cloak", False):
             from tokenade.core.browser.stealth.cloak import (
