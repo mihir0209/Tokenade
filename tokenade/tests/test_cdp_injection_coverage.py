@@ -43,21 +43,17 @@ async def test_inject_via_cdp_returns_when_no_session():
         await inject_via_cdp(proxy)
 
 
-@pytest.mark.asyncio
-async def test_inject_via_cdp_stealth_script_sent():
-    proxy = _make_proxy()
-    proxy.session["cookies"] = []
-    await inject_via_cdp(proxy)
-    calls = proxy._cdp_session.send.call_args_list
-    assert any(c.args[0] == "Page.addScriptToEvaluateOnNewDocument" for c in calls)
-    assert any(c.args[0] == "Network.enable" for c in calls)
+def _storage_cookie(proxy):
+    call = proxy._cdp_session.send.await_args
+    assert call.args[0] == "Storage.setCookies"
+    return call.args[1]["cookies"][0]
 
 
 @pytest.mark.asyncio
-async def test_inject_via_cdp_stealth_failure_does_not_propagate():
+async def test_inject_via_cdp_empty_cookie_set_sends_nothing():
     proxy = _make_proxy()
-    proxy._cdp_session.send.side_effect = Exception("boom")
     await inject_via_cdp(proxy)
+    proxy._cdp_session.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -67,12 +63,7 @@ async def test_inject_via_cdp_cookies_basic():
         {"name": "a", "value": "1", "domain": ".example.com", "path": "/"},
     ]
     await inject_via_cdp(proxy)
-    set_cookie_calls = [
-        c for c in proxy._cdp_session.send.call_args_list
-        if c.args[0] == "Network.setCookie"
-    ]
-    assert len(set_cookie_calls) == 1
-    params = set_cookie_calls[0].args[1]
+    params = _storage_cookie(proxy)
     assert params["name"] == "a"
     assert params["value"] == "1"
     assert params["domain"] == ".example.com"
@@ -86,8 +77,7 @@ async def test_inject_via_cdp_cookie_secure_httponly():
          "secure": True, "httpOnly": True},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert params["secure"] is True
     assert params["httpOnly"] is True
 
@@ -106,8 +96,7 @@ async def test_inject_via_cdp_cookie_same_site(ss_in, ss_out):
         {"name": "c", "value": "v", "domain": "d", "path": "/", "sameSite": ss_in},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert params["sameSite"] == ss_out
 
 
@@ -118,8 +107,7 @@ async def test_inject_via_cdp_cookie_same_site_unknown_not_set():
         {"name": "c", "value": "v", "domain": "d", "path": "/", "sameSite": "random"},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert "sameSite" not in params
 
 
@@ -131,8 +119,7 @@ async def test_inject_via_cdp_cookie_expires_millis():
         {"name": "c", "value": "v", "domain": "d", "path": "/", "expires": ts_ms},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert params["expires"] == pytest.approx(ts_ms / 1000)
 
 
@@ -144,8 +131,7 @@ async def test_inject_via_cdp_cookie_expires_seconds():
         {"name": "c", "value": "v", "domain": "d", "path": "/", "expires": ts_s},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert params["expires"] == ts_s
 
 
@@ -156,23 +142,17 @@ async def test_inject_via_cdp_cookie_no_expires():
         {"name": "c", "value": "v", "domain": "d", "path": "/"},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert "expires" not in params
 
 
 @pytest.mark.asyncio
-async def test_inject_via_cdp_cookie_send_failure_is_swallowed():
+async def test_inject_via_cdp_cookie_send_failure_raises():
     proxy = _make_proxy()
     proxy.session["cookies"] = [
         {"name": "c", "value": "v", "domain": "d", "path": "/"},
     ]
-    proxy._cdp_session.send.side_effect = [
-        None,
-        None,
-        Exception("cookie fail"),
-    ]
-    # All cookie setCookie calls fail => hard InjectionError (P3 honesty)
+    proxy._cdp_session.send.side_effect = Exception("cookie fail")
     with pytest.raises(InjectionError):
         await inject_via_cdp(proxy)
 
@@ -184,19 +164,19 @@ async def test_inject_via_cdp_default_path():
         {"name": "c", "value": "v", "domain": "d"},
     ]
     await inject_via_cdp(proxy)
-    params = [c for c in proxy._cdp_session.send.call_args_list
-              if c.args[0] == "Network.setCookie"][0].args[1]
+    params = _storage_cookie(proxy)
     assert params["path"] == "/"
 
 
 @pytest.mark.asyncio
-async def test_inject_via_cdp_network_enable_failure_swallowed():
+async def test_inject_via_cdp_storage_failure_raises():
     proxy = _make_proxy()
-    proxy._cdp_session.send.side_effect = [
-        None,
-        Exception("network fail"),
+    proxy.session["cookies"] = [
+        {"name": "c", "value": "v", "domain": "d", "path": "/"},
     ]
-    await inject_via_cdp(proxy)
+    proxy._cdp_session.send.side_effect = Exception("storage fail")
+    with pytest.raises(InjectionError):
+        await inject_via_cdp(proxy)
 
 
 # ---------------------------------------------------------------------------

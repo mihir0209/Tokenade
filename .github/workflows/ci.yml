@@ -85,6 +85,10 @@ jobs:
           --junitxml=test-results-${{ matrix.python-version }}-${{ matrix.os }}.xml
         continue-on-error: false
 
+      - name: Run real multi-site proxy witness (Linux)
+        if: runner.os == 'Linux'
+        run: python scripts/witness_multi_site_proxy.py
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v5
