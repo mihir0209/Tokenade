@@ -162,6 +162,15 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-16 — 1.2.2
+
+- Fixed browser-level CDP cookie injection to use `Storage.setCookies`; removed invalid Page-domain commands from the browser session. Real Reddit/GitHub multi-site witness starts without the previous direct-CDP warning or context fallback.
+- Added a Linux CI witness that launches two real Playwright Chromium children with synthetic Sessions, probes master and child endpoints, verifies paired HTTP/CDP port allocation, and confirms cleanup.
+- Added local clean-profile portability witnesses for Firefox, Brave, and Chromium. Firefox Session loading now uses Playwright Firefox rather than the Chromium-only system CDP launcher.
+- Fixed Session Loader web-storage injection to use the argument-safe evaluation API, reject Firefox partition-key pseudo-origins, filter unrelated donor origins, and honor the requested target URL.
+- Real Firefox donor Session witnesses: GitHub Session injected 10/10 cookies into Brave, Chromium, and Firefox clean profiles; Firefox headless launch completes in about six seconds.
+- Strict full suite, exact CI lint commands, compileall/diff hygiene, real multi-site witness, and all three browser portability witnesses passed.
+
 ### 2026-08-16
 
 - Moved Vault backup/recovery controls, recovery passphrase, verify, key rotation, and legacy migration to Settings without changing their command handlers or passphrase environment handling.
