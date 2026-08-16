@@ -247,6 +247,53 @@ class TestHandleSessionsApi:
 
 
 # ===========================================================================
+# MultiSiteProxy._handle_status_api / _handle_health_api
+# ===========================================================================
+
+class TestHandleObservabilityApi:
+    def test_status_api_reports_children_and_metrics(self):
+        proxy = MultiSiteProxy([_make_session("github"), _make_session("gmail", ".google.com")], base_port=9220)
+        proxy._start_time = 100.0
+        proxy._ready_time = 101.5
+        proxy._proxies = [
+            {"proxy": MagicMock(), "port": 9221, "session": _make_session("github")},
+            {"proxy": MagicMock(), "port": 9223, "session": _make_session("gmail", ".google.com")},
+        ]
+        request = make_mocked_request("GET", "/api/status")
+        resp = _run_async(proxy._handle_status_api(request))
+        assert resp.status == 200
+        import json
+        data = json.loads(resp.text)
+        assert data["status"] == "ready"
+        assert data["session_count"] == 2
+        assert data["startup_ms"] == 1500.0
+        assert data["children"][0]["cdp_port"] == 9222
+        assert data["children"][1]["cdp_port"] == 9224
+
+    def test_health_api_200_when_ready(self):
+        proxy = MultiSiteProxy([_make_session("github")])
+        proxy._ready_time = 100.0
+        proxy._proxies = [{"proxy": MagicMock(), "port": 9221, "session": _make_session("github")}]
+        request = make_mocked_request("GET", "/api/health")
+        resp = _run_async(proxy._handle_health_api(request))
+        assert resp.status == 200
+        import json
+        data = json.loads(resp.text)
+        assert data["healthy"] is True
+
+    def test_health_api_503_when_starting_or_incomplete(self):
+        proxy = MultiSiteProxy([_make_session("github"), _make_session("other")])
+        proxy._ready_time = None
+        proxy._proxies = [{"proxy": MagicMock(), "port": 9221, "session": _make_session("github")}]
+        request = make_mocked_request("GET", "/api/health")
+        resp = _run_async(proxy._handle_health_api(request))
+        assert resp.status == 503
+        import json
+        data = json.loads(resp.text)
+        assert data["healthy"] is False
+
+
+# ===========================================================================
 # MultiSiteProxy._print_status
 # ===========================================================================
 

@@ -82,6 +82,18 @@ async def main() -> int:
         if [item["port"] for item in items] != expected_ports:
             raise RuntimeError(f"Unexpected child ports: {items}")
 
+        status_info = await asyncio.to_thread(
+            _get_json, f"http://127.0.0.1:{base}/api/status"
+        )
+        if status_info.get("status") != "ready" or status_info.get("session_count") != 2:
+            raise RuntimeError(f"Unexpected status response: {status_info}")
+
+        health_info = await asyncio.to_thread(
+            _get_json, f"http://127.0.0.1:{base}/api/health"
+        )
+        if not health_info.get("healthy"):
+            raise RuntimeError(f"Unexpected health response: {health_info}")
+
         for port in [base, *expected_ports]:
             await asyncio.to_thread(_probe, f"http://127.0.0.1:{port}/")
     finally:

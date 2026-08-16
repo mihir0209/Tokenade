@@ -16,6 +16,7 @@ Usage:
 
 import asyncio
 import logging
+import time
 from typing import Optional, Dict, List
 
 import aiohttp
@@ -97,6 +98,8 @@ class MultiSiteProxy:
         self._proxies = []
         self._app = None
         self._shared_pool = SharedConnectionPool()
+        self._start_time: Optional[float] = None
+        self._ready_time: Optional[float] = None
 
     def _on_proxy_task_done(self, task):
         if task.cancelled():
@@ -110,6 +113,7 @@ class MultiSiteProxy:
         """Start all proxy instances and the master GUI."""
         from tokenade.core.proxy.cdp_proxy import CDPProxy, CDPProxyConfig
 
+        self._start_time = time.time()
         tasks = []
         runner = None
         try:
@@ -160,6 +164,7 @@ class MultiSiteProxy:
             site = web.TCPSite(runner, self.host, self.base_port)
             await site.start()
 
+            self._ready_time = time.time()
             self._print_status()
 
             try:
@@ -191,6 +196,8 @@ class MultiSiteProxy:
         app = web.Application()
         app.router.add_get("/", self._handle_master_gui)
         app.router.add_get("/api/sessions", self._handle_sessions_api)
+        app.router.add_get("/api/status", self._handle_status_api)
+        app.router.add_get("/api/health", self._handle_health_api)
         return app
 
     async def _handle_master_gui(self, request: web.Request) -> web.Response:
@@ -276,6 +283,46 @@ class MultiSiteProxy:
                 "auth_status": item["session"].get("auth_status", "unknown"),
             })
         return web.json_response(sessions)
+
+    async def _handle_status_api(self, request: web.Request) -> web.Response:
+        """Return detailed runtime status and child allocation mapping."""
+        uptime = (
+            round(time.time() - self._ready_time, 2)
+            if self._ready_time is not None
+            else 0.0
+        )
+        startup_ms = (
+            round((self._ready_time - self._start_time) * 1000, 1)
+            if self._ready_time and self._start_time
+            else None
+        )
+        children = []
+        for i, item in enumerate(self._proxies):
+            children.append({
+                "index": i,
+                "site_name": item["session"].get("site_name", "unknown"),
+                "port": item["port"],
+                "cdp_port": item["port"] + 1,
+                "cookies": len(item["session"].get("cookies", [])),
+                "auth_status": item["session"].get("auth_status", "unknown"),
+            })
+        return web.json_response({
+            "status": "ready" if self._ready_time else "starting",
+            "host": self.host,
+            "port": self.base_port,
+            "session_count": len(self._proxies),
+            "startup_ms": startup_ms,
+            "uptime_seconds": uptime,
+            "children": children,
+        })
+
+    async def _handle_health_api(self, request: web.Request) -> web.Response:
+        """Lightweight health probe."""
+        healthy = self._ready_time is not None and len(self._proxies) == len(self.sessions)
+        return web.json_response(
+            {"healthy": healthy, "session_count": len(self._proxies)},
+            status=200 if healthy else 503,
+        )
 
     def _print_status(self):
         """Print startup status."""
