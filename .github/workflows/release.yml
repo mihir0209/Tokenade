@@ -12,6 +12,7 @@ env:
 
 jobs:
   release:
+    if: github.repository == 'mihir0209/Tokenade'
     name: Create Release
     runs-on: ubuntu-latest
 

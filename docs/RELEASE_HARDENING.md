@@ -12,6 +12,16 @@ Goal: make the published package installable, verifiable, and usable from a clea
 - If a command is broken, fix it or document the limitation explicitly.
 - Prefer repeatable scripts over manual verification steps.
 
+### Remote Policy
+
+- `origin` (`https://github.com/mihir0209/Tokenade.git`) is the canonical GitHub
+  repository. Push release tags here and create GitHub releases/assets here.
+- `codeberg` is the canonical Codeberg mirror and may receive release tags.
+- `duplicate` (`yashpatil5005/mihir-tokenade`) is strictly a CI mirror. Push the
+  `main` branch only. Never push tags, create releases, or upload release assets
+  there.
+- PyPI publication uses artifacts built from the canonical release tag.
+
 ## Current State
 
 - `tokenade==1.1.53` is published on PyPI.
