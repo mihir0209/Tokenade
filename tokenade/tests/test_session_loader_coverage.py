@@ -128,7 +128,7 @@ class TestInjectLocalStorage:
         bm = MagicMock()
         bm.evaluate_with_arg.return_value = 2
         result = loader.inject_local_storage(bm, {"k1": "v1", "k2": "v2"},
-                                              origin="https://example.com")
+                                             origin="https://example.com")
         assert result == 2
         bm.navigate.assert_called_once()
         bm.evaluate_with_arg.assert_called_once()
@@ -162,6 +162,22 @@ class TestInjectLocalStorage:
         bm.navigate.side_effect = None
         bm.evaluate_with_arg.side_effect = Exception("eval failed")
         result = loader.inject_local_storage(bm, {"k": "v"})
+        assert result == 0
+
+    def test_inject_session_storage_success(self):
+        loader = SessionLoader()
+        bm = MagicMock()
+        bm.evaluate_with_arg.return_value = 2
+        result = loader.inject_session_storage(bm, {"s1": "v1", "s2": "v2"}, origin="https://example.com")
+        assert result == 2
+        bm.navigate.assert_called_once_with("https://example.com", wait_until="domcontentloaded", timeout=15000)
+        bm.evaluate_with_arg.assert_called_once()
+
+    def test_inject_session_storage_fallback_and_failure(self):
+        loader = SessionLoader()
+        bm = MagicMock()
+        bm.evaluate_with_arg.side_effect = ["not_int", Exception("item fail")]
+        result = loader.inject_session_storage(bm, {"s1": "v1"})
         assert result == 0
 
 
@@ -536,16 +552,23 @@ class TestLoadWorkflow:
             ]
         )
         package.pop("local_storage", None)
-        package["storage"] = {"local": {"https://api.hcnsec.cn": {"token": "v1", "user": "v2"}}}
+        package["storage"] = {
+            "local": {"https://api.hcnsec.cn": {"token": "v1", "user": "v2"}},
+            "session": {"https://api.hcnsec.cn": {"sess_token": "s1"}},
+        }
         path = _write_package(tmp_path, package)
         mock_bm = MagicMock()
         MockFactory.create.return_value = mock_bm
         loader = SessionLoader()
-        with patch.object(loader, "inject_local_storage", return_value=2) as mock_ls:
+        with patch.object(loader, "inject_local_storage", return_value=2) as mock_ls, \
+                patch.object(loader, "inject_session_storage", return_value=1) as mock_ss:
             result = loader.load(path, validate=False)
             assert result["local_storage_total"] == 2
             assert result["local_storage_injected"] == 2
+            assert result["session_storage_total"] == 1
+            assert result["session_storage_injected"] == 1
             mock_ls.assert_called_once_with(mock_bm, {"token": "v1", "user": "v2"}, origin="https://api.hcnsec.cn")
+            mock_ss.assert_called_once_with(mock_bm, {"sess_token": "s1"}, origin="https://api.hcnsec.cn")
 
     @patch("tokenade.core.importer.session_loader.BrowserFactory")
     def test_local_storage_disabled(self, MockFactory, tmp_path):

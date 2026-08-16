@@ -201,6 +201,68 @@ class SessionLoader:
         logger.info(f"Injected {injected}/{len(local_storage)} localStorage entries")
         return injected
 
+    def inject_session_storage(
+        self,
+        browser_manager,
+        session_storage: Dict[str, str],
+        origin: Optional[str] = None,
+    ) -> int:
+        """Inject sessionStorage into browser context."""
+        if not session_storage:
+            logger.info("No sessionStorage to inject")
+            return 0
+
+        if origin:
+            try:
+                browser_manager.navigate(
+                    origin, wait_until="domcontentloaded", timeout=15000
+                )
+                logger.info(f"Navigated to origin for sessionStorage injection: {origin}")
+            except Exception as e:
+                logger.warning(f"Failed to navigate to origin {origin}: {e}")
+
+        injected = 0
+        try:
+            result = browser_manager.evaluate_with_arg(
+                """
+                (data) => {
+                    let count = 0;
+                    for (const [key, value] of Object.entries(data)) {
+                        try {
+                            sessionStorage.setItem(key, value);
+                            count++;
+                        } catch (e) {
+                            console.error('sessionStorage setItem failed for key:', key, e);
+                        }
+                    }
+                    return count;
+                }
+            """,
+                session_storage,
+            )
+
+            if isinstance(result, int):
+                injected = result
+            else:
+                for key, value in session_storage.items():
+                    try:
+                        browser_manager.evaluate_with_arg(
+                            """
+                            (entry) => {
+                                sessionStorage.setItem(entry[0], entry[1]);
+                            }
+                        """,
+                            [key, value],
+                        )
+                        injected += 1
+                    except Exception as e:
+                        logger.debug(f"Failed to inject sessionStorage key {key}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to inject sessionStorage: {e}")
+
+        logger.info(f"Injected {injected}/{len(session_storage)} sessionStorage entries")
+        return injected
+
     def _normalize_cookie(self, cookie: Dict) -> Dict:
         """Normalize cookie dict to Playwright format.
 
@@ -244,6 +306,213 @@ class SessionLoader:
             normalized["sameSite"] = same_site
 
         return normalized
+
+    async def inject_into_cdp_tab(
+        self,
+        tab_ws_url: str,
+        cookies: List[Dict],
+        local_data: Optional[Dict[str, str]] = None,
+        session_data: Optional[Dict[str, str]] = None,
+        url: Optional[str] = None,
+        stealth_script: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Inject stealth script, normalized cookies, and web storage into a CDP tab."""
+        import asyncio
+        import json
+        import time
+        import websockets
+
+        msg_id_counter = [0]
+
+        async def cdp_cmd(ws, method, params=None):
+            msg_id_counter[0] += 1
+            current_id = msg_id_counter[0]
+            msg = {"id": current_id, "method": method}
+            if params:
+                msg["params"] = params
+            await ws.send(json.dumps(msg))
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                try:
+                    raw = await asyncio.wait_for(
+                        ws.recv(),
+                        timeout=min(5, deadline - time.time()),
+                    )
+                except asyncio.TimeoutError:
+                    continue
+                data = json.loads(raw)
+                if "id" in data and data["id"] == current_id:
+                    if "error" in data:
+                        raise RuntimeError(data["error"].get("message", "CDP error"))
+                    return data.get("result", {})
+            raise RuntimeError(f"CDP timeout: {method}")
+
+        tab_ws = await websockets.connect(
+            tab_ws_url,
+            max_size=10 * 1024 * 1024,
+            ping_interval=30,
+            ping_timeout=10,
+        )
+        try:
+            if stealth_script:
+                try:
+                    await cdp_cmd(tab_ws, "Page.enable")
+                    await cdp_cmd(
+                        tab_ws,
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {"source": stealth_script},
+                    )
+                except Exception as _stealth_err:
+                    logger.debug(f"Stealth inject skipped in tab: {_stealth_err}")
+
+            cdp_cookies = []
+            for cookie in cookies:
+                name = cookie.get("name") or ""
+                if not name:
+                    continue
+                domain = cookie.get("domain") or ""
+                if not domain and not cookie.get("url"):
+                    continue
+                cdp_cookie = {
+                    "name": name,
+                    "value": str(cookie.get("value", "")),
+                    "path": cookie.get("path") or "/",
+                }
+                if domain:
+                    cdp_cookie["domain"] = domain
+                elif cookie.get("url"):
+                    cdp_cookie["url"] = cookie["url"]
+                if cookie.get("secure"):
+                    cdp_cookie["secure"] = True
+                if cookie.get("httpOnly"):
+                    cdp_cookie["httpOnly"] = True
+                if cookie.get("sameSite"):
+                    same_site = str(cookie["sameSite"])
+                    ss_map = {
+                        "strict": "Strict",
+                        "lax": "Lax",
+                        "none": "None",
+                        "no_restriction": "None",
+                        "unspecified": "Lax",
+                    }
+                    same_site = ss_map.get(same_site.lower(), same_site)
+                    if same_site in ("Strict", "Lax", "None"):
+                        cdp_cookie["sameSite"] = same_site
+                expires = cookie.get("expires", 0) or 0
+                try:
+                    exp = int(float(expires))
+                except (TypeError, ValueError):
+                    exp = 0
+                if exp > 0:
+                    if exp > 1262304000000:
+                        exp = exp // 1000
+                    if exp > time.time():
+                        cdp_cookie["expires"] = exp
+                if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
+                    cdp_cookie["secure"] = True
+                if name.startswith("__Host-"):
+                    cdp_cookie["secure"] = True
+                    cdp_cookie["path"] = "/"
+                    cdp_cookie.pop("domain", None)
+                    if not cdp_cookie.get("url"):
+                        host = (domain or "").lstrip(".")
+                        if host:
+                            cdp_cookie["url"] = f"https://{host}/"
+                elif name.startswith("__Secure-"):
+                    cdp_cookie["secure"] = True
+                cdp_cookies.append(cdp_cookie)
+
+            await cdp_cmd(tab_ws, "Network.enable")
+            injected = 0
+            failed = 0
+            try:
+                await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
+                injected = len(cdp_cookies)
+            except Exception:
+                for cdp_cookie in cdp_cookies:
+                    try:
+                        await cdp_cmd(tab_ws, "Network.setCookie", cdp_cookie)
+                        injected += 1
+                    except Exception:
+                        failed += 1
+
+            if injected == 0 and cdp_cookies:
+                raise RuntimeError(f"Failed to inject any of {len(cdp_cookies)} cookies")
+
+            local_data = local_data or {}
+            session_data = session_data or {}
+            current_origin = None
+            if url:
+                try:
+                    from urllib.parse import urlparse
+
+                    parsed = urlparse(url)
+                    if parsed.scheme and parsed.netloc:
+                        current_origin = f"{parsed.scheme}://{parsed.netloc}"
+                except Exception:
+                    pass
+
+            if local_data or session_data:
+                init_storage = json.dumps({
+                    "origin": current_origin,
+                    "local": local_data,
+                    "session": session_data,
+                })
+                await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {
+                    "source": (
+                        f"(function(){{const d={init_storage};"
+                        "if(d.origin&&location.origin!==d.origin)return;"
+                        "Object.entries(d.local).forEach(([k,v])=>localStorage.setItem(k,v));"
+                        "Object.entries(d.session).forEach(([k,v])=>sessionStorage.setItem(k,v));"
+                        "}})();"
+                    ),
+                })
+
+            page_title = ""
+            final_url = ""
+            if url:
+                await cdp_cmd(tab_ws, "Page.navigate", {"url": url})
+                await asyncio.sleep(2)
+
+                if local_data:
+                    ls_json = json.dumps(local_data)
+                    await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                        "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
+                        "returnByValue": True,
+                    })
+
+                if session_data:
+                    ss_json = json.dumps(session_data)
+                    await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                        "expression": f"(function(d){{Object.entries(d).forEach(function(e){{sessionStorage.setItem(e[0],e[1])}})}})({ss_json})",
+                        "returnByValue": True,
+                    })
+
+                if local_data or session_data:
+                    await cdp_cmd(tab_ws, "Page.navigate", {"url": url})
+                    await asyncio.sleep(2)
+
+                title_result = await cdp_cmd(
+                    tab_ws, "Runtime.evaluate",
+                    {"expression": "document.title", "returnByValue": True},
+                )
+                page_title = title_result.get("result", {}).get("value", "")
+
+                url_result = await cdp_cmd(
+                    tab_ws, "Runtime.evaluate",
+                    {"expression": "window.location.href", "returnByValue": True},
+                )
+                final_url = url_result.get("result", {}).get("value", "")
+
+            return {
+                "injected_cookies": injected,
+                "failed_cookies": failed,
+                "total_cookies": len(cdp_cookies),
+                "title": page_title,
+                "url": final_url,
+            }
+        finally:
+            await tab_ws.close()
 
     def validate_session(self, browser_manager, site_config: Dict) -> Dict:
         """
@@ -326,6 +595,8 @@ class SessionLoader:
             "cookies_total": 0,
             "local_storage_injected": 0,
             "local_storage_total": 0,
+            "session_storage_injected": 0,
+            "session_storage_total": 0,
             "validation": {},
             "error": None,
         }
@@ -394,11 +665,16 @@ class SessionLoader:
             cookies = package.get("cookies", [])
             result["cookies_injected"] = self.inject_cookies(self._browser, cookies)
 
-            # Step 7: Inject localStorage if present and enabled
+            # Step 7: Inject localStorage and sessionStorage if present and enabled
             local_storage_by_origin = (
                 []
                 if ProfileArtifactManager.web_storage_is_superseded(package)
                 else self._local_storage_by_origin(package, site_config)
+            )
+            session_storage_by_origin = (
+                []
+                if ProfileArtifactManager.web_storage_is_superseded(package)
+                else self._session_storage_by_origin(package, site_config)
             )
             if target_url:
                 from urllib.parse import urlparse
@@ -414,8 +690,16 @@ class SessionLoader:
                     for origin, entries in local_storage_by_origin
                     if not origin or origin.rstrip("/") == target_origin.rstrip("/")
                 ]
+                session_storage_by_origin = [
+                    (origin, entries)
+                    for origin, entries in session_storage_by_origin
+                    if not origin or origin.rstrip("/") == target_origin.rstrip("/")
+                ]
             result["local_storage_total"] = sum(
                 len(entries) for _, entries in local_storage_by_origin
+            )
+            result["session_storage_total"] = sum(
+                len(entries) for _, entries in session_storage_by_origin
             )
             if inject_local_storage:
                 for origin, local_storage in local_storage_by_origin:
@@ -424,12 +708,24 @@ class SessionLoader:
                     result["local_storage_injected"] += self.inject_local_storage(
                         self._browser, local_storage, origin=origin
                     )
+                for origin, session_storage in session_storage_by_origin:
+                    if not session_storage:
+                        continue
+                    result["session_storage_injected"] += self.inject_session_storage(
+                        self._browser, session_storage, origin=origin
+                    )
 
             if inject_local_storage and not local_storage_by_origin:
                 local_storage = package.get("local_storage", {})
                 origin = self._infer_origin(package, site_config)
                 result["local_storage_injected"] = self.inject_local_storage(
                     self._browser, local_storage, origin=origin
+                )
+            if inject_local_storage and not session_storage_by_origin:
+                session_storage = package.get("session_storage", {})
+                origin = self._infer_origin(package, site_config)
+                result["session_storage_injected"] = self.inject_session_storage(
+                    self._browser, session_storage, origin=origin
                 )
 
             if target_url:
@@ -445,14 +741,18 @@ class SessionLoader:
                     site_config = self._build_default_site_config(package)
                 result["validation"] = self.validate_session(self._browser, site_config)
                 result["cookies_injected"] > 0
-                has_local_storage = result["local_storage_injected"] > 0
+                has_storage = (
+                    result["local_storage_injected"] > 0
+                    or result["session_storage_injected"] > 0
+                )
                 result["success"] = (
-                    result["validation"].get("valid", False) or has_local_storage
+                    result["validation"].get("valid", False) or has_storage
                 )
             else:
                 result["success"] = (
                     result["cookies_injected"] > 0
                     or result["local_storage_injected"] > 0
+                    or result["session_storage_injected"] > 0
                 )
 
             logger.info(f"Session load complete: {result['success']}")
@@ -532,6 +832,56 @@ class SessionLoader:
             return grouped
 
         legacy = package.get("local_storage")
+        if isinstance(legacy, dict) and legacy:
+            grouped.append((self._infer_origin(package, site_config), legacy))
+        return grouped
+
+    def _session_storage_by_origin(
+        self,
+        package: Dict,
+        site_config: Optional[Dict] = None,
+    ) -> list[tuple[Optional[str], Dict[str, str]]]:
+        """Return sessionStorage entries grouped by exact v3 origin, falling back to legacy flat storage."""
+        grouped: list[tuple[Optional[str], Dict[str, str]]] = []
+        storage = (
+            package.get("storage") if isinstance(package.get("storage"), dict) else {}
+        )
+        session_by_origin = (
+            storage.get("session") if isinstance(storage.get("session"), dict) else {}
+        )
+        from urllib.parse import urlparse
+
+        cookie_domains = {
+            str(cookie.get("domain") or "").lstrip(".").lower()
+            for cookie in package.get("cookies", [])
+            if cookie.get("domain")
+        }
+        site_name = str(package.get("site_name") or "").lower()
+        if site_name and "." in site_name:
+            cookie_domains.add(site_name.lstrip("."))
+
+        for origin, entries in session_by_origin.items():
+            if not isinstance(origin, str) or not isinstance(entries, dict) or not entries:
+                continue
+            if "^partitionKey=" in origin:
+                continue
+            parsed = urlparse(origin)
+            host = (parsed.hostname or "").lower()
+            if not parsed.scheme or not host:
+                continue
+            if cookie_domains and not any(
+                host == domain
+                or host.endswith(f".{domain}")
+                or domain.endswith(f".{host}")
+                for domain in cookie_domains
+            ):
+                continue
+            grouped.append((origin, entries))
+
+        if grouped:
+            return grouped
+
+        legacy = package.get("session_storage")
         if isinstance(legacy, dict) and legacy:
             grouped.append((self._infer_origin(package, site_config), legacy))
         return grouped

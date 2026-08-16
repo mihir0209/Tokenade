@@ -279,6 +279,61 @@ class TestCmdLaunchNoPlugin:
         )
         system_launcher.assert_not_called()
 
+    def test_chromium_session_delegates_cdp_injection_to_session_loader(self):
+        from tokenade.cli.handlers.browser_ops import cmd_launch
+
+        args = Namespace(
+            browser="chromium", session="/tmp/session.tokenade", url="https://example.com",
+            port=9222, profile_dir=None, visible=False,
+            headless=True, extra_args="", browser_path="/usr/bin/chromium", proxy=None,
+            proxy_file=None, proxy_rotate=False, proxy_strategy="health-weighted",
+            humanize=False, geoip=False, no_cloak=False, profile=None,
+            decrypt_password=None, plugin=None, no_plugin=True,
+            acknowledge_exclusive_move=False, claim_single_use=False,
+        )
+        session = {
+            "site_name": "example",
+            "cookies": [{"name": "a", "value": "1", "domain": ".example.com"}],
+            "storage": {"local": {"https://example.com": {"k": "v"}}},
+        }
+
+        mock_browser = MagicMock()
+        mock_browser.pid = 123
+        mock_browser.port = 9222
+        mock_browser.cdp_url = "http://127.0.0.1:9222"
+        mock_browser.profile_dir = "/tmp/profile"
+        mock_browser.process = MagicMock(wait=lambda: 0)
+
+        resp_mock = MagicMock()
+        resp_mock.read.return_value = b'{"webSocketDebuggerUrl": "ws://127.0.0.1:9222/tab", "id": "t1"}'
+        resp_mock.__enter__.return_value = resp_mock
+        resp_mock.__exit__.return_value = None
+
+        with patch(
+            "tokenade.core.importer.session_packager.SessionPackager.load",
+            return_value=session,
+        ), patch(
+            "tokenade.core.artifacts.ProfileArtifactManager.preflight"
+        ), patch(
+            "tokenade.cli.handlers.browser_ops._resolve_upstream_proxy",
+            return_value=None,
+        ), patch(
+            "tokenade.core.browser.undetectable.SystemBrowserLauncher.launch",
+            return_value=mock_browser,
+        ), patch(
+            "urllib.request.urlopen",
+            return_value=resp_mock,
+        ), patch(
+            "tokenade.core.importer.session_loader.SessionLoader.inject_into_cdp_tab",
+            return_value={"injected_cookies": 1, "failed_cookies": 0, "total_cookies": 1, "title": "Example", "url": "https://example.com"},
+        ) as mock_cdp_inject:
+            cmd_launch(args)
+
+        mock_cdp_inject.assert_called_once()
+        assert mock_cdp_inject.call_args.args[0] == "ws://127.0.0.1:9222/tab"
+        assert mock_cdp_inject.call_args.kwargs["url"] == "https://example.com"
+        assert mock_cdp_inject.call_args.kwargs["local_data"] == {"k": "v"}
+
 
 # ── T9.3: plugin list shows lifecycle state & health ─────────────────────────
 

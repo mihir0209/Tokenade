@@ -638,261 +638,61 @@ def cmd_launch(args):
                 _tab_ws_url = None
                 _tab_id = None
 
-            async def inject():
-                import websockets
+            if not _tab_ws_url:
+                print("[ERROR] Failed to create tab")
+                return
 
-                msg_id_counter = [0]
+            print(f"   Tab: {_tab_id}")
+            stealth_script = get_undetectable_stealth_script()
+            storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
+            local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
+            session_by_origin = storage.get("session") if isinstance(storage.get("session"), dict) else {}
+            current_origin = None
+            if args.url:
+                try:
+                    from urllib.parse import urlparse
 
-                async def cdp_cmd(ws, method, params=None):
-                    msg_id_counter[0] += 1
-                    current_id = msg_id_counter[0]
-                    msg = {"id": current_id, "method": method}
-                    if params:
-                        msg["params"] = params
-                    await ws.send(json.dumps(msg))
-                    deadline = time.time() + 30
-                    while time.time() < deadline:
-                        try:
-                            raw = await asyncio.wait_for(
-                                ws.recv(),
-                                timeout=min(5, deadline - time.time()),
-                            )
-                        except asyncio.TimeoutError:
-                            continue
-                        data = json.loads(raw)
-                        if "id" in data and data["id"] == current_id:
-                            if "error" in data:
-                                raise RuntimeError(data["error"].get("message", "CDP error"))
-                            return data.get("result", {})
-                    raise RuntimeError(f"CDP timeout: {method}")
+                    parsed = urlparse(args.url)
+                    if parsed.scheme and parsed.netloc:
+                        current_origin = f"{parsed.scheme}://{parsed.netloc}"
+                except Exception:
+                    pass
+            local_data = local_by_origin.get(current_origin, {}) if current_origin else {}
+            session_data = session_by_origin.get(current_origin, {}) if current_origin else {}
+            if not local_data and len(local_by_origin) == 1:
+                local_data = next(iter(local_by_origin.values())) or {}
+            if not session_data and len(session_by_origin) == 1:
+                session_data = next(iter(session_by_origin.values())) or {}
+            local_data = local_data or session.get("local_storage", {})
+            session_data = session_data or session.get("session_storage", {})
+            if ProfileArtifactManager.web_storage_is_superseded(session):
+                local_data = {}
+                session_data = {}
 
-                if not _tab_ws_url:
-                    print("[ERROR] Failed to create tab")
-                    return
+            from tokenade.core.importer.session_loader import SessionLoader
 
-                print(f"   Tab: {_tab_id}")
-
-                # Step 2: Connect to the new tab's WebSocket
-                print("   Connecting to tab WS...")
-                tab_ws = await websockets.connect(
-                    _tab_ws_url,
-                    max_size=10 * 1024 * 1024,
-                    ping_interval=30,
-                    ping_timeout=10,
+            try:
+                inject_res = asyncio.run(
+                    SessionLoader().inject_into_cdp_tab(
+                        _tab_ws_url,
+                        cookies,
+                        local_data=local_data,
+                        session_data=session_data,
+                        url=args.url,
+                        stealth_script=stealth_script,
+                    )
                 )
-                print("   Connected.")
-
-                # Step 3: Inject stealth FIRST (before page load)
-                # Vivaldi/some forks can hang on Page.enable - do not abort cookie inject.
-                print("   Injecting stealth script...", flush=True)
-                stealth_script = get_undetectable_stealth_script()
-                try:
-                    await cdp_cmd(tab_ws, "Page.enable")
-                    await cdp_cmd(
-                        tab_ws,
-                        "Page.addScriptToEvaluateOnNewDocument",
-                        {"source": stealth_script},
-                    )
-                except Exception as _stealth_err:
-                    print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing cookies")
-
-                # Step 4: Inject cookies (per-cookie - batch setCookies fails hard on one bad field)
-                print(f"   Injecting {len(cookies)} cookies...", flush=True)
-                cdp_cookies = []
-                for cookie in cookies:
-                    name = cookie.get("name") or ""
-                    if not name:
-                        continue
-                    domain = cookie.get("domain") or ""
-                    # CDP rejects empty domain without url
-                    if not domain and not cookie.get("url"):
-                        continue
-                    cdp_cookie = {
-                        "name": name,
-                        "value": str(cookie.get("value", "")),
-                        "path": cookie.get("path") or "/",
-                    }
-                    if domain:
-                        cdp_cookie["domain"] = domain
-                    elif cookie.get("url"):
-                        cdp_cookie["url"] = cookie["url"]
-                    if cookie.get("secure"):
-                        cdp_cookie["secure"] = True
-                    if cookie.get("httpOnly"):
-                        cdp_cookie["httpOnly"] = True
-                    if cookie.get("sameSite"):
-                        same_site = str(cookie["sameSite"])
-                        # Normalize common variants
-                        ss_map = {
-                            "strict": "Strict",
-                            "lax": "Lax",
-                            "none": "None",
-                            "no_restriction": "None",
-                            "unspecified": "Lax",
-                        }
-                        same_site = ss_map.get(same_site.lower(), same_site)
-                        if same_site in ("Strict", "Lax", "None"):
-                            cdp_cookie["sameSite"] = same_site
-                    expires = cookie.get("expires", 0) or 0
-                    try:
-                        exp = int(float(expires))
-                    except (TypeError, ValueError):
-                        exp = 0
-                    if exp > 0:
-                        # ms -> s
-                        if exp > 1262304000000:
-                            exp = exp // 1000
-                        # skip already-expired (Chrome can reject)
-                        if exp > time.time():
-                            cdp_cookie["expires"] = exp
-                    # CDP requires secure=true when sameSite=None
-                    if cdp_cookie.get("sameSite") == "None" and not cdp_cookie.get("secure"):
-                        cdp_cookie["secure"] = True
-                    # __Host- / __Secure- cookies need secure + correct domain shape
-                    if name.startswith("__Host-"):
-                        cdp_cookie["secure"] = True
-                        cdp_cookie["path"] = "/"
-                        # __Host- must not have Domain attribute
-                        cdp_cookie.pop("domain", None)
-                        if not cdp_cookie.get("url"):
-                            # best-effort origin from domain-like data
-                            host = (domain or "").lstrip(".")
-                            if host:
-                                cdp_cookie["url"] = f"https://{host}/"
-                    elif name.startswith("__Secure-"):
-                        cdp_cookie["secure"] = True
-                    cdp_cookies.append(cdp_cookie)
-
-                await cdp_cmd(tab_ws, "Network.enable")
-                injected = 0
-                failed = 0
-                # Try batch first for speed
-                try:
-                    await cdp_cmd(tab_ws, "Network.setCookies", {"cookies": cdp_cookies})
-                    injected = len(cdp_cookies)
-                except Exception as batch_err:
-                    print(f"   [WARN] Batch cookie inject failed ({batch_err}); retrying per-cookie...", flush=True)
-                    for cdp_cookie in cdp_cookies:
-                        try:
-                            await cdp_cmd(tab_ws, "Network.setCookie", cdp_cookie)
-                            injected += 1
-                        except Exception:
-                            failed += 1
-                print(f"   Cookies injected: {injected}/{len(cdp_cookies)}"
-                      + (f" (skipped {failed})" if failed else ""), flush=True)
-                if injected == 0 and cdp_cookies:
-                    raise RuntimeError(f"Failed to inject any of {len(cdp_cookies)} cookies")
-
-                storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
-                local_by_origin = storage.get("local") if isinstance(storage.get("local"), dict) else {}
-                session_by_origin = storage.get("session") if isinstance(storage.get("session"), dict) else {}
-                current_origin = None
-                if args.url:
-                    try:
-                        from urllib.parse import urlparse
-
-                        parsed = urlparse(args.url)
-                        if parsed.scheme and parsed.netloc:
-                            current_origin = f"{parsed.scheme}://{parsed.netloc}"
-                    except Exception:
-                        pass
-                local_data = local_by_origin.get(current_origin, {}) if current_origin else {}
-                session_data = session_by_origin.get(current_origin, {}) if current_origin else {}
-                if not local_data and len(local_by_origin) == 1:
-                    local_data = next(iter(local_by_origin.values())) or {}
-                if not session_data and len(session_by_origin) == 1:
-                    session_data = next(iter(session_by_origin.values())) or {}
-                local_data = local_data or session.get("local_storage", {})
-                session_data = session_data or session.get("session_storage", {})
-                profile_storage_authoritative = ProfileArtifactManager.web_storage_is_superseded(session)
-                if profile_storage_authoritative:
-                    local_data = {}
-                    session_data = {}
-
-                if local_data or session_data:
-                    init_storage = json.dumps({
-                        "origin": current_origin,
-                        "local": local_data,
-                        "session": session_data,
-                    })
-                    await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {
-                        "source": (
-                            f"(function(){{const d={init_storage};"
-                            "if(d.origin&&location.origin!==d.origin)return;"
-                            "Object.entries(d.local).forEach(([k,v])=>localStorage.setItem(k,v));"
-                            "Object.entries(d.session).forEach(([k,v])=>sessionStorage.setItem(k,v));"
-                            "}})();"
-                        ),
-                    })
-
-                # Step 5: Navigate to site
-                if args.url:
-                    print(f"   Navigating to: {args.url}", flush=True)
-                    await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
-
-                    # Wait for page load
-                    await asyncio.sleep(5)
-
-                    # Step 6: Inject localStorage + sessionStorage (after navigation, on correct origin)
-                    if local_data:
-                        print(f"   Injecting {len(local_data)} localStorage entries...", flush=True)
-                        ls_json = json.dumps(local_data)
-                        await cdp_cmd(tab_ws, "Runtime.evaluate", {
-                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
-                            "returnByValue": True,
-                        })
-
-                    if session_data:
-                        print(f"   Injecting {len(session_data)} sessionStorage entries...", flush=True)
-                        ss_json = json.dumps(session_data)
-                        await cdp_cmd(tab_ws, "Runtime.evaluate", {
-                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{sessionStorage.setItem(e[0],e[1])}})}})({ss_json})",
-                            "returnByValue": True,
-                        })
-
-                    # Step 7: Re-navigate with full session state
-                    if local_data or session_data:
-                        print(f"   Re-navigating with full session state...", flush=True)
-                        await cdp_cmd(tab_ws, "Page.navigate", {"url": args.url})
-                        await asyncio.sleep(5)
-
-                    # NOTE: Do NOT bounce through accounts.google.com after inject.
-                    # That page often shows "Signed out" / accountchooser and can
-                    # poison a portable Google session that would otherwise work
-                    # when navigating straight to mail.google.com / myaccount.
-
-                    # Get page info
-                    title_result = await cdp_cmd(
-                        tab_ws, "Runtime.evaluate",
-                        {"expression": "document.title", "returnByValue": True},
-                    )
-                    title = title_result.get("result", {}).get("value", "")
-
-                    url_result = await cdp_cmd(
-                        tab_ws, "Runtime.evaluate",
-                        {"expression": "window.location.href", "returnByValue": True},
-                    )
-                    url = url_result.get("result", {}).get("value", "")
-
-                    print(f"\n   [FILE] Page: {title}")
-                    print(f"   [URL] URL: {url}")
-
-                # Post-load tips + failure heuristics for Google
-                if site_hint == "google" or "google" in str(args.session).lower() or "gmail" in str(args.session).lower():
-                    print(
-                        "\n   Tips: non-Chrome targets; clean --profile-dir; "
-                        "product URL (inbox), not accounts.google.com."
-                    )
-                    # url/title set above when navigation ran
-                    page_url = locals().get("url") or ""
-                    page_url_l = str(page_url).lower()
-                    if any(x in page_url_l for x in ("accountchooser", "servicelogin", "/signin")):
-                        print("   [WARN] Looks signed-out / account chooser - Chrome-family targets often fail.")
-                        print("   ->  Retry with Brave/Edge/Firefox + a fresh --profile-dir.")
-
-                await tab_ws.close()
-
-            asyncio.run(inject())
+                print(
+                    f"   Cookies injected: {inject_res['injected_cookies']}/{inject_res['total_cookies']}"
+                    + (f" (skipped {inject_res['failed_cookies']})" if inject_res['failed_cookies'] else ""),
+                    flush=True,
+                )
+                if inject_res.get("title") or inject_res.get("url"):
+                    print(f"\n   [FILE] Page: {inject_res.get('title')}")
+                    print(f"   [URL] URL: {inject_res.get('url')}")
+            except Exception as e:
+                print(f"[ERROR] CDP injection failed: {e}")
+                return
 
         elif args.url:
             # Just navigate to URL - same PUT /json/new approach

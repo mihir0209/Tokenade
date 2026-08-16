@@ -101,6 +101,15 @@ def _witness_firefox() -> None:
                             "path": "/",
                         }
                     ],
+                    "storage": {
+                        "local": {
+                            "https://example.com": {"ff_local": "1"},
+                            "https://example.com^partitionKey=%28https%2Cthirdparty.com%29": {"ff_part": "1"},
+                        },
+                        "session": {
+                            "https://example.com": {"ff_session": "1"},
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -112,10 +121,13 @@ def _witness_firefox() -> None:
             visible=True,
             profile_dir=str(root / "profile"),
             browser_type="firefox",
+            target_url="https://example.com",
         )
         try:
             if not result["success"]:
                 raise RuntimeError(result["error"] or "Firefox Session load failed")
+            if result.get("local_storage_injected", 0) < 1 or result.get("session_storage_injected", 0) < 1:
+                raise RuntimeError(f"Storage injection incomplete: {result}")
             cookies = loader._browser.get_cookies(["https://example.com"])
             if not any(
                 cookie.get("name") == "tokenade_portability"
@@ -123,7 +135,7 @@ def _witness_firefox() -> None:
                 for cookie in cookies
             ):
                 raise RuntimeError("Firefox did not retain the injected cookie")
-            print("PASS firefox: clean-profile cookie injection and readback")
+            print("PASS firefox: clean-profile cookie and web-storage injection and readback")
         finally:
             if loader._browser:
                 loader._browser.close()
