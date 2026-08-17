@@ -16,11 +16,15 @@ def cmd_sync(args):
     from tokenade.core.sync import SessionSyncer, SyncConfig
     
     config = SyncConfig(
-        remote_host=args.remote_host or "",
-        remote_port=args.remote_port or 22,
-        remote_path=args.remote_path or "~/.tokenade/sessions",
-        local_path=args.local_path or "~/.tokenade/sessions",
-        conflict_resolution=args.conflict or "newest",
+        remote_host=getattr(args, "remote_host", "") or "",
+        remote_port=getattr(args, "remote_port", 22) or 22,
+        remote_path=getattr(args, "remote_path", "~/.tokenade/sessions") or "~/.tokenade/sessions",
+        local_path=getattr(args, "local_path", "~/.tokenade/sessions") or "~/.tokenade/sessions",
+        conflict_resolution=getattr(args, "conflict", "newest") or "newest",
+        transport=getattr(args, "transport", "ssh") or "ssh",
+        s3_bucket=getattr(args, "s3_bucket", "") or "",
+        s3_endpoint_url=getattr(args, "s3_endpoint", None),
+        s3_region=getattr(args, "s3_region", "us-east-1") or "us-east-1",
     )
     
     syncer = SessionSyncer(config)
@@ -77,34 +81,23 @@ def register_sync_parser(subparsers):
     
     sync_subparsers = sync_parser.add_subparsers(dest="sync_action")
     
-    push_parser = sync_subparsers.add_parser("push", help="Push sessions to remote")
-    push_parser.add_argument("--remote-host", help="Remote host")
-    push_parser.add_argument("--remote-port", type=int, help="Remote SSH port")
-    push_parser.add_argument("--remote-path", help="Remote path")
-    push_parser.add_argument("--local-path", help="Local path")
-    push_parser.add_argument("--json", action="store_true", help="JSON output")
-    
-    pull_parser = sync_subparsers.add_parser("pull", help="Pull sessions from remote")
-    pull_parser.add_argument("--remote-host", help="Remote host")
-    pull_parser.add_argument("--remote-port", type=int, help="Remote SSH port")
-    pull_parser.add_argument("--remote-path", help="Remote path")
-    pull_parser.add_argument("--local-path", help="Local path")
-    pull_parser.add_argument("--json", action="store_true", help="JSON output")
-    
-    bidi_parser = sync_subparsers.add_parser("bidirectional", help="Bidirectional sync")
-    bidi_parser.add_argument("--remote-host", help="Remote host")
-    bidi_parser.add_argument("--remote-port", type=int, help="Remote SSH port")
-    bidi_parser.add_argument("--remote-path", help="Remote path")
-    bidi_parser.add_argument("--local-path", help="Local path")
-    bidi_parser.add_argument("--conflict", choices=["newest", "oldest", "local", "remote"],
-                           default="newest", help="Conflict resolution")
-    bidi_parser.add_argument("--json", action="store_true", help="JSON output")
-    
-    status_parser = sync_subparsers.add_parser("status", help="Show sync status")
-    status_parser.add_argument("--remote-host", help="Remote host")
-    status_parser.add_argument("--remote-port", type=int, help="Remote SSH port")
-    status_parser.add_argument("--remote-path", help="Remote path")
-    status_parser.add_argument("--local-path", help="Local path")
-    status_parser.add_argument("--json", action="store_true", help="JSON output")
+    for action, help_text in [
+        ("push", "Push sessions to remote"),
+        ("pull", "Pull sessions from remote"),
+        ("bidirectional", "Bidirectional sync"),
+        ("status", "Show sync status"),
+    ]:
+        p = sync_subparsers.add_parser(action, help=help_text)
+        p.add_argument("--remote-host", help="Remote host")
+        p.add_argument("--remote-port", type=int, help="Remote SSH port")
+        p.add_argument("--remote-path", help="Remote path")
+        p.add_argument("--local-path", help="Local path")
+        p.add_argument("--transport", choices=["ssh", "rsync", "s3", "r2"], default="ssh", help="Sync transport")
+        p.add_argument("--s3-bucket", help="S3 / R2 Bucket name")
+        p.add_argument("--s3-endpoint", help="S3 / Cloudflare R2 endpoint URL")
+        p.add_argument("--s3-region", default="us-east-1", help="S3 region")
+        if action == "bidirectional":
+            p.add_argument("--conflict", choices=["newest", "oldest", "local", "remote"], default="newest", help="Conflict resolution")
+        p.add_argument("--json", action="store_true", help="JSON output")
     
     return sync_parser

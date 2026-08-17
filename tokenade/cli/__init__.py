@@ -427,6 +427,17 @@ def cmd_plugin(args):
                     )
 
     elif args.plugin_command == "install":
+        git_source = getattr(args, "git", None)
+        if git_source and not isinstance(git_source, (bool, type(None))) and str(git_source).strip() and not str(type(git_source)).startswith("<class 'unittest.mock"):
+            print(f"\n[IN] Installing plugin from git: {git_source}")
+            branch = getattr(args, "branch", None)
+            subdir = getattr(args, "subdir", None)
+            if registry.install_from_git(git_source, branch=branch, subdirectory=subdir):
+                print("   [OK] Plugin(s) installed successfully from git repository")
+            else:
+                print("   [ERROR] Failed to install plugin from git")
+            return
+
         reg_name = getattr(args, "registry", None)
         print(f"\n[IN] Installing plugin: {args.name}")
         if reg_name:
@@ -2460,7 +2471,19 @@ Commands:
     )
 
     plugin_install_parser = plugin_sub.add_parser("install", help="Install a plugin")
-    plugin_install_parser.add_argument("name", help="Plugin name to install")
+    plugin_install_parser.add_argument("name", nargs="?", default="", help="Plugin name to install")
+    plugin_install_parser.add_argument(
+        "--git",
+        help="Git repository URL or GitHub shorthand (e.g. user/repo or https://github.com/user/repo.git)",
+    )
+    plugin_install_parser.add_argument(
+        "--branch",
+        help="Git branch or tag to install from",
+    )
+    plugin_install_parser.add_argument(
+        "--subdir",
+        help="Subdirectory within the git repository containing the plugin(s)",
+    )
     plugin_install_parser.add_argument(
         "--registry",
         help="Registry to install from (required if plugin exists in multiple)",

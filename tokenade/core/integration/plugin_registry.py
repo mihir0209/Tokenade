@@ -541,6 +541,101 @@ class PluginRegistry:
             logger.info(f"Plugin installed: {plugin_name}")
         return success
 
+    def install_from_git(
+        self,
+        repo_url: str,
+        branch: Optional[str] = None,
+        subdirectory: Optional[str] = None,
+    ) -> bool:
+        """
+        Clone or download a remote Git / GitHub repository and install discovered plugin(s).
+        Supports:
+        - GitHub repo URL (e.g. 'https://github.com/user/my-tokenade-plugin')
+        - Shorthand ('user/repo' or 'github:user/repo')
+        - Direct git clone URL (.git)
+        """
+        import re
+        import subprocess
+        import tempfile
+
+        # Normalize GitHub shorthands
+        if repo_url.startswith("github:"):
+            repo_url = f"https://github.com/{repo_url[7:]}"
+        elif re.match(r"^[\w\-]+/[\w\-]+$", repo_url):
+            repo_url = f"https://github.com/{repo_url}"
+
+        logger.info(f"Installing plugin from git source: {repo_url}")
+
+        with tempfile.TemporaryDirectory(prefix="tokenade-git-plugin-") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            cmd = ["git", "clone", "--depth", "1"]
+            if branch:
+                cmd.extend(["-b", branch])
+            cmd.extend([repo_url, str(tmp_path)])
+
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+            except Exception as e:
+                logger.error(f"Failed to clone git repository {repo_url}: {e}")
+                return False
+
+            source_root = tmp_path
+            if subdirectory:
+                source_root = tmp_path / subdirectory
+                if not source_root.is_dir():
+                    logger.error(f"Specified subdirectory '{subdirectory}' not found in repo")
+                    return False
+
+            # Check if source_root is a single plugin or a collection of plugins
+            if (source_root / "plugin.json").is_file():
+                return self._install_plugin_dir(source_root)
+
+            # Look for subdirectories containing plugin.json
+            installed_any = False
+            for sub_dir in sorted(source_root.iterdir()):
+                if sub_dir.is_dir() and (sub_dir / "plugin.json").is_file():
+                    if self._install_plugin_dir(sub_dir):
+                        installed_any = True
+
+            if not installed_any:
+                logger.error(f"No valid plugins found in {repo_url}")
+                return False
+
+            return True
+
+    def _install_plugin_dir(self, src_dir: Path) -> bool:
+        """Helper to install a verified local plugin directory into ~/.tokenade/plugins/."""
+        manifest_path = src_dir / "plugin.json"
+        if not manifest_path.is_file() or not (src_dir / "plugin.py").is_file():
+            logger.error(f"Missing plugin.json or plugin.py in {src_dir}")
+            return False
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            plugin_name = meta.get("name", src_dir.name)
+        except Exception as e:
+            logger.error(f"Failed to parse plugin manifest in {src_dir}: {e}")
+            return False
+
+        target_dir = self.plugins_dir / plugin_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        skip_names = {"__pycache__", ".pytest_cache", ".git", ".mypy_cache", "node_modules"}
+        for path in src_dir.rglob("*"):
+            if any(part in skip_names or part.endswith(".pyc") for part in path.parts):
+                continue
+            rel = path.relative_to(src_dir)
+            dst = target_dir / rel
+            if path.is_dir():
+                dst.mkdir(parents=True, exist_ok=True)
+            elif path.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dst)
+
+        logger.info(f"Plugin installed from git: {plugin_name}")
+        return True
+
     def uninstall(self, plugin_name: str) -> bool:
         """Remove an installed plugin."""
         plugin_dir = self.plugins_dir / plugin_name

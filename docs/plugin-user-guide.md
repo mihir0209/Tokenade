@@ -21,6 +21,11 @@ tokenade plugin list --available
 # Install a specific plugin
 tokenade plugin install google-handler
 
+# Install directly from a Git / GitHub repository
+tokenade plugin install --git user/repo
+tokenade plugin install --git https://github.com/user/my-plugin.git --branch v1.0.0
+tokenade plugin install --git https://github.com/user/monorepo.git --subdir plugins/my-plugin
+
 # Verify installation
 tokenade plugin list
 ```

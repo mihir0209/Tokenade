@@ -30,6 +30,12 @@ class SyncConfig:
     sync_interval: int = 300
     conflict_resolution: str = "newest"  # newest, oldest, local, remote
     exclude_patterns: List[str] = field(default_factory=list)
+    transport: str = "ssh"  # ssh, rsync, s3, r2
+    s3_bucket: str = ""
+    s3_endpoint_url: Optional[str] = None
+    s3_region: str = "us-east-1"
+    s3_access_key_id: Optional[str] = None
+    s3_secret_access_key: Optional[str] = None
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SyncConfig':
@@ -43,6 +49,12 @@ class SyncConfig:
             sync_interval=data.get("sync_interval", 300),
             conflict_resolution=data.get("conflict_resolution", "newest"),
             exclude_patterns=data.get("exclude_patterns", []),
+            transport=data.get("transport", "ssh"),
+            s3_bucket=data.get("s3_bucket", ""),
+            s3_endpoint_url=data.get("s3_endpoint_url"),
+            s3_region=data.get("s3_region", "us-east-1"),
+            s3_access_key_id=data.get("s3_access_key_id"),
+            s3_secret_access_key=data.get("s3_secret_access_key"),
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -56,6 +68,12 @@ class SyncConfig:
             "sync_interval": self.sync_interval,
             "conflict_resolution": self.conflict_resolution,
             "exclude_patterns": self.exclude_patterns,
+            "transport": self.transport,
+            "s3_bucket": self.s3_bucket,
+            "s3_endpoint_url": self.s3_endpoint_url,
+            "s3_region": self.s3_region,
+            "s3_access_key_id": self.s3_access_key_id,
+            "s3_secret_access_key": self.s3_secret_access_key,
         }
 
 
@@ -372,6 +390,95 @@ class RsyncTransport(SyncTransport):
             return []
 
 
+class S3Transport(SyncTransport):
+    """
+    S3 / Cloudflare R2 / MinIO compatible object storage transport.
+    Uses boto3 if available, or fallbacks gracefully.
+    """
+
+    def __init__(
+        self,
+        bucket: str,
+        endpoint_url: Optional[str] = None,
+        region: str = "us-east-1",
+        access_key_id: Optional[str] = None,
+        secret_access_key: Optional[str] = None,
+    ):
+        self.bucket = bucket
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.access_key_id = access_key_id or os.environ.get("AWS_ACCESS_KEY_ID")
+        self.secret_access_key = secret_access_key or os.environ.get("AWS_SECRET_ACCESS_KEY")
+        self._s3_client = None
+
+    def connect(self) -> bool:
+        if not self.bucket:
+            logger.error("S3 bucket name required")
+            return False
+        try:
+            import boto3
+            self._s3_client = boto3.client(
+                "s3",
+                endpoint_url=self.endpoint_url,
+                region_name=self.region,
+                aws_access_key_id=self.access_key_id,
+                aws_secret_access_key=self.secret_access_key,
+            )
+            return True
+        except ImportError:
+            logger.warning("boto3 not installed, S3/R2 transport unavailable")
+            return False
+        except Exception as e:
+            logger.error(f"S3 connection failed: {e}")
+            return False
+
+    def disconnect(self) -> None:
+        self._s3_client = None
+
+    def upload(self, local_path: Path, remote_path: str) -> bool:
+        if not self._s3_client:
+            if not self.connect():
+                return False
+        try:
+            key = remote_path.lstrip("/")
+            self._s3_client.upload_file(str(local_path), self.bucket, key)
+            return True
+        except Exception as e:
+            logger.error(f"S3 upload failed: {e}")
+            return False
+
+    def download(self, remote_path: str, local_path: Path) -> bool:
+        if not self._s3_client:
+            if not self.connect():
+                return False
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            key = remote_path.lstrip("/")
+            self._s3_client.download_file(self.bucket, key, str(local_path))
+            return True
+        except Exception as e:
+            logger.error(f"S3 download failed: {e}")
+            return False
+
+    def list_remote(self, path: str) -> List[str]:
+        if not self._s3_client:
+            if not self.connect():
+                return []
+        try:
+            prefix = path.lstrip("/")
+            if prefix and not prefix.endswith("/"):
+                prefix += "/"
+            resp = self._s3_client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+            items = []
+            for obj in resp.get("Contents", []):
+                key = obj["Key"]
+                items.append(Path(key).name)
+            return items
+        except Exception as e:
+            logger.error(f"S3 list failed: {e}")
+            return []
+
+
 class SessionSyncer:
     """
     Synchronizes session files across machines.
@@ -540,6 +647,15 @@ class SessionSyncer:
     
     def _get_transport(self) -> SyncTransport:
         """Get the appropriate transport backend."""
+        if self.config.transport in ("s3", "r2") or self.config.s3_bucket:
+            return S3Transport(
+                bucket=self.config.s3_bucket,
+                endpoint_url=self.config.s3_endpoint_url,
+                region=self.config.s3_region,
+                access_key_id=self.config.s3_access_key_id,
+                secret_access_key=self.config.s3_secret_access_key,
+            )
+
         host = self.config.remote_host
         port = self.config.remote_port
         
