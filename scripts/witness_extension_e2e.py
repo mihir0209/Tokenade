@@ -149,7 +149,16 @@ def main() -> int:
                             "httpOnly": True,
                             "sameSite": "Lax",
                             "expires": 1800000000,
-                        }
+                        },
+                        {
+                            "name": "other_site_cookie",
+                            "value": "other_val",
+                            "domain": "other.example",
+                            "path": "/",
+                            "secure": False,
+                            "sameSite": "Lax",
+                            "expires": 1800000000,
+                        },
                     ]
                 )
                 page.evaluate(
@@ -324,6 +333,71 @@ def main() -> int:
                         )
                     except Exception as e:
                         check("download + round-trip", False, str(e))
+
+                    # Domain picker: all-domains mode with search/filter
+                    try:
+                        popup.click("#opt-all-domains")
+                        popup.wait_for_timeout(1200)
+                        picker_visible = popup.is_visible("#domain-picker")
+                        check("domain picker shows in all-domains mode", picker_visible)
+
+                        items = popup.evaluate(
+                            """() => Array.from(
+                                document.querySelectorAll('#domain-list .picker-item')
+                            ).map((el) => el.textContent.trim())"""
+                        )
+                        check(
+                            "picker lists both domains",
+                            any("127.0.0.1" in i for i in items)
+                            and any("other.example" in i for i in items),
+                            f"items={items}",
+                        )
+
+                        # Search filter narrows the list
+                        popup.fill("#domain-search", "other")
+                        popup.wait_for_timeout(300)
+                        items = popup.evaluate(
+                            """() => Array.from(
+                                document.querySelectorAll('#domain-list .picker-item')
+                            ).map((el) => el.textContent.trim())"""
+                        )
+                        check(
+                            "search filter narrows domains",
+                            len(items) == 1 and "other.example" in items[0],
+                            f"items={items}",
+                        )
+                        popup.fill("#domain-search", "")
+                        popup.wait_for_timeout(300)
+
+                        # Deselect 127.0.0.1 -> export only other.example cookies
+                        popup.evaluate(
+                            """() => {
+                                const cb = Array.from(
+                                    document.querySelectorAll('#domain-list input')
+                                ).find((i) => i.value === '127.0.0.1');
+                                cb.checked = false;
+                                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                            }"""
+                        )
+                        popup.wait_for_timeout(1200)
+                        domain_text = popup.text_content("#domain") or ""
+                        check(
+                            "popup reflects single selected domain",
+                            "other.example" in domain_text,
+                            f"domain={domain_text!r}",
+                        )
+                        with popup.expect_download(timeout=15000) as dl_info2:
+                            popup.click("#btn-download")
+                        dl2 = dl_info2.value
+                        payload2 = json.loads(Path(dl2.path()).read_text())
+                        names2 = {c.get("name") for c in payload2.get("cookies", [])}
+                        check(
+                            "filtered export keeps only selected domain",
+                            names2 == {"other_site_cookie"},
+                            f"names={names2}",
+                        )
+                    except Exception as e:
+                        check("domain picker checks", False, str(e))
 
                     popup.close()
                 print('STEP: closing context', flush=True)

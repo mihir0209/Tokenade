@@ -172,6 +172,15 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-18 — 1.2.4
+
+- Added `twitter.json` site definition (auth_token, ct0, twid, kdt + critical storage) to generic-handler; refined `validate()` scoring for partial critical sets and expired-cookie penalties.
+- Added SDK recipes (`sdk_session_rotation.py`, `sdk_multisite_scraper.py`) and SessionVault/storage benchmarks.
+- Extension: sessionStorage capture, native v3 packaging, domain search/filter picker, light mode, Gecko ID + Firefox manifest fixes (`web-ext lint` 0 errors).
+- Fixed latent extension bridge bugs: manifest `content_scripts` declaration, MAIN-world registration replacing CSP-blocked inline injection, `SEND_TO_PROXY` fetch timeout.
+- Added `scripts/witness_extension_e2e.py` (19-check live Chromium witness) and `tokenade/tests/test_extension_e2e.py` (slow-marked, CI-safe skips).
+- Full strict suite passed (5,882 passed, 15 skipped); witness 19/19 across repeated runs; flake8/compile/`node --check` clean.
+
 ### 2026-08-16 — 1.2.3
 
 - Implemented `sessionStorage` injection and partitioned storage support in `SessionLoader`.

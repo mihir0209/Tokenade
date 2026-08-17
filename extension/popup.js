@@ -21,10 +21,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const optLocalStorage = document.getElementById("opt-local-storage");
   const optSessionStorage = document.getElementById("opt-session-storage");
   const formatSelect = document.getElementById("opt-format");
+  const domainPicker = document.getElementById("domain-picker");
+  const domainSearch = document.getElementById("domain-search");
+  const domainList = document.getElementById("domain-list");
+  const pickerSelectAll = document.getElementById("picker-select-all");
+  const pickerSelectNone = document.getElementById("picker-select-none");
 
   let currentTab = null;
   let currentDomain = "";
   let sessionData = null;
+  // Domain selection mode: "all" (empty selection, everything included) or
+  // "selected" (only the domains listed in selectedDomains).
+  let domainFilter = "all";
+  let selectedDomains = new Set();
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -51,6 +60,54 @@ document.addEventListener("DOMContentLoaded", async () => {
     return domains;
   }
 
+  function domainOf(cookie) {
+    const d = cookie.domain || "";
+    return d.startsWith(".") ? d.slice(1) : d;
+  }
+
+  function renderDomainPicker(allCookies) {
+    const counts = new Map();
+    for (const c of allCookies) {
+      const d = domainOf(c);
+      counts.set(d, (counts.get(d) || 0) + 1);
+    }
+    const query = (domainSearch.value || "").trim().toLowerCase();
+    const domains = Array.from(counts.keys())
+      .filter((d) => !query || d.includes(query))
+      .sort();
+    domainList.textContent = "";
+    if (domains.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = query ? "No domains match the filter" : "No cookies found";
+      domainList.appendChild(empty);
+      return;
+    }
+    for (const d of domains) {
+      const label = document.createElement("label");
+      label.className = "picker-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = d;
+      cb.checked = domainFilter === "all" || selectedDomains.has(d);
+      const span = document.createElement("span");
+      span.textContent = d;
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = String(counts.get(d));
+      label.appendChild(cb);
+      label.appendChild(span);
+      label.appendChild(count);
+      domainList.appendChild(label);
+    }
+  }
+
+  function allListedDomains() {
+    return Array.from(
+      domainList.querySelectorAll("input[type='checkbox']")
+    ).map((i) => i.value);
+  }
+
   async function extractCookies() {
     const domain = currentDomain;
     const allDomains = optAllDomains.checked;
@@ -58,6 +115,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     let cookies;
     if (allDomains) {
       cookies = await chrome.cookies.getAll({});
+      renderDomainPicker(cookies);
+      if (domainFilter === "selected" && selectedDomains.size > 0) {
+        cookies = cookies.filter((c) => selectedDomains.has(domainOf(c)));
+      }
     } else {
       const domains = getRelatedDomains(domain);
       const allCookies = [];
@@ -191,13 +252,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       flatLs[`${currentDomain}:${k}`] = v;
     }
 
+    const selectedDomainCount = optAllDomains.checked
+      ? (domainFilter === "all"
+          ? domainList.querySelectorAll("input[type='checkbox']").length || 1
+          : selectedDomains.size || 1)
+      : 1;
+
     // Heuristic: a session with valid (non-expired) cookies is treated as
     // logged in; anything weaker stays "unknown" rather than claiming health.
     const authStatus = total > 0 && health >= 50 ? "logged_in" : "unknown";
 
     return {
       version: "3.0",
-      site_name: currentDomain,
+      site_name: optAllDomains.checked ? "all-domains" : currentDomain,
       auth_status: authStatus,
       created_at: new Date().toISOString(),
       source_device: {
@@ -230,7 +297,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           "auth_status is a cookie-health heuristic (logged_in only when valid cookies exist).",
         ],
       },
-      _stats: { total, expired, health, storage: lsCount + ssCount },
+      _stats: { total, expired, health, storage: lsCount + ssCount, domains: selectedDomainCount },
     };
   }
 
@@ -307,8 +374,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     expiredValue.textContent = stats.expired;
     healthValue.textContent = Math.round(stats.health) + "%";
     if (storageValue) storageValue.textContent = String(stats.storage || 0);
+    const domainNote = optAllDomains.checked
+      ? ` · ${stats.domains} domains selected`
+      : "";
     cookieCountEl.textContent = `${stats.total} cookies` +
-      (stats.storage ? ` · ${stats.storage} localStorage keys` : "");
+      (stats.storage ? ` · ${stats.storage} storage keys` : "") + domainNote;
 
     statExpired.classList.toggle("warn", stats.expired > 0);
     statHealth.classList.remove("warn", "error");
@@ -332,6 +402,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   let rawCookies = [];
 
   async function refresh() {
+    const allDomains = optAllDomains.checked;
+    domainPicker.classList.toggle("visible", allDomains);
+    if (allDomains) {
+      domainEl.textContent = domainFilter === "all"
+        ? "All domains"
+        : selectedDomains.size === 1
+          ? Array.from(selectedDomains)[0]
+          : `${selectedDomains.size} domains`;
+    } else {
+      domainEl.textContent = currentDomain;
+    }
     const cookies = await extractCookies();
     rawCookies = cookies;
     const ls = await extractLocalStorage();
@@ -387,7 +468,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  optAllDomains.addEventListener("change", onOptionChange);
+  optAllDomains.addEventListener("change", () => {
+    if (!optAllDomains.checked) {
+      domainFilter = "all";
+      selectedDomains = new Set();
+      domainSearch.value = "";
+    }
+    onOptionChange();
+  });
   if (optLocalStorage) optLocalStorage.addEventListener("change", onOptionChange);
   if (optSessionStorage) optSessionStorage.addEventListener("change", onOptionChange);
+
+  domainSearch.addEventListener("input", () => {
+    if (rawCookies.length > 0) renderDomainPicker(rawCookies);
+  });
+
+  domainList.addEventListener("change", (e) => {
+    const cb = e.target;
+    if (!cb.matches("input[type='checkbox']")) return;
+    if (domainFilter === "all" && !cb.checked) {
+      // First manual deselection: switch to explicit selection seeded with
+      // every listed domain, then drop the one the user uncheckd.
+      domainFilter = "selected";
+      selectedDomains = new Set(allListedDomains());
+      selectedDomains.delete(cb.value);
+    } else if (domainFilter === "selected") {
+      if (cb.checked) {
+        selectedDomains.add(cb.value);
+      } else {
+        selectedDomains.delete(cb.value);
+      }
+    }
+    onOptionChange();
+  });
+
+  pickerSelectAll.addEventListener("click", () => {
+    domainFilter = "all";
+    selectedDomains = new Set();
+    onOptionChange();
+  });
+
+  pickerSelectNone.addEventListener("click", () => {
+    domainFilter = "selected";
+    selectedDomains = new Set(allListedDomains());
+    onOptionChange();
+  });
 });
