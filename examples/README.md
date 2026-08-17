@@ -47,6 +47,22 @@ Runs a test suite to verify the proxy components work correctly.
 python examples/test_proxy.py
 ```
 
+### 4. SDK Session Rotation (`sdk_session_rotation.py`)
+
+Demonstrates automated health-weighted session rotation using the Python SDK:
+
+```bash
+python examples/sdk_session_rotation.py
+```
+
+### 5. SDK Scraper Proxy (`sdk_multisite_scraper.py`)
+
+Demonstrates in-process context-managed session proxying without subprocess overhead:
+
+```bash
+python examples/sdk_multisite_scraper.py
+```
+
 ## Usage Modes
 
 ### GUI Mode (Default)

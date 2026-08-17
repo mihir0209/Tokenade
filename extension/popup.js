@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusEl = document.getElementById("status");
   const optAllDomains = document.getElementById("opt-all-domains");
   const optLocalStorage = document.getElementById("opt-local-storage");
+  const optSessionStorage = document.getElementById("opt-session-storage");
   const formatSelect = document.getElementById("opt-format");
 
   let currentTab = null;
@@ -102,6 +103,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  async function extractSessionStorage() {
+    if (!optSessionStorage?.checked || !currentTab?.id) {
+      return {};
+    }
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        func: () => {
+          const out = {};
+          try {
+            for (let i = 0; i < sessionStorage.length; i++) {
+              const k = sessionStorage.key(i);
+              if (k != null) out[k] = sessionStorage.getItem(k);
+            }
+          } catch (_) {
+            /* opaque origin */
+          }
+          return out;
+        },
+      });
+      return (results && results[0] && results[0].result) || {};
+    } catch (e) {
+      console.warn("sessionStorage capture failed", e);
+      return {};
+    }
+  }
+
   function mapSameSite(v) {
     if (v === "no_restriction" || v === "none") return "None";
     if (v === "lax") return "Lax";
@@ -134,7 +162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return { tokenadeCookies, expired, total: cookies.length };
   }
 
-  function buildTokenadeSession(cookies, localStorageMap) {
+  function buildTokenadeSession(cookies, localStorageMap, sessionStorageMap) {
     const { tokenadeCookies, expired, total } = normalizeCookies(cookies);
     const health = total > 0 ? ((total - expired) / total) * 100 : 0;
     const origin = currentTab?.url
@@ -149,9 +177,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       : `https://${currentDomain}`;
 
     const lsCount = Object.keys(localStorageMap || {}).length;
+    const ssCount = Object.keys(sessionStorageMap || {}).length;
     const storage = { local: {}, session: {} };
     if (lsCount > 0) {
       storage.local[origin] = { ...localStorageMap };
+    }
+    if (ssCount > 0) {
+      storage.session[origin] = { ...sessionStorageMap };
     }
 
     const flatLs = {};
@@ -159,10 +191,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       flatLs[`${currentDomain}:${k}`] = v;
     }
 
+    // Heuristic: a session with valid (non-expired) cookies is treated as
+    // logged in; anything weaker stays "unknown" rather than claiming health.
+    const authStatus = total > 0 && health >= 50 ? "logged_in" : "unknown";
+
     return {
       version: "3.0",
       site_name: currentDomain,
-      auth_status: "unknown",
+      auth_status: authStatus,
       created_at: new Date().toISOString(),
       source_device: {
         browser: "chrome-extension",
@@ -185,13 +221,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         exported_at: new Date().toISOString(),
         cookie_count: total,
         local_storage_count: lsCount,
+        session_storage_count: ssCount,
         notes: [
           "Exported via browser extension (no SQLite lock).",
           "fingerprint is null — extension cannot capture donor TLS/JA3; use CLI export --collect-fingerprint when needed.",
           "HttpOnly cookies are included (chrome.cookies API).",
+          "Web storage includes both localStorage and sessionStorage.",
+          "auth_status is a cookie-health heuristic (logged_in only when valid cookies exist).",
         ],
       },
-      _stats: { total, expired, health, storage: lsCount },
+      _stats: { total, expired, health, storage: lsCount + ssCount },
     };
   }
 
@@ -296,7 +335,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const cookies = await extractCookies();
     rawCookies = cookies;
     const ls = await extractLocalStorage();
-    sessionData = buildTokenadeSession(cookies, ls);
+    const ss = await extractSessionStorage();
+    sessionData = buildTokenadeSession(cookies, ls, ss);
     updateStats(sessionData);
   }
 
@@ -349,4 +389,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   optAllDomains.addEventListener("change", onOptionChange);
   if (optLocalStorage) optLocalStorage.addEventListener("change", onOptionChange);
+  if (optSessionStorage) optSessionStorage.addEventListener("change", onOptionChange);
 });

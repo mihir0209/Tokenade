@@ -128,10 +128,10 @@ def start_proxy(package: dict, port: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Tokenade Full Workflow Example")
-    parser.add_argument("--browser", "-b", default="firefox", 
+    parser.add_argument("--browser", "-b", default="firefox",
                        choices=["chrome", "firefox", "edge", "brave"],
                        help="Browser to export from")
-    parser.add_argument("--domains", "-d", nargs="+", 
+    parser.add_argument("--domains", "-d", nargs="+",
                        default=[".github.com", "github.com"],
                        help="Domain filter")
     parser.add_argument("--port", "-p", type=int, default=9222,

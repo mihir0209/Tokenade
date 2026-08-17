@@ -5,6 +5,7 @@
 *.json
 temp-acc-*.json
 !tokenade/handlers/site_configs/*.json
+!extension/manifest.json
 
 # Generated Access Tokens - DO NOT COMMIT!
 access_token.txt

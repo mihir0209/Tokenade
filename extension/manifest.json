@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Tokenade Session Exporter",
+  "version": "1.2.0",
+  "description": "Export browser sessions as .tokenade (default) or common cookie formats, including localStorage and sessionStorage. No fingerprint capture.",
+  "permissions": [
+    "cookies",
+    "activeTab",
+    "storage",
+    "downloads",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tokenade — Export Session"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

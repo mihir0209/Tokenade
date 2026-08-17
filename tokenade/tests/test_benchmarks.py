@@ -15,23 +15,24 @@ def benchmark_extraction():
 
     try:
         # Find Firefox profile
-        firefox_path = os.path.expanduser("~/.snap/firefox/common/.mozilla/firefox")
+        firefox_path = os.path.expanduser("~/snap/firefox/common/.mozilla/firefox")
         if not os.path.exists(firefox_path):
             firefox_path = os.path.expanduser("~/.mozilla/firefox")
 
         profiles_dir = Path(firefox_path)
         default_profile = None
-        for p in profiles_dir.iterdir():
-            if p.is_dir() and "default" in p.name.lower():
-                default_profile = p
-                break
+        if profiles_dir.exists():
+            for p in profiles_dir.iterdir():
+                if p.is_dir() and ("default" in p.name.lower() or "release" in p.name.lower()):
+                    default_profile = p
+                    break
 
         if not default_profile:
             print("  No Firefox profile found, skipping")
             return {"browser": "none", "cookies": 0, "time": 0, "speed": 0}
 
         print(f"  Using: firefox ({default_profile.name})")
-        extractor = CookieExtractor(str(default_profile))
+        extractor = CookieExtractor(str(default_profile), browser="firefox")
 
         start = time.time()
         cookies = extractor.extract()
@@ -131,12 +132,19 @@ def benchmark_health_check():
         ]
     }
 
-    start = time.time()
-    checker.check_session(session)
-    elapsed = time.time() - start
-    print(f"  Health check 100 cookies: {elapsed:.3f}s")
+    with tempfile.NamedTemporaryFile(suffix=".tokenade", mode="w", delete=False) as f:
+        json.dump(session, f)
+        tmp_path = f.name
 
-    return {"time": elapsed}
+    try:
+        start = time.time()
+        checker.check_session(tmp_path)
+        elapsed = time.time() - start
+        print(f"  Health check 100 cookies: {elapsed:.3f}s")
+        return {"time": elapsed}
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def benchmark_tls_matcher():
@@ -160,6 +168,82 @@ def benchmark_tls_matcher():
 
     matcher.close()
     return {"init_time": init_time, "request_time": req_time}
+
+
+def benchmark_vault():
+    """Benchmark SessionVault store and retrieve throughput."""
+    from tokenade.core.vault.vault import SessionVault, VaultConfig
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = VaultConfig(vault_path=str(Path(tmpdir) / ".vault"))
+        vault = SessionVault(cfg)
+
+        # Create session payloads
+        sessions = [
+            json.dumps({
+                "version": "3.0",
+                "format": "tokenade",
+                "site_name": f"site_{i}",
+                "auth_status": "logged_in",
+                "cookies": [{"name": f"c_{j}", "value": f"v_{j}" * 10, "domain": f".site{i}.com"} for j in range(20)],
+                "storage": {"local": {f"https://site{i}.com": {"token": f"tok_{i}"}}, "session": {}},
+            }).encode("utf-8")
+            for i in range(50)
+        ]
+
+        # Benchmark batch store
+        start = time.time()
+        for i, s in enumerate(sessions):
+            res = vault.store(f"session_{i}", s)
+            assert res.success
+        store_time = time.time() - start
+        store_speed = len(sessions) / store_time if store_time > 0 else 0
+        print(f"  Vault store 50 sessions: {store_time:.3f}s ({store_speed:.0f} sessions/s)")
+
+        # Benchmark batch retrieve
+        start = time.time()
+        for i in range(len(sessions)):
+            res = vault.retrieve(f"session_{i}")
+            assert res.success
+            assert res.data == sessions[i]
+        retrieve_time = time.time() - start
+        retrieve_speed = len(sessions) / retrieve_time if retrieve_time > 0 else 0
+        print(f"  Vault retrieve 50 sessions: {retrieve_time:.3f}s ({retrieve_speed:.0f} sessions/s)")
+
+        return {
+            "store_time": store_time,
+            "store_speed": store_speed,
+            "retrieve_time": retrieve_time,
+            "retrieve_speed": retrieve_speed,
+        }
+
+
+def benchmark_storage_serialization():
+    """Benchmark v3 storage normalization and serialization overhead."""
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    packager = SessionPackager()
+    storage = {
+        "local": {
+            f"https://app{i}.example.com": {
+                f"key_{k}": f"value_payload_data_{k}" * 5 for k in range(50)
+            }
+            for i in range(10)
+        },
+        "session": {
+            f"https://app{i}.example.com": {
+                f"session_key_{k}": f"session_val_{k}" for k in range(20)
+            }
+            for i in range(10)
+        },
+    }
+    cookies = [{"name": f"c{i}", "value": f"v{i}", "domain": ".example.com"} for i in range(100)]
+
+    start = time.time()
+    session = packager.package(cookies=cookies, storage=storage)
+    elapsed = time.time() - start
+    print(f"  Package multi-origin storage: {elapsed:.3f}s")
+    return {"time": elapsed}
 
 
 def run_all_benchmarks():
@@ -186,7 +270,15 @@ def run_all_benchmarks():
     print("-" * 40)
     results["health"] = benchmark_health_check()
 
-    print("\n5. TLS Matcher")
+    print("\n5. Vault Operations")
+    print("-" * 40)
+    results["vault"] = benchmark_vault()
+
+    print("\n6. Storage Serialization")
+    print("-" * 40)
+    results["storage"] = benchmark_storage_serialization()
+
+    print("\n7. TLS Matcher")
     print("-" * 40)
     results["tls"] = benchmark_tls_matcher()
 
@@ -200,6 +292,9 @@ def run_all_benchmarks():
     print(f"  Encryption: {results['encryption']['encrypt_time']:.3f}s")
     print(f"  Decryption: {results['encryption']['decrypt_time']:.3f}s")
     print(f"  Health Check: {results['health']['time']:.3f}s")
+    print(f"  Vault Store: {results['vault']['store_speed']:.0f} sessions/s")
+    print(f"  Vault Retrieve: {results['vault']['retrieve_speed']:.0f} sessions/s")
+    print(f"  Storage Serialization: {results['storage']['time']:.3f}s")
     print(f"  TLS Init: {results['tls']['init_time']:.3f}s")
 
     return results
