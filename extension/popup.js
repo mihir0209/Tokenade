@@ -191,6 +191,56 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  async function extractIndexedDB() {
+    if (!currentTab?.id) return {};
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        func: async () => {
+          if (!window.indexedDB || !indexedDB.databases) return {};
+          const out = {};
+          try {
+            const dbs = await indexedDB.databases();
+            for (const dbInfo of dbs) {
+              if (!dbInfo.name) continue;
+              await new Promise((resolve) => {
+                const req = indexedDB.open(dbInfo.name, dbInfo.version);
+                req.onsuccess = async (e) => {
+                  const db = e.target.result;
+                  const storeNames = Array.from(db.objectStoreNames);
+                  if (storeNames.length === 0) { db.close(); resolve(); return; }
+                  out[dbInfo.name] = { version: dbInfo.version, stores: {} };
+                  try {
+                    const tx = db.transaction(storeNames, "readonly");
+                    for (const sName of storeNames) {
+                      const store = tx.objectStore(sName);
+                      const records = {};
+                      const cursorReq = store.openCursor();
+                      cursorReq.onsuccess = (ev) => {
+                        const cursor = ev.target.result;
+                        if (cursor) {
+                          try { records[String(cursor.key)] = cursor.value; } catch(_) {}
+                          cursor.continue();
+                        }
+                      };
+                    }
+                    tx.oncomplete = () => { db.close(); resolve(); };
+                    tx.onerror = () => { db.close(); resolve(); };
+                  } catch(_) { db.close(); resolve(); }
+                };
+                req.onerror = () => resolve();
+              });
+            }
+          } catch(_) {}
+          return out;
+        }
+      });
+      return (results && results[0] && results[0].result) || {};
+    } catch(e) {
+      return {};
+    }
+  }
+
   function mapSameSite(v) {
     if (v === "no_restriction" || v === "none") return "None";
     if (v === "lax") return "Lax";
@@ -223,7 +273,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return { tokenadeCookies, expired, total: cookies.length };
   }
 
-  function buildTokenadeSession(cookies, localStorageMap, sessionStorageMap) {
+  function buildTokenadeSession(cookies, localStorageMap, sessionStorageMap, indexedDBMap) {
     const { tokenadeCookies, expired, total } = normalizeCookies(cookies);
     const health = total > 0 ? ((total - expired) / total) * 100 : 0;
     const origin = currentTab?.url
@@ -239,12 +289,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const lsCount = Object.keys(localStorageMap || {}).length;
     const ssCount = Object.keys(sessionStorageMap || {}).length;
-    const storage = { local: {}, session: {} };
+    const idbCount = Object.keys(indexedDBMap || {}).length;
+    const storage = { local: {}, session: {}, indexeddb: {} };
     if (lsCount > 0) {
       storage.local[origin] = { ...localStorageMap };
     }
     if (ssCount > 0) {
       storage.session[origin] = { ...sessionStorageMap };
+    }
+    if (idbCount > 0) {
+      storage.indexeddb[origin] = { ...indexedDBMap };
     }
 
     const flatLs = {};
@@ -417,7 +471,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     rawCookies = cookies;
     const ls = await extractLocalStorage();
     const ss = await extractSessionStorage();
-    sessionData = buildTokenadeSession(cookies, ls, ss);
+    const idb = await extractIndexedDB();
+    sessionData = buildTokenadeSession(cookies, ls, ss, idb);
     updateStats(sessionData);
   }
 

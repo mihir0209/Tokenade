@@ -12,7 +12,7 @@ import json
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 from tokenade.core.importer.cookie_extractor import SiteFilter, SITE_DETECTION
@@ -143,7 +143,8 @@ class SessionPackager:
                 tokens: Optional[List[Dict]] = None,
                 local_storage: Optional[Dict[str, str]] = None,
                 session_storage: Optional[Dict[str, str]] = None,
-                storage: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
+                indexeddb: Optional[Dict[str, Any]] = None,
+                storage: Optional[Dict[str, Any]] = None,
                 source_browser_manager=None,
                 tls_profile: Optional[Dict] = None,
                 oauth_config: Optional[Dict] = None,
@@ -189,16 +190,20 @@ class SessionPackager:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # Build storage dict (v3.0 per-origin format)
-        storage_data = {"local": {}, "session": {}}
+        storage_data = {"local": {}, "session": {}, "indexeddb": {}}
         if storage:
             storage_data = storage
-        elif local_storage or session_storage:
+            if "indexeddb" not in storage_data and indexeddb:
+                storage_data["indexeddb"] = indexeddb
+        elif local_storage or session_storage or indexeddb:
             # Convert flat dicts to per-origin format
             origin = self._infer_origin(cookies)
             if local_storage:
                 storage_data["local"][origin] = local_storage
             if session_storage:
                 storage_data["session"][origin] = session_storage
+            if indexeddb:
+                storage_data["indexeddb"][origin] = indexeddb
 
         email = self._extract_email(cookies, site_name)
         if not email and extra_cookies:

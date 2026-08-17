@@ -263,6 +263,57 @@ class SessionLoader:
         logger.info(f"Injected {injected}/{len(session_storage)} sessionStorage entries")
         return injected
 
+    def inject_indexeddb(self, browser_manager, idb_data: Dict[str, Any]) -> int:
+        """Inject IndexedDB object stores and key-value records via browser evaluation."""
+        if not idb_data or browser_manager is None:
+            return 0
+
+        script = """
+        async (databases) => {
+            let totalRecords = 0;
+            for (const [dbName, dbSpec] of Object.entries(databases)) {
+                try {
+                    const version = dbSpec.version || 1;
+                    const stores = dbSpec.stores || {};
+                    await new Promise((resolve, reject) => {
+                        const req = indexedDB.open(dbName, version);
+                        req.onupgradeneeded = (e) => {
+                            const db = e.target.result;
+                            for (const storeName of Object.keys(stores)) {
+                                if (!db.objectStoreNames.contains(storeName)) {
+                                    db.createObjectStore(storeName);
+                                }
+                            }
+                        };
+                        req.onsuccess = (e) => {
+                            const db = e.target.result;
+                            const tx = db.transaction(Object.keys(stores), "readwrite");
+                            for (const [storeName, records] of Object.entries(stores)) {
+                                const store = tx.objectStore(storeName);
+                                for (const [k, v] of Object.entries(records)) {
+                                    store.put(v, k);
+                                    totalRecords++;
+                                }
+                            }
+                            tx.oncomplete = () => { db.close(); resolve(); };
+                            tx.onerror = () => { db.close(); reject(tx.error); };
+                        };
+                        req.onerror = () => reject(req.error);
+                    });
+                } catch (e) {
+                    console.warn("IndexedDB injection error:", e);
+                }
+            }
+            return totalRecords;
+        }
+        """
+        try:
+            res = browser_manager.evaluate_with_arg(script, idb_data)
+            return res if isinstance(res, int) else 0
+        except Exception as e:
+            logger.error(f"Failed to inject IndexedDB: {e}")
+            return 0
+
     def _normalize_cookie(self, cookie: Dict) -> Dict:
         """Normalize cookie dict to Playwright format.
 

@@ -41,6 +41,8 @@ class StealthConfig:
     enable_worker: bool = True
     enable_screen: bool = True
     enable_connection: bool = True
+    enable_audio_spoofing: bool = True
+    enable_webrtc_protection: bool = True
     enable_session_aging: bool = True
     session_age_seconds: int = 300
     webgl_vendor: str = "Google Inc. (Intel)"
@@ -339,6 +341,51 @@ def _build_connection_patch() -> str:
     """
 
 
+def _build_audio_patch() -> str:
+    """Spoof AudioContext and OfflineAudioContext to prevent audio fingerprinting."""
+    return """
+    if (window.AudioContext || window.webkitAudioContext) {
+        const OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+        const origCreateAnalyser = OrigAudioContext.prototype.createAnalyser;
+        if (origCreateAnalyser) {
+            OrigAudioContext.prototype.createAnalyser = function() {
+                const analyser = origCreateAnalyser.call(this);
+                const origGetFloatFrequencyData = analyser.getFloatFrequencyData;
+                analyser.getFloatFrequencyData = function(array) {
+                    origGetFloatFrequencyData.call(this, array);
+                    for (let i = 0; i < array.length; i += 10) {
+                        array[i] += (Math.random() * 0.0001) - 0.00005;
+                    }
+                };
+                return analyser;
+            };
+        }
+    }
+    """
+
+
+def _build_webrtc_patch() -> str:
+    """WebRTC IP leakage prevention / candidate filtering."""
+    return """
+    if (window.RTCPeerConnection) {
+        const OrigRTCPeerConnection = window.RTCPeerConnection;
+        window.RTCPeerConnection = function(config, constraints) {
+            const pc = new OrigRTCPeerConnection(config, constraints);
+            const origCreateOffer = pc.createOffer;
+            pc.createOffer = function(options) {
+                return origCreateOffer.call(this, options).then(offer => {
+                    // Filter private IP candidates in SDP
+                    offer.sdp = offer.sdp.replace(/a=candidate.* typ host .*/g, '');
+                    return offer;
+                });
+            };
+            return pc;
+        };
+        window.RTCPeerConnection.prototype = OrigRTCPeerConnection.prototype;
+    }
+    """
+
+
 def _build_automation_cleanup() -> str:
     """Remove automation-related artifacts."""
     return """
@@ -453,6 +500,10 @@ def build_stealth_script(config: Optional[StealthConfig] = None) -> str:
         parts.append(_build_screen_patch(config))
     if config.enable_connection:
         parts.append(_build_connection_patch())
+    if config.enable_audio_spoofing:
+        parts.append(_build_audio_patch())
+    if config.enable_webrtc_protection:
+        parts.append(_build_webrtc_patch())
 
     parts.append(_build_automation_cleanup())
     parts.append(_build_tostring_patch())

@@ -88,7 +88,11 @@ class SyncView(BaseView):
                 yield Horizontal(
                     Input(placeholder="e.g. laptop", id="sync-peer-name"),
                     Select(
-                        [("Local directory", "local"), ("SSH/SFTP", "ssh")],
+                        [
+                            ("Local directory", "local"),
+                            ("SSH/SFTP", "ssh"),
+                            ("AWS S3 / Cloudflare R2", "s3"),
+                        ],
                         value="local",
                         allow_blank=False,
                         id="sync-transport",
