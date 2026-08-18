@@ -43,6 +43,9 @@ class BrowserConfig:
     fingerprint: Optional[Dict] = None
     stealth_level: str = "maximum"  # basic, advanced, maximum
 
+    # Challenge mitigation (Cloudflare/DataDome auto-solve after navigation)
+    auto_solve_challenges: bool = True
+
     def __post_init__(self):
         """Apply default anti-detection args if not overridden."""
         default_args = []
@@ -121,6 +124,7 @@ class PlaywrightBrowserManager(BrowserManager):
     def __init__(self, config: BrowserConfig):
         super().__init__(config)
         self._page = None
+        self._uses_cloak = False
 
     def launch(self) -> Any:
         """Launch browser: CloakBrowser first (default), Playwright fallback."""
@@ -190,6 +194,7 @@ class PlaywrightBrowserManager(BrowserManager):
                         "Browser launched via CloakBrowser, headless=%s",
                         self.config.headless,
                     )
+                    self._uses_cloak = True
                     return self._page
             except Exception as e:
                 logger.warning("CloakBrowser launch failed, falling back to Playwright: %s", e)
@@ -283,10 +288,23 @@ class PlaywrightBrowserManager(BrowserManager):
         self._context.add_cookies(cookies)
 
     def navigate(self, url: str, wait_until: str = "networkidle", timeout: int = 30000) -> Any:
-        """Navigate to URL."""
+        """Navigate to URL, auto-clearing anti-bot challenges when CloakBrowser is active."""
         if not self._page:
             raise RuntimeError("Browser not launched")
-        return self._page.goto(url, wait_until=wait_until, timeout=timeout)
+        response = self._page.goto(url, wait_until=wait_until, timeout=timeout)
+        if self.config.auto_solve_challenges and self._uses_cloak:
+            try:
+                from tokenade.core.browser.challenge_guard import ChallengeGuard
+                result = ChallengeGuard(self._page).try_mitigate(url, settle_s=1.0)
+                if result is not None:
+                    solved = bool(result.success and result.data.get("solved"))
+                    logger.info(
+                        "Challenge mitigation for %s: solved=%s method=%s",
+                        url, solved, result.data.get("method"),
+                    )
+            except Exception as e:
+                logger.warning("Challenge mitigation failed for %s: %s", url, e)
+        return response
 
     def evaluate(self, expression: str) -> Any:
         """Evaluate JavaScript."""

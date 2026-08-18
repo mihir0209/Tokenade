@@ -9,6 +9,8 @@ anti-bot challenges:
   2. turnstile-demo.pages.dev (non-interactive sitekey): Turnstile widget ->
      cf-turnstile-response token
   3. example.com           : negative control (no challenge, trivial pass)
+   4. auto-wire check       : BrowserManager.navigate() auto-clears nowsecure.nl
+                             via ChallengeGuard (no manual solve step)
 
 Required checks must PASS for RESULT: SUCCESS. Screenshots of solved pages are
 saved under artifacts/challenge-solving/.
@@ -27,6 +29,7 @@ from tokenade.core.integration.challenge_detectors import (
     CloudflareChallengeDetector,
 )
 from tokenade.core.integration.challenge_solver import CloakBrowserAutoSolver
+from tokenade.core.browser.manager import BrowserFactory
 from tokenade.core.browser.stealth.cloak import CloakBrowserBackend
 
 DEFAULT_SHOT_DIR = REPO_ROOT / "artifacts" / "challenge-solving"
@@ -110,6 +113,27 @@ def solve_one(browser, url: str, expected: str, min_verify_s: float) -> tuple:
         context.close()
 
 
+def auto_wire_check(min_verify_s: float) -> tuple:
+    """Prove the auto-wired flow: BrowserManager.navigate() alone must land on
+    a cleared nowsecure.nl (ChallengeGuard handles any challenge)."""
+    try:
+        mgr = BrowserFactory.create(browser_type="cloakbrowser", headless=True,
+                                    auto_solve_challenges=True)
+        page = mgr.launch()
+        try:
+            mgr.navigate("https://nowsecure.nl", wait_until="domcontentloaded",
+                         timeout=30000)
+            time.sleep(min_verify_s)
+            cookie_names = {c["name"] for c in mgr.get_cookies()}
+            ok = "cf_clearance" in cookie_names
+            detail = f"cf_clearance={'cf_clearance' in cookie_names} cookies={sorted(cookie_names)}"
+            return ok, detail
+        finally:
+            mgr.close()
+    except Exception as e:
+        return False, f"ERROR: {e}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Live challenge SOLVING witness (CloakBrowser vs real Cloudflare challenges).")
@@ -157,6 +181,13 @@ def main() -> int:
             except Exception:
                 pass
     browser.close()
+
+    print("  [AUTO-WIRE] BrowserManager.navigate() + ChallengeGuard "
+          "(no manual solve step)...")
+    auto_ok, auto_detail = auto_wire_check(args.min_verify)
+    if not auto_ok:
+        failures += 1
+    print(f"  [{'PASS' if auto_ok else 'FAIL'}] auto-wire check — {auto_detail}")
 
     print(f"RESULT: {'SUCCESS' if failures == 0 else f'{failures} FAILURES'}")
     return 0 if failures == 0 else 1
