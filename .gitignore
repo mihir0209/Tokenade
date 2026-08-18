@@ -75,3 +75,4 @@ mutants/
 html/
 
 *.py[cod]
+artifacts/challenge-detection/
