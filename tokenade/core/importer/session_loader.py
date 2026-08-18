@@ -619,6 +619,9 @@ class SessionLoader:
         browser_type: str = "cloakbrowser",
         proxy: Optional[Dict[str, str]] = None,
         target_url: Optional[str] = None,
+        auto_solve_challenges: Optional[bool] = None,
+        capture_solved_sessions: Optional[bool] = None,
+        session_output_dir: Optional[str] = None,
     ) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
@@ -700,6 +703,13 @@ class SessionLoader:
                     logger.info(f"Using target fingerprint: {target_fp_name}")
                 else:
                     logger.warning(f"Fingerprint not found: {target_fp_name}")
+
+            if capture_solved_sessions is not None:
+                config_kwargs["capture_solved_sessions"] = capture_solved_sessions
+            if auto_solve_challenges is not None:
+                config_kwargs["auto_solve_challenges"] = auto_solve_challenges
+            if session_output_dir is not None:
+                config_kwargs["session_output_dir"] = session_output_dir
 
             # Step 4: Launch browser
             config = BrowserConfig(**config_kwargs)

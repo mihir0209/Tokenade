@@ -368,6 +368,9 @@ def cmd_load(args):
             site_config=site_config,
             acknowledge_exclusive_move=bool(getattr(args, "acknowledge_exclusive_move", False)),
             allow_single_use=bool(getattr(args, "claim_single_use", False)),
+            auto_solve_challenges=not bool(getattr(args, "no_auto_solve", False)),
+            capture_solved_sessions=bool(getattr(args, "capture_session", False)),
+            session_output_dir=getattr(args, "capture_dir", None),
         )
 
         if result["success"]:

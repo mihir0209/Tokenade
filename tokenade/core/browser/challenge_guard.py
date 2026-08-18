@@ -20,7 +20,12 @@ from tokenade.core.integration.challenge_detectors import (
     CloudflareChallengeDetector,
     DataDomeChallengeDetector,
 )
-from tokenade.core.integration.challenge_solver import CloakBrowserAutoSolver
+from tokenade.core.integration.challenge_solver import (
+    CapSolverSolverPlugin,
+    ChallengeSolver,
+    CloakBrowserAutoSolver,
+    TwoCaptchaSolverPlugin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +73,26 @@ def detect_on_page(page: Any) -> Dict[str, Any]:
     return top
 
 
+def default_challenge_solver(
+    auto_solver: Optional[Any] = None,
+    external_solvers: Optional[List[Any]] = None,
+    enable_external_fallback: bool = True,
+) -> Any:
+    """Construct standard orchestrator with stealth auto solver and configured external fallbacks."""
+    stealth = auto_solver if auto_solver is not None else CloakBrowserAutoSolver(wait_timeout_s=20)
+    externals = list(external_solvers or [])
+    if enable_external_fallback and not externals:
+        two_captcha = TwoCaptchaSolverPlugin()
+        if two_captcha.api_key:
+            externals.append(two_captcha)
+        capsolver = CapSolverSolverPlugin()
+        if capsolver.api_key:
+            externals.append(capsolver)
+    if externals:
+        return ChallengeSolver(auto_solver=stealth, external=externals)
+    return stealth
+
+
 class ChallengeError(Exception):
     """Raised when a challenge could not be resolved within attempts."""
 
@@ -78,21 +103,23 @@ class ChallengeGuard:
     def __init__(self, page: Any, solver: Optional[Any] = None,
                  enabled: bool = True, settle_s: float = 2.0,
                  max_attempts: int = 3, raise_on_failure: bool = False,
-                 on_solve: Optional[Callable[[str, Dict[str, Any], Any], None]] = None):
+                 on_solve: Optional[Callable[[str, Dict[str, Any], Any], None]] = None,
+                 enable_external_fallback: bool = True):
         """
         Args:
             page: Playwright page (or duck-typed equivalent).
-            solver: ChallengeSolverPlugin; defaults to CloakBrowserAutoSolver.
+            solver: ChallengeSolverPlugin/ChallengeSolver; defaults to orchestrator with stealth + external fallbacks.
             enabled: when False, navigate() behaves like plain goto.
             settle_s: seconds to wait after load before detection (lets JS
                 interstitials render).
             max_attempts: full re-navigation retries when a challenge sticks.
             raise_on_failure: raise ChallengeError instead of warning.
             on_solve: callback(url, detection, solver_result) on successful solve.
+            enable_external_fallback: whether to include configured API solvers if stealth fails.
         """
         self.page = page
-        self.solver = solver if solver is not None else CloakBrowserAutoSolver(
-            wait_timeout_s=20)
+        self.solver = solver if solver is not None else default_challenge_solver(
+            enable_external_fallback=enable_external_fallback)
         self.enabled = enabled
         self.settle_s = settle_s
         self.max_attempts = max_attempts

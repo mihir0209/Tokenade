@@ -1952,6 +1952,20 @@ Commands:
         action="store_true",
         help="Consume a locally single-use Session",
     )
+    load_parser.add_argument(
+        "--no-auto-solve",
+        action="store_true",
+        help="Disable automatic challenge solving during navigation",
+    )
+    load_parser.add_argument(
+        "--capture-session",
+        action="store_true",
+        help="Capture and save solved challenge sessions to .tokenade",
+    )
+    load_parser.add_argument(
+        "--capture-dir",
+        help="Directory to save captured solved sessions",
+    )
 
     # Inject Profile
     inject_parser = subparsers.add_parser(
