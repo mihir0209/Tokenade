@@ -664,6 +664,52 @@ class ProxyProviderPlugin(PluginBase):
         }
 
 
+class ChallengeDetectorPlugin(PluginBase):
+    """Plugin for automated Bot Protection & Challenge Detection (Cloudflare, Akamai, DataDome, etc.).
+
+    Challenge detector plugins observe page state, response headers, DOM selectors,
+    or CDP network traffic to identify whether a page is stuck behind a challenge,
+    interstitial wall, or anti-bot gate.
+
+    Example:
+        class CloudflareTurnstileDetector(ChallengeDetectorPlugin):
+            name = "cloudflare-turnstile-detector"
+            version = "1.0.0"
+            provider = "cloudflare"
+
+            def detect_challenge(self, page_context: Any) -> PluginResult:
+                # Inspect page HTML, status code, or DOM elements
+                return PluginResult(success=True, data={"detected": True, "type": "turnstile"})
+    """
+
+    provider: str = "generic"
+
+    @abstractmethod
+    def detect_challenge(self, page_context: Any) -> PluginResult:
+        """Inspect a browser page/context to detect challenge state.
+
+        Args:
+            page_context: Browser page or dict containing page metadata/DOM/headers
+
+        Returns:
+            PluginResult with data={
+                "detected": bool,
+                "provider": str,
+                "challenge_type": str,  # "turnstile", "managed_challenge", "interstitial", "captcha", "waf_block"
+                "confidence": float,     # 0.0 - 1.0
+                "details": Dict[str, Any]
+            }
+        """
+
+    def can_solve(self, challenge_type: str) -> bool:
+        """Check if this plugin or its companion solver can handle the detected challenge."""
+        return False
+
+    def solve_challenge(self, page_context: Any, challenge_data: Dict[str, Any]) -> PluginResult:
+        """Attempt to solve or bypass the detected challenge."""
+        return PluginResult(success=False, error="Solving not implemented by this detector")
+
+
 class NotificationPlugin(PluginBase):
     """Plugin for notification providers (Slack, Discord, Email, etc.).
 
