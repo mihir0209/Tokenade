@@ -119,6 +119,7 @@ class PluginTestRunner:
             valid_types = [
                 "handler", "export_format", "validator", "session_refresh",
                 "stealth", "proxy", "captcha", "notification",
+                "challenge_detector", "challenge_solver",
             ]
             if meta["type"] not in valid_types:
                 return PluginTestResult(
@@ -293,7 +294,8 @@ class PluginTestRunner:
             entry_class = getattr(module, meta.get("entry_class", ""), None)
             if entry_class is None:
                 from tokenade.plugin.base import (
-                    CaptchaPlugin, ExportFormatPlugin, NotificationPlugin,
+                    CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
+                    ExportFormatPlugin, NotificationPlugin,
                     PluginBase, ProxyProviderPlugin, SessionRefreshPlugin,
                     SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
                 )
@@ -306,6 +308,8 @@ class PluginTestRunner:
                     "proxy": ProxyProviderPlugin,
                     "notification": NotificationPlugin,
                     "captcha": CaptchaPlugin,
+                    "challenge_detector": ChallengeDetectorPlugin,
+                    "challenge_solver": ChallengeSolverPlugin,
                 }
                 base = base_map.get(meta.get("type"), PluginBase)
                 for candidate in vars(module).values():
@@ -351,10 +355,10 @@ class PluginTestRunner:
             spec.loader.exec_module(module)
 
             from tokenade.plugin.base import (
-                PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
-                ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyProviderPlugin,
-                CaptchaPlugin, NotificationPlugin,
+                CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
+                ExportFormatPlugin, NotificationPlugin, PluginBase,
+                ProxyProviderPlugin, SessionRefreshPlugin,
+                SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
             )
             type_methods = {
                 "handler": ["can_handle", "extract_session", "inject_session"],
@@ -365,6 +369,8 @@ class PluginTestRunner:
                 "proxy": ["get_proxy"],
                 "notification": ["send", "get_supported_events"],
                 "captcha": ["get_supported_types", "solve"],
+                "challenge_detector": ["detect_challenge"],
+                "challenge_solver": ["can_solve", "solve"],
             }
             required = type_methods.get(meta["type"], [])
             if not required:
@@ -454,10 +460,10 @@ class PluginTestRunner:
                 )
 
             from tokenade.plugin.base import (
-                SessionRefreshPlugin, SiteHandlerPlugin,
-                ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyProviderPlugin,
-                CaptchaPlugin, NotificationPlugin,
+                CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
+                ExportFormatPlugin, NotificationPlugin, PluginBase,
+                ProxyProviderPlugin, SessionRefreshPlugin,
+                SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
             )
             expected = {
                 "handler": (SiteHandlerPlugin,),
@@ -468,6 +474,8 @@ class PluginTestRunner:
                 "proxy": (ProxyProviderPlugin,),
                 "notification": (NotificationPlugin,),
                 "captcha": (CaptchaPlugin,),
+                "challenge_detector": (ChallengeDetectorPlugin,),
+                "challenge_solver": (ChallengeSolverPlugin,),
             }.get(meta.get("type", ""), ())
 
             if not expected:

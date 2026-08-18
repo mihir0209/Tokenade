@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 # Plugins with mismatched API_VERSION will fail to load.
 API_VERSION = "1.3.0"
 
-RUN_METHODS = frozenset({"process", "run", "refresh_session"})
+RUN_METHODS = frozenset({"process", "run", "refresh_session", "solve", "solve_direct", "detect"})
 RUN_ARGUMENT_TYPES = frozenset({
     "string", "path", "int", "float", "bool", "list", "object",
 })
