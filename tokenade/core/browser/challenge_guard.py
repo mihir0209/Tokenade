@@ -116,6 +116,8 @@ class ChallengeGuard:
                         url, detection.get("challenge_type"),
                         detection.get("provider"), detection.get("confidence", 0.0))
             result = self.solver.solve(self.page, detection)
+            result.data.setdefault("provider", detection.get("provider", ""))
+            result.data.setdefault("challenge_type", detection.get("challenge_type", ""))
             if result.success and result.data.get("solved"):
                 if self.on_solve:
                     self.on_solve(url, detection, result)
@@ -146,6 +148,8 @@ class ChallengeGuard:
         if not detection.get("detected"):
             return None
         result = self.solver.solve(self.page, detection)
+        result.data.setdefault("provider", detection.get("provider", ""))
+        result.data.setdefault("challenge_type", detection.get("challenge_type", ""))
         if result.success and result.data.get("solved") and self.on_solve:
             self.on_solve(url or self._page_url(), detection, result)
         return result

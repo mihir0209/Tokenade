@@ -10,7 +10,8 @@ anti-bot challenges:
      cf-turnstile-response token
   3. example.com           : negative control (no challenge, trivial pass)
    4. auto-wire check       : BrowserManager.navigate() auto-clears nowsecure.nl
-                             via ChallengeGuard (no manual solve step)
+                             via ChallengeGuard AND persists the cleared session
+                             (cf_clearance + fingerprint) into a .tokenade file
 
 Required checks must PASS for RESULT: SUCCESS. Screenshots of solved pages are
 saved under artifacts/challenge-solving/.
@@ -115,18 +116,40 @@ def solve_one(browser, url: str, expected: str, min_verify_s: float) -> tuple:
 
 def auto_wire_check(min_verify_s: float) -> tuple:
     """Prove the auto-wired flow: BrowserManager.navigate() alone must land on
-    a cleared nowsecure.nl (ChallengeGuard handles any challenge)."""
+    a cleared nowsecure.nl (ChallengeGuard handles any challenge), and the
+    cleared session must be persisted as a portable .tokenade file."""
+    capture_dir = REPO_ROOT / "artifacts" / "challenge-solving" / "sessions"
+    session_file = capture_dir / "nowsecure.nl.tokenade"
+    session_file.unlink(missing_ok=True)
     try:
         mgr = BrowserFactory.create(browser_type="cloakbrowser", headless=True,
-                                    auto_solve_challenges=True)
+                                    auto_solve_challenges=True,
+                                    capture_solved_sessions=True,
+                                    session_output_dir=str(capture_dir))
         page = mgr.launch()
         try:
             mgr.navigate("https://nowsecure.nl", wait_until="domcontentloaded",
                          timeout=30000)
             time.sleep(min_verify_s)
             cookie_names = {c["name"] for c in mgr.get_cookies()}
-            ok = "cf_clearance" in cookie_names
-            detail = f"cf_clearance={'cf_clearance' in cookie_names} cookies={sorted(cookie_names)}"
+            cleared = "cf_clearance" in cookie_names
+            if not cleared:
+                return False, f"cf_clearance missing cookies={sorted(cookie_names)}"
+
+            if not session_file.exists():
+                return False, "cf_clearance obtained but session file not persisted"
+            from tokenade.core.importer.session_packager import SessionPackager
+            package = SessionPackager().load(str(session_file))
+            valid = SessionPackager().validate_format(package)
+            pk_names = {c["name"] for c in package["cookies"]}
+            has_clearance = "cf_clearance" in pk_names
+            method = package["metadata"].get("extraction_method")
+            provider = package["metadata"].get("challenge_provider")
+            origin = package.get("site_name")
+            detail = (f"cf_clearance=True persisted={session_file.name} "
+                      f"valid={valid} captured={has_clearance} method={method} "
+                      f"provider={provider} origin={origin}")
+            ok = valid and has_clearance and provider == "cloudflare" and origin == "nowsecure.nl"
             return ok, detail
         finally:
             mgr.close()

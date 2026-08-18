@@ -14,6 +14,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+CHALLENGE_CLEARANCE_COOKIES = {"cf_clearance", "datadome"}
+
 
 @dataclass
 class BrowserConfig:
@@ -45,6 +47,9 @@ class BrowserConfig:
 
     # Challenge mitigation (Cloudflare/DataDome auto-solve after navigation)
     auto_solve_challenges: bool = True
+    # Persist cleared artifacts (cf_clearance, tokens) into a .tokenade file
+    capture_solved_sessions: bool = False
+    session_output_dir: Optional[str] = None
 
     def __post_init__(self):
         """Apply default anti-detection args if not overridden."""
@@ -291,6 +296,12 @@ class PlaywrightBrowserManager(BrowserManager):
         """Navigate to URL, auto-clearing anti-bot challenges when CloakBrowser is active."""
         if not self._page:
             raise RuntimeError("Browser not launched")
+        capture_implicit = (
+            self.config.auto_solve_challenges
+            and self._uses_cloak
+            and self.config.capture_solved_sessions
+        )
+        clearance_before = self._clearance_cookies(url) if capture_implicit else set()
         response = self._page.goto(url, wait_until=wait_until, timeout=timeout)
         if self.config.auto_solve_challenges and self._uses_cloak:
             try:
@@ -302,9 +313,61 @@ class PlaywrightBrowserManager(BrowserManager):
                         "Challenge mitigation for %s: solved=%s method=%s",
                         url, solved, result.data.get("method"),
                     )
+                    if solved and self.config.capture_solved_sessions:
+                        self._capture_solved_session(url, result)
+                elif self.config.capture_solved_sessions:
+                    clearance_after = self._clearance_cookies(url)
+                    if clearance_after - clearance_before:
+                        from tokenade.plugin.api import PluginResult
+                        implicit_result = PluginResult(
+                            success=True,
+                            data={
+                                "solved": True,
+                                "method": "cloakbrowser_load",
+                                "provider": self._provider_for_clearance(clearance_after),
+                                "elapsed_s": 0,
+                            },
+                        )
+                        self._capture_solved_session(url, implicit_result)
             except Exception as e:
                 logger.warning("Challenge mitigation failed for %s: %s", url, e)
         return response
+
+    def _clearance_cookies(self, url: str) -> set:
+        """Return clearance cookie name/value pairs scoped to a URL."""
+        if not self._context:
+            return set()
+        try:
+            return {
+                (cookie.get("name"), cookie.get("value"))
+                for cookie in self._context.cookies(url)
+                if cookie.get("name") in CHALLENGE_CLEARANCE_COOKIES
+            }
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _provider_for_clearance(cookies: set) -> str:
+        names = {name for name, _value in cookies}
+        if "cf_clearance" in names:
+            return "cloudflare"
+        if "datadome" in names:
+            return "datadome"
+        return ""
+
+    def _capture_solved_session(self, url: str, solver_result: Any) -> Optional[str]:
+        """Persist the solved page's cookies/tokens into a .tokenade file."""
+        try:
+            from tokenade.core.integration.challenge_capture import SolvedSessionCapturer
+            capturer = SolvedSessionCapturer(
+                output_dir=self.config.session_output_dir,
+                encrypt=None,
+            )
+            path = capturer.capture(self._page, url, solver_result)
+            return str(path) if path else None
+        except Exception as e:
+            logger.warning("Session capture failed for %s: %s", url, e)
+            return None
 
     def evaluate(self, expression: str) -> Any:
         """Evaluate JavaScript."""

@@ -165,6 +165,8 @@ class TestChallengeGuard:
         assert result is not None
         assert result.success is True
         assert result.data["solved"] is True
+        assert result.data["provider"] == "cloudflare"
+        assert result.data["challenge_type"]
 
 
 class TestManagerAutoWire:
