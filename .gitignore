@@ -76,3 +76,4 @@ html/
 
 *.py[cod]
 artifacts/challenge-detection/
+artifacts/challenge-solving/

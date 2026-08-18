@@ -36,6 +36,7 @@ from tokenade.plugin.base import (
     ProxyProviderPlugin,
     NotificationPlugin,
     ChallengeDetectorPlugin,
+    ChallengeSolverPlugin,
     StealthPlugin,
     CaptchaPlugin,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "ProxyProviderPlugin",
     "NotificationPlugin",
     "ChallengeDetectorPlugin",
+    "ChallengeSolverPlugin",
     "StealthPlugin",
     "CaptchaPlugin",
     "OAuthAutomationPlugin",

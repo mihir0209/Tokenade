@@ -710,6 +710,78 @@ class ChallengeDetectorPlugin(PluginBase):
         return PluginResult(success=False, error="Solving not implemented by this detector")
 
 
+class ChallengeSolverPlugin(PluginBase):
+    """Plugin for solving anti-bot challenges (Cloudflare Turnstile, Managed
+    Challenge, DataDome CAPTCHA, etc.).
+
+    Solver plugins either drive a real browser until the challenge clears
+    (stealth auto-solve) or delegate to an external solving API and return the
+    artifact (token / clearance cookies) for injection.
+
+    Solving a challenge produces one or more artifacts:
+      - turnstile_token: the `cf-turnstile-response` value to submit with a form
+      - clearance_cookies: cookies such as `cf_clearance` / `datadome` that
+        prove prior challenge clearance on a zone
+      - method: how the solve was achieved ("stealth", "2captcha", ...)
+
+    Example:
+        class CapSolverTurnstile(ChallengeSolverPlugin):
+            name = "capsolver-turnstile"
+            version = "1.0.0"
+
+            def can_solve(self, challenge_type):
+                return challenge_type in ("turnstile", "managed_challenge")
+
+            def solve(self, page_context, challenge_data):
+                token = self._request_token(challenge_data["sitekey"])
+                return PluginResult(success=True, data={"token": token, "method": "capsolver"})
+    """
+
+    solver_type: str = "generic"
+
+    @abstractmethod
+    def solve(self, page_context: Any, challenge_data: Dict[str, Any]) -> PluginResult:
+        """Attempt to solve the detected challenge.
+
+        Args:
+            page_context: Browser page, or dict with page metadata/HTML/headers.
+            challenge_data: Output of a ChallengeDetectorPlugin's detect_challenge,
+                e.g. {"provider": "cloudflare", "challenge_type": "turnstile",
+                      "details": {"sitekey": "0x4AAAA..."}}.
+
+        Returns:
+            PluginResult with data={
+                "solved": bool,
+                "method": str,
+                "token": Optional[str],
+                "clearance_cookies": List[Dict],   # name/value/domain/...
+                "elapsed_s": float,
+            }
+        """
+
+    def can_solve(self, challenge_type: str, provider: str = "") -> bool:
+        """Return True if this solver can handle the given challenge type."""
+        return False
+
+    def verify_solution(self, page: Any) -> bool:
+        """Post-solve sanity check: challenge markers gone, token or clearance cookie present."""
+        try:
+            token = page.evaluate(
+                "() => (document.querySelector('[name=\"cf-turnstile-response\"]') || {}).value || ''")
+            if token:
+                return True
+        except Exception:
+            pass
+        try:
+            cookies = page.context.cookies()
+            names = {c["name"] for c in cookies}
+            if "cf_clearance" in names or "datadome" in names:
+                return True
+        except Exception:
+            pass
+        return False
+
+
 class NotificationPlugin(PluginBase):
     """Plugin for notification providers (Slack, Discord, Email, etc.).
 
