@@ -82,11 +82,14 @@ class CloakBrowserAutoSolver(ChallengeSolverPlugin):
     solver_type = "stealth"
 
     def __init__(self, wait_timeout_s: float = 30.0, poll_interval_s: float = 1.0,
-                 reload_attempts: int = 2):
+                 reload_attempts: int = 2, min_wait_s: float = 0.0,
+                 progress_cb=None):
         super().__init__()
         self.wait_timeout_s = wait_timeout_s
         self.poll_interval_s = poll_interval_s
         self.reload_attempts = reload_attempts
+        self.min_wait_s = min_wait_s
+        self.progress_cb = progress_cb
 
     def can_solve(self, challenge_type: str, provider: str = "") -> bool:
         return provider in ("", "cloudflare", "datadome") and challenge_type in (
@@ -113,16 +116,56 @@ class CloakBrowserAutoSolver(ChallengeSolverPlugin):
         except Exception:
             return True
 
+    def _report(self, page: Any, start: float, token: str,
+                clearance: List[Dict[str, Any]]) -> PluginResult:
+        try:
+            verified = bool(self.verify_solution(page))
+        except Exception:
+            verified = False
+        return PluginResult(success=True, data={
+            "solved": True, "method": "stealth", "token": token,
+            "clearance_cookies": clearance,
+            "elapsed_s": round(time.monotonic() - start, 2),
+            "verified": verified,
+        })
+
+    def _poll_loop(self, page: Any, start: float, deadline: float):
+        """Poll for token/clearance until deadline. Returns (token, cookies) or (None, [])."""
+        while time.monotonic() < deadline:
+            token = self._extract_token(page)
+            clearance = self._has_clearance_cookie(page)
+            if token or clearance:
+                return token, clearance
+            if self.progress_cb:
+                self.progress_cb(round(time.monotonic() - start, 1))
+            page.wait_for_timeout(int(self.poll_interval_s * 1000))
+        return None, []
+
     def solve(self, page: Any, challenge_data: Dict[str, Any]) -> PluginResult:
         start = time.monotonic()
         token = self._extract_token(page)
         clearance = self._has_clearance_cookie(page)
+
+        if self.min_wait_s > 0 and (token or clearance):
+            # Already cleared (stealth browser passed during page load): hold a
+            # verification window of min_wait_s, re-asserting the artifacts on
+            # every poll so the demo shows the cleared state being verified,
+            # not an instant no-op.
+            deadline = start + self.min_wait_s
+            while time.monotonic() < deadline:
+                fresh_token = self._extract_token(page)
+                fresh_clearance = self._has_clearance_cookie(page)
+                if fresh_token:
+                    token = fresh_token
+                if fresh_clearance:
+                    clearance = fresh_clearance
+                if self.progress_cb:
+                    self.progress_cb(round(time.monotonic() - start, 1))
+                page.wait_for_timeout(int(self.poll_interval_s * 1000))
+            return self._report(page, start, token, clearance)
+
         if token or clearance:
-            return PluginResult(success=True, data={
-                "solved": True, "method": "stealth", "token": token,
-                "clearance_cookies": clearance,
-                "elapsed_s": round(time.monotonic() - start, 2),
-            })
+            return self._report(page, start, token, clearance)
 
         # 1. Click an interactive Turnstile checkbox if one is rendered.
         try:
@@ -136,11 +179,9 @@ class CloakBrowserAutoSolver(ChallengeSolverPlugin):
             token = self._extract_token(page)
             clearance = self._has_clearance_cookie(page)
             if token or clearance:
-                return PluginResult(success=True, data={
-                    "solved": True, "method": "stealth", "token": token,
-                    "clearance_cookies": clearance,
-                    "elapsed_s": round(time.monotonic() - start, 2),
-                })
+                return self._report(page, start, token, clearance)
+            if self.progress_cb:
+                self.progress_cb(round(time.monotonic() - start, 1))
             page.wait_for_timeout(int(self.poll_interval_s * 1000))
 
         # 3. Reload-and-wait (Managed Challenge often clears on 2nd load).
@@ -154,11 +195,9 @@ class CloakBrowserAutoSolver(ChallengeSolverPlugin):
                 token = self._extract_token(page)
                 clearance = self._has_clearance_cookie(page)
                 if token or clearance:
-                    return PluginResult(success=True, data={
-                        "solved": True, "method": "stealth", "token": token,
-                        "clearance_cookies": clearance,
-                        "elapsed_s": round(time.monotonic() - start, 2),
-                    })
+                    return self._report(page, start, token, clearance)
+                if self.progress_cb:
+                    self.progress_cb(round(time.monotonic() - start, 1))
                 page.wait_for_timeout(int(self.poll_interval_s * 1000))
 
         return PluginResult(success=False, data={

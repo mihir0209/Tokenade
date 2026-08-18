@@ -115,6 +115,26 @@ class TestCloakBrowserAutoSolver:
         assert solver.can_solve("datadome_captcha", "datadome") is True
         assert solver.can_solve("akamai_interstitial", "akamai") is False
 
+    def test_min_wait_holds_verification_window(self):
+        page = FakePage(token="tok_" + "x" * 200)
+        progress = []
+        solver = CloakBrowserAutoSolver(wait_timeout_s=5, poll_interval_s=0.05,
+                                        min_wait_s=0.4,
+                                        progress_cb=lambda s: progress.append(s))
+        res = solver.solve(page, {"provider": "cloudflare", "challenge_type": "turnstile"})
+        assert res.success is True
+        assert res.data["elapsed_s"] >= 0.4
+        assert len(progress) >= 3
+        assert res.data["verified"] is True
+
+    def test_min_wait_does_not_delay_unsolved_challenge(self):
+        page = FakePage(clear_at_poll=10**9)
+        solver = CloakBrowserAutoSolver(wait_timeout_s=0.2, poll_interval_s=0.01,
+                                        min_wait_s=0.5, reload_attempts=0)
+        res = solver.solve(page, {"provider": "cloudflare", "challenge_type": "turnstile"})
+        assert res.success is False
+        assert res.data["elapsed_s"] < 1.0
+
 
 class TestExternalSolvers:
     def test_requires_api_key(self):

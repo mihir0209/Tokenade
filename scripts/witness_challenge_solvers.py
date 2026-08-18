@@ -49,7 +49,7 @@ def select_turnstile_demo_sitekey(page) -> None:
     time.sleep(2)
 
 
-def solve_one(browser, url: str, expected: str) -> tuple:
+def solve_one(browser, url: str, expected: str, min_verify_s: float) -> tuple:
     """Run the full detect -> solve -> verify flow for one site."""
     context = browser.new_context()
     page = context.new_page()
@@ -67,12 +67,22 @@ def solve_one(browser, url: str, expected: str) -> tuple:
             "status_code": 200,
         }
         detection = detector.detect_challenge(ctx).data
+        if detection.get("detected"):
+            print(f"  [DETECT] {url} — challenge={detection.get('challenge_type')} "
+                  f"provider={detection.get('provider')} conf={detection.get('confidence', 0):.2f}")
+        else:
+            print(f"  [DETECT] {url} — no challenge detected")
 
         if expected in ("clean", "none"):
             ok = not detection.get("detected")
             return ok, f"detected={detection.get('detected')} — no solve attempted"
 
-        solver = CloakBrowserAutoSolver(wait_timeout_s=25, reload_attempts=2)
+        solver = CloakBrowserAutoSolver(
+            wait_timeout_s=25, reload_attempts=2, min_wait_s=min_verify_s,
+            progress_cb=lambda s: print(f"  [SOLVE ] {url} — verifying... ({s:.1f}s)"))
+
+        print(f"  [SOLVE ] {url} — waiting for challenge to clear "
+              f"(min verify {min_verify_s:.0f}s, max 25s)...")
         result = solver.solve(page, detection)
         if not result.success or not result.data.get("solved"):
             return False, result.error or "solve failed"
@@ -84,11 +94,12 @@ def solve_one(browser, url: str, expected: str) -> tuple:
 
         if expected == "cf_clearance":
             ok = "cf_clearance" in cookie_names
-            detail = (f"cookies={sorted(cookie_names)} verified={verified} "
-                      f"elapsed={result.data.get('elapsed_s')}s")
+            detail = (f"cf_clearance obtained in {result.data.get('elapsed_s')}s "
+                      f"verified={verified} cookies={sorted(cookie_names)}")
         elif expected == "token":
             ok = len(token) > 100
-            detail = f"token_len={len(token)} verified={verified} elapsed={result.data.get('elapsed_s')}s"
+            detail = (f"token issued ({len(token)} chars) in {result.data.get('elapsed_s')}s "
+                      f"verified={verified}")
         else:
             ok = False
             detail = f"unexpected expected={expected}"
@@ -104,6 +115,8 @@ def main() -> int:
         description="Live challenge SOLVING witness (CloakBrowser vs real Cloudflare challenges).")
     parser.add_argument("--headed", action="store_true", help="Visible browser window")
     parser.add_argument("--no-screenshots", action="store_true", help="Skip PNG artifacts")
+    parser.add_argument("--min-verify", type=float, default=5.0,
+                        help="Minimum verification window per solve (seconds, default 5)")
     parser.add_argument("--screenshot-dir", type=Path, default=DEFAULT_SHOT_DIR)
     args = parser.parse_args()
 
@@ -125,7 +138,7 @@ def main() -> int:
     failures = 0
     for url, _provider, expected, note in REQUIRED_SITES:
         try:
-            ok, detail = solve_one(browser, url, expected)
+            ok, detail = solve_one(browser, url, expected, args.min_verify)
         except Exception as e:
             ok, detail = False, f"ERROR: {e}"
         if not ok:
