@@ -1218,6 +1218,24 @@ Sessions are stored as JSON files in `~/.tokenade/sessions/`. The package struct
     }
   ],
   "tokens": [],
+  "storage": {
+    "local": {
+      "https://example.com": { "theme": "dark" }
+    },
+    "session": {
+      "https://example.com": { "tab_id": "active" }
+    },
+    "indexeddb": {
+      "https://example.com": {
+        "app_db": {
+          "version": 1,
+          "stores": {
+            "auth": { "token": "jwt_sample" }
+          }
+        }
+      }
+    }
+  },
   "local_storage": {
     "key": "value"
   },
@@ -1255,6 +1273,7 @@ Sessions are stored as JSON files in `~/.tokenade/sessions/`. The package struct
 | `auth_status` | string | `logged_in`, `logged_out`, `session_expired`, `unknown` |
 | `cookies` | array | Browser cookie objects |
 | `tokens` | array | OAuth/session tokens |
+| `storage` | object | Per-origin storage map (`local`, `session`, `indexeddb`) |
 | `local_storage` | object | Key-value localStorage data |
 | `fingerprint` | object | Browser fingerprint (viewport, user agent, etc.) |
 | `tls_profile` | object | TLS impersonation target for curl-cffi |

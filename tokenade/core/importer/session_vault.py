@@ -7,16 +7,18 @@ Provides secure storage for session files with:
 - Session expiry tracking with background cleanup
 - Session versioning (keep last N versions)
 """
-import json
+import gzip
 import hashlib
+import json
+import logging
 import shutil
+import threading
 import time
+import zlib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime, timezone
-import logging
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +36,17 @@ class VaultEntry:
     acls: Dict[str, List[str]] = field(default_factory=dict)  # user -> [permissions]
     expires_at: Optional[str] = None
     tags: List[str] = field(default_factory=list)
+    compression: str = "none"  # "none", "gzip", "zlib"
 
 
 class SessionVault:
-    """Encrypted session storage with ACLs and versioning."""
+    """Encrypted session storage with ACLs, compression, and versioning."""
 
-    def __init__(self, vault_dir: str, max_versions: int = 5):
+    def __init__(self, vault_dir: str, max_versions: int = 5, compression: str = "none"):
         self.vault_dir = Path(vault_dir)
         self.vault_dir.mkdir(parents=True, exist_ok=True)
         self.max_versions = max_versions
+        self.compression = compression
         self._index_file = self.vault_dir / ".vault_index.json"
         self._lock = threading.Lock()
         self._index = self._load_index()
@@ -72,6 +76,7 @@ class SessionVault:
                 "acls": v.acls,
                 "expires_at": v.expires_at,
                 "tags": v.tags,
+                "compression": getattr(v, "compression", "none"),
             }
             for k, v in self._index.items()
         }
@@ -109,9 +114,17 @@ class SessionVault:
                 content = json.dumps(session, sort_keys=True)
                 session_id = hashlib.sha256(content.encode()).hexdigest()[:16]
 
-            # Copy to vault
+            # Save to vault with optional compression
             vault_path = self.vault_dir / f"{session_id}.tokenade"
-            shutil.copy2(session_file, vault_path)
+            comp = self.compression
+            raw_bytes = Path(session_file).read_bytes()
+            if comp == "gzip":
+                vault_path.write_bytes(gzip.compress(raw_bytes))
+            elif comp == "zlib":
+                vault_path.write_bytes(zlib.compress(raw_bytes))
+            else:
+                vault_path.write_bytes(raw_bytes)
+                comp = "none"
 
             # Calculate expiry
             expires_at = None
@@ -133,6 +146,7 @@ class SessionVault:
                 acls={owner: ["read", "write", "delete"]} if owner else {},
                 expires_at=expires_at,
                 tags=tags or [],
+                compression=comp,
             )
 
             self._index[session_id] = entry
@@ -152,8 +166,14 @@ class SessionVault:
             if not vault_path.exists():
                 return None
 
-            with open(vault_path) as f:
-                return json.load(f)
+            raw = vault_path.read_bytes()
+            comp = getattr(entry, "compression", "none")
+            if comp == "gzip":
+                raw = gzip.decompress(raw)
+            elif comp == "zlib":
+                raw = zlib.decompress(raw)
+
+            return json.loads(raw.decode("utf-8"))
 
     def remove(self, session_id: str) -> bool:
         """Remove a session from the vault."""
