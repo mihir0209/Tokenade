@@ -22,6 +22,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -114,18 +115,19 @@ def solve_one(browser, url: str, expected: str, min_verify_s: float) -> tuple:
         context.close()
 
 
-def auto_wire_check(min_verify_s: float) -> tuple:
+def auto_wire_check(min_verify_s: float, capture_dir: Optional[Path] = None) -> tuple:
     """Prove the auto-wired flow: BrowserManager.navigate() alone must land on
     a cleared nowsecure.nl (ChallengeGuard handles any challenge), and the
     cleared session must be persisted as a portable .tokenade file."""
-    capture_dir = REPO_ROOT / "artifacts" / "challenge-solving" / "sessions"
-    session_file = capture_dir / "nowsecure.nl.tokenade"
+    effective_capture_dir = capture_dir or (Path.home() / ".tokenade" / "sessions")
+    effective_capture_dir.mkdir(parents=True, exist_ok=True)
+    session_file = effective_capture_dir / "nowsecure.nl.tokenade"
     session_file.unlink(missing_ok=True)
     try:
         mgr = BrowserFactory.create(browser_type="cloakbrowser", headless=True,
                                     auto_solve_challenges=True,
                                     capture_solved_sessions=True,
-                                    session_output_dir=str(capture_dir))
+                                    session_output_dir=str(capture_dir) if capture_dir else None)
         page = mgr.launch()
         try:
             mgr.navigate("https://nowsecure.nl", wait_until="domcontentloaded",
@@ -164,6 +166,8 @@ def main() -> int:
     parser.add_argument("--no-screenshots", action="store_true", help="Skip PNG artifacts")
     parser.add_argument("--min-verify", type=float, default=5.0,
                         help="Minimum verification window per solve (seconds, default 5)")
+    parser.add_argument("--save-default-dir", action="store_true",
+                        help="Save captured session to default ~/.tokenade/sessions instead of artifacts/")
     parser.add_argument("--screenshot-dir", type=Path, default=DEFAULT_SHOT_DIR)
     args = parser.parse_args()
 
@@ -207,7 +211,8 @@ def main() -> int:
 
     print("  [AUTO-WIRE] BrowserManager.navigate() + ChallengeGuard "
           "(no manual solve step)...")
-    auto_ok, auto_detail = auto_wire_check(args.min_verify)
+    target_capture_dir = None if args.save_default_dir else (REPO_ROOT / "artifacts" / "challenge-solving" / "sessions")
+    auto_ok, auto_detail = auto_wire_check(args.min_verify, capture_dir=target_capture_dir)
     if not auto_ok:
         failures += 1
     print(f"  [{'PASS' if auto_ok else 'FAIL'}] auto-wire check — {auto_detail}")
