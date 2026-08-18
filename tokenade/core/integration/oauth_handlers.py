@@ -35,9 +35,8 @@ class GoogleOAuthAutomation(OAuthAutomationPlugin):
         return PluginResult(success=True, data=pkg)
 
     def inject_session(self, browser_context: Any, session: dict) -> PluginResult:
-        cookies = session.get("cookies", [])
-        injected = self.inject_source_cookies(browser_context, cookies)
-        return PluginResult(success=True, data={"injected_count": injected})
+        success = self.inject_source_session(browser_context, session)
+        return PluginResult(success=success, data={"injected": success})
 
     def refresh_session(self, session: dict) -> PluginResult:
         return PluginResult(success=True, data={"session": session})
@@ -51,8 +50,7 @@ class GoogleOAuthAutomation(OAuthAutomationPlugin):
 
         try:
             # 1. Inject donor Google cookies
-            donor_cookies = source_session.get("cookies", [])
-            self.inject_source_cookies(context, donor_cookies)
+            self.inject_source_session(context, source_session)
 
             # 2. Navigate to target URL
             page = context.new_page()
@@ -109,9 +107,8 @@ class GitHubOAuthAutomation(OAuthAutomationPlugin):
         return PluginResult(success=True, data=pkg)
 
     def inject_session(self, browser_context: Any, session: dict) -> PluginResult:
-        cookies = session.get("cookies", [])
-        injected = self.inject_source_cookies(browser_context, cookies)
-        return PluginResult(success=True, data={"injected_count": injected})
+        success = self.inject_source_session(browser_context, session)
+        return PluginResult(success=success, data={"injected": success})
 
     def refresh_session(self, session: dict) -> PluginResult:
         return PluginResult(success=True, data={"session": session})
@@ -124,8 +121,7 @@ class GitHubOAuthAutomation(OAuthAutomationPlugin):
             return PluginResult(success=False, error="Failed to launch browser context")
 
         try:
-            donor_cookies = source_session.get("cookies", [])
-            self.inject_source_cookies(context, donor_cookies)
+            self.inject_source_session(context, source_session)
 
             page = context.new_page()
             page.goto(target_url, wait_until="domcontentloaded", timeout=self.timeout_seconds * 1000)

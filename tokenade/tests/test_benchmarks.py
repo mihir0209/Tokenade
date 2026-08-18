@@ -6,7 +6,13 @@ import time
 import json
 import tempfile
 import os
+import sys
 from pathlib import Path
+
+# Ensure repo root is first in sys.path
+_repo_root = str(Path(__file__).resolve().parents[2])
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 
 def benchmark_extraction():
@@ -246,6 +252,44 @@ def benchmark_storage_serialization():
     return {"time": elapsed}
 
 
+def benchmark_indexeddb_throughput(num_records: int = 1000):
+    """Benchmark serialization and deserialization of large IndexedDB records."""
+    from tokenade.core.importer.session_packager import SessionPackager
+    packager = SessionPackager()
+    cookies = [{"name": "auth_sid", "value": "test_token", "domain": "benchmark.test"}]
+
+    idb_data = {
+        "benchmark_db": {
+            "version": 1,
+            "stores": {
+                "user_cache": {f"key_{i}": f"value_payload_{i}" * 10 for i in range(num_records)},
+                "session_state": {f"state_{i}": {"id": i, "active": True} for i in range(num_records // 2)},
+            }
+        }
+    }
+
+    start = time.time()
+    pkg = packager.package(cookies=cookies, indexeddb=idb_data)
+    serialize_time = time.time() - start
+
+    serialized_json = json.dumps(pkg)
+    size_kb = len(serialized_json) / 1024
+
+    start = time.time()
+    unpacked = json.loads(serialized_json)
+    deserialize_time = time.time() - start
+
+    print(f"  IndexedDB Packaging ({num_records * 1.5:.0f} records, {size_kb:.1f} KB): {serialize_time:.4f}s")
+    print(f"  IndexedDB Deserialization: {deserialize_time:.4f}s")
+
+    return {
+        "records": int(num_records * 1.5),
+        "size_kb": size_kb,
+        "serialize_time": serialize_time,
+        "deserialize_time": deserialize_time,
+    }
+
+
 def run_all_benchmarks():
     """Run all benchmarks."""
     print("=" * 60)
@@ -278,7 +322,11 @@ def run_all_benchmarks():
     print("-" * 40)
     results["storage"] = benchmark_storage_serialization()
 
-    print("\n7. TLS Matcher")
+    print("\n7. IndexedDB Throughput")
+    print("-" * 40)
+    results["indexeddb"] = benchmark_indexeddb_throughput()
+
+    print("\n8. TLS Matcher")
     print("-" * 40)
     results["tls"] = benchmark_tls_matcher()
 
@@ -295,6 +343,7 @@ def run_all_benchmarks():
     print(f"  Vault Store: {results['vault']['store_speed']:.0f} sessions/s")
     print(f"  Vault Retrieve: {results['vault']['retrieve_speed']:.0f} sessions/s")
     print(f"  Storage Serialization: {results['storage']['time']:.3f}s")
+    print(f"  IndexedDB Packaging: {results['indexeddb']['serialize_time']:.4f}s for {results['indexeddb']['records']} records")
     print(f"  TLS Init: {results['tls']['init_time']:.3f}s")
 
     return results

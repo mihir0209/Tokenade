@@ -2781,6 +2781,27 @@ Commands:
     )
     monitor_predict_parser.add_argument("--session", "-s", help="Single session file")
 
+    # OAuth Automation CLI command
+    oauth_auto_parser = subparsers.add_parser(
+        "oauth", help="Automate third-party login flows using donor provider sessions"
+    )
+    oauth_sub = oauth_auto_parser.add_subparsers(dest="oauth_action", help="OAuth actions")
+    oauth_run = oauth_sub.add_parser("automate", help="Automate login on target URL using donor session")
+    oauth_run.add_argument("--provider", choices=["google", "github"], default="google", help="OAuth provider")
+    oauth_run.add_argument("--donor-session", "-d", required=True, help="Path to donor .tokenade session file")
+    oauth_run.add_argument("--target-url", "-t", required=True, help="Target third-party URL to authenticate on")
+    oauth_run.add_argument("--output", "-o", help="Path to save output target session .tokenade file")
+
+    # Extension Bundle CLI command
+    ext_bundle_parser = subparsers.add_parser(
+        "extension", help="Manage and bundle Tokenade browser extension"
+    )
+    ext_sub = ext_bundle_parser.add_subparsers(dest="extension_action", help="Extension actions")
+    ext_bld = ext_sub.add_parser("bundle", help="Build store packages for Chrome Web Store (.zip) and Firefox AMO (.xpi)")
+    ext_bld.add_argument("--source-dir", help="Path to extension source directory")
+    ext_bld.add_argument("--out-dir", default="dist/extension", help="Output directory for zip/xpi bundles")
+    ext_bld.add_argument("--target", choices=["all", "chrome", "firefox"], default="all", help="Target store")
+
     # Shell Completion
     completion_parser = subparsers.add_parser(
         "completion", help="Generate shell completion scripts"
@@ -3926,6 +3947,84 @@ Commands:
     return parser
 
 
+def cmd_oauth(args):
+    """Handle OAuth automation commands."""
+    if getattr(args, "oauth_action", None) != "automate":
+        print("Usage: tokenade oauth automate --donor-session <file> --target-url <url>", file=sys.stderr)
+        sys.exit(1)
+
+    import json
+    from pathlib import Path
+    from tokenade.core.importer.session_packager import SessionPackager
+    from tokenade.core.integration.oauth_handlers import GoogleOAuthAutomation, GitHubOAuthAutomation
+
+    donor_path = Path(args.donor_session).resolve()
+    if not donor_path.is_file():
+        print(f"[ERROR] Donor session file not found: {donor_path}", file=sys.stderr)
+        sys.exit(1)
+
+    packager = SessionPackager()
+    source_session = packager.load(str(donor_path))
+    if not source_session:
+        print(f"[ERROR] Failed to load donor session from {donor_path}", file=sys.stderr)
+        sys.exit(1)
+
+    provider = getattr(args, "provider", "google")
+    print(f"\n[AUTH] Starting OAuth automation via provider: {provider}")
+    print(f"   Target URL: {args.target_url}")
+    print(f"   Donor: {donor_path.name} ({len(source_session.get('cookies', []))} cookies)")
+
+    if provider == "google":
+        handler = GoogleOAuthAutomation()
+    else:
+        handler = GitHubOAuthAutomation()
+
+    result = handler.process(source_session, args.target_url, output_path=args.output)
+    if result.success:
+        out = args.output or f"{Path(args.target_url).name or 'target'}.tokenade"
+        print(f"   [OK] Successfully authenticated and generated target session -> {out}")
+    else:
+        print(f"   [ERROR] OAuth automation failed: {result.error}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_extension(args):
+    """Handle extension bundle commands."""
+    if getattr(args, "extension_action", None) != "bundle":
+        print("Usage: tokenade extension bundle [options]", file=sys.stderr)
+        sys.exit(1)
+
+    from pathlib import Path
+    from tokenade.core.browser.extension_bundler import ExtensionBundler
+
+    source_dir = Path(args.source_dir) if getattr(args, "source_dir", None) else None
+    bundler = ExtensionBundler(source_dir=source_dir)
+    valid, errors = bundler.validate_source()
+    if not valid:
+        print("[ERROR] Extension source validation failed:", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        sys.exit(1)
+
+    out_dir = Path(args.out_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = bundler.get_manifest_data()
+    version = manifest.get("version", "1.0.0")
+
+    print(f"\n[EXT] Bundling Tokenade browser extension v{version}...")
+    target = getattr(args, "target", "all")
+
+    if target in ("all", "chrome"):
+        czip = out_dir / f"tokenade-extension-chrome-v{version}.zip"
+        bundler.build_chrome_zip(czip)
+        print(f"   [OK] Chrome Web Store bundle: {czip} ({czip.stat().st_size / 1024:.1f} KB)")
+
+    if target in ("all", "firefox"):
+        fxpi = out_dir / f"tokenade-extension-firefox-v{version}.xpi"
+        bundler.build_firefox_xpi(fxpi)
+        print(f"   [OK] Firefox AMO bundle: {fxpi} ({fxpi.stat().st_size / 1024:.1f} KB)")
+
+
 def main():
     """Main CLI entry point."""
     parser = _build_parser()
@@ -4004,6 +4103,8 @@ def main():
         "vault": cmd_vault,
         "dashboard": cmd_dashboard,
         "sync-remote": cmd_sync_remote,
+        "oauth": cmd_oauth,
+        "extension": cmd_extension,
     }
 
     try:
