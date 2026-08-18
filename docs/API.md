@@ -1277,7 +1277,7 @@ Sessions are stored as JSON files in `~/.tokenade/sessions/`. The package struct
 | `local_storage` | object | Key-value localStorage data |
 | `fingerprint` | object | Browser fingerprint (viewport, user agent, etc.) |
 | `tls_profile` | object | TLS impersonation target for curl-cffi |
-| `metadata` | object | Extraction metadata and counts |
+| `metadata` | object | Extraction metadata and counts (`extraction_method="challenge_solve"`, `challenge_provider`, etc.) |
 
 ---
 

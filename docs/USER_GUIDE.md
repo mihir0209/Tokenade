@@ -154,6 +154,12 @@ tokenade load --file session.tokenade --validate
 
 # With specific stealth level
 tokenade load --file session.tokenade --stealth-level maximum
+
+# Disable automatic anti-bot challenge solving during navigation
+tokenade load --file session.tokenade --no-auto-solve
+
+# Capture cleared challenges into portable .tokenade session files
+tokenade load --file session.tokenade --capture-session --capture-dir ~/.tokenade/sessions
 ```
 
 ### `tokenade validate`

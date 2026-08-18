@@ -4,6 +4,21 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-08-19
+
+### Added
+- **Anti-Bot Challenge Subsystem**:
+  - `ChallengeDetectorPlugin` base with built-in Cloudflare, Akamai, and DataDome detectors.
+  - `ChallengeSolverPlugin` base, `CloakBrowserAutoSolver` (stealth automated solve), and external fallback plugins (`TwoCaptchaSolverPlugin`, `CapSolverSolverPlugin`).
+  - `ChallengeSolver` orchestrator for multi-tier solving (stealth-first with external fallback and post-solve verification).
+  - `ChallengeGuard` for transparent navigation wrapping with automatic detect-solve-retry mitigation loops.
+  - Automatic challenge mitigation wired into `PlaywrightBrowserManager.navigate()` and `OAuthAutomationPlugin`.
+  - `SolvedSessionCapturer` to persist solved challenge artifacts (`cf_clearance`, Turnstile tokens, browser fingerprint) into reusable `.tokenade` session files.
+  - CLI flags for `tokenade load`: `--no-auto-solve`, `--capture-session`, and `--capture-dir`.
+  - Comprehensive live solver and detector witness suites with artifact capturing and headless/headed modes.
+
+---
+
 ## [1.2.0] - 2026-08-10
 
 ### Added

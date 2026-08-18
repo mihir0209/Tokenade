@@ -195,6 +195,16 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
         metadata = session.get("metadata", {})
         return metadata.get("email") or metadata.get("user_email")
 
+    def navigate_guarded(self, page: Any, url: str, wait_until: str = "domcontentloaded", timeout: int = 30000) -> Any:
+        """Navigate to URL with automatic anti-bot challenge mitigation."""
+        try:
+            from tokenade.core.browser.challenge_guard import ChallengeGuard
+            guard = ChallengeGuard(page)
+            return guard.navigate(url, wait_until=wait_until, timeout=timeout)
+        except Exception as e:
+            logger.warning(f"ChallengeGuard navigation fallback for {url}: {e}")
+            return page.goto(url, wait_until=wait_until, timeout=timeout)
+
     def verify_provider_session(self, page: Any, provider_url: str) -> bool:
         """
         Navigate to provider and verify we're logged in.
@@ -212,7 +222,7 @@ class OAuthAutomationPlugin(SiteHandlerPlugin):
             True if logged in
         """
         try:
-            page.goto(provider_url, wait_until="domcontentloaded", timeout=15000)
+            self.navigate_guarded(page, provider_url, wait_until="domcontentloaded", timeout=15000)
             time.sleep(2)
 
             current_url = page.url

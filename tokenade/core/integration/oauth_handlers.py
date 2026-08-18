@@ -54,7 +54,7 @@ class GoogleOAuthAutomation(OAuthAutomationPlugin):
 
             # 2. Navigate to target URL
             page = context.new_page()
-            page.goto(target_url, wait_until="domcontentloaded", timeout=self.timeout_seconds * 1000)
+            self.navigate_guarded(page, target_url, wait_until="domcontentloaded", timeout=self.timeout_seconds * 1000)
 
             # 3. Click OAuth button if present
             try:
@@ -124,7 +124,7 @@ class GitHubOAuthAutomation(OAuthAutomationPlugin):
             self.inject_source_session(context, source_session)
 
             page = context.new_page()
-            page.goto(target_url, wait_until="domcontentloaded", timeout=self.timeout_seconds * 1000)
+            self.navigate_guarded(page, target_url, wait_until="domcontentloaded", timeout=self.timeout_seconds * 1000)
 
             try:
                 page.click(self.oauth_button_selector, timeout=5000)
