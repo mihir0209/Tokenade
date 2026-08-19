@@ -618,11 +618,15 @@ class PluginRegistry:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
             plugin_name = meta.get("name", src_dir.name)
+            from tokenade.core.integration.plugin_security import SecurityValidator, PluginSecurityError
+            target_dir = SecurityValidator.sanitize_plugin_path(self.plugins_dir, plugin_name)
+        except PluginSecurityError as e:
+            logger.error(f"Security validation failed for plugin {src_dir}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to parse plugin manifest in {src_dir}: {e}")
             return False
 
-        target_dir = self.plugins_dir / plugin_name
         target_dir.mkdir(parents=True, exist_ok=True)
 
         skip_names = {"__pycache__", ".pytest_cache", ".git", ".mypy_cache", "node_modules"}

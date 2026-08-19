@@ -302,6 +302,35 @@ def cmd_config(args):
             print(f"[OK] Set {args.key} = {value}")
 
 
+COMMAND_DESCRIPTIONS = {
+    "config": "Manage configuration",
+    "inspect": "Inspect session metadata and validity",
+    "run": "Run an executable installed plugin",
+    "test": "Test portability",
+    "fingerprint": "Manage fingerprints",
+    "validate": "Validate sessions",
+    "export": "Export session from browser",
+    "convert": "Convert session format",
+    "load": "Load session file into browser",
+    "encrypt": "Encrypt session file",
+    "decrypt": "Decrypt session file",
+    "rekey": "Change encryption password",
+    "health": "Check session health",
+    "sessions": "Manage saved sessions",
+    "plugin": "Manage plugins",
+    "completion": "Generate shell completion",
+    "cloak": "CloakBrowser stealth binary management",
+    "launch": "Launch a browser with session",
+    "refresh-browser": "Refresh session through a browser-backed flow",
+    "recommend": "Recommend site/plugin/browser",
+    "proxy": "Proxy management and verification",
+    "gateway": "Start local session proxy gateway",
+    "dashboard": "Launch web dashboard",
+    "vault": "Manage encrypted session vault",
+    "sync-remote": "Synchronize sessions with remote storage",
+}
+
+
 def cmd_completion(args):
     """Generate shell completion scripts."""
     shell = args.shell
@@ -331,55 +360,19 @@ complete -F _tokenade tokenade
 """
         )
     elif shell == "zsh":
-        print("""# Tokenade zsh completion
-_tokenade() {
-    local commands
-    commands=(
-        'config:Manage configuration'
-        'run:Run an executable installed plugin'
-        'test:Test portability'
-        'fingerprint:Manage fingerprints'
-        'validate:Validate sessions'
-        'export:Export session from browser'
-        'load:Load session file'
-        'health:Check session health'
-        'encrypt:Encrypt session file'
-        'decrypt:Decrypt session file'
-        'rekey:Change encryption password'
-        'sessions:Manage sessions'
-        'plugin:Manage plugins'
-        'cloak:CloakBrowser management'
-        'launch:Launch a browser'
-        'refresh-browser:Refresh session through a browser-backed flow'
-        'recommend:Recommend site/plugin/browser'
-        'completion:Generate shell completion'
-    )
-    _describe 'tokenade' commands
-}
-compdef _tokenade tokenade
-""")
+        zsh_lines = ["# Tokenade zsh completion", "_tokenade() {", "    local commands", "    commands=("]
+        for cmd in VISIBLE_COMMANDS:
+            desc = COMMAND_DESCRIPTIONS.get(cmd, cmd)
+            zsh_lines.append(f"        '{cmd}:{desc}'")
+        zsh_lines.extend(["    )", "    _describe 'tokenade' commands", "}", "compdef _tokenade tokenade", ""])
+        print("\n".join(zsh_lines))
     elif shell == "fish":
-        print("""# Tokenade fish completion
-complete -c tokenade -f
-complete -c tokenade -n "__fish_use_subcommand" -a "config" -d "Manage configuration"
-complete -c tokenade -n "__fish_use_subcommand" -a "run" -d "Run an executable installed plugin"
-complete -c tokenade -n "__fish_use_subcommand" -a "test" -d "Test portability"
-complete -c tokenade -n "__fish_use_subcommand" -a "fingerprint" -d "Manage fingerprints"
-complete -c tokenade -n "__fish_use_subcommand" -a "validate" -d "Validate sessions"
-complete -c tokenade -n "__fish_use_subcommand" -a "export" -d "Export session"
-complete -c tokenade -n "__fish_use_subcommand" -a "load" -d "Load session"
-complete -c tokenade -n "__fish_use_subcommand" -a "health" -d "Check health"
-complete -c tokenade -n "__fish_use_subcommand" -a "encrypt" -d "Encrypt session"
-complete -c tokenade -n "__fish_use_subcommand" -a "decrypt" -d "Decrypt session"
-complete -c tokenade -n "__fish_use_subcommand" -a "rekey" -d "Change encryption password"
-complete -c tokenade -n "__fish_use_subcommand" -a "sessions" -d "Manage sessions"
-complete -c tokenade -n "__fish_use_subcommand" -a "plugin" -d "Manage plugins"
-complete -c tokenade -n "__fish_use_subcommand" -a "cloak" -d "CloakBrowser management"
-complete -c tokenade -n "__fish_use_subcommand" -a "launch" -d "Launch a browser"
-complete -c tokenade -n "__fish_use_subcommand" -a "refresh-browser" -d "Refresh session through browser"
-complete -c tokenade -n "__fish_use_subcommand" -a "recommend" -d "Recommend site/plugin/browser"
-complete -c tokenade -n "__fish_use_subcommand" -a "completion" -d "Shell completion"
-""")
+        fish_lines = ["# Tokenade fish completion", "complete -c tokenade -f"]
+        for cmd in VISIBLE_COMMANDS:
+            desc = COMMAND_DESCRIPTIONS.get(cmd, cmd)
+            fish_lines.append(f'complete -c tokenade -n "__fish_use_subcommand" -a "{cmd}" -d "{desc}"')
+        fish_lines.append("")
+        print("\n".join(fish_lines))
     else:
         print(f"Unsupported shell: {shell}. Use bash, zsh, or fish.")
         sys.exit(1)
@@ -818,13 +811,11 @@ def cmd_plugin(args):
 
     elif args.plugin_command == "deps":
         from tokenade.core.integration.dependency_graph import DependencyGraph
-        from tokenade.core.integration.dependency_resolver import DependencyResolver
 
         installed_manifests = loader.discover()
         graph = DependencyGraph()
         for plugin in installed_manifests:
             graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
-        resolver = DependencyResolver(graph)
         if args.name not in graph.get_all_plugins():
             print(f"[ERROR] Plugin not found: {args.name}")
             return

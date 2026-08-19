@@ -686,6 +686,40 @@ tokenade fingerprint collect --name default --profile-dir <browser-profile-dir>
 tokenade test -s session.tokenade --target-fp default
 ```
 
+### `tokenade oauth automate`
+
+Automate third-party login flows using an existing donor provider session (e.g. Google cookies):
+
+```bash
+tokenade oauth automate \
+  --provider google \
+  --donor-session ~/.tokenade/sessions/google.com.tokenade \
+  --target-url https://labs.google \
+  --output ~/.tokenade/sessions/labs.google.tokenade
+```
+
+### `tokenade extension bundle`
+
+Build store packages for Chrome Web Store (`.zip`) and Firefox AMO (`.xpi`):
+
+```bash
+tokenade extension bundle --source-dir extension --out-dir dist/extension --target all
+```
+
+### Challenge Solver Configuration
+
+External solvers (`2captcha-solver`, `capsolver-solver`) serve as fallback resolvers when stealth auto-solve requires an external API key:
+
+```bash
+# Configure via environment variables:
+export TWOCAPTCHA_API_KEY="your-2captcha-key"
+export CAPSOLVER_API_KEY="your-capsolver-key"
+
+# Or configure via plugin config:
+tokenade plugin configure twocaptcha-solver --set api_key="your-key"
+tokenade plugin configure capsolver-solver --set api_key="your-key"
+```
+
 ### Other Commands
 
 | Command | Description |
