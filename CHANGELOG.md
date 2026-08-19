@@ -13,15 +13,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `ChallengeSolver` orchestrator for multi-tier solving (stealth-first with external fallback and post-solve verification).
   - `ChallengeGuard` for transparent navigation wrapping with automatic detect-solve-retry mitigation loops.
   - Automatic challenge mitigation wired into `PlaywrightBrowserManager.navigate()` and `OAuthAutomationPlugin`.
-  - `SolvedSessionCapturer` to persist solved challenge artifacts (`cf_clearance`, Turnstile tokens, browser fingerprint) into reusable `.tokenade` session files.
+  - `SolvedSessionCapturer` to persist solved challenge artifacts (`cf_clearance`, Turnstile tokens, browser fingerprint) into reusable `.tokenade` session files with clearance cookie filtering and unencrypted warnings.
   - CLI flags for `tokenade load`: `--no-auto-solve`, `--capture-session`, and `--capture-dir`.
   - Comprehensive live solver and detector witness suites with artifact capturing and headless/headed modes.
+- **OAuth Automation**:
+  - `tokenade oauth automate` CLI for third-party authentication using donor provider sessions (Google/GitHub).
+- **Extension Store Bundler**:
+  - `tokenade extension bundle` CLI to package Chrome Web Store (`.zip`) and Firefox AMO (`.xpi`) distribution bundles.
+- **Security & Secret Redaction**:
+  - `tokenade plugin info`, `tokenade plugin configure --show`, and `tokenade config` redact sensitive secrets (`api_key`, `password`, `token`, `secret`, `encryption_password`, `supabase_anon_key`) in both human-readable and `--json` outputs.
+  - `SecurityValidator.sanitize_plugin_path` applied to `PluginRegistry._install_plugin_dir` to enforce path traversal safety.
+- **Shell Completions**:
+  - Dynamic `tokenade completion` generation for `bash`, `zsh`, and `fish` synchronized with all visible CLI commands.
 - **Plugin dependency loading**:
-  - `PluginLoader` now loads declared `dependencies` before their dependents — recursively and cycle-safe — for both `load_by_name` and dependency-ordered `load_all` (prerequisite plugin instances are bound before `on_load` runs).
+  - `PluginLoader` loads declared `dependencies` before their dependents — recursively and cycle-safe — for both `load_by_name` and dependency-ordered `load_all` (prerequisite plugin instances are bound before `on_load` runs).
 - **Plugin CLI polish**:
   - `tokenade plugin deps <name>` prints an annotated dependency tree (version + `[OK]` / `[X] missing`), with a new `--json` cycle-safe machine-readable mode.
   - `tokenade plugin info <name>` surfaces API version, entry class, category, icon, tags, and runnable methods with the exact `tokenade run --request` invocation for run-enabled plugins.
-- **Marketplace** (tokenade-plugins): `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins. `nowsecure-handler` is a real site handler that uses the challenge plugins as declared dependencies — replaying a previously solved result or solving a new challenge. Offline mock captcha API (`tokenade-plugins/tests/mock_captcha_server.py`) tests the paid-solver code path for free.
+  - `tokenade plugin list` shows runnable methods and dependency statuses in both installed and `--available` modes.
+- **Marketplace** (tokenade-plugins):
+  - 23 plugins across handlers, solvers, detectors, refreshers, notifications, and export formats.
+  - `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins.
+  - `generic-handler` twitter/X site catalog (`twitter.json`) and improved scoring logic.
+  - Offline mock captcha API (`tokenade-plugins/tests/mock_captcha_server.py`) for free solver-path integration testing.
 
 ---
 
