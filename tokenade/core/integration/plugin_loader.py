@@ -221,25 +221,91 @@ class PluginLoader:
             logger.warning("Failed to read plugin manifest %s: %s", manifest_path, e)
             return None
 
-    def load_by_name(self, name: str) -> Optional[LoadedPlugin]:
-        """Load a single installed plugin by name (O(1) path lookup).
+    def _dependencies_of(self, meta: Dict) -> List[str]:
+        """Return declared plugin dependency names from a manifest."""
+        deps = meta.get("dependencies") or []
+        if not isinstance(deps, list):
+            return []
+        return [d for d in deps if isinstance(d, str) and d.strip()]
 
-        Prefer this over discover()+filter for programmatic use.
+    def _load_with_dependencies(
+        self, name: str, _resolving: Optional[set] = None
+    ) -> Optional[LoadedPlugin]:
+        """Load a plugin after recursively loading its declared dependencies.
+
+        Dependencies are loaded first so ``on_load`` hooks can bind to their
+        instances. Missing or cyclic dependencies are logged and do not block
+        loading the dependent plugin itself.
         """
         if name in self._loaded:
             return self._loaded[name]
+        if _resolving is None:
+            _resolving = set()
+        if name in _resolving:
+            logger.error(
+                "Circular plugin dependency detected involving: %s",
+                sorted(_resolving | {name}),
+            )
+            return None
         meta = self.get_manifest(name)
         if meta is None:
             logger.error("Plugin not installed: %s", name)
             return None
+        _resolving.add(name)
+        for dep in self._dependencies_of(meta):
+            try:
+                self._load_with_dependencies(dep, _resolving)
+            except Exception as e:
+                logger.error(f"Failed to load dependency {dep} of {name}: {e}")
+        _resolving.discard(name)
         return self.load_plugin(meta)
 
+    def load_by_name(self, name: str) -> Optional[LoadedPlugin]:
+        """Load a single installed plugin by name (O(1) path lookup).
+
+        Declared ``dependencies`` are loaded first (recursively). Prefer this
+        over discover()+filter for programmatic use.
+        """
+        return self._load_with_dependencies(name)
+
     def load_all(self) -> int:
-        """Load all discovered plugins. Returns count loaded."""
+        """Load all discovered plugins. Returns count loaded.
+
+        Plugins are loaded in dependency order (dependencies first) so
+        ``on_load`` hooks can bind to prerequisite plugin instances.
+        """
         plugins = self.discover()
         loaded = 0
 
+        ordered: List[Dict] = []
+        seen: set = set()
+        visiting: set = set()
+
+        def _visit(meta: Dict) -> None:
+            name = meta.get("name", "")
+            if not name or name in seen:
+                return
+            if name in visiting:
+                logger.error(
+                    "Circular plugin dependency detected involving: %s",
+                    sorted(visiting | {name}),
+                )
+                return
+            visiting.add(name)
+            for dep in self._dependencies_of(meta):
+                dep_meta = next((m for m in plugins if m.get("name") == dep), None)
+                if dep_meta is None:
+                    logger.warning(f"Plugin {name} depends on missing plugin: {dep}")
+                    continue
+                _visit(dep_meta)
+            visiting.discard(name)
+            seen.add(name)
+            ordered.append(meta)
+
         for meta in plugins:
+            _visit(meta)
+
+        for meta in ordered:
             name = meta.get("name", "")
             if name in self._disabled:
                 logger.debug(f"Skipping disabled plugin: {name}")
