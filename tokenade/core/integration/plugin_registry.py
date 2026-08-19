@@ -65,10 +65,14 @@ class Plugin:
     verified: bool = False
     icon: str = ""
     min_version: str = ""
+    run: Dict[str, Any] = None
+    api_version: str = ""
 
     def __post_init__(self) -> None:
         if self.dependencies is None:
             self.dependencies = []
+        if self.run is None:
+            self.run = {}
 
 
 class PluginRegistry:
@@ -679,6 +683,9 @@ class PluginRegistry:
                     dependencies=meta.get("dependencies", []),
                     category=meta.get("category", ""),
                     tags=meta.get("tags", []),
+                    icon=meta.get("icon", ""),
+                    run=meta.get("run") or {},
+                    api_version=meta.get("api_version", ""),
                 ))
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load plugin manifest {manifest_path}: {e}")

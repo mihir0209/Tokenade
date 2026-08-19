@@ -83,6 +83,22 @@ class InstalledRow(Widget if _OK else object):
         enabled = "unknown" if enabled_value is None else "on" if enabled_value else "off"
         err = p.get("error")
         info = f"{name}  v{version}  [{state}]  {enabled}"
+        meta = []
+        if p.get("type"):
+            meta.append(str(p["type"]))
+        if p.get("category"):
+            meta.append(str(p["category"]))
+        deps = p.get("dependencies") or []
+        if deps:
+            meta.append(f"deps {len(deps)}")
+        run = p.get("run")
+        if isinstance(run, dict) and run.get("enabled"):
+            methods = run.get("methods") or {}
+            default = run.get("default_method") or next(iter(methods), "")
+            method_str = ", ".join(f"{m}*" if m == default else m for m in methods)
+            meta.append(f"run {method_str}")
+        if meta:
+            info += "  ·  " + " · ".join(meta)
         if err:
             info += f"  ·  {str(err)[:40]}"
         yield Static(info, markup=False, classes="inst-info")

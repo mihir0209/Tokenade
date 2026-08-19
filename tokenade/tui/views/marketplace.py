@@ -182,6 +182,12 @@ def format_plugin_detail(plugin: Dict[str, Any]) -> List[str]:
         deps_s = ", ".join(str(d) for d in deps) if deps else "none"
     else:
         deps_s = str(deps) or "none"
+    run = p.get("run")
+    run_s = "none"
+    if isinstance(run, dict) and run.get("enabled"):
+        methods = run.get("methods") or {}
+        default = run.get("default_method") or next(iter(methods), "")
+        run_s = ", ".join(f"{m}*" if m == default else m for m in methods)
 
     lines = [
         f"{p.get('icon') or '📦'}  {p.get('name', '?')}  v{p.get('version', '?')}",
@@ -195,6 +201,7 @@ def format_plugin_detail(plugin: Dict[str, Any]) -> List[str]:
         f"Entry:       {p.get('entry_point') or '—'} | {p.get('entry_class') or '—'}",
         f"API version: {p.get('api_version') or '—'}",
         f"Min Tokenade:{p.get('min_version') or '—'}",
+        f"Runnable:    {run_s}",
         f"Verified:    {'yes' if p.get('verified') else 'no'}",
         f"Downloads:   {p.get('downloads', '—')}",
         f"Registry:    {p.get('_registry') or '—'}",
@@ -205,7 +212,7 @@ def format_plugin_detail(plugin: Dict[str, Any]) -> List[str]:
         "name", "version", "description", "author", "type", "category", "tags",
         "entry_point", "entry_class", "api_version", "min_version", "max_version",
         "verified", "downloads", "icon", "dependencies", "_registry", "rating",
-        "review_count",
+        "review_count", "run",
     }
     extras = {k: v for k, v in p.items() if k not in shown and v not in (None, "", [], {})}
     if extras:

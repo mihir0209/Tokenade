@@ -27,7 +27,7 @@ def _loader_with(manifests):
     return loader
 
 
-def _run_cmd_plugin(args, manifests, registry_details=None):
+def _run_cmd_plugin(args, manifests, registry_details=None, search_results=None):
     with (
         patch("tokenade.core.integration.plugin_loader.PluginLoader") as MockLoader,
         patch("tokenade.core.integration.plugin_registry.PluginRegistry") as MockReg,
@@ -37,6 +37,7 @@ def _run_cmd_plugin(args, manifests, registry_details=None):
         MockLoader.return_value = loader
         reg = MagicMock()
         reg.get_plugin_details.return_value = registry_details
+        reg.search.return_value = search_results if search_results is not None else []
         MockReg.return_value = reg
         verifier = MagicMock()
         verifier._local_checksums = {}
@@ -313,3 +314,53 @@ def test_plugin_check_deps_json_unknown():
 
     payload = json.loads(out)
     assert payload == {"plugin": "nope", "found": False}
+
+
+def test_plugin_list_installed_shows_run_and_deps():
+    args = SimpleNamespace(plugin_command="list", available=False)
+    out = _run_cmd_plugin(args, CHALLENGE_MANIFESTS)
+
+    assert "- nowsecure-handler v1.0.0 (handler)" in out
+    assert "run: process (default)" in out
+    assert "deps: 2 (challenge-detectors, twocaptcha-solver)" in out
+
+
+def test_plugin_list_installed_missing_dep_annotated():
+    manifests = [
+        {
+            "name": "orphan",
+            "version": "1.0.0",
+            "type": "handler",
+            "dependencies": ["ghost-dep"],
+            "run": {"enabled": False},
+        }
+    ]
+    args = SimpleNamespace(plugin_command="list", available=False)
+    out = _run_cmd_plugin(args, manifests)
+
+    assert "deps: 1 (ghost-dep [X])" in out
+    assert "run:" not in out
+
+
+def test_plugin_list_available_shows_type_run_deps():
+    registry_plugins = [
+        {
+            "name": "r1",
+            "version": "2.0",
+            "type": "challenge_solver",
+            "description": "Registry plugin",
+            "dependencies": ["challenge-detectors"],
+            "run": {
+                "enabled": True,
+                "default_method": "solve",
+                "methods": {"solve": {"arguments": {}}},
+            },
+        },
+    ]
+    args = SimpleNamespace(plugin_command="list", available=True)
+    out = _run_cmd_plugin(args, [], search_results=registry_plugins)
+
+    assert "- r1 v2.0 - Registry plugin" in out
+    assert "type: challenge_solver" in out
+    assert "run: solve (default)" in out
+    assert "deps: 1 (challenge-detectors)" in out

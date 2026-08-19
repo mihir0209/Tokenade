@@ -644,7 +644,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._plugins = []
 
     @staticmethod
-    def _installed_row(name, enabled, version, state, error, config):
+    def _installed_row(name, enabled, version, state, error, config, meta=None):
         return {
             "name": name,
             "enabled": enabled,
@@ -653,6 +653,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             "error": error,
             "config": config or {},
             "health": None,
+            "type": getattr(meta, "type", None) or "",
+            "category": getattr(meta, "category", None) or "",
+            "dependencies": list(getattr(meta, "dependencies", None) or []),
+            "run": getattr(meta, "run", None) or None,
+            "api_version": getattr(meta, "api_version", None) or "",
         }
 
     def _load_installed(self):
@@ -672,16 +677,16 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                         installed.append(
                             self._installed_row(
                                 p.name, loaded.enabled, p.version, loaded.state,
-                                loaded.error, loaded.config,
+                                loaded.error, loaded.config, meta=p,
                             )
                         )
                     elif loader.is_disabled(p.name):
                         installed.append(
-                            self._installed_row(p.name, False, p.version, "disabled", None, {})
+                            self._installed_row(p.name, False, p.version, "disabled", None, {}, meta=p)
                         )
                     else:
                         installed.append(
-                            self._installed_row(p.name, None, p.version, "unknown", None, {})
+                            self._installed_row(p.name, None, p.version, "unknown", None, {}, meta=p)
                         )
             except Exception as exc:
                 logger.debug("Failed to load installed: %s", exc)

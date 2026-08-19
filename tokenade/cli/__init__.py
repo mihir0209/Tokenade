@@ -384,6 +384,26 @@ def cmd_plugin(args):
                     print(
                         f"      missing {issue.kind}: {issue.requirement} ({issue.reason})"
                     )
+                extras = []
+                if p.get("type"):
+                    extras.append(f"type: {p['type']}")
+                run_section = p.get("run")
+                if isinstance(run_section, dict) and run_section.get("enabled"):
+                    methods = run_section.get("methods") or {}
+                    default = run_section.get("default_method") or next(
+                        iter(methods), ""
+                    )
+                    extras.append(
+                        "run: "
+                        + ", ".join(
+                            f"{m} (default)" if m == default else m for m in methods
+                        )
+                    )
+                deps = p.get("dependencies") or []
+                if deps:
+                    extras.append(f"deps: {len(deps)} ({', '.join(deps)})")
+                if extras:
+                    print("      " + " | ".join(extras))
         else:
             # Load plugins so we can show lifecycle state; graceful if load fails
             try:
@@ -416,6 +436,29 @@ def cmd_plugin(args):
                             print(f"      health: {health_str}")
                     except Exception:
                         pass
+                run_info = ""
+                try:
+                    from tokenade.plugin.api import parse_plugin_run_spec
+
+                    run_spec = parse_plugin_run_spec(p)
+                except Exception:
+                    run_spec = None
+                if run_spec is not None and run_spec.enabled:
+                    run_info = "run: " + ", ".join(
+                        f"{m} (default)" if m == run_spec.default_method else m
+                        for m in run_spec.methods
+                    )
+                declared_deps = p.get("dependencies") or []
+                if declared_deps or run_info:
+                    installed_names = {m["name"] for m in installed}
+                    parts = [run_info] if run_info else []
+                    if declared_deps:
+                        annotated = ", ".join(
+                            d if d in installed_names else f"{d} [X]"
+                            for d in declared_deps
+                        )
+                        parts.append(f"deps: {len(declared_deps)} ({annotated})")
+                    print("      " + " | ".join(parts))
                 from tokenade.core.integration.plugin_dependencies import (
                     check_runtime_dependencies,
                 )
