@@ -509,6 +509,22 @@ def cmd_plugin(args):
                     print(
                         f"   Dependencies: {', '.join(registry_details['dependencies'])}"
                     )
+                if registry_details.get("api_version"):
+                    print(f"   API version: {registry_details['api_version']}")
+                if registry_details.get("category"):
+                    print(f"   Category: {registry_details['category']}")
+                run_section = registry_details.get("run")
+                if isinstance(run_section, dict) and run_section.get("enabled"):
+                    methods = run_section.get("methods") or {}
+                    default = run_section.get("default_method") or next(
+                        iter(methods), ""
+                    )
+                    print(
+                        "   Runnable methods: "
+                        + ", ".join(
+                            f"{m} (default)" if m == default else m for m in methods
+                        )
+                    )
                 from tokenade.core.integration.plugin_dependencies import (
                     check_runtime_dependencies,
                 )
@@ -554,7 +570,41 @@ def cmd_plugin(args):
             except Exception:
                 pass
         if plugin.get("dependencies"):
-            print(f"   Dependencies: {', '.join(plugin['dependencies'])}")
+            manifest_names = {m["name"] for m in installed}
+            annotated = [
+                f"{d} [OK]" if d in manifest_names else f"{d} [X] missing"
+                for d in plugin["dependencies"]
+            ]
+            print(f"   Dependencies: {', '.join(annotated)}")
+        if plugin.get("api_version"):
+            print(f"   API version: {plugin['api_version']}")
+        else:
+            print("   API version: legacy (no api_version declared)")
+        if plugin.get("entry_class"):
+            print(f"   Entry class: {plugin['entry_class']}")
+        if plugin.get("category"):
+            print(f"   Category: {plugin['category']}")
+        if plugin.get("icon"):
+            print(f"   Icon: {plugin['icon']}")
+        if plugin.get("tags"):
+            print(f"   Tags: {', '.join(plugin['tags'])}")
+        try:
+            from tokenade.plugin.api import parse_plugin_run_spec
+
+            run_spec = parse_plugin_run_spec(plugin)
+        except Exception as e:
+            run_spec = None
+            print(f"   Run spec: invalid ({e})")
+        if run_spec is not None:
+            if run_spec.enabled:
+                methods = ", ".join(
+                    f"{m} (default)" if m == run_spec.default_method else m
+                    for m in run_spec.methods
+                )
+                print(f"   Runnable methods: {methods}")
+                print(f"   Run: tokenade run {plugin['name']} --input request.json")
+            else:
+                print("   Runnable methods: none (internal only)")
         from tokenade.core.integration.plugin_dependencies import (
             check_runtime_dependencies,
         )
@@ -694,15 +744,21 @@ def cmd_plugin(args):
         from tokenade.core.integration.dependency_graph import DependencyGraph
         from tokenade.core.integration.dependency_resolver import DependencyResolver
 
+        installed_manifests = loader.discover()
         graph = DependencyGraph()
-        for plugin in loader.discover():
+        for plugin in installed_manifests:
             graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
         resolver = DependencyResolver(graph)
         if args.name not in graph.get_all_plugins():
             print(f"[ERROR] Plugin not found: {args.name}")
             return
+        if getattr(args, "json", False):
+            tree = _plugin_dependency_json(installed_manifests, graph, args.name)
+            print(json.dumps(tree, indent=2))
+            return
         print(f"\n   [PKG] Dependency tree for {args.name}:")
-        print("   " + resolver.get_dependency_tree(args.name).replace("\n", "\n   "))
+        for line in _plugin_dependency_lines(installed_manifests, graph, args.name):
+            print("   " + line)
 
     elif args.plugin_command == "check-deps":
         from tokenade.core.integration.dependency_graph import DependencyGraph
@@ -804,6 +860,54 @@ def cmd_plugin(args):
         print(
             "Usage: tokenade plugin {list|install|uninstall|info|enable|disable|update|reload|search|categories|popular|recent|rate|verify|outdated|browse|test|deps|check-deps|configure}"
         )
+
+
+def _plugin_dependency_lines(manifests, graph, name, indent=0, seen=None):
+    """Annotated dependency tree lines: ``name vX.Y.Z [OK]`` / ``[X] missing``."""
+    if seen is None:
+        seen = set()
+    version_by_name = {m["name"]: m.get("version", "?") for m in manifests}
+    prefix = "  " * indent
+    lines = []
+    for dep in graph.get_dependencies(name):
+        marker = "[OK]" if dep in version_by_name else "[X] missing"
+        lines.append(f"{prefix}{dep} v{version_by_name.get(dep, '?')} {marker}")
+        if dep in version_by_name and dep not in seen:
+            seen.add(dep)
+            lines.extend(
+                _plugin_dependency_lines(
+                    manifests, graph, dep, indent + 1, seen
+                )
+            )
+    return lines
+
+
+def _plugin_dependency_json(manifests, graph, name, seen=None):
+    """Nested JSON dependency tree (cycle-safe) for ``plugin deps --json``."""
+    if seen is None:
+        seen = set()
+    version_by_name = {m["name"]: m.get("version", "?") for m in manifests}
+    node = {
+        "name": name,
+        "version": version_by_name.get(name, "?"),
+        "installed": name in version_by_name,
+    }
+    deps = []
+    for dep in graph.get_dependencies(name):
+        if dep in seen:
+            deps.append(
+                {
+                    "name": dep,
+                    "version": version_by_name.get(dep, "?"),
+                    "installed": dep in version_by_name,
+                    "cycle": True,
+                }
+            )
+            continue
+        seen.add(dep)
+        deps.append(_plugin_dependency_json(manifests, graph, dep, seen))
+    node["dependencies"] = deps
+    return node
 
 
 def _plugin_search(registry, args):
@@ -2510,6 +2614,9 @@ Commands:
 
     plugin_info_parser = plugin_sub.add_parser("info", help="Show plugin details")
     plugin_info_parser.add_argument("name", help="Plugin name")
+    plugin_info_parser.add_argument(
+        "--json", action="store_true", help="Machine-readable JSON output"
+    )
 
     plugin_enable_parser = plugin_sub.add_parser(
         "enable", help="Enable a disabled plugin"
@@ -2643,6 +2750,9 @@ Commands:
         "deps", help="Show plugin dependency tree"
     )
     plugin_deps_parser.add_argument("name", help="Plugin name")
+    plugin_deps_parser.add_argument(
+        "--json", action="store_true", help="Machine-readable JSON output"
+    )
 
     # plugin check-deps
     plugin_checkdeps_parser = plugin_sub.add_parser(
