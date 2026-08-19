@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `SolvedSessionCapturer` to persist solved challenge artifacts (`cf_clearance`, Turnstile tokens, browser fingerprint) into reusable `.tokenade` session files.
   - CLI flags for `tokenade load`: `--no-auto-solve`, `--capture-session`, and `--capture-dir`.
   - Comprehensive live solver and detector witness suites with artifact capturing and headless/headed modes.
+- **Plugin dependency loading**:
+  - `PluginLoader` now loads declared `dependencies` before their dependents — recursively and cycle-safe — for both `load_by_name` and dependency-ordered `load_all` (prerequisite plugin instances are bound before `on_load` runs).
+- **Plugin CLI polish**:
+  - `tokenade plugin deps <name>` prints an annotated dependency tree (version + `[OK]` / `[X] missing`), with a new `--json` cycle-safe machine-readable mode.
+  - `tokenade plugin info <name>` surfaces API version, entry class, category, icon, tags, and runnable methods with the exact `tokenade run --request` invocation for run-enabled plugins.
+- **Marketplace** (tokenade-plugins): `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins. `nowsecure-handler` is a real site handler that uses the challenge plugins as declared dependencies — replaying a previously solved result or solving a new challenge. Offline mock captcha API (`tests/mock_captcha_server.py`) tests the paid-solver code path for free.
 
 ---
 

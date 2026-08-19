@@ -350,11 +350,23 @@ SESSION COMPARISON
 
 ### `tokenade plugin`
 
-Manage site handler plugins.
+Manage site handler plugins. Full walkthrough: `docs/plugin-user-guide.md`.
 
 ```bash
 # List installed plugins
 tokenade plugin list
+
+# Show details (API version, entry class, runnable methods, annotated deps)
+tokenade plugin info nowsecure-handler
+
+# Annotated dependency tree (version + [OK] / [X] missing), --json for machine-readable
+tokenade plugin deps nowsecure-handler
+
+# Validate all plugin dependencies (missing / circular / too deep)
+tokenade plugin check-deps
+
+# Run a run-enabled plugin via the request.json flow
+tokenade run --request request.json
 
 # Test a plugin's contract
 tokenade plugin test discord-handler

@@ -49,6 +49,7 @@ tokenade plugin list
 tokenade plugin list
 
 # Show detailed info for a plugin
+# (includes API version, entry class, category, tags, and runnable methods)
 tokenade plugin info google-handler
 
 # Show available plugins from the registry
@@ -89,6 +90,35 @@ tokenade plugin uninstall google-handler
 ```bash
 # Reload without losing configuration
 tokenade plugin reload google-handler
+```
+
+### Inspect dependencies
+
+Plugins can declare other plugins as prerequisites in their `plugin.json`
+(`"dependencies": ["challenge-detectors", "twocaptcha-solver"]`). Dependencies
+are auto-loaded before the dependent plugin, and `plugin info` shows each one
+with its install status:
+
+```bash
+# Annotated dependency tree (version + [OK] / [X] missing, transitive)
+tokenade plugin deps nowsecure-handler
+
+# Machine-readable JSON tree (cycle-safe)
+tokenade plugin deps nowsecure-handler --json
+
+# Check every plugin for missing / circular / too-deep dependencies
+tokenade plugin check-deps
+
+# Check a single plugin
+tokenade plugin check-deps nowsecure-handler
+```
+
+Example output:
+
+```text
+[PKG] Dependency tree for nowsecure-handler:
+   challenge-detectors v1.0.0 [OK]
+   twocaptcha-solver v1.0.0 [OK]
 ```
 
 ## Configuring Plugins
@@ -154,6 +184,47 @@ tokenade refresh-browser -s gmail.tokenade --plugin oauth2 \
     --plugin-arg client_id XXX \
     --plugin-arg client_secret YYY
 ```
+
+### Run a plugin with a request file
+
+Plugins that declare a `run` section in their manifest can be executed through
+the standard request.json flow:
+
+```bash
+tokenade run --request request.json
+```
+
+`tokenade plugin info <name>` lists the runnable methods and prints the exact
+invocation for any run-enabled plugin.
+
+Example `request.json` that runs `nowsecure-handler`:
+
+```json
+{
+  "operation": "run",
+  "version": "1",
+  "plugins": [
+    {
+      "name": "nowsecure-handler",
+      "required": true,
+      "roles": {
+        "run": { "method": "process" }
+      },
+      "config": {
+        "target_url": "https://nowsecure.nl"
+      }
+    }
+  ],
+  "execution": { "stop_on_error": true }
+}
+```
+
+- `roles.run.method` selects the plugin method (must be declared in
+  `run.methods`).
+- `config` is validated against the method's declared argument schema; missing
+  optional arguments fall back to their defaults.
+- Required plugins that are not installed fail the request — set
+  `"required": false` to skip them instead.
 
 ## Using Plugins with TUI
 
@@ -243,8 +314,11 @@ tokenade plugin configure <name> --validate
 ### Dependency missing
 
 ```bash
-# Check dependencies
+# Check dependencies (annotated tree, shows missing deps)
 tokenade plugin deps <name>
+
+# Machine-readable dependency tree
+tokenade plugin deps <name> --json
 
 # Check all dependencies
 tokenade plugin check-deps
