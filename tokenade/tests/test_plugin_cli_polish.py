@@ -184,3 +184,132 @@ def test_plugin_deps_not_found():
     out = _run_cmd_plugin(args, manifests)
 
     assert "[ERROR] Plugin not found: nope" in out
+
+
+def test_plugin_info_json_installed():
+    args = SimpleNamespace(plugin_command="info", name="nowsecure-handler", json=True)
+    out = _run_cmd_plugin(args, CHALLENGE_MANIFESTS)
+
+    payload = json.loads(out)
+    assert payload["name"] == "nowsecure-handler"
+    assert payload["installed"] is True
+    assert payload["status"] == "enabled"
+    assert payload["api_version"] == "1.3.0"
+    assert payload["legacy_api"] is False
+    assert payload["entry_class"] == "NowSecureHandlerPlugin"
+    assert payload["category"] == "site-handlers"
+    assert payload["tags"] == ["site-handler", "challenge"]
+    assert payload["dependencies"] == [
+        {"name": "challenge-detectors", "installed": True},
+        {"name": "twocaptcha-solver", "installed": True},
+    ]
+    assert payload["run"] == {
+        "enabled": True,
+        "default_method": "process",
+        "methods": ["process"],
+    }
+    assert payload["run_invocation"] == (
+        "tokenade run nowsecure-handler --input request.json"
+    )
+    assert payload["runtime_dependencies"]["ready"] is True
+    assert payload["integrity"] == "unregistered"
+
+
+def test_plugin_info_json_missing_dependency_and_tampered():
+    manifests = [
+        {"name": "orphan", "version": "1.0.0", "type": "handler", "dependencies": ["ghost-dep"]}
+    ]
+    args = SimpleNamespace(plugin_command="info", name="orphan", json=True)
+    out = _run_cmd_plugin(args, manifests)
+
+    payload = json.loads(out)
+    assert payload["dependencies"] == [{"name": "ghost-dep", "installed": False}]
+    assert payload["legacy_api"] is True
+    assert "run" not in payload
+    assert "run_invocation" not in payload
+
+
+def test_plugin_info_json_not_installed():
+    registry_details = {
+        "name": "remote-plugin",
+        "version": "2.0.0",
+        "type": "challenge_solver",
+        "api_version": "1.3.0",
+        "category": "solvers",
+        "dependencies": ["challenge-detectors"],
+        "run": {
+            "enabled": True,
+            "default_method": "solve",
+            "methods": {"solve": {"arguments": {}}},
+        },
+    }
+    args = SimpleNamespace(plugin_command="info", name="remote-plugin", json=True)
+    out = _run_cmd_plugin(args, [], registry_details=registry_details)
+
+    payload = json.loads(out)
+    assert payload["installed"] is False
+    assert payload["available"] is True
+    assert payload["dependencies"] == ["challenge-detectors"]
+    assert payload["run"] == {
+        "enabled": True,
+        "default_method": "solve",
+        "methods": ["solve"],
+    }
+    assert payload["install"] == "tokenade plugin install remote-plugin"
+
+
+def test_plugin_info_json_unknown():
+    args = SimpleNamespace(plugin_command="info", name="nope", json=True)
+    out = _run_cmd_plugin(args, [])
+
+    payload = json.loads(out)
+    assert payload == {"name": "nope", "installed": False, "available": False}
+
+
+def test_plugin_check_deps_json_named_ok():
+    manifests = [
+        {"name": "app", "version": "1.0.0", "type": "handler", "dependencies": ["mid"]},
+        {"name": "mid", "version": "1.0.0", "type": "challenge_solver"},
+    ]
+    args = SimpleNamespace(plugin_command="check-deps", name="app", json=True)
+    out = _run_cmd_plugin(args, manifests)
+
+    payload = json.loads(out)
+    assert payload == {"plugin": "app", "found": True, "missing": [], "runtime_issues": []}
+
+
+def test_plugin_check_deps_json_named_missing():
+    manifests = [
+        {"name": "app", "version": "1.0.0", "type": "handler", "dependencies": ["ghost-dep"]}
+    ]
+    args = SimpleNamespace(plugin_command="check-deps", name="app", json=True)
+    out = _run_cmd_plugin(args, manifests)
+
+    payload = json.loads(out)
+    assert payload["missing"] == ["ghost-dep"]
+    assert payload["found"] is True
+
+
+def test_plugin_check_deps_json_all():
+    manifests = [
+        {"name": "app", "version": "1.0.0", "type": "handler", "dependencies": ["mid"]},
+        {"name": "mid", "version": "1.0.0", "type": "challenge_solver"},
+        {"name": "orphan", "version": "1.0.0", "type": "handler", "dependencies": ["ghost-dep"]},
+    ]
+    args = SimpleNamespace(plugin_command="check-deps", name=None, json=True)
+    out = _run_cmd_plugin(args, manifests)
+
+    payload = json.loads(out)
+    assert payload["missing"] == ["ghost-dep"]
+    assert payload["circular"] == []
+    assert payload["depth"] == []
+    assert "runtime_issues" in payload
+
+
+def test_plugin_check_deps_json_unknown():
+    manifests = [{"name": "app", "version": "1.0.0", "dependencies": []}]
+    args = SimpleNamespace(plugin_command="check-deps", name="nope", json=True)
+    out = _run_cmd_plugin(args, manifests)
+
+    payload = json.loads(out)
+    assert payload == {"plugin": "nope", "found": False}

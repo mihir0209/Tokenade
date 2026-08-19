@@ -491,6 +491,9 @@ def cmd_plugin(args):
             )
 
     elif args.plugin_command == "info":
+        if getattr(args, "json", False) is True:
+            print(json.dumps(_plugin_info_payload(args.name, loader, registry), indent=2))
+            return
         installed = loader.discover()
         plugin = None
         for p in installed:
@@ -752,7 +755,7 @@ def cmd_plugin(args):
         if args.name not in graph.get_all_plugins():
             print(f"[ERROR] Plugin not found: {args.name}")
             return
-        if getattr(args, "json", False):
+        if getattr(args, "json", False) is True:
             tree = _plugin_dependency_json(installed_manifests, graph, args.name)
             print(json.dumps(tree, indent=2))
             return
@@ -761,6 +764,9 @@ def cmd_plugin(args):
             print("   " + line)
 
     elif args.plugin_command == "check-deps":
+        if getattr(args, "json", False) is True:
+            print(json.dumps(_plugin_check_deps_payload(args, loader), indent=2))
+            return
         from tokenade.core.integration.dependency_graph import DependencyGraph
         from tokenade.core.integration.dependency_resolver import DependencyResolver
 
@@ -908,6 +914,166 @@ def _plugin_dependency_json(manifests, graph, name, seen=None):
         deps.append(_plugin_dependency_json(manifests, graph, dep, seen))
     node["dependencies"] = deps
     return node
+
+
+def _runtime_issues_payload(manifest):
+    """Structured runtime-dependency issues for a manifest."""
+    from tokenade.core.integration.plugin_dependencies import (
+        check_runtime_dependencies,
+    )
+
+    report = check_runtime_dependencies(manifest)
+    return {
+        "ready": report.ready,
+        "issues": [
+            {"kind": i.kind, "requirement": i.requirement, "reason": i.reason}
+            for i in report.issues
+        ],
+    }
+
+
+def _plugin_info_payload(name, loader, registry):
+    """Structured plugin info for ``plugin info --json``."""
+    installed = loader.discover()
+    plugin = None
+    for p in installed:
+        if p["name"] == name:
+            plugin = p
+            break
+    if not plugin:
+        registry_details = registry.get_plugin_details(name)
+        if not registry_details:
+            return {"name": name, "installed": False, "available": False}
+        run = None
+        run_section = registry_details.get("run")
+        if isinstance(run_section, dict) and run_section.get("enabled"):
+            methods = run_section.get("methods") or {}
+            run = {
+                "enabled": True,
+                "default_method": run_section.get("default_method")
+                or next(iter(methods), ""),
+                "methods": list(methods),
+            }
+        return {
+            "name": name,
+            "installed": False,
+            "available": True,
+            "version": registry_details.get("version"),
+            "type": registry_details.get("type"),
+            "author": registry_details.get("author"),
+            "description": registry_details.get("description"),
+            "dependencies": list(registry_details.get("dependencies") or []),
+            "api_version": registry_details.get("api_version"),
+            "category": registry_details.get("category"),
+            "run": run,
+            "runtime_dependencies": _runtime_issues_payload(registry_details),
+            "install": f"tokenade plugin install {name}",
+        }
+    installed_names = {m["name"] for m in installed}
+    payload = {
+        "name": plugin["name"],
+        "installed": True,
+        "version": plugin.get("version"),
+        "type": plugin.get("type"),
+        "author": plugin.get("author"),
+        "description": plugin.get("description"),
+        "status": "enabled" if plugin.get("enabled", True) else "disabled",
+    }
+    try:
+        loader.load_all()
+    except Exception:
+        pass
+    loaded = loader.get_plugin(name)
+    if loaded:
+        payload["lifecycle"] = loaded.state.value
+        if loaded.error:
+            payload["error"] = loaded.error
+        payload["config"] = loaded.config or None
+        try:
+            from tokenade.core.context import SharedContext
+
+            ctx = SharedContext()
+            plugin_health = ctx.plugins.get_health(name)
+            if plugin_health is not None:
+                payload["health"] = "healthy" if plugin_health else "unhealthy"
+        except Exception:
+            pass
+    payload["dependencies"] = [
+        {"name": d, "installed": d in installed_names}
+        for d in (plugin.get("dependencies") or [])
+    ]
+    payload["api_version"] = plugin.get("api_version")
+    payload["legacy_api"] = not plugin.get("api_version")
+    payload["entry_class"] = plugin.get("entry_class")
+    payload["category"] = plugin.get("category")
+    payload["icon"] = plugin.get("icon")
+    payload["tags"] = list(plugin.get("tags") or [])
+    try:
+        from tokenade.plugin.api import parse_plugin_run_spec
+
+        run_spec = parse_plugin_run_spec(plugin)
+    except Exception as e:
+        run_spec = None
+        payload["run_spec_error"] = str(e)
+    if run_spec is not None:
+        payload["run"] = {
+            "enabled": run_spec.enabled,
+            "default_method": run_spec.default_method,
+            "methods": list(run_spec.methods),
+        }
+        if run_spec.enabled:
+            payload["run_invocation"] = (
+                f"tokenade run {name} --input request.json"
+            )
+    payload["runtime_dependencies"] = _runtime_issues_payload(plugin)
+    registry_details = registry.get_plugin_details(name)
+    if registry_details and registry_details.get("version") != plugin.get("version"):
+        payload["registry_version"] = registry_details["version"]
+    from tokenade.core.integration.plugin_verifier import PluginVerifier
+
+    verifier = PluginVerifier()
+    if verifier._local_checksums.get(name):
+        result = verifier.verify(name)
+        payload["integrity"] = "verified" if result.verified else "tampered"
+    else:
+        payload["integrity"] = "unregistered"
+    return payload
+
+
+def _plugin_check_deps_payload(args, loader):
+    """Structured dependency report for ``plugin check-deps --json``."""
+    from tokenade.core.integration.dependency_graph import DependencyGraph
+    from tokenade.core.integration.dependency_resolver import DependencyResolver
+
+    manifests = loader.discover()
+    graph = DependencyGraph()
+    for plugin in manifests:
+        graph.add_plugin(plugin["name"], plugin.get("dependencies", []))
+    resolver = DependencyResolver(graph)
+    runtime_issues = {}
+    for manifest in manifests:
+        report = _runtime_issues_payload(manifest)
+        if report["issues"]:
+            runtime_issues[manifest["name"]] = report["issues"]
+    if args.name:
+        if args.name not in graph.get_all_plugins():
+            return {"plugin": args.name, "found": False}
+        return {
+            "plugin": args.name,
+            "found": True,
+            "missing": [
+                d
+                for d in graph.get_dependencies(args.name)
+                if d not in graph.get_all_plugins()
+            ],
+            "runtime_issues": runtime_issues.get(args.name, []),
+        }
+    return {
+        "missing": resolver.check_missing(),
+        "circular": resolver.check_circular(),
+        "depth": resolver.check_depth(),
+        "runtime_issues": runtime_issues,
+    }
 
 
 def _plugin_search(registry, args):
@@ -2760,6 +2926,9 @@ Commands:
     )
     plugin_checkdeps_parser.add_argument(
         "name", nargs="?", help="Plugin name (optional - checks all if omitted)"
+    )
+    plugin_checkdeps_parser.add_argument(
+        "--json", action="store_true", help="Machine-readable JSON output"
     )
 
     # plugin configure
