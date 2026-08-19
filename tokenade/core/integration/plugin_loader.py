@@ -153,6 +153,8 @@ class PluginLoader:
         self._proxies: Dict[str, Any] = {}
         self._captchas: Dict[str, Any] = {}
         self._notifications: Dict[str, Any] = {}
+        self._challenge_detectors: Dict[str, Any] = {}
+        self._challenge_solvers: Dict[str, Any] = {}
         self._disabled: set = set()
         self._discovery_cache: Optional[List[Dict]] = None
         self._discovery_cache_time: float = 0.0
@@ -320,6 +322,8 @@ class PluginLoader:
                 "proxy": ("ProxyProviderPlugin",),
                 "notification": ("NotificationPlugin",),
                 "captcha": ("CaptchaPlugin",),
+                "challenge_detector": ("ChallengeDetectorPlugin",),
+                "challenge_solver": ("ChallengeSolverPlugin",),
             }
             target_names = type_class_map.get(plugin_type, ())
             if target_names:
@@ -487,6 +491,10 @@ class PluginLoader:
             self._notifications[name] = instance
         elif plugin_type == "captcha":
             self._captchas[name] = instance
+        elif plugin_type == "challenge_detector":
+            self._challenge_detectors[name] = instance
+        elif plugin_type == "challenge_solver":
+            self._challenge_solvers[name] = instance
         else:
             logger.warning(
                 f"Plugin {name}: unknown type '{plugin_type}' — loaded but not typed-registered"
@@ -607,6 +615,14 @@ class PluginLoader:
             }
         elif plugin.plugin_type == "captcha":
             self._captchas = {k: v for k, v in self._captchas.items() if v is not plugin.instance}
+        elif plugin.plugin_type == "challenge_detector":
+            self._challenge_detectors = {
+                k: v for k, v in self._challenge_detectors.items() if v is not plugin.instance
+            }
+        elif plugin.plugin_type == "challenge_solver":
+            self._challenge_solvers = {
+                k: v for k, v in self._challenge_solvers.items() if v is not plugin.instance
+            }
 
         logger.info(f"Unloaded plugin: {name}")
 
@@ -664,6 +680,14 @@ class PluginLoader:
         """Get a captcha plugin by name."""
         return self._captchas.get(name)
 
+    def get_challenge_detector(self, name: str) -> Optional[Any]:
+        """Get a challenge detector plugin by name."""
+        return self._challenge_detectors.get(name)
+
+    def get_challenge_solver(self, name: str) -> Optional[Any]:
+        """Get a challenge solver plugin by name."""
+        return self._challenge_solvers.get(name)
+
     def get_refresher_for_session(self, session: dict) -> Optional[Any]:
         """Find the first refresh plugin that can handle this session."""
         for name, refresher in self._refreshers.items():
@@ -701,6 +725,14 @@ class PluginLoader:
     def list_captchas(self) -> Dict[str, Any]:
         """List all loaded captcha plugins."""
         return dict(self._captchas)
+
+    def list_challenge_detectors(self) -> Dict[str, Any]:
+        """List all loaded challenge detector plugins."""
+        return dict(self._challenge_detectors)
+
+    def list_challenge_solvers(self) -> Dict[str, Any]:
+        """List all loaded challenge solver plugins."""
+        return dict(self._challenge_solvers)
 
     def list_all(self) -> List[LoadedPlugin]:
         """List all loaded plugins."""
