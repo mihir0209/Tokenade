@@ -81,6 +81,16 @@ jobs:
           tokenade/tests/test_handler_resolve.py
           tests/test_plugin_storage_origins.py
           tests/test_oauth_automation.py
+          tokenade/tests/test_challenge_detectors.py
+          tokenade/tests/test_challenge_solvers.py
+          tokenade/tests/test_challenge_guard.py
+          tokenade/tests/test_challenge_capture.py
+          tokenade/tests/test_plugin_dependency_loading.py
+          tokenade/tests/test_request_config.py
+          tokenade/tests/test_run_plugin_end_to_end.py
+          tokenade/tests/test_plugin_cli_polish.py
+          tokenade/tests/test_plugin_run_cli.py
+          tokenade/tests/test_v130_features.py
           -W ignore -q --tb=short --timeout=60
           --junitxml=test-results-${{ matrix.python-version }}-${{ matrix.os }}.xml
         continue-on-error: false

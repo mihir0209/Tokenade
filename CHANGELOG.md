@@ -21,7 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Plugin CLI polish**:
   - `tokenade plugin deps <name>` prints an annotated dependency tree (version + `[OK]` / `[X] missing`), with a new `--json` cycle-safe machine-readable mode.
   - `tokenade plugin info <name>` surfaces API version, entry class, category, icon, tags, and runnable methods with the exact `tokenade run --request` invocation for run-enabled plugins.
-- **Marketplace** (tokenade-plugins): `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins. `nowsecure-handler` is a real site handler that uses the challenge plugins as declared dependencies — replaying a previously solved result or solving a new challenge. Offline mock captcha API (`tests/mock_captcha_server.py`) tests the paid-solver code path for free.
+- **Marketplace** (tokenade-plugins): `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins. `nowsecure-handler` is a real site handler that uses the challenge plugins as declared dependencies — replaying a previously solved result or solving a new challenge. Offline mock captcha API (`tokenade-plugins/tests/mock_captcha_server.py`) tests the paid-solver code path for free.
 
 ---
 

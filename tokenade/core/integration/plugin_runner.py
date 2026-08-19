@@ -40,17 +40,17 @@ class PluginRunner:
                 PluginRunErrorCode.LOAD_ERROR,
                 f"plugin not installed: {plugin_name}",
             )
-        selected_method = method or self._manifest_default_method(manifest)
 
         try:
             spec = parse_plugin_run_spec(manifest)
             if spec is None or not spec.enabled:
                 return self._error(
                     plugin_name,
-                    selected_method,
+                    method or "",
                     PluginRunErrorCode.MANIFEST_ERROR,
                     "plugin does not declare enabled external execution",
                 )
+            selected_method = method or spec.default_method
             if selected_method not in spec.methods:
                 return self._error(
                     plugin_name,
@@ -62,7 +62,7 @@ class PluginRunner:
         except ValueError as exc:
             return self._error(
                 plugin_name,
-                selected_method,
+                method or "",
                 PluginRunErrorCode.ARGUMENT_ERROR,
                 str(exc),
             )
@@ -109,13 +109,6 @@ class PluginRunner:
         finally:
             if loaded is not None:
                 loader.unload(plugin_name)
-
-    @staticmethod
-    def _manifest_default_method(manifest: Dict[str, Any]) -> str:
-        raw_run = manifest.get("run")
-        if isinstance(raw_run, dict) and raw_run.get("default_method"):
-            return raw_run["default_method"]
-        return ""
 
     @staticmethod
     def _success(plugin: str, method: str, result: Any) -> PluginRunEnvelope:

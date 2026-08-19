@@ -89,6 +89,29 @@ VISIBLE_COMMANDS = (
     "sync-remote",
 )
 
+SENSITIVE_CONFIG_KEYS = ("password", "secret", "token", "api_key", "client_secret")
+
+
+def _is_sensitive_config_key(key: str) -> bool:
+    lowered = str(key).lower()
+    return any(s in lowered for s in SENSITIVE_CONFIG_KEYS) or lowered in (
+        "encryption_password", "supabase_anon_key")
+
+
+def _redact_config(config) -> dict:
+    """Deep-copy a config dict with sensitive values replaced by [redacted]."""
+    if not isinstance(config, dict):
+        return config
+    redacted = {}
+    for k, v in config.items():
+        if _is_sensitive_config_key(k):
+            redacted[k] = "[redacted]"
+        elif isinstance(v, dict):
+            redacted[k] = _redact_config(v)
+        else:
+            redacted[k] = v
+    return redacted
+
 
 def cmd_run(args):
     """Run executable plugin operations from a nested request.json file."""
@@ -245,6 +268,8 @@ def cmd_config(args):
             value = config.get(key)
             default = DEFAULTS[key]
             marker = "" if value != default else " (default)"
+            if _is_sensitive_config_key(key) and value != default:
+                value = "[redacted]"
             print(f"   {key}: {value}{marker}")
 
     elif args.config_command == "get":
@@ -254,6 +279,8 @@ def cmd_config(args):
         value = config.get(args.key)
         if value is None:
             print(f"[ERROR] Unknown config key: {args.key}")
+        elif _is_sensitive_config_key(args.key) and value:
+            print("[redacted]")
         else:
             print(value)
 
@@ -269,7 +296,10 @@ def cmd_config(args):
             value = int(value)
         config.set(args.key, value)
         config.save()
-        print(f"[OK] Set {args.key} = {value}")
+        if _is_sensitive_config_key(args.key) and value:
+            print(f"[OK] Set {args.key} = [redacted]")
+        else:
+            print(f"[OK] Set {args.key} = {value}")
 
 
 def cmd_completion(args):
@@ -603,9 +633,9 @@ def cmd_plugin(args):
                 print(f"   Error: {loaded.error}")
             if loaded.config:
                 try:
-                    print(f"   Config: {json.dumps(loaded.config)}")
+                    print(f"   Config: {json.dumps(_redact_config(loaded.config))}")
                 except (TypeError, ValueError):
-                    print(f"   Config: {loaded.config}")
+                    print(f"   Config: {_redact_config(loaded.config)}")
             try:
                 from tokenade.core.context import SharedContext
 
@@ -648,7 +678,7 @@ def cmd_plugin(args):
                     for m in run_spec.methods
                 )
                 print(f"   Runnable methods: {methods}")
-                print(f"   Run: tokenade run {plugin['name']} --input request.json")
+                print(f"   Run: tokenade run --request request.json")
             else:
                 print("   Runnable methods: none (internal only)")
         from tokenade.core.integration.plugin_dependencies import (
@@ -1031,7 +1061,7 @@ def _plugin_info_payload(name, loader, registry):
         payload["lifecycle"] = loaded.state.value
         if loaded.error:
             payload["error"] = loaded.error
-        payload["config"] = loaded.config or None
+        payload["config"] = _redact_config(loaded.config) or None
         try:
             from tokenade.core.context import SharedContext
 
@@ -1065,9 +1095,7 @@ def _plugin_info_payload(name, loader, registry):
             "methods": list(run_spec.methods),
         }
         if run_spec.enabled:
-            payload["run_invocation"] = (
-                f"tokenade run {name} --input request.json"
-            )
+            payload["run_invocation"] = "tokenade run --request request.json"
     payload["runtime_dependencies"] = _runtime_issues_payload(plugin)
     registry_details = registry.get_plugin_details(name)
     if registry_details and registry_details.get("version") != plugin.get("version"):
@@ -1438,7 +1466,7 @@ def _plugin_configure(args):
         config = mgr.get_full_config(args.name)
         if config:
             print(f"\n   [LIST] Config for {args.name}:")
-            for k, v in sorted(config.items()):
+            for k, v in sorted(_redact_config(config).items()):
                 print(f"      {k} = {v}")
         else:
             print(f"\n   {args.name}: no config")

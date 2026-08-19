@@ -59,6 +59,35 @@ class TestCmdConfig(unittest.TestCase):
             mock_print.assert_called_once_with("some_value")
 
     @patch("tokenade.core.config.load_config")
+    def test_get_sensitive_key_redacted(self, mock_load):
+        mock_config = MagicMock()
+        mock_config.get.return_value = "supersecretpass"
+        mock_load.return_value = mock_config
+
+        from tokenade.cli import cmd_config
+        args = self._make_args("get", key="encryption_password")
+
+        with patch("builtins.print") as mock_print:
+            cmd_config(args)
+            mock_print.assert_called_once_with("[redacted]")
+
+    @patch("tokenade.core.config.load_config")
+    def test_set_sensitive_key_redacted_output(self, mock_load):
+        mock_config = MagicMock()
+        mock_config.config_path = "/tmp/test.json"
+        mock_load.return_value = mock_config
+
+        from tokenade.cli import cmd_config
+        args = self._make_args("set", key="encryption_password", value="supersecretpass")
+
+        with patch("builtins.print") as mock_print:
+            cmd_config(args)
+            mock_config.set.assert_called_once_with("encryption_password", "supersecretpass")
+            printed = mock_print.call_args[0][0]
+            self.assertNotIn("supersecretpass", printed)
+            self.assertIn("[redacted]", printed)
+
+    @patch("tokenade.core.config.load_config")
     def test_get_without_key(self, mock_load):
         mock_config = MagicMock()
         mock_config.config_path = "/tmp/test.json"

@@ -85,6 +85,23 @@ class TestSolvedSessionCapturer:
         package = SessionPackager().load(str(path))
         assert package["tokens"] == []
 
+    def test_capture_drops_non_clearance_cookies(self, tmp_path):
+        mixed = SOLVED_COOKIES + [
+            {"name": "sessionid", "value": "user-login-state", "domain": "nowsecure.nl",
+             "path": "/", "secure": True, "httpOnly": True},
+            {"name": "datadome", "value": "dd-clearance", "domain": ".nowsecure.nl",
+             "path": "/", "secure": True},
+        ]
+        page = FakePage(cookies=mixed)
+        capturer = SolvedSessionCapturer(output_dir=str(tmp_path), encrypt=False)
+        path = capturer.capture(page, "https://nowsecure.nl", solved_result())
+        assert path is not None
+        from tokenade.core.importer.session_packager import SessionPackager
+        package = SessionPackager().load(str(path))
+        names = {c["name"] for c in package["cookies"]}
+        assert "cf_clearance" in names and "datadome" in names
+        assert "sessionid" not in names
+
     def test_capture_never_raises_on_page_failure(self, tmp_path):
         class BrokenPage:
             @property

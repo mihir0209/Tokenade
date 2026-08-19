@@ -11,9 +11,16 @@ import pytest
 from tokenade.core.browser.challenge_guard import (
     ChallengeError,
     ChallengeGuard,
+    default_challenge_solver,
     detect_on_page,
 )
 from tokenade.core.browser.manager import BrowserFactory, BrowserManager
+from tokenade.core.integration.challenge_solver import (
+    CapSolverSolverPlugin,
+    ChallengeSolver,
+    CloakBrowserAutoSolver,
+    TwoCaptchaSolverPlugin,
+)
 from tokenade.plugin.api import PluginResult
 
 CHALLENGE_HTML = (
@@ -70,6 +77,54 @@ class FakeSolver:
             return PluginResult(success=True,
                                 data={"solved": self.solved, "method": "stealth"})
         return PluginResult(success=False, error="simulated solve failure")
+
+
+class TestDefaultChallengeSolver:
+    def _clear_solver_env(self, monkeypatch):
+        for var in ("TWOCAPTCHA_API_KEY", "TOKENADE_2CAPTCHA_API_KEY",
+                    "CAPSOLVER_API_KEY", "TOKENADE_CAPSOLVER_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_returns_stealth_only_when_no_keys(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        solver = default_challenge_solver()
+        assert isinstance(solver, CloakBrowserAutoSolver)
+
+    def test_enables_2captcha_from_env(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        monkeypatch.setenv("TWOCAPTCHA_API_KEY", "env-key-1")
+        solver = default_challenge_solver()
+        assert isinstance(solver, ChallengeSolver)
+        names = [s.name for s in solver.external]
+        assert "2captcha-solver" in names
+        assert "capsolver-solver" not in names
+
+    def test_enables_capsolver_from_env(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        monkeypatch.setenv("CAPSOLVER_API_KEY", "ck_env")
+        solver = default_challenge_solver()
+        assert isinstance(solver, ChallengeSolver)
+        names = [s.name for s in solver.external]
+        assert "capsolver-solver" in names
+
+    def test_explicit_externals_used(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        cap = CapSolverSolverPlugin(api_key="ck_x")
+        solver = default_challenge_solver(external_solvers=[cap])
+        assert isinstance(solver, ChallengeSolver)
+        assert solver.external == [cap]
+
+    def test_fallback_disabled_ignores_env(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        monkeypatch.setenv("TWOCAPTCHA_API_KEY", "env-key-2")
+        solver = default_challenge_solver(enable_external_fallback=False)
+        assert isinstance(solver, CloakBrowserAutoSolver)
+
+    def test_explicit_auto_solver_preserved(self, monkeypatch):
+        self._clear_solver_env(monkeypatch)
+        custom = CloakBrowserAutoSolver(wait_timeout_s=5)
+        solver = default_challenge_solver(auto_solver=custom)
+        assert solver is custom
 
 
 class TestDetectOnPage:

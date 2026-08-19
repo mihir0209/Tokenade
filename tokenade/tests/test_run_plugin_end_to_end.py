@@ -207,3 +207,43 @@ def test_run_end_to_end_missing_required_plugin_rejected(fake_plugins, tmp_path)
     assert envelope["success"] is False
     assert envelope["error"]["code"] == PluginRunErrorCode.ARGUMENT_ERROR.value
     assert "Required plugin not installed" in envelope["error"]["message"]
+
+
+def test_runner_infers_default_method_when_manifest_omits_it(tmp_path):
+    """CR-05: PluginRunner resolves spec.default_method when default_method is omitted from manifest."""
+    plugin_dir = tmp_path / "plugins" / "nodefault-handler"
+    plugin_dir.mkdir(parents=True)
+    manifest = {
+        "name": "nodefault-handler",
+        "version": "1.0.0",
+        "type": "handler",
+        "entry_point": "plugin.py",
+        "entry_class": "NoDefaultHandler",
+        "api_version": "1.3.0",
+        "run": {
+            "enabled": True,
+            # No "default_method" key — parse_plugin_run_spec defaults to first method
+            "methods": {
+                "process": {
+                    "arguments": {
+                        "name": {"type": "string", "required": False, "default": "world"}
+                    }
+                }
+            },
+        },
+    }
+    (plugin_dir / "plugin.json").write_text(json.dumps(manifest))
+    (plugin_dir / "plugin.py").write_text(
+        "class NoDefaultHandler:\n"
+        "    API_VERSION = '1.3.0'\n"
+        "    def process(self, name='world'):\n"
+        "        return {'hello': name}\n"
+    )
+
+    from tokenade.core.integration.plugin_runner import PluginRunner
+
+    runner = PluginRunner(plugins_dir=tmp_path / "plugins")
+    envelope = runner.run("nodefault-handler", {})
+    assert envelope.success is True
+    assert envelope.method == "process"
+    assert envelope.data == {"hello": "world"}

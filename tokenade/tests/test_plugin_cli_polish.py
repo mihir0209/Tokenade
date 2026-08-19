@@ -12,28 +12,29 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def _fake_loaded(state="active"):
+def _fake_loaded(state="active", config=None):
     loaded = MagicMock()
     loaded.state.value = state
     loaded.error = None
-    loaded.config = {}
+    loaded.config = config if config is not None else {}
     return loaded
 
 
-def _loader_with(manifests):
+def _loader_with(manifests, config=None):
     loader = MagicMock()
     loader.discover.return_value = manifests
-    loader.get_plugin.side_effect = lambda n: _fake_loaded()
+    loader.get_plugin.side_effect = lambda n: _fake_loaded(config=config)
     return loader
 
 
-def _run_cmd_plugin(args, manifests, registry_details=None, search_results=None):
+def _run_cmd_plugin(args, manifests, registry_details=None, search_results=None,
+                    loaded_config=None):
     with (
         patch("tokenade.core.integration.plugin_loader.PluginLoader") as MockLoader,
         patch("tokenade.core.integration.plugin_registry.PluginRegistry") as MockReg,
         patch("tokenade.core.integration.plugin_verifier.PluginVerifier") as MockVer,
     ):
-        loader = _loader_with(manifests)
+        loader = _loader_with(manifests, config=loaded_config)
         MockLoader.return_value = loader
         reg = MagicMock()
         reg.get_plugin_details.return_value = registry_details
@@ -87,7 +88,7 @@ def test_plugin_info_surfaces_challenge_fields():
     assert "Icon: \U0001f6e1\ufe0f" in out
     assert "Tags: site-handler, challenge" in out
     assert "Runnable methods: process (default)" in out
-    assert "Run: tokenade run nowsecure-handler --input request.json" in out
+    assert "Run: tokenade run --request request.json" in out
     assert (
         "Dependencies: challenge-detectors [OK], twocaptcha-solver [OK]" in out
     )
@@ -209,9 +210,7 @@ def test_plugin_info_json_installed():
         "default_method": "process",
         "methods": ["process"],
     }
-    assert payload["run_invocation"] == (
-        "tokenade run nowsecure-handler --input request.json"
-    )
+    assert payload["run_invocation"] == "tokenade run --request request.json"
     assert payload["runtime_dependencies"]["ready"] is True
     assert payload["integrity"] == "unregistered"
 
@@ -265,6 +264,62 @@ def test_plugin_info_json_unknown():
 
     payload = json.loads(out)
     assert payload == {"name": "nope", "installed": False, "available": False}
+
+
+SECRET_CONFIG = {
+    "api_key": "supersecret-2captcha-key",
+    "client_secret": "cs-value",
+    "password": "pw-value",
+    "max_retries": 3,
+    "nested": {"refresh_token": "tok-123", "timeout_s": 30},
+}
+
+
+def test_plugin_info_redacts_sensitive_config_text():
+    args = SimpleNamespace(plugin_command="info", name="twocaptcha-solver", json=False)
+    out = _run_cmd_plugin(args, CHALLENGE_MANIFESTS, loaded_config=SECRET_CONFIG)
+
+    assert "supersecret-2captcha-key" not in out
+    assert "cs-value" not in out
+    assert "pw-value" not in out
+    assert "tok-123" not in out
+    assert '"api_key": "[redacted]"' in out
+    assert '"client_secret": "[redacted]"' in out
+    assert '"password": "[redacted]"' in out
+    assert '"nested": {"refresh_token": "[redacted]"' in out
+
+
+def test_plugin_info_redacts_sensitive_config_json():
+    args = SimpleNamespace(plugin_command="info", name="twocaptcha-solver", json=True)
+    out = _run_cmd_plugin(args, CHALLENGE_MANIFESTS, loaded_config=SECRET_CONFIG)
+
+    payload = json.loads(out)
+    assert "supersecret-2captcha-key" not in out
+    assert payload["config"]["api_key"] == "[redacted]"
+    assert payload["config"]["client_secret"] == "[redacted]"
+    assert payload["config"]["password"] == "[redacted]"
+    assert payload["config"]["max_retries"] == 3
+    assert payload["config"]["nested"] == {"refresh_token": "[redacted]", "timeout_s": 30}
+
+
+def test_plugin_configure_show_redacts_secrets(capsys):
+    with patch(
+        "tokenade.core.integration.plugin_config.PluginConfigManager"
+    ) as MockMgr:
+        mgr = MagicMock()
+        mgr.get_full_config.return_value = SECRET_CONFIG
+        MockMgr.return_value = mgr
+
+        from tokenade.cli import cmd_plugin
+
+        args = SimpleNamespace(plugin_command="configure", name="twocaptcha-solver",
+                               show=True, reset=False, validate=False, set=None)
+        cmd_plugin(args)
+    out = capsys.readouterr().out
+
+    assert "supersecret-2captcha-key" not in out
+    assert "api_key = [redacted]" in out
+    assert "max_retries = 3" in out
 
 
 def test_plugin_check_deps_json_named_ok():

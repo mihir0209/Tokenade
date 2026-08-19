@@ -89,6 +89,8 @@ def default_challenge_solver(
         if capsolver.api_key:
             externals.append(capsolver)
     if externals:
+        logger.info("External challenge solvers enabled: %s",
+                    ", ".join(s.name for s in externals))
         return ChallengeSolver(auto_solver=stealth, external=externals)
     return stealth
 

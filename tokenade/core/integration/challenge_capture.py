@@ -3,11 +3,13 @@ SolvedSessionCapturer — persist the artifacts of a successful challenge solve
 into a portable .tokenade session file.
 
 After auto-solving an anti-bot challenge (e.g. Cloudflare Managed Challenge),
-the origin's cookies (cf_clearance, __cf_bm, ...) and any issued token
-(cf-turnstile-response) are packed into a session file. The win becomes
-portable: solve once, carry the clearance to another machine.
+the origin's clearance cookies (cf_clearance, __cf_bm, datadome, ak_bmsc, ...)
+and any issued token (cf-turnstile-response) are packed into a session file.
+The win becomes portable: solve once, carry the clearance to another machine.
 
-Capture is deliberately best-effort: it never raises into the browser flow.
+Only challenge-derived clearance cookies are persisted — the user's full login
+state is never captured. Capture is deliberately best-effort: it never raises
+into the browser flow.
 """
 
 import logging
@@ -15,6 +17,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Anti-bot clearance cookies issued by the challenge providers we mitigate.
+# Everything else (login/session/auth cookies) is excluded from captures so a
+# solved session never carries the user's full origin state.
+CLEARANCE_COOKIE_NAMES = frozenset({
+    "cf_clearance", "__cf_bm", "__cflb", "bm_sz", "bm_mi", "bm_sv",
+    "ak_bmsc", "_abck", "datadome",
+})
 
 
 def default_session_dir() -> Path:
@@ -51,7 +61,7 @@ class SolvedSessionCapturer:
         """
         try:
             packager = self._get_packager()
-            cookies = page.context.cookies(url)
+            cookies = self._filter_cookies(page.context.cookies(url))
             origin = self._origin_of(url)
             tokens = self._tokens_from(solver_result, origin)
             fingerprint = self._probe_fingerprint(page)
@@ -75,11 +85,39 @@ class SolvedSessionCapturer:
                 str(self.output_dir / f"{origin}.tokenade"),
                 encrypt=self.encrypt,
             )
+            if not self._resolved_encryption(packager):
+                logger.warning(
+                    "Captured solved session %s saved UNENCRYPTED — clearance "
+                    "cookies are IP/User-Agent-bound; set encrypt_by_default "
+                    "or configure an encryption password",
+                    origin,
+                )
             logger.info("Captured solved session for %s -> %s", origin, path)
             return Path(path)
         except Exception as e:
             logger.warning("Failed to capture solved session for %s: %s", url, e)
             return None
+
+    def _resolved_encryption(self, packager: Any) -> bool:
+        """Resolve effective encryption the same way SessionPackager.save does."""
+        if self.encrypt is not None:
+            return self.encrypt
+        try:
+            from tokenade.core.crypto.at_rest import should_encrypt
+            return bool(should_encrypt())
+        except Exception:
+            return False
+
+    @staticmethod
+    def _filter_cookies(cookies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Keep only challenge-derived clearance cookies, drop the rest."""
+        kept = [c for c in cookies if c.get("name") in CLEARANCE_COOKIE_NAMES]
+        dropped = len(cookies) - len(kept)
+        if dropped:
+            logger.warning(
+                "Dropped %d non-clearance cookies from captured session "
+                "(kept %d clearance cookies)", dropped, len(kept))
+        return kept
 
     def _get_packager(self) -> Any:
         if self.packager is None:

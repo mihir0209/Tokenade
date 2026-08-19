@@ -20,6 +20,7 @@ Artifacts produced on success:
 
 import json
 import logging
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -213,12 +214,14 @@ class ExternalSolverPlugin(ChallengeSolverPlugin):
     """Base class for commercial challenge solving APIs (async task pattern).
 
     Subclasses implement create_task()/get_task_result() for the provider's
-    HTTP contract. API keys come from PluginConfig (env_var supported) or the
-    api_key constructor arg.
+    HTTP contract. API keys resolve, in order, from the api_key constructor
+    arg, the plugin config (PluginConfig, env_var supported), and the
+    provider's environment variables (see api_key_env_vars).
     """
 
     solver_type = "external"
     create_task_payload: str = ""
+    api_key_env_vars: List[str] = []
 
     def __init__(self, api_key: Optional[str] = None, poll_interval_s: float = 3.0,
                  max_wait_s: float = 120.0):
@@ -235,7 +238,18 @@ class ExternalSolverPlugin(ChallengeSolverPlugin):
                     return str(value)
             except Exception:
                 pass
+        for var in self.api_key_env_vars:
+            try:
+                value = os.environ.get(var, "")
+            except Exception:
+                continue
+            if value:
+                return value
         return ""
+
+    @property
+    def key_env_hint(self) -> str:
+        return " or ".join(self.api_key_env_vars) if self.api_key_env_vars else "plugin config"
 
     def _http_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         req = urllib.request.Request(
@@ -249,7 +263,14 @@ class ExternalSolverPlugin(ChallengeSolverPlugin):
     def solve(self, page_context: Any, challenge_data: Dict[str, Any]) -> PluginResult:
         if not self.api_key:
             return PluginResult(success=False, error=(
-                f"{self.name}: no api_key configured (set env var or plugin config)"))
+                f"{self.name}: no api_key configured (set {self.key_env_hint} or plugin config)"))
+        try:
+            return self._solve_impl(page_context, challenge_data)
+        except Exception as exc:
+            logger.warning("%s solve failed: %s", self.name, exc)
+            return PluginResult(success=False, error=f"{self.name}: solve error: {exc}")
+
+    def _solve_impl(self, page_context: Any, challenge_data: Dict[str, Any]) -> PluginResult:
         start = time.monotonic()
         sitekey = self._extract_sitekey(page_context, challenge_data)
         page_url = self._extract_page_url(page_context, challenge_data)
@@ -324,6 +345,7 @@ class TwoCaptchaSolverPlugin(ExternalSolverPlugin):
     author = "Tokenade"
     solver_type = "external"
     API_URL = "https://2captcha.com"
+    api_key_env_vars = ["TWOCAPTCHA_API_KEY", "TOKENADE_2CAPTCHA_API_KEY"]
 
     def __init__(self, api_key: Optional[str] = None, **kw):
         super().__init__(api_key, **kw)
@@ -340,12 +362,13 @@ class TwoCaptchaSolverPlugin(ExternalSolverPlugin):
         data = self._http_json(f"{self.API_URL}/in.php", payload)
         if str(data.get("status")) == "1":
             return str(data.get("request", ""))
-        logger.warning("2captcha create failed: %s", data)
+        logger.warning("2captcha create failed: status=%s error=%s",
+                       data.get("status"), data.get("request", "unknown"))
         return ""
 
     def get_task_result(self, task_id: str) -> Dict[str, Any]:
-        url = (f"{self.API_URL}/res.php?key={self.api_key}&action=get&id={task_id}&json=1")
-        data = self._http_json(url, {})
+        payload = {"key": self.api_key, "action": "get", "id": task_id, "json": 1}
+        data = self._http_json(f"{self.API_URL}/res.php", payload)
         if str(data.get("status")) == "1":
             return {"status": "ready", "token": str(data.get("request", ""))}
         if "CAPCHA_NOT_READY" in str(data.get("request", "")).upper():
@@ -362,6 +385,7 @@ class CapSolverSolverPlugin(ExternalSolverPlugin):
     author = "Tokenade"
     solver_type = "external"
     API_URL = "https://api.capsolver.com"
+    api_key_env_vars = ["CAPSOLVER_API_KEY", "TOKENADE_CAPSOLVER_API_KEY"]
 
     def __init__(self, api_key: Optional[str] = None, **kw):
         super().__init__(api_key, **kw)
@@ -379,7 +403,8 @@ class CapSolverSolverPlugin(ExternalSolverPlugin):
         data = self._http_json(f"{self.API_URL}/createTask", payload)
         if data.get("taskId"):
             return str(data["taskId"])
-        logger.warning("capsolver create failed: %s", data)
+        logger.warning("capsolver create failed: %s",
+                       data.get("errorDescription", "unknown"))
         return ""
 
     def get_task_result(self, task_id: str) -> Dict[str, Any]:
@@ -387,7 +412,10 @@ class CapSolverSolverPlugin(ExternalSolverPlugin):
         data = self._http_json(f"{self.API_URL}/getTaskResult", payload)
         status = data.get("status")
         if status == "ready":
-            return {"status": "ready", "token": str(data["solution"].get("token", ""))}
+            token = str((data.get("solution") or {}).get("token", ""))
+            if not token:
+                return {"status": "failed", "error": "provider returned empty solution"}
+            return {"status": "ready", "token": token}
         if status == "processing":
             return {"status": "processing"}
         return {"status": "failed", "error": str(data.get("errorDescription", "unknown"))}
@@ -422,7 +450,13 @@ class ChallengeSolver:
         for solver in solvers:
             if not solver.can_solve(challenge_type, provider):
                 continue
-            result = solver.solve(page, challenge_data)
+            try:
+                result = solver.solve(page, challenge_data)
+            except Exception as exc:
+                logger.warning("solver %s raised: %s", solver.name, exc)
+                attempts.append({"solver": solver.name, "success": False,
+                                 "error": f"raised: {exc}"})
+                continue
             attempts.append({"solver": solver.name, "success": result.success,
                              "error": result.error})
             if result.success and result.data.get("solved"):
