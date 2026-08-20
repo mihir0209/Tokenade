@@ -706,6 +706,17 @@ Build store packages for Chrome Web Store (`.zip`) and Firefox AMO (`.xpi`):
 tokenade extension bundle --source-dir extension --out-dir dist/extension --target all
 ```
 
+### Browser Extension (v1.4)
+
+The Tokenade Browser Extension (`extension/`) provides a full 520px sidebar workspace for live browser session portability without quitting the browser:
+
+- **Export (📤)**: Extract active site cookies, localStorage, and sessionStorage with optional AES-256-GCM encryption.
+- **Inject (📥)**: Drag-and-drop or select any `.tokenade` file to inject cookies and web storage into the active browser with clean-inject & auto-reload.
+- **Inspect (🔍)**: Searchable live cookie viewer with security flags (`SEC`, `HTTP`, `SameSite`) and known site diagnostics (Google, Discord, Telegram, X, GitHub, ChatGPT).
+- **Settings (⚙️)**: Proxy Gateway bridge (`SEND_TO_PROXY`), theme switcher (Dark, Light, System), and persistent preferences.
+
+Load unpacked via `chrome://extensions/` (Developer Mode enabled) -> **Load unpacked** -> select `extension/`. Full documentation: `extension/README.md`.
+
 ### Challenge Solver Configuration
 
 External solvers (`2captcha-solver`, `capsolver-solver`) serve as fallback resolvers when stealth auto-solve requires an external API key:
