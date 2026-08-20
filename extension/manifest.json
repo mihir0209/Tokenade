@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tokenade Session Exporter",
-  "version": "1.3.0",
-  "description": "Export browser sessions as .tokenade (default) or common cookie formats, including localStorage and sessionStorage. No fingerprint capture.",
+  "name": "Tokenade Session Portability & Exporter",
+  "version": "1.4.0",
+  "description": "Export and inject browser sessions (.tokenade), cookies, localStorage, and sessionStorage with native AES-256-GCM encryption.",
   "browser_specific_settings": {
     "gecko": {
       "id": "tokenade@tokenade.dev",

@@ -260,10 +260,10 @@ def main() -> int:
                     popup.reload(wait_until="domcontentloaded")
                     popup.wait_for_timeout(1500)
 
-                    domain_text = popup.text_content("#domain") or ""
-                    total_text = popup.text_content("#total-value") or ""
-                    storage_text = popup.text_content("#storage-value") or ""
-                    health_text = popup.text_content("#health-value") or ""
+                    domain_text = popup.text_content("#active-domain") or ""
+                    total_text = popup.text_content("#stat-cookies-count") or ""
+                    storage_text = popup.text_content("#stat-storage-count") or ""
+                    health_text = popup.text_content("#stat-health-score") or ""
 
                     check(
                         "popup shows site domain",
@@ -290,13 +290,13 @@ def main() -> int:
                     # Download the .tokenade export and round-trip it
                     try:
                         with popup.expect_download(timeout=15000) as dl_info:
-                            popup.click("#btn-download")
+                            popup.click("#btn-export-download")
                         download = dl_info.value
                         download_path = download.path()
                         payload = json.loads(Path(download_path).read_text())
                         check(
                             "download produces v3 .tokenade",
-                            payload.get("version") == "3.0"
+                            payload.get("version") == "3.0.0"
                             and payload.get("site_name") == "127.0.0.1"
                             and len(payload.get("cookies", [])) == 1,
                             f"keys={sorted(payload.keys())[:8]}",
@@ -334,70 +334,56 @@ def main() -> int:
                     except Exception as e:
                         check("download + round-trip", False, str(e))
 
-                    # Domain picker: all-domains mode with search/filter
+                    # Test WebCrypto AES-256-GCM encryption in popup
                     try:
-                        popup.click("#opt-all-domains")
-                        popup.wait_for_timeout(1200)
-                        picker_visible = popup.is_visible("#domain-picker")
-                        check("domain picker shows in all-domains mode", picker_visible)
-
-                        items = popup.evaluate(
-                            """() => Array.from(
-                                document.querySelectorAll('#domain-list .picker-item')
-                            ).map((el) => el.textContent.trim())"""
-                        )
+                        popup.fill("#export-password", "witness-secret-pass!")
+                        with popup.expect_download(timeout=15000) as enc_dl_info:
+                            popup.click("#btn-export-download")
+                        enc_download = enc_dl_info.value
+                        enc_path = enc_download.path()
+                        from tokenade.core.crypto.encryptor import TokenadeEncryptor
+                        enc_bytes = Path(enc_path).read_bytes()
+                        decrypted_bytes = TokenadeEncryptor().decrypt(enc_bytes, "witness-secret-pass!")
+                        dec_json = json.loads(decrypted_bytes.decode("utf-8"))
                         check(
-                            "picker lists both domains",
-                            any("127.0.0.1" in i for i in items)
-                            and any("other.example" in i for i in items),
-                            f"items={items}",
+                            "WebCrypto popup encryption roundtrips through TokenadeEncryptor",
+                            dec_json.get("site_name") == "127.0.0.1" and len(dec_json.get("cookies", [])) == 1,
+                            f"decrypted site={dec_json.get('site_name')}",
                         )
-
-                        # Search filter narrows the list
-                        popup.fill("#domain-search", "other")
-                        popup.wait_for_timeout(300)
-                        items = popup.evaluate(
-                            """() => Array.from(
-                                document.querySelectorAll('#domain-list .picker-item')
-                            ).map((el) => el.textContent.trim())"""
-                        )
-                        check(
-                            "search filter narrows domains",
-                            len(items) == 1 and "other.example" in items[0],
-                            f"items={items}",
-                        )
-                        popup.fill("#domain-search", "")
-                        popup.wait_for_timeout(300)
-
-                        # Deselect 127.0.0.1 -> export only other.example cookies
-                        popup.evaluate(
-                            """() => {
-                                const cb = Array.from(
-                                    document.querySelectorAll('#domain-list input')
-                                ).find((i) => i.value === '127.0.0.1');
-                                cb.checked = false;
-                                cb.dispatchEvent(new Event('change', { bubbles: true }));
-                            }"""
-                        )
-                        popup.wait_for_timeout(1200)
-                        domain_text = popup.text_content("#domain") or ""
-                        check(
-                            "popup reflects single selected domain",
-                            "other.example" in domain_text,
-                            f"domain={domain_text!r}",
-                        )
-                        with popup.expect_download(timeout=15000) as dl_info2:
-                            popup.click("#btn-download")
-                        dl2 = dl_info2.value
-                        payload2 = json.loads(Path(dl2.path()).read_text())
-                        names2 = {c.get("name") for c in payload2.get("cookies", [])}
-                        check(
-                            "filtered export keeps only selected domain",
-                            names2 == {"other_site_cookie"},
-                            f"names={names2}",
-                        )
+                        popup.fill("#export-password", "")
                     except Exception as e:
-                        check("domain picker checks", False, str(e))
+                        check("WebCrypto popup encryption", False, str(e))
+
+                    # Test Sidebar Tab switching: Inspect table
+                    try:
+                        popup.click("#nav-inspect")
+                        popup.wait_for_timeout(300)
+                        inspect_active = popup.is_visible("#tab-inspect")
+                        check("Inspect tab activates on click", inspect_active)
+                        rows = popup.query_selector_all("#cookie-table-body tr")
+                        check("Inspect table displays active cookies", len(rows) >= 1)
+                    except Exception as e:
+                        check("Inspect tab test", False, str(e))
+
+                    # Test Sidebar Tab switching: Import view
+                    try:
+                        popup.click("#nav-import")
+                        popup.wait_for_timeout(300)
+                        import_active = popup.is_visible("#tab-import")
+                        check("Import/Inject tab activates on click", import_active)
+                        dropzone_visible = popup.is_visible("#import-dropzone")
+                        check("Dropzone visible in Import tab", dropzone_visible)
+                    except Exception as e:
+                        check("Import tab test", False, str(e))
+
+                    # Test Sidebar Tab switching: Settings view
+                    try:
+                        popup.click("#nav-settings")
+                        popup.wait_for_timeout(300)
+                        settings_active = popup.is_visible("#tab-settings")
+                        check("Settings tab activates on click", settings_active)
+                    except Exception as e:
+                        check("Settings tab test", False, str(e))
 
                     popup.close()
                 print('STEP: closing context', flush=True)

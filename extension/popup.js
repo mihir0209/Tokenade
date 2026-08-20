@@ -1,54 +1,205 @@
 /**
- * Tokenade Session Exporter — Popup
+ * Tokenade Browser Extension v1.4 — Popup Controller
  *
- * Default export format: .tokenade (session packager shape).
- * Honest limits: cookies (+ optional page localStorage). No donor TLS fingerprint.
+ * Provides full UI/UX and feature parity with the Tokenade CLI:
+ * - Tabbed workspace (Export, Import/Inject, Inspect, Settings)
+ * - Bidirectional session flow: Export active session or Inject .tokenade session into browser
+ * - Native WebCrypto AES-256-GCM encryption/decryption matching TokenadeEncryptor
+ * - Known site handler detection (Google, Discord, Telegram, X, GitHub, ChatGPT)
+ * - Persistent preferences via chrome.storage.local
  */
 
+const KNOWN_SITES = {
+  "google.com": { name: "Google", badge: "GOOGLE", critical: ["SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-3PSID"] },
+  "mail.google.com": { name: "Gmail", badge: "GMAIL", critical: ["SID", "HSID", "SSID", "__Secure-3PSID"] },
+  "discord.com": { name: "Discord", badge: "DISCORD", critical: ["__dcfduid", "__sdcfduid"], storage: ["token"] },
+  "telegram.org": { name: "Telegram", badge: "TELEGRAM", critical: ["stel_ssid"], storage: ["user_auth"] },
+  "web.telegram.org": { name: "Telegram Web", badge: "TELEGRAM", critical: ["stel_ssid"], storage: ["user_auth"] },
+  "twitter.com": { name: "Twitter / X", badge: "X / TWITTER", critical: ["auth_token", "ct0", "twid", "kdt"] },
+  "x.com": { name: "Twitter / X", badge: "X / TWITTER", critical: ["auth_token", "ct0", "twid", "kdt"] },
+  "github.com": { name: "GitHub", badge: "GITHUB", critical: ["user_session", "__Host-user_session_same_site", "dotcom_user"] },
+  "openai.com": { name: "OpenAI / ChatGPT", badge: "CHATGPT", critical: ["__Secure-next-auth.session-token", "cf_clearance"] },
+  "chatgpt.com": { name: "OpenAI / ChatGPT", badge: "CHATGPT", critical: ["__Secure-next-auth.session-token", "cf_clearance"] },
+};
+
 document.addEventListener("DOMContentLoaded", async () => {
-  const domainEl = document.getElementById("domain");
-  const cookieCountEl = document.getElementById("cookie-count");
-  const totalValue = document.getElementById("total-value");
-  const expiredValue = document.getElementById("expired-value");
-  const healthValue = document.getElementById("health-value");
-  const storageValue = document.getElementById("storage-value");
-  const statExpired = document.getElementById("stat-expired");
-  const statHealth = document.getElementById("stat-health");
-  const btnDownload = document.getElementById("btn-download");
-  const btnClipboard = document.getElementById("btn-clipboard");
-  const statusEl = document.getElementById("status");
+  // Elements
+  const activeDomainEl = document.getElementById("active-domain");
+  const activeSummaryEl = document.getElementById("active-summary");
+  const siteBadgeEl = document.getElementById("site-badge");
+  const bridgeStatusDot = document.getElementById("bridge-status-dot");
+  const bridgeStatusText = document.getElementById("bridge-status-text");
+
+  // Export elements
+  const statCookiesCount = document.getElementById("stat-cookies-count");
+  const statExpiredCount = document.getElementById("stat-expired-count");
+  const statHealthScore = document.getElementById("stat-health-score");
+  const statStorageCount = document.getElementById("stat-storage-count");
+  const exportFormatSelect = document.getElementById("export-format");
+  const exportPasswordInput = document.getElementById("export-password");
   const optAllDomains = document.getElementById("opt-all-domains");
   const optLocalStorage = document.getElementById("opt-local-storage");
   const optSessionStorage = document.getElementById("opt-session-storage");
-  const formatSelect = document.getElementById("opt-format");
-  const domainPicker = document.getElementById("domain-picker");
-  const domainSearch = document.getElementById("domain-search");
-  const domainList = document.getElementById("domain-list");
-  const pickerSelectAll = document.getElementById("picker-select-all");
-  const pickerSelectNone = document.getElementById("picker-select-none");
+  const btnExportDownload = document.getElementById("btn-export-download");
+  const btnExportCopy = document.getElementById("btn-export-copy");
+  const exportStatusEl = document.getElementById("export-status");
+
+  // Import elements
+  const importDropzone = document.getElementById("import-dropzone");
+  const importFileInput = document.getElementById("import-file-input");
+  const importPreviewCard = document.getElementById("import-preview-card");
+  const importSiteName = document.getElementById("import-site-name");
+  const importDetails = document.getElementById("import-details");
+  const importTypeBadge = document.getElementById("import-type-badge");
+  const importPassGroup = document.getElementById("import-pass-group");
+  const importPasswordInput = document.getElementById("import-password");
+  const optCleanInject = document.getElementById("opt-clean-inject");
+  const optAutoReload = document.getElementById("opt-auto-reload");
+  const btnInjectSession = document.getElementById("btn-inject-session");
+  const importStatusEl = document.getElementById("import-status");
+
+  // Inspect elements
+  const cookieSearchInput = document.getElementById("cookie-search");
+  const cookieTableBody = document.getElementById("cookie-table-body");
+  const btnInspectRefresh = document.getElementById("btn-inspect-refresh");
+  const btnInspectCopyAll = document.getElementById("btn-inspect-copy-all");
+
+  // Settings elements
+  const settingProxyUrl = document.getElementById("setting-proxy-url");
+  const settingTheme = document.getElementById("setting-theme");
+  const btnSendToProxy = document.getElementById("btn-send-to-proxy");
+  const btnResetPreferences = document.getElementById("btn-reset-preferences");
+  const settingsStatusEl = document.getElementById("settings-status");
 
   let currentTab = null;
   let currentDomain = "";
-  let sessionData = null;
-  // Domain selection mode: "all" (empty selection, everything included) or
-  // "selected" (only the domains listed in selectedDomains).
-  let domainFilter = "all";
-  let selectedDomains = new Set();
+  let extractedSession = null;
+  let activeCookiesList = [];
+  let importedRawBytes = null;
+  let importedParsedSession = null;
 
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    currentTab = tab;
-    if (!tab?.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
-      domainEl.textContent = "Open a normal website tab first";
-      cookieCountEl.textContent = "Cannot read cookies on browser internal pages";
-      return;
+  // ── Navigation Tab Switching ─────────────────────────────────────────────
+
+  document.querySelectorAll(".nav-item").forEach((nav) => {
+    nav.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+      document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
+      nav.classList.add("active");
+      const targetTab = document.getElementById(nav.getAttribute("data-tab"));
+      if (targetTab) targetTab.classList.add("active");
+    });
+  });
+
+  // ── Load & Save Preferences ──────────────────────────────────────────────
+
+  async function loadPreferences() {
+    try {
+      const prefs = await chrome.storage.local.get([
+        "exportFormat",
+        "optLocalStorage",
+        "optSessionStorage",
+        "optCleanInject",
+        "optAutoReload",
+        "proxyUrl",
+        "themePreference",
+      ]);
+      if (prefs.exportFormat) exportFormatSelect.value = prefs.exportFormat;
+      if (typeof prefs.optLocalStorage === "boolean") optLocalStorage.checked = prefs.optLocalStorage;
+      if (typeof prefs.optSessionStorage === "boolean") optSessionStorage.checked = prefs.optSessionStorage;
+      if (typeof prefs.optCleanInject === "boolean") optCleanInject.checked = prefs.optCleanInject;
+      if (typeof prefs.optAutoReload === "boolean") optAutoReload.checked = prefs.optAutoReload;
+      if (prefs.proxyUrl) settingProxyUrl.value = prefs.proxyUrl;
+      if (prefs.themePreference) {
+        settingTheme.value = prefs.themePreference;
+        applyTheme(prefs.themePreference);
+      }
+    } catch (_) {}
+  }
+
+  function applyTheme(theme) {
+    if (theme === "light") {
+      document.body.classList.add("light-theme");
+    } else if (theme === "dark") {
+      document.body.classList.remove("light-theme");
+    } else {
+      // System
+      const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+      document.body.classList.toggle("light-theme", prefersLight);
     }
-    const url = new URL(tab.url);
-    currentDomain = url.hostname;
-    domainEl.textContent = currentDomain;
-  } catch (e) {
-    domainEl.textContent = "Error getting tab";
-    return;
+  }
+
+  function savePreference(key, val) {
+    try {
+      chrome.storage.local.set({ [key]: val });
+    } catch (_) {}
+  }
+
+  exportFormatSelect.addEventListener("change", () => savePreference("exportFormat", exportFormatSelect.value));
+  optLocalStorage.addEventListener("change", () => savePreference("optLocalStorage", optLocalStorage.checked));
+  optSessionStorage.addEventListener("change", () => savePreference("optSessionStorage", optSessionStorage.checked));
+  optCleanInject.addEventListener("change", () => savePreference("optCleanInject", optCleanInject.checked));
+  optAutoReload.addEventListener("change", () => savePreference("optAutoReload", optAutoReload.checked));
+  settingProxyUrl.addEventListener("change", () => savePreference("proxyUrl", settingProxyUrl.value.trim()));
+  settingTheme.addEventListener("change", () => {
+    savePreference("themePreference", settingTheme.value);
+    applyTheme(settingTheme.value);
+  });
+
+  btnResetPreferences.addEventListener("click", async () => {
+    try {
+      await chrome.storage.local.clear();
+      showStatus(settingsStatusEl, "Saved preferences reset to defaults.", "success");
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e) {
+      showStatus(settingsStatusEl, `Failed to reset: ${e.message}`, "error");
+    }
+  });
+
+  // ── Tab Discovery & Known Site Diagnostics ───────────────────────────────
+
+  async function initTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTab = tab;
+      if (!tab?.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")) {
+        activeDomainEl.textContent = "Internal browser page";
+        activeSummaryEl.textContent = "Open a website tab to inspect and export sessions";
+        siteBadgeEl.textContent = "SYSTEM";
+        return false;
+      }
+      const url = new URL(tab.url);
+      currentDomain = url.hostname;
+      activeDomainEl.textContent = currentDomain;
+
+      // Identify known site
+      let matched = null;
+      for (const [domainKey, meta] of Object.entries(KNOWN_SITES)) {
+        if (currentDomain === domainKey || currentDomain.endsWith("." + domainKey)) {
+          matched = meta;
+          break;
+        }
+      }
+      if (matched) {
+        siteBadgeEl.textContent = matched.badge;
+        siteBadgeEl.className = "site-badge known";
+      } else {
+        siteBadgeEl.textContent = "SITE";
+        siteBadgeEl.className = "site-badge";
+      }
+
+      return true;
+    } catch (e) {
+      activeDomainEl.textContent = "Error reading active tab";
+      activeSummaryEl.textContent = String(e);
+      return false;
+    }
+  }
+
+  // ── Helper: Domain Matching ──────────────────────────────────────────────
+
+  function domainOf(cookie) {
+    const d = cookie.domain || "";
+    return d.startsWith(".") ? d.slice(1) : d;
   }
 
   function getRelatedDomains(domain) {
@@ -60,87 +211,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     return domains;
   }
 
-  function domainOf(cookie) {
-    const d = cookie.domain || "";
-    return d.startsWith(".") ? d.slice(1) : d;
-  }
+  // ── Extraction Logic ─────────────────────────────────────────────────────
 
-  function renderDomainPicker(allCookies) {
-    const counts = new Map();
-    for (const c of allCookies) {
-      const d = domainOf(c);
-      counts.set(d, (counts.get(d) || 0) + 1);
+  async function fetchCookies() {
+    if (optAllDomains.checked) {
+      return await chrome.cookies.getAll({});
     }
-    const query = (domainSearch.value || "").trim().toLowerCase();
-    const domains = Array.from(counts.keys())
-      .filter((d) => !query || d.includes(query))
-      .sort();
-    domainList.textContent = "";
-    if (domains.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = query ? "No domains match the filter" : "No cookies found";
-      domainList.appendChild(empty);
-      return;
-    }
+    const domains = getRelatedDomains(currentDomain);
+    const all = [];
     for (const d of domains) {
-      const label = document.createElement("label");
-      label.className = "picker-item";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.value = d;
-      cb.checked = domainFilter === "all" || selectedDomains.has(d);
-      const span = document.createElement("span");
-      span.textContent = d;
-      const count = document.createElement("span");
-      count.className = "count";
-      count.textContent = String(counts.get(d));
-      label.appendChild(cb);
-      label.appendChild(span);
-      label.appendChild(count);
-      domainList.appendChild(label);
+      const list = await chrome.cookies.getAll({ domain: d });
+      all.push(...list);
     }
+    const seen = new Set();
+    return all.filter((c) => {
+      const key = `${c.name}|${c.domain}|${c.path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
-  function allListedDomains() {
-    return Array.from(
-      domainList.querySelectorAll("input[type='checkbox']")
-    ).map((i) => i.value);
-  }
-
-  async function extractCookies() {
-    const domain = currentDomain;
-    const allDomains = optAllDomains.checked;
-
-    let cookies;
-    if (allDomains) {
-      cookies = await chrome.cookies.getAll({});
-      renderDomainPicker(cookies);
-      if (domainFilter === "selected" && selectedDomains.size > 0) {
-        cookies = cookies.filter((c) => selectedDomains.has(domainOf(c)));
-      }
-    } else {
-      const domains = getRelatedDomains(domain);
-      const allCookies = [];
-      for (const d of domains) {
-        const dc = await chrome.cookies.getAll({ domain: d });
-        allCookies.push(...dc);
-      }
-      const seen = new Set();
-      cookies = allCookies.filter((c) => {
-        const key = `${c.name}|${c.domain}|${c.path}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-    return cookies;
-  }
-
-  async function extractLocalStorage() {
-    if (!optLocalStorage?.checked || !currentTab?.id) {
-      return {};
-    }
+  async function fetchLocalStorage() {
+    if (!optLocalStorage.checked || !currentTab?.id) return {};
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId: currentTab.id },
@@ -151,23 +244,18 @@ document.addEventListener("DOMContentLoaded", async () => {
               const k = localStorage.key(i);
               if (k != null) out[k] = localStorage.getItem(k);
             }
-          } catch (_) {
-            /* opaque origin */
-          }
+          } catch (_) {}
           return out;
         },
       });
-      return (results && results[0] && results[0].result) || {};
-    } catch (e) {
-      console.warn("localStorage capture failed", e);
+      return results?.[0]?.result || {};
+    } catch (_) {
       return {};
     }
   }
 
-  async function extractSessionStorage() {
-    if (!optSessionStorage?.checked || !currentTab?.id) {
-      return {};
-    }
+  async function fetchSessionStorage() {
+    if (!optSessionStorage.checked || !currentTab?.id) return {};
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId: currentTab.id },
@@ -178,394 +266,467 @@ document.addEventListener("DOMContentLoaded", async () => {
               const k = sessionStorage.key(i);
               if (k != null) out[k] = sessionStorage.getItem(k);
             }
-          } catch (_) {
-            /* opaque origin */
-          }
+          } catch (_) {}
           return out;
         },
       });
-      return (results && results[0] && results[0].result) || {};
-    } catch (e) {
-      console.warn("sessionStorage capture failed", e);
+      return results?.[0]?.result || {};
+    } catch (_) {
       return {};
     }
   }
 
-  async function extractIndexedDB() {
-    if (!currentTab?.id) return {};
+  async function refreshSessionData() {
+    if (!currentDomain) return;
+
     try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        func: async () => {
-          if (!window.indexedDB || !indexedDB.databases) return {};
-          const out = {};
-          try {
-            const dbs = await indexedDB.databases();
-            for (const dbInfo of dbs) {
-              if (!dbInfo.name) continue;
-              await new Promise((resolve) => {
-                const req = indexedDB.open(dbInfo.name, dbInfo.version);
-                req.onsuccess = async (e) => {
-                  const db = e.target.result;
-                  const storeNames = Array.from(db.objectStoreNames);
-                  if (storeNames.length === 0) { db.close(); resolve(); return; }
-                  out[dbInfo.name] = { version: dbInfo.version, stores: {} };
-                  try {
-                    const tx = db.transaction(storeNames, "readonly");
-                    for (const sName of storeNames) {
-                      const store = tx.objectStore(sName);
-                      const records = {};
-                      const cursorReq = store.openCursor();
-                      cursorReq.onsuccess = (ev) => {
-                        const cursor = ev.target.result;
-                        if (cursor) {
-                          try { records[String(cursor.key)] = cursor.value; } catch(_) {}
-                          cursor.continue();
-                        }
-                      };
-                    }
-                    tx.oncomplete = () => { db.close(); resolve(); };
-                    tx.onerror = () => { db.close(); resolve(); };
-                  } catch(_) { db.close(); resolve(); }
-                };
-                req.onerror = () => resolve();
-              });
-            }
-          } catch(_) {}
-          return out;
-        }
-      });
-      return (results && results[0] && results[0].result) || {};
-    } catch(e) {
-      return {};
-    }
-  }
+      const cookies = await fetchCookies();
+      activeCookiesList = cookies;
+      const local = await fetchLocalStorage();
+      const session = await fetchSessionStorage();
 
-  function mapSameSite(v) {
-    if (v === "no_restriction" || v === "none") return "None";
-    if (v === "lax") return "Lax";
-    if (v === "strict") return "Strict";
-    return "Lax";
-  }
+      const now = Date.now() / 1000;
+      const expired = cookies.filter((c) => c.expirationDate && c.expirationDate < now).length;
+      const valid = cookies.length - expired;
+      const health = cookies.length ? Math.round((valid / cookies.length) * 100) : 0;
+      const storageCount = Object.keys(local).length + Object.keys(session).length;
 
-  function normalizeCookies(cookies) {
-    const now = Date.now() / 1000;
-    let expired = 0;
-    const tokenadeCookies = cookies.map((c) => {
-      let expires = c.expirationDate || 0;
-      if (expires > 1e12) {
-        expires = Math.floor(expires / 1000);
-      } else if (expires > 0) {
-        expires = Math.floor(expires);
-      }
-      if (expires > 0 && expires < now) expired++;
-      return {
-        name: c.name,
-        value: c.value,
-        domain: c.domain,
-        path: c.path || "/",
-        secure: !!c.secure,
-        httpOnly: !!c.httpOnly,
-        sameSite: mapSameSite(c.sameSite),
-        ...(expires > 0 ? { expires } : {}),
+      statCookiesCount.textContent = String(cookies.length);
+      statExpiredCount.textContent = String(expired);
+      statHealthScore.textContent = `${health}%`;
+      statStorageCount.textContent = String(storageCount);
+
+      activeSummaryEl.textContent = `${cookies.length} cookies · ${storageCount} storage keys (${health}% health)`;
+
+      // Package native .tokenade format
+      const originKey = currentTab?.url ? new URL(currentTab.url).origin : `https://${currentDomain}`;
+      extractedSession = {
+        version: "3.0.0",
+        site_name: currentDomain,
+        created_at: new Date().toISOString(),
+        auth_status: health > 50 ? "authenticated" : "anonymous",
+        cookies: cookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain,
+          path: c.path || "/",
+          secure: Boolean(c.secure),
+          httpOnly: Boolean(c.httpOnly),
+          sameSite: c.sameSite || "Lax",
+          expirationDate: c.expirationDate || null,
+        })),
+        local_storage: { [originKey]: local },
+        session_storage: { [originKey]: session },
+        storage: {
+          local: { [originKey]: local },
+          session: { [originKey]: session },
+        },
+        metadata: {
+          exported_by: "tokenade-extension-v1.4",
+          health_score: health / 100,
+          cookie_count: cookies.length,
+          target_origin: currentDomain,
+        },
       };
-    });
-    return { tokenadeCookies, expired, total: cookies.length };
+
+      btnExportDownload.disabled = false;
+      btnExportCopy.disabled = false;
+
+      renderInspectTable();
+    } catch (err) {
+      showStatus(exportStatusEl, `Extraction error: ${err.message}`, "error");
+    }
   }
 
-  function buildTokenadeSession(cookies, localStorageMap, sessionStorageMap, indexedDBMap) {
-    const { tokenadeCookies, expired, total } = normalizeCookies(cookies);
-    const health = total > 0 ? ((total - expired) / total) * 100 : 0;
-    const origin = currentTab?.url
-      ? (() => {
-          try {
-            const u = new URL(currentTab.url);
-            return `${u.protocol}//${u.host}`;
-          } catch {
-            return `https://${currentDomain}`;
-          }
-        })()
-      : `https://${currentDomain}`;
+  // ── Status Message Utility ───────────────────────────────────────────────
 
-    const lsCount = Object.keys(localStorageMap || {}).length;
-    const ssCount = Object.keys(sessionStorageMap || {}).length;
-    const idbCount = Object.keys(indexedDBMap || {}).length;
-    const storage = { local: {}, session: {}, indexeddb: {} };
-    if (lsCount > 0) {
-      storage.local[origin] = { ...localStorageMap };
+  function showStatus(element, text, type = "loading") {
+    element.textContent = text;
+    element.className = `status-msg ${type}`;
+    element.style.display = "block";
+    if (type !== "loading") {
+      setTimeout(() => {
+        if (element.textContent === text) {
+          element.style.display = "none";
+        }
+      }, 4000);
     }
-    if (ssCount > 0) {
-      storage.session[origin] = { ...sessionStorageMap };
-    }
-    if (idbCount > 0) {
-      storage.indexeddb[origin] = { ...indexedDBMap };
-    }
-
-    const flatLs = {};
-    for (const [k, v] of Object.entries(localStorageMap || {})) {
-      flatLs[`${currentDomain}:${k}`] = v;
-    }
-
-    const selectedDomainCount = optAllDomains.checked
-      ? (domainFilter === "all"
-          ? domainList.querySelectorAll("input[type='checkbox']").length || 1
-          : selectedDomains.size || 1)
-      : 1;
-
-    // Heuristic: a session with valid (non-expired) cookies is treated as
-    // logged in; anything weaker stays "unknown" rather than claiming health.
-    const authStatus = total > 0 && health >= 50 ? "logged_in" : "unknown";
-
-    return {
-      version: "3.0",
-      site_name: optAllDomains.checked ? "all-domains" : currentDomain,
-      auth_status: authStatus,
-      created_at: new Date().toISOString(),
-      source_device: {
-        browser: "chrome-extension",
-        profile: "active-tab",
-        platform: navigator.platform || "unknown",
-        hostname: "anonymous",
-      },
-      cookies: tokenadeCookies,
-      tokens: [],
-      storage,
-      local_storage: flatLs,
-      fingerprint: null,
-      tls_profile: null,
-      metadata: {
-        extraction_method: "extension",
-        source: "tokenade-extension",
-        source_format: "tokenade",
-        domain: currentDomain,
-        page_url: currentTab?.url || "",
-        exported_at: new Date().toISOString(),
-        cookie_count: total,
-        local_storage_count: lsCount,
-        session_storage_count: ssCount,
-        notes: [
-          "Exported via browser extension (no SQLite lock).",
-          "fingerprint is null — extension cannot capture donor TLS/JA3; use CLI export --collect-fingerprint when needed.",
-          "HttpOnly cookies are included (chrome.cookies API).",
-          "Web storage includes both localStorage and sessionStorage.",
-          "auth_status is a cookie-health heuristic (logged_in only when valid cookies exist).",
-        ],
-      },
-      _stats: { total, expired, health, storage: lsCount + ssCount, domains: selectedDomainCount },
-    };
   }
 
-  function buildNetscape(cookies) {
-    const lines = ["# Netscape HTTP Cookie File", "# https://curl.se/docs/http-cookies.html", ""];
-    for (const c of cookies) {
-      let expires = c.expirationDate || 0;
-      if (expires > 1e12) expires = Math.floor(expires / 1000);
-      else expires = Math.floor(expires || 0);
-      const domain = c.domain || "";
-      const includeSub = domain.startsWith(".") ? "TRUE" : "FALSE";
-      const secure = c.secure ? "TRUE" : "FALSE";
-      lines.push(
-        [domain, includeSub, c.path || "/", secure, String(expires), c.name, c.value].join("\t")
+  // ── Export Handling ──────────────────────────────────────────────────────
+
+  function formatOutput(format, session) {
+    if (format === "cookie-editor") {
+      return JSON.stringify(
+        session.cookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain,
+          path: c.path,
+          secure: c.secure,
+          httpOnly: c.httpOnly,
+          sameSite: (c.sameSite || "Lax").toLowerCase(),
+          expirationDate: c.expirationDate,
+        })),
+        null,
+        2
       );
     }
-    return lines.join("\n") + "\n";
-  }
-
-  function buildCookieEditorJson(cookies) {
-    return cookies.map((c) => {
-      let expires = c.expirationDate || 0;
-      if (expires > 1e12) expires = expires / 1000;
-      return {
-        domain: c.domain,
-        expirationDate: expires || undefined,
-        hostOnly: !String(c.domain || "").startsWith("."),
-        httpOnly: !!c.httpOnly,
-        name: c.name,
-        path: c.path || "/",
-        sameSite:
-          c.sameSite === "no_restriction"
-            ? "no_restriction"
-            : c.sameSite === "strict"
-              ? "strict"
-              : "lax",
-        secure: !!c.secure,
-        session: !c.expirationDate,
-        storeId: "0",
-        value: c.value,
-      };
-    });
-  }
-
-  function serializeExport(session, cookies) {
-    const fmt = (formatSelect && formatSelect.value) || "tokenade";
-    if (fmt === "netscape") {
-      return {
-        body: buildNetscape(cookies),
-        filename: `${currentDomain}.txt`,
-        mime: "text/plain",
-      };
+    if (format === "netscape") {
+      const lines = ["# Netscape HTTP Cookie File", "# https://curl.se/docs/http-cookies.html", ""];
+      for (const c of session.cookies) {
+        const includeSubdomains = c.domain.startsWith(".") ? "TRUE" : "FALSE";
+        const isSecure = c.secure ? "TRUE" : "FALSE";
+        const expiry = c.expirationDate ? Math.round(c.expirationDate) : 0;
+        lines.push(`${c.domain}\t${includeSubdomains}\t${c.path}\t${isSecure}\t${expiry}\t${c.name}\t${c.value}`);
+      }
+      return lines.join("\n");
     }
-    if (fmt === "cookie-editor") {
-      return {
-        body: JSON.stringify(buildCookieEditorJson(cookies), null, 2),
-        filename: `${currentDomain}.cookies.json`,
-        mime: "application/json",
-      };
-    }
-    // default: richest portable format
-    const output = { ...session };
-    delete output._stats;
-    return {
-      body: JSON.stringify(output, null, 2),
-      filename: `${currentDomain}.tokenade`,
-      mime: "application/json",
-    };
+    // Default native .tokenade JSON
+    return JSON.stringify(session, null, 2);
   }
 
-  function updateStats(session) {
-    const stats = session._stats;
-    totalValue.textContent = stats.total;
-    expiredValue.textContent = stats.expired;
-    healthValue.textContent = Math.round(stats.health) + "%";
-    if (storageValue) storageValue.textContent = String(stats.storage || 0);
-    const domainNote = optAllDomains.checked
-      ? ` · ${stats.domains} domains selected`
-      : "";
-    cookieCountEl.textContent = `${stats.total} cookies` +
-      (stats.storage ? ` · ${stats.storage} storage keys` : "") + domainNote;
+  btnExportDownload.addEventListener("click", async () => {
+    if (!extractedSession) return;
+    const format = exportFormatSelect.value;
+    const password = exportPasswordInput.value;
 
-    statExpired.classList.toggle("warn", stats.expired > 0);
-    statHealth.classList.remove("warn", "error");
-    if (stats.health < 70) statHealth.classList.add("error");
-    else if (stats.health < 90) statHealth.classList.add("warn");
-
-    btnDownload.disabled = stats.total === 0;
-    btnClipboard.disabled = stats.total === 0;
-  }
-
-  function showStatus(type, message) {
-    statusEl.className = `status ${type}`;
-    statusEl.textContent = message;
-    if (type === "success") {
-      setTimeout(() => {
-        statusEl.className = "status";
-      }, 3000);
-    }
-  }
-
-  let rawCookies = [];
-
-  async function refresh() {
-    const allDomains = optAllDomains.checked;
-    domainPicker.classList.toggle("visible", allDomains);
-    if (allDomains) {
-      domainEl.textContent = domainFilter === "all"
-        ? "All domains"
-        : selectedDomains.size === 1
-          ? Array.from(selectedDomains)[0]
-          : `${selectedDomains.size} domains`;
-    } else {
-      domainEl.textContent = currentDomain;
-    }
-    const cookies = await extractCookies();
-    rawCookies = cookies;
-    const ls = await extractLocalStorage();
-    const ss = await extractSessionStorage();
-    const idb = await extractIndexedDB();
-    sessionData = buildTokenadeSession(cookies, ls, ss, idb);
-    updateStats(sessionData);
-  }
-
-  try {
-    await refresh();
-  } catch (e) {
-    showStatus("error", "Failed to extract cookies: " + e.message);
-  }
-
-  btnDownload.addEventListener("click", async () => {
-    if (!sessionData) return;
     try {
-      const { body, filename, mime } = serializeExport(sessionData, rawCookies);
-      const blob = new Blob([body], { type: mime });
+      const rawText = formatOutput(format, extractedSession);
+      let blob;
+      let filename;
+
+      if (password && format === "tokenade") {
+        showStatus(exportStatusEl, "Encrypting session with AES-256-GCM...", "loading");
+        const encryptedBytes = await TokenadeWebCrypto.encrypt(rawText, password);
+        blob = new Blob([encryptedBytes], { type: "application/octet-stream" });
+        filename = `${currentDomain}.tokenade.enc`;
+      } else {
+        blob = new Blob([rawText], { type: "application/json" });
+        filename = format === "netscape" ? `${currentDomain}_cookies.txt` : `${currentDomain}.tokenade`;
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showStatus("success", `Downloaded ${filename}`);
+
+      showStatus(exportStatusEl, `Saved ${filename} successfully!`, "success");
     } catch (e) {
-      showStatus("error", "Download failed: " + e.message);
+      showStatus(exportStatusEl, `Export error: ${e.message}`, "error");
     }
   });
 
-  btnClipboard.addEventListener("click", async () => {
-    if (!sessionData) return;
+  btnExportCopy.addEventListener("click", async () => {
+    if (!extractedSession) return;
     try {
-      const { body } = serializeExport(sessionData, rawCookies);
-      await navigator.clipboard.writeText(body);
-      showStatus("success", "Copied to clipboard");
+      const rawText = formatOutput(exportFormatSelect.value, extractedSession);
+      await navigator.clipboard.writeText(rawText);
+      showStatus(exportStatusEl, "Session copied to clipboard!", "success");
     } catch (e) {
-      showStatus("error", "Clipboard failed: " + e.message);
+      showStatus(exportStatusEl, `Clipboard error: ${e.message}`, "error");
     }
   });
 
-  async function onOptionChange() {
+  // ── Import & Injection Flow ──────────────────────────────────────────────
+
+  importDropzone.addEventListener("click", () => importFileInput.click());
+  importDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    importDropzone.classList.add("dragover");
+  });
+  importDropzone.addEventListener("dragleave", () => importDropzone.classList.remove("dragover"));
+  importDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    importDropzone.classList.remove("dragover");
+    if (e.dataTransfer.files?.length) {
+      handleImportFile(e.dataTransfer.files[0]);
+    }
+  });
+  importFileInput.addEventListener("change", () => {
+    if (importFileInput.files?.length) {
+      handleImportFile(importFileInput.files[0]);
+    }
+  });
+
+  async function handleImportFile(file) {
     try {
-      statusEl.className = "status loading";
-      statusEl.textContent = "Re-scanning…";
-      await refresh();
-      statusEl.className = "status";
+      const buffer = await file.arrayBuffer();
+      importedRawBytes = new Uint8Array(buffer);
+
+      if (TokenadeWebCrypto.isEncrypted(importedRawBytes)) {
+        importPassGroup.style.display = "block";
+        importTypeBadge.textContent = "ENCRYPTED";
+        importTypeBadge.className = "site-badge known";
+        importSiteName.textContent = file.name;
+        importDetails.textContent = "Encrypted Tokenade v2 format — enter password to decrypt";
+        importPreviewCard.style.display = "block";
+        btnInjectSession.disabled = false;
+      } else {
+        importPassGroup.style.display = "none";
+        importTypeBadge.textContent = "PLAINTEXT";
+        importTypeBadge.className = "site-badge";
+        const text = new TextDecoder().decode(importedRawBytes);
+        parseAndPreviewSession(text, file.name);
+      }
     } catch (e) {
-      showStatus("error", "Failed: " + e.message);
+      showStatus(importStatusEl, `File load error: ${e.message}`, "error");
     }
   }
 
-  optAllDomains.addEventListener("change", () => {
-    if (!optAllDomains.checked) {
-      domainFilter = "all";
-      selectedDomains = new Set();
-      domainSearch.value = "";
-    }
-    onOptionChange();
-  });
-  if (optLocalStorage) optLocalStorage.addEventListener("change", onOptionChange);
-  if (optSessionStorage) optSessionStorage.addEventListener("change", onOptionChange);
+  function parseAndPreviewSession(text, filename) {
+    try {
+      const parsed = JSON.parse(text);
+      let cookies = [];
+      let siteName = "Imported Session";
 
-  domainSearch.addEventListener("input", () => {
-    if (rawCookies.length > 0) renderDomainPicker(rawCookies);
-  });
-
-  domainList.addEventListener("change", (e) => {
-    const cb = e.target;
-    if (!cb.matches("input[type='checkbox']")) return;
-    if (domainFilter === "all" && !cb.checked) {
-      // First manual deselection: switch to explicit selection seeded with
-      // every listed domain, then drop the one the user uncheckd.
-      domainFilter = "selected";
-      selectedDomains = new Set(allListedDomains());
-      selectedDomains.delete(cb.value);
-    } else if (domainFilter === "selected") {
-      if (cb.checked) {
-        selectedDomains.add(cb.value);
-      } else {
-        selectedDomains.delete(cb.value);
+      if (Array.isArray(parsed)) {
+        // Cookie-Editor array
+        cookies = parsed;
+      } else if (parsed.cookies && Array.isArray(parsed.cookies)) {
+        // Native .tokenade format
+        cookies = parsed.cookies;
+        siteName = parsed.site_name || filename;
       }
+
+      importedParsedSession = parsed;
+      importSiteName.textContent = siteName;
+      importDetails.textContent = `${cookies.length} cookies · ready to inject`;
+      importPreviewCard.style.display = "block";
+      btnInjectSession.disabled = false;
+      showStatus(importStatusEl, "Session loaded! Ready to inject into browser.", "success");
+    } catch (e) {
+      showStatus(importStatusEl, `Parse error: file is not valid session JSON: ${e.message}`, "error");
     }
-    onOptionChange();
+  }
+
+  btnInjectSession.addEventListener("click", async () => {
+    try {
+      showStatus(importStatusEl, "Decrypting and preparing session...", "loading");
+
+      let session = importedParsedSession;
+      if (importedRawBytes && TokenadeWebCrypto.isEncrypted(importedRawBytes)) {
+        const password = importPasswordInput.value;
+        if (!password) {
+          showStatus(importStatusEl, "Please enter the decryption password", "error");
+          return;
+        }
+        const decryptedText = await TokenadeWebCrypto.decrypt(importedRawBytes, password);
+        session = JSON.parse(decryptedText);
+      }
+
+      if (!session) {
+        showStatus(importStatusEl, "No valid session to inject", "error");
+        return;
+      }
+
+      const cookies = Array.isArray(session) ? session : session.cookies || [];
+      const cleanInject = optCleanInject.checked;
+
+      showStatus(importStatusEl, `Injecting ${cookies.length} cookies into browser...`, "loading");
+
+      // Optional: Clear existing cookies for target domains
+      if (cleanInject && currentDomain) {
+        const existing = await fetchCookies();
+        for (const c of existing) {
+          try {
+            const protocol = c.secure ? "https:" : "http:";
+            const d = c.domain.startsWith(".") ? c.domain.slice(1) : c.domain;
+            await chrome.cookies.remove({ url: `${protocol}//${d}${c.path}`, name: c.name });
+          } catch (_) {}
+        }
+      }
+
+      // Inject cookies
+      let injected = 0;
+      for (const c of cookies) {
+        try {
+          const domain = c.domain || currentDomain;
+          const cleanDomain = domain.startsWith(".") ? domain.slice(1) : domain;
+          const protocol = c.secure ? "https:" : "http:";
+          const url = `${protocol}//${cleanDomain}${c.path || "/"}`;
+
+          const cookieDetails = {
+            url: url,
+            name: c.name,
+            value: c.value || "",
+            path: c.path || "/",
+            secure: Boolean(c.secure),
+            httpOnly: Boolean(c.httpOnly),
+          };
+
+          if (c.domain && !c.domain.startsWith("localhost") && !c.domain.startsWith("127.0.0.1")) {
+            cookieDetails.domain = c.domain;
+          }
+          if (c.sameSite) {
+            const ss = String(c.sameSite).toLowerCase();
+            if (ss.includes("lax")) cookieDetails.sameSite = "lax";
+            else if (ss.includes("strict")) cookieDetails.sameSite = "strict";
+            else if (ss.includes("no") || ss.includes("none")) {
+              cookieDetails.sameSite = "no_restriction";
+              cookieDetails.secure = true;
+            }
+          }
+          if (c.expirationDate && c.expirationDate > Date.now() / 1000) {
+            cookieDetails.expirationDate = Math.round(c.expirationDate);
+          }
+
+          await chrome.cookies.set(cookieDetails);
+          injected++;
+        } catch (err) {
+          console.warn("Cookie inject fail", c.name, err);
+        }
+      }
+
+      // Inject storage if present and current tab is active
+      const storage = session.storage || { local: session.local_storage || {}, session: session.session_storage || {} };
+      if (currentTab?.id && (storage.local || storage.session)) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: currentTab.id },
+            func: (stor) => {
+              try {
+                if (stor.local) {
+                  for (const [, map] of Object.entries(stor.local)) {
+                    if (map && typeof map === "object") {
+                      for (const [k, v] of Object.entries(map)) localStorage.setItem(k, v);
+                    }
+                  }
+                }
+                if (stor.session) {
+                  for (const [, map] of Object.entries(stor.session)) {
+                    if (map && typeof map === "object") {
+                      for (const [k, v] of Object.entries(map)) sessionStorage.setItem(k, v);
+                    }
+                  }
+                }
+              } catch (_) {}
+            },
+            args: [storage],
+          });
+        } catch (_) {}
+      }
+
+      showStatus(importStatusEl, `Injected ${injected}/${cookies.length} cookies successfully!`, "success");
+
+      if (optAutoReload.checked && currentTab?.id) {
+        setTimeout(() => {
+          chrome.tabs.reload(currentTab.id);
+          window.close();
+        }, 1000);
+      }
+    } catch (e) {
+      showStatus(importStatusEl, `Injection error: ${e.message}`, "error");
+    }
   });
 
-  pickerSelectAll.addEventListener("click", () => {
-    domainFilter = "all";
-    selectedDomains = new Set();
-    onOptionChange();
+  // ── Cookie Inspector Table ───────────────────────────────────────────────
+
+  function renderInspectTable() {
+    const query = (cookieSearchInput.value || "").trim().toLowerCase();
+    const filtered = activeCookiesList.filter(
+      (c) => !query || c.name.toLowerCase().includes(query) || (c.value && c.value.toLowerCase().includes(query))
+    );
+
+    cookieTableBody.innerHTML = "";
+    if (!filtered.length) {
+      cookieTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:var(--text-muted); padding:12px;">${
+        query ? "No cookies match search query" : "No cookies found for domain"
+      }</td></tr>`;
+      return;
+    }
+
+    const now = Date.now() / 1000;
+    for (const c of filtered) {
+      const tr = document.createElement("tr");
+      const isExpired = c.expirationDate && c.expirationDate < now;
+
+      const tdName = document.createElement("td");
+      tdName.style.fontWeight = "600";
+      tdName.textContent = c.name;
+      if (isExpired) tdName.style.color = "var(--error-text)";
+
+      const tdValue = document.createElement("td");
+      tdValue.textContent = c.value.length > 28 ? c.value.slice(0, 28) + "…" : c.value;
+      tdValue.title = "Click to copy value";
+      tdValue.style.cursor = "pointer";
+      tdValue.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(c.value);
+        tdValue.textContent = "Copied!";
+        setTimeout(() => (tdValue.textContent = c.value.length > 28 ? c.value.slice(0, 28) + "…" : c.value), 1000);
+      });
+
+      const tdFlags = document.createElement("td");
+      if (c.secure) tdFlags.innerHTML += '<span class="tag sec">SEC</span>';
+      if (c.httpOnly) tdFlags.innerHTML += '<span class="tag http">HTTP</span>';
+      if (c.sameSite) tdFlags.innerHTML += `<span class="tag">${c.sameSite}</span>`;
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdValue);
+      tr.appendChild(tdFlags);
+      cookieTableBody.appendChild(tr);
+    }
+  }
+
+  cookieSearchInput.addEventListener("input", renderInspectTable);
+  btnInspectRefresh.addEventListener("click", async () => {
+    await refreshSessionData();
+  });
+  btnInspectCopyAll.addEventListener("click", async () => {
+    const query = (cookieSearchInput.value || "").trim().toLowerCase();
+    const filtered = activeCookiesList.filter(
+      (c) => !query || c.name.toLowerCase().includes(query) || (c.value && c.value.toLowerCase().includes(query))
+    );
+    await navigator.clipboard.writeText(JSON.stringify(filtered, null, 2));
+    btnInspectCopyAll.textContent = "Copied!";
+    setTimeout(() => (btnInspectCopyAll.textContent = "Copy Filtered"), 1200);
   });
 
-  pickerSelectNone.addEventListener("click", () => {
-    domainFilter = "selected";
-    selectedDomains = new Set(allListedDomains());
-    onOptionChange();
+  // ── Proxy Bridge & Settings ──────────────────────────────────────────────
+
+  async function checkProxyBridge() {
+    const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
+    try {
+      const resp = await fetch(`${proxyUrl}/api/status`, { method: "GET", signal: AbortSignal.timeout(1500) });
+      if (resp.ok) {
+        bridgeStatusDot.className = "status-dot";
+        bridgeStatusText.textContent = "Proxy Online";
+        return;
+      }
+    } catch (_) {}
+    bridgeStatusDot.className = "status-dot offline";
+    bridgeStatusText.textContent = "Proxy Offline";
+  }
+
+  btnSendToProxy.addEventListener("click", async () => {
+    if (!extractedSession) return;
+    const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
+    showStatus(settingsStatusEl, `Sending session to ${proxyUrl}...`, "loading");
+    try {
+      const resp = await fetch(`${proxyUrl}/api/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(extractedSession),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        showStatus(settingsStatusEl, "Active session sent to Tokenade proxy successfully!", "success");
+      } else {
+        showStatus(settingsStatusEl, `Proxy returned error status: ${resp.status}`, "error");
+      }
+    } catch (e) {
+      showStatus(settingsStatusEl, `Could not connect to proxy at ${proxyUrl}: ${e.message}`, "error");
+    }
   });
+
+  // ── Initialize ───────────────────────────────────────────────────────────
+
+  await loadPreferences();
+  const ok = await initTab();
+  if (ok) {
+    await refreshSessionData();
+  }
+  checkProxyBridge();
 });
