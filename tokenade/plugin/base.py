@@ -819,3 +819,30 @@ class NotificationPlugin(PluginBase):
     def get_supported_events(self) -> List[str]:
         """Return list of supported event types."""
         return None
+
+
+PLUGIN_TYPE_BASE_CLASSES: Dict[str, tuple] = {
+    "handler": (SiteHandlerPlugin,),
+    "export_format": (ExportFormatPlugin,),
+    "validator": (SessionValidatorPlugin,),
+    "session_refresh": (SessionRefreshPlugin,),
+    "stealth": (StealthPlugin,),
+    "proxy": (ProxyProviderPlugin,),
+    "notification": (NotificationPlugin,),
+    "captcha": (CaptchaPlugin,),
+    "challenge_detector": (ChallengeDetectorPlugin,),
+    "challenge_solver": (ChallengeSolverPlugin,),
+}
+
+PLUGIN_TYPE_REQUIRED_METHODS: Dict[str, List[str]] = {
+    "handler": ["can_handle", "extract_session", "inject_session"],
+    "export_format": ["get_format_name", "export"],
+    "validator": ["validate"],
+    "session_refresh": ["can_refresh", "refresh"],
+    "stealth": ["get_patches"],
+    "proxy": ["get_proxy"],
+    "notification": ["send", "get_supported_events"],
+    "captcha": ["get_supported_types", "solve"],
+    "challenge_detector": ["detect_challenge"],
+    "challenge_solver": ["can_solve", "solve"],
+}

@@ -379,36 +379,20 @@ class PluginLoader:
             entry_class = getattr(module, entry_class_name, None)
         else:
             # Auto-discover: look for class that subclasses the target type
-            type_class_map = {
-                "handler": ("SiteHandlerPlugin",),
-                "export_format": ("ExportFormatPlugin",),
-                "validator": ("SessionValidatorPlugin",),
-                "session_refresh": ("SessionRefreshPlugin",),
-                "stealth": ("StealthPlugin",),
-                "proxy": ("ProxyProviderPlugin",),
-                "notification": ("NotificationPlugin",),
-                "captcha": ("CaptchaPlugin",),
-                "challenge_detector": ("ChallengeDetectorPlugin",),
-                "challenge_solver": ("ChallengeSolverPlugin",),
-            }
-            target_names = type_class_map.get(plugin_type, ())
-            if target_names:
-                from tokenade.plugin import base as _base
-                for target_name in target_names:
-                    target_cls = getattr(_base, target_name, None)
-                    if not target_cls:
-                        continue
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        if (
-                            isinstance(attr, type)
-                            and issubclass(attr, target_cls)
-                            and attr is not target_cls
-                        ):
-                            entry_class = attr
-                            break
-                    if entry_class:
+            from tokenade.plugin.base import PLUGIN_TYPE_BASE_CLASSES
+            target_classes = PLUGIN_TYPE_BASE_CLASSES.get(plugin_type, ())
+            for target_cls in target_classes:
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, target_cls)
+                        and attr is not target_cls
+                    ):
+                        entry_class = attr
                         break
+                if entry_class:
+                    break
 
         if not entry_class:
             logger.error(f"Plugin {name}: no entry class found")

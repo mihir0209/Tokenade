@@ -210,25 +210,8 @@ class PluginTestRunner:
                     return PluginTestResult(test_name="plugin_instantiable", passed=True)
 
             # Auto-discover
-            from tokenade.plugin.base import (
-                PluginBase, SessionRefreshPlugin, SiteHandlerPlugin,
-                ExportFormatPlugin, SessionValidatorPlugin,
-                StealthPlugin, ProxyProviderPlugin,
-                CaptchaPlugin, NotificationPlugin,
-            )
-            type_bases = {
-                "handler": SiteHandlerPlugin,
-                "export_format": ExportFormatPlugin,
-                "validator": SessionValidatorPlugin,
-                "session_refresh": SessionRefreshPlugin,
-                "stealth": StealthPlugin,
-                "proxy": ProxyProviderPlugin,
-                "notification": NotificationPlugin,
-                "captcha": CaptchaPlugin,
-            }
-            bases = type_bases.get(meta["type"], PluginBase)
-            if not isinstance(bases, tuple):
-                bases = (bases,)
+            from tokenade.plugin.base import PluginBase, PLUGIN_TYPE_BASE_CLASSES
+            bases = PLUGIN_TYPE_BASE_CLASSES.get(meta.get("type", ""), (PluginBase,))
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
                 if not isinstance(attr, type):
@@ -355,24 +338,9 @@ class PluginTestRunner:
             spec.loader.exec_module(module)
 
             from tokenade.plugin.base import (
-                CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
-                ExportFormatPlugin, NotificationPlugin, PluginBase,
-                ProxyProviderPlugin, SessionRefreshPlugin,
-                SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
+                PluginBase, PLUGIN_TYPE_BASE_CLASSES, PLUGIN_TYPE_REQUIRED_METHODS,
             )
-            type_methods = {
-                "handler": ["can_handle", "extract_session", "inject_session"],
-                "export_format": ["get_format_name", "export"],
-                "validator": ["validate"],
-                "session_refresh": ["can_refresh", "refresh"],
-                "stealth": ["get_patches"],
-                "proxy": ["get_proxy"],
-                "notification": ["send", "get_supported_events"],
-                "captcha": ["get_supported_types", "solve"],
-                "challenge_detector": ["detect_challenge"],
-                "challenge_solver": ["can_solve", "solve"],
-            }
-            required = type_methods.get(meta["type"], [])
+            required = PLUGIN_TYPE_REQUIRED_METHODS.get(meta.get("type", ""), [])
             if not required:
                 return PluginTestResult(test_name="type_methods", passed=True)
 
@@ -384,19 +352,7 @@ class PluginTestRunner:
                 if cls:
                     instance = cls()
             else:
-                type_bases = {
-                    "handler": SiteHandlerPlugin,
-                    "export_format": ExportFormatPlugin,
-                    "validator": SessionValidatorPlugin,
-                    "session_refresh": SessionRefreshPlugin,
-                    "stealth": StealthPlugin,
-                    "proxy": ProxyProviderPlugin,
-                    "notification": NotificationPlugin,
-                    "captcha": CaptchaPlugin,
-                }
-                bases = type_bases.get(meta["type"], PluginBase)
-                if not isinstance(bases, tuple):
-                    bases = (bases,)
+                bases = PLUGIN_TYPE_BASE_CLASSES.get(meta.get("type", ""), (PluginBase,))
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if not isinstance(attr, type):
@@ -459,24 +415,8 @@ class PluginTestRunner:
                     message=f"Class {entry_class_name} not found",
                 )
 
-            from tokenade.plugin.base import (
-                CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
-                ExportFormatPlugin, NotificationPlugin, PluginBase,
-                ProxyProviderPlugin, SessionRefreshPlugin,
-                SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
-            )
-            expected = {
-                "handler": (SiteHandlerPlugin,),
-                "export_format": (ExportFormatPlugin,),
-                "validator": (SessionValidatorPlugin,),
-                "session_refresh": (SessionRefreshPlugin,),
-                "stealth": (StealthPlugin,),
-                "proxy": (ProxyProviderPlugin,),
-                "notification": (NotificationPlugin,),
-                "captcha": (CaptchaPlugin,),
-                "challenge_detector": (ChallengeDetectorPlugin,),
-                "challenge_solver": (ChallengeSolverPlugin,),
-            }.get(meta.get("type", ""), ())
+            from tokenade.plugin.base import PLUGIN_TYPE_BASE_CLASSES
+            expected = PLUGIN_TYPE_BASE_CLASSES.get(meta.get("type", ""), ())
 
             if not expected:
                 return PluginTestResult(
