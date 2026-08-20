@@ -172,6 +172,36 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-19 — 1.3.0
+
+- Released Tokenade `v1.3.0` on PyPI (sdist + wheel) and tagged `v1.3.0` across canonical GitHub (`origin`), Codeberg (`codeberg`), and CI (`duplicate`) remotes.
+- Anti-Bot Challenge Subsystem:
+  - `ChallengeDetectorPlugin` base with built-in Cloudflare, Akamai, and DataDome detectors.
+  - `ChallengeSolverPlugin` base, `CloakBrowserAutoSolver` (stealth automated solve), and external fallback plugins (`TwoCaptchaSolverPlugin`, `CapSolverSolverPlugin`).
+  - Multi-tier `ChallengeSolver` orchestrator for multi-tier solving (stealth-first with external fallback and post-solve verification).
+  - `ChallengeGuard` for transparent navigation wrapping with automatic detect-solve-retry mitigation loops.
+  - Automatic challenge mitigation wired into `PlaywrightBrowserManager.navigate()` and `OAuthAutomationPlugin`.
+  - `SolvedSessionCapturer` to persist solved challenge artifacts into reusable `.tokenade` session files with clearance cookie filtering and unencrypted warnings.
+  - Fixed external solver env-var key resolution (`TWOCAPTCHA_API_KEY`, `CAPSOLVER_API_KEY`) and per-solver exception containment.
+- OAuth Automation & Extension Bundler:
+  - `tokenade oauth automate` CLI for third-party authentication using donor provider sessions (Google/GitHub).
+  - `tokenade extension bundle` CLI to package Chrome Web Store (`.zip`) and Firefox AMO (`.xpi`) distribution bundles.
+- Security & Secret Redaction:
+  - Full redaction of sensitive credentials (`api_key`, `password`, `token`, `secret`, `encryption_password`, `supabase_anon_key`) across human-readable and `--json` CLI outputs.
+  - Path traversal validation on plugin git installation via `SecurityValidator.sanitize_plugin_path`.
+- Shell Completions & Plugin Polish:
+  - Dynamic `tokenade completion` generation for `bash`, `zsh`, and `fish` synchronized with all visible CLI commands.
+  - Dependency-aware cycle-safe plugin loading (`load_all` and `load_by_name`).
+  - `tokenade plugin deps` annotated dependency tree and `--json` machine-readable mode.
+  - `tokenade plugin info` surfacing API versions, entry classes, categories, and runnable execution hints.
+- Marketplace (`tokenade-plugins`):
+  - 23 plugins across handlers, solvers, detectors, refreshers, notifications, and export formats.
+  - Added `challenge-detectors`, `twocaptcha-solver`, `capsolver-solver`, `protected-portal-handler`, and `nowsecure-handler` plugins.
+  - `generic-handler` twitter/X site catalog (`twitter.json`) and improved scoring logic.
+  - Offline mock captcha API (`tokenade-plugins/tests/mock_captcha_server.py`) for free solver-path integration testing.
+  - Fixed `solve_direct` run method dispatch, sanitized `page.evaluate` calls, and added CI pytest suite.
+- Clean wheel smoke test passed (`tokenade==1.3.0` in isolated venv); all test suites across core and marketplace passing.
+
 ### 2026-08-18 — 1.2.4
 
 - Added `twitter.json` site definition (auth_token, ct0, twid, kdt + critical storage) to generic-handler; refined `validate()` scoring for partial critical sets and expired-cookie penalties.
