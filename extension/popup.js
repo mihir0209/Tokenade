@@ -10,16 +10,69 @@
  */
 
 const KNOWN_SITES = {
-  "google.com": { name: "Google", badge: "GOOGLE", critical: ["SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-3PSID"] },
-  "mail.google.com": { name: "Gmail", badge: "GMAIL", critical: ["SID", "HSID", "SSID", "__Secure-3PSID"] },
-  "discord.com": { name: "Discord", badge: "DISCORD", critical: ["__dcfduid", "__sdcfduid"], storage: ["token"] },
-  "telegram.org": { name: "Telegram", badge: "TELEGRAM", critical: ["stel_ssid"], storage: ["user_auth"] },
-  "web.telegram.org": { name: "Telegram Web", badge: "TELEGRAM", critical: ["stel_ssid"], storage: ["user_auth"] },
-  "twitter.com": { name: "Twitter / X", badge: "X / TWITTER", critical: ["auth_token", "ct0", "twid", "kdt"] },
-  "x.com": { name: "Twitter / X", badge: "X / TWITTER", critical: ["auth_token", "ct0", "twid", "kdt"] },
-  "github.com": { name: "GitHub", badge: "GITHUB", critical: ["user_session", "__Host-user_session_same_site", "dotcom_user"] },
-  "openai.com": { name: "OpenAI / ChatGPT", badge: "CHATGPT", critical: ["__Secure-next-auth.session-token", "cf_clearance"] },
-  "chatgpt.com": { name: "OpenAI / ChatGPT", badge: "CHATGPT", critical: ["__Secure-next-auth.session-token", "cf_clearance"] },
+  "google.com": {
+    name: "Google",
+    badge: "GOOGLE",
+    critical: ["SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-3PSID"],
+    storage_origins: ["https://accounts.google.com", "https://myaccount.google.com", "https://mail.google.com", "https://google.com"],
+  },
+  "mail.google.com": {
+    name: "Gmail",
+    badge: "GMAIL",
+    critical: ["SID", "HSID", "SSID", "__Secure-3PSID"],
+    storage_origins: ["https://mail.google.com", "https://accounts.google.com"],
+  },
+  "discord.com": {
+    name: "Discord",
+    badge: "DISCORD",
+    critical: ["__dcfduid", "__sdcfduid"],
+    storage: ["token"],
+    storage_origins: ["https://discord.com", "https://discordapp.com"],
+  },
+  "telegram.org": {
+    name: "Telegram",
+    badge: "TELEGRAM",
+    critical: ["stel_ssid"],
+    storage: ["user_auth"],
+    storage_origins: ["https://web.telegram.org", "https://telegram.org"],
+  },
+  "web.telegram.org": {
+    name: "Telegram Web",
+    badge: "TELEGRAM",
+    critical: ["stel_ssid"],
+    storage: ["user_auth"],
+    storage_origins: ["https://web.telegram.org", "https://telegram.org"],
+  },
+  "twitter.com": {
+    name: "Twitter / X",
+    badge: "X / TWITTER",
+    critical: ["auth_token", "ct0", "twid", "kdt"],
+    storage_origins: ["https://x.com", "https://twitter.com"],
+  },
+  "x.com": {
+    name: "Twitter / X",
+    badge: "X / TWITTER",
+    critical: ["auth_token", "ct0", "twid", "kdt"],
+    storage_origins: ["https://x.com", "https://twitter.com"],
+  },
+  "github.com": {
+    name: "GitHub",
+    badge: "GITHUB",
+    critical: ["user_session", "__Host-user_session_same_site", "dotcom_user"],
+    storage_origins: ["https://github.com"],
+  },
+  "openai.com": {
+    name: "OpenAI / ChatGPT",
+    badge: "CHATGPT",
+    critical: ["__Secure-next-auth.session-token", "cf_clearance"],
+    storage_origins: ["https://chatgpt.com", "https://openai.com"],
+  },
+  "chatgpt.com": {
+    name: "OpenAI / ChatGPT",
+    badge: "CHATGPT",
+    critical: ["__Secure-next-auth.session-token", "cf_clearance"],
+    storage_origins: ["https://chatgpt.com", "https://openai.com"],
+  },
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -179,6 +232,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           break;
         }
       }
+      activeMatchedSite = matched;
       if (matched) {
         siteBadgeEl.textContent = matched.badge;
         siteBadgeEl.className = "site-badge known";
@@ -232,12 +286,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  async function fetchLocalStorage() {
-    if (!optLocalStorage.checked || !currentTab?.id) return {};
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        func: () => {
+  let activeMatchedSite = null;
+
+  async function fetchMultiOriginStorage(storageType = "localStorage") {
+    const isLocal = storageType === "localStorage";
+    const isEnabled = isLocal ? optLocalStorage.checked : optSessionStorage.checked;
+    if (!isEnabled || !currentTab?.id) return {};
+
+    const storageByOrigin = {};
+    const primaryOrigin = currentTab?.url ? new URL(currentTab.url).origin : `https://${currentDomain}`;
+
+    const scrapeScript = isLocal
+      ? () => {
           const out = {};
           try {
             for (let i = 0; i < localStorage.length; i++) {
@@ -246,20 +306,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
           } catch (_) {}
           return out;
-        },
-      });
-      return results?.[0]?.result || {};
-    } catch (_) {
-      return {};
-    }
-  }
-
-  async function fetchSessionStorage() {
-    if (!optSessionStorage.checked || !currentTab?.id) return {};
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        func: () => {
+        }
+      : () => {
           const out = {};
           try {
             for (let i = 0; i < sessionStorage.length; i++) {
@@ -268,12 +316,45 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
           } catch (_) {}
           return out;
-        },
+        };
+
+    // 1. Scrape active tab
+    try {
+      const activeRes = await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        func: scrapeScript,
       });
-      return results?.[0]?.result || {};
-    } catch (_) {
-      return {};
+      const activeData = activeRes?.[0]?.result || {};
+      if (Object.keys(activeData).length > 0) {
+        storageByOrigin[primaryOrigin] = activeData;
+      }
+    } catch (_) {}
+
+    // 2. Scrape matching open tabs for declared secondary origins (e.g. web.telegram.org vs telegram.org)
+    if (activeMatchedSite?.storage_origins?.length) {
+      for (const originUrl of activeMatchedSite.storage_origins) {
+        if (originUrl === primaryOrigin) continue;
+        try {
+          const matchingTabs = await chrome.tabs.query({ url: `${originUrl}/*` });
+          for (const sTab of matchingTabs) {
+            if (!sTab.id || sTab.id === currentTab.id) continue;
+            try {
+              const secRes = await chrome.scripting.executeScript({
+                target: { tabId: sTab.id },
+                func: scrapeScript,
+              });
+              const secData = secRes?.[0]?.result || {};
+              if (Object.keys(secData).length > 0) {
+                storageByOrigin[originUrl] = secData;
+                break; // One successful scrape per origin is sufficient
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
     }
+
+    return storageByOrigin;
   }
 
   async function refreshSessionData() {
@@ -282,24 +363,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const cookies = await fetchCookies();
       activeCookiesList = cookies;
-      const local = await fetchLocalStorage();
-      const session = await fetchSessionStorage();
+      const localStorageMap = await fetchMultiOriginStorage("localStorage");
+      const sessionStorageMap = await fetchMultiOriginStorage("sessionStorage");
 
       const now = Date.now() / 1000;
       const expired = cookies.filter((c) => c.expirationDate && c.expirationDate < now).length;
       const valid = cookies.length - expired;
       const health = cookies.length ? Math.round((valid / cookies.length) * 100) : 0;
-      const storageCount = Object.keys(local).length + Object.keys(session).length;
+
+      let totalStorageKeys = 0;
+      for (const map of Object.values(localStorageMap)) totalStorageKeys += Object.keys(map).length;
+      for (const map of Object.values(sessionStorageMap)) totalStorageKeys += Object.keys(map).length;
 
       statCookiesCount.textContent = String(cookies.length);
       statExpiredCount.textContent = String(expired);
       statHealthScore.textContent = `${health}%`;
-      statStorageCount.textContent = String(storageCount);
+      statStorageCount.textContent = String(totalStorageKeys);
 
-      activeSummaryEl.textContent = `${cookies.length} cookies · ${storageCount} storage keys (${health}% health)`;
+      activeSummaryEl.textContent = `${cookies.length} cookies · ${totalStorageKeys} storage keys across ${
+        new Set([...Object.keys(localStorageMap), ...Object.keys(sessionStorageMap)]).size || 1
+      } origin(s)`;
 
       // Package native .tokenade format
-      const originKey = currentTab?.url ? new URL(currentTab.url).origin : `https://${currentDomain}`;
       extractedSession = {
         version: "3.0.0",
         site_name: currentDomain,
@@ -315,16 +400,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           sameSite: c.sameSite || "Lax",
           expirationDate: c.expirationDate || null,
         })),
-        local_storage: { [originKey]: local },
-        session_storage: { [originKey]: session },
+        local_storage: localStorageMap,
+        session_storage: sessionStorageMap,
         storage: {
-          local: { [originKey]: local },
-          session: { [originKey]: session },
+          local: localStorageMap,
+          session: sessionStorageMap,
         },
         metadata: {
           exported_by: "tokenade-extension-v1.4",
           health_score: health / 100,
           cookie_count: cookies.length,
+          storage_origins: Array.from(new Set([...Object.keys(localStorageMap), ...Object.keys(sessionStorageMap)])),
           target_origin: currentDomain,
         },
       };
