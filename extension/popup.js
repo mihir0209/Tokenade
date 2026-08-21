@@ -721,6 +721,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // ── Programmatic & Test Bridge ──────────────────────────────────────────
+
+  window.TokenadePopup = {
+    handleImportFile,
+    parseAndPreviewSession,
+    loadEncryptedBytes: (bytes, filename = "encrypted.tokenade") => {
+      importedRawBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      importPassGroup.style.display = "block";
+      importTypeBadge.textContent = "ENCRYPTED";
+      importTypeBadge.className = "site-badge known";
+      importSiteName.textContent = filename;
+      importDetails.textContent = "Encrypted Tokenade v2 format — enter password to decrypt";
+      importPreviewCard.style.display = "block";
+      btnInjectSession.disabled = false;
+    },
+    refreshSessionData,
+    getExtractedSession: () => extractedSession,
+    getActiveCookies: () => activeCookiesList,
+  };
+
   // ── Initialize ───────────────────────────────────────────────────────────
 
   await loadPreferences();
