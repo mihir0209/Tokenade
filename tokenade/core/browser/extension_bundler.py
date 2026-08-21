@@ -28,6 +28,7 @@ REQUIRED_EXTENSION_FILES = [
     "content-main.js",
     "popup.html",
     "popup.js",
+    "crypto.js",
 ]
 
 # Patterns or filenames to exclude from extension zip/xpi bundles

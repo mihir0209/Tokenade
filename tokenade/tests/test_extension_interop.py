@@ -104,3 +104,79 @@ def test_extension_v3_payload_schema():
 
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+def test_extension_webcrypto_encrypted_payload_interop():
+    """Verify that WebCrypto AES-256-GCM binary encrypted exports can be decrypted by TokenadeEncryptor."""
+    import subprocess
+    import shutil
+    from tokenade.core.crypto.encryptor import TokenadeEncryptor
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+
+    secret = "interop-test-secret-456!"
+    js_code = f"""
+    const {{ TokenadeWebCrypto }} = require('./extension/crypto.js');
+    (async () => {{
+        const session = {{
+            version: "3.0.0",
+            site_name: "encrypted-site.com",
+            cookies: [{{ name: "auth_token", value: "secret_tok_99", domain: ".encrypted-site.com", path: "/" }}],
+            storage: {{ local: {{ "https://encrypted-site.com": {{ user_id: "u_100" }} }} }}
+        }};
+        const bytes = await TokenadeWebCrypto.encrypt(JSON.stringify(session), "{secret}");
+        process.stdout.write(Buffer.from(bytes));
+    }})();
+    """
+
+    res = subprocess.run([node, "-e", js_code], capture_output=True, check=True)
+    encrypted_bytes = res.stdout
+
+    # Decrypt via core TokenadeEncryptor
+    encryptor = TokenadeEncryptor()
+    decrypted_raw = encryptor.decrypt(encrypted_bytes, secret)
+    session = json.loads(decrypted_raw.decode("utf-8"))
+
+    assert session["site_name"] == "encrypted-site.com"
+    assert session["cookies"][0]["name"] == "auth_token"
+    assert session["cookies"][0]["value"] == "secret_tok_99"
+    assert session["storage"]["local"]["https://encrypted-site.com"]["user_id"] == "u_100"
+
+
+def test_extension_bundle_packages_all_v14_assets(tmp_path):
+    """Verify that ExtensionBundler builds valid Chrome .zip and Firefox .xpi with all v1.4 assets."""
+    import zipfile
+    from tokenade.core.browser.extension_bundler import ExtensionBundler
+
+    out_dir = tmp_path / "bundles"
+    out_dir.mkdir(parents=True)
+    chrome_zip_path = out_dir / "chrome.zip"
+    firefox_xpi_path = out_dir / "firefox.xpi"
+
+    bundler = ExtensionBundler(source_dir=Path("extension"))
+    valid, errors = bundler.validate_source()
+    assert valid is True, f"Validation errors: {errors}"
+
+    chrome_zip = bundler.build_chrome_zip(chrome_zip_path)
+    firefox_xpi = bundler.build_firefox_xpi(firefox_xpi_path)
+
+    assert chrome_zip.exists()
+    assert firefox_xpi.exists()
+
+    with zipfile.ZipFile(chrome_zip) as z:
+        names = set(z.namelist())
+        assert "manifest.json" in names
+        assert "crypto.js" in names
+        assert "popup.html" in names
+        assert "popup.js" in names
+        assert "background.js" in names
+        assert "content.js" in names
+
+    with zipfile.ZipFile(firefox_xpi) as z:
+        names = set(z.namelist())
+        assert "manifest.json" in names
+        assert "crypto.js" in names
+        assert "popup.html" in names
+        assert "popup.js" in names
