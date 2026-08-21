@@ -4,6 +4,23 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-08-21
+
+### Added
+- **Browser Extension Overhaul (v1.4)**:
+  - **520px Sidebar Workspace UI**: Re-engineered popup with 4 dedicated navigation tabs: **Export (📤)**, **Inject (📥)**, **Inspect (🔍)**, and **Settings (⚙️)**.
+  - **Bidirectional Session Injection**: Direct import and injection of `.tokenade`, Cookie-Editor JSON, and Netscape cookie files into active browser tabs with optional clean domain clearing and auto-reload.
+  - **Native WebCrypto AES-256-GCM Encryption**: PBKDF2-HMAC-SHA256 (600,000 iterations) and AES-256-GCM encryption/decryption matching Python `TokenadeEncryptor` binary specification (password export & password-prompt import).
+  - **Live Cookie Inspector**: Searchable and filterable cookie table for the active domain with security tags (`SEC`, `HTTP`, `SameSite`), expiration indicators, and clipboard export.
+  - **Multi-Origin Web Storage Scraping**: Gathers `localStorage` and `sessionStorage` across declared site handler domains (Google, Discord, Telegram Web, X/Twitter, GitHub, ChatGPT).
+  - **Proxy Gateway Bridge**: `SEND_TO_PROXY` bridge integration to push active browser sessions directly to local Tokenade Proxy Gateway (`http://127.0.0.1:9222`).
+  - **WCAG AA Compliance & Theming**: Polished Dark and Light themes with WCAG AA compliant contrast ratios (>= 4.5:1) and custom styled scrollbars.
+  - **Autonomous Visual Testing Harness**: Pixel-level screenshot validator (`scripts/inspect_screenshot_pixels.py`), automated layout & contrast validator (`scripts/validate_extension_ui.py`), and real-session E2E validation (`scripts/verify_extension_real_sessions.py`).
+- **Plugin Architecture Refactor (CR-10)**:
+  - Consolidated redundant plugin type mapping dicts into canonical `PLUGIN_TYPE_BASE_CLASSES` and `PLUGIN_TYPE_REQUIRED_METHODS` in `tokenade/plugin/base.py`.
+
+---
+
 ## [1.3.0] - 2026-08-19
 
 ### Added

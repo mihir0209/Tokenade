@@ -172,6 +172,19 @@ tokenade load --file discord.tokenade
 
 Add dated entries here as hardening steps complete.
 
+### 2026-08-21 — 1.4.0
+
+- Overhauled the Tokenade browser extension (`extension/`) to full feature and UI/UX parity with CLI methods:
+  - 520px wide sidebar workspace with 4 navigation tabs: Export, Inject, Inspect, Settings.
+  - Bidirectional session flow: native `.tokenade` injection into live browser tabs with optional clean domain cookie clearing and auto-reload.
+  - Built-in WebCrypto AES-256-GCM encryption/decryption module (`extension/crypto.js`) with 100% binary format parity with Python `TokenadeEncryptor`.
+  - Live Cookie Inspector with search filtering, security tags (`SEC`, `HTTP`, `SameSite`), and single-click copy.
+  - Multi-origin web storage scraping across declared site handler domains (Google, Discord, Telegram Web, X/Twitter, GitHub, ChatGPT).
+  - Proxy Gateway bridge integration (`SEND_TO_PROXY`) with live proxy online/offline health probe.
+  - Automated visual testing harness: `scripts/inspect_screenshot_pixels.py` (pixel inspection of 10 PNG states), `scripts/validate_extension_ui.py` (16/16 DOM & WCAG AA contrast rules passed), and `scripts/verify_extension_real_sessions.py` (11/11 real session injection & decryption checks passed).
+  - Consolidated plugin type mapping dicts into canonical constants in `tokenade/plugin/base.py` (CR-10).
+- Clean wheel smoke test and all test suites passing.
+
 ### 2026-08-19 — 1.3.0
 
 - Released Tokenade `v1.3.0` on PyPI (sdist + wheel) and tagged `v1.3.0` across canonical GitHub (`origin`), Codeberg (`codeberg`), and CI (`duplicate`) remotes.
