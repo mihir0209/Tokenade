@@ -121,7 +121,7 @@ def main() -> int:
 
                 # Open popup
                 popup = context.new_page()
-                popup.set_viewport_size({"width": 520, "height": 480})
+                popup.set_viewport_size({"width": 600, "height": 560})
                 popup.goto(f"chrome-extension://{ext_id}/popup.html", wait_until="domcontentloaded")
 
                 # Bring site tab to front so active tab discovery works

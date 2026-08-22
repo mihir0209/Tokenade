@@ -82,6 +82,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const siteBadgeEl = document.getElementById("site-badge");
   const bridgeStatusDot = document.getElementById("bridge-status-dot");
   const bridgeStatusText = document.getElementById("bridge-status-text");
+  const btnPopoutWindow = document.getElementById("btn-popout-window");
+  const btnClosePopup = document.getElementById("btn-close-popup");
 
   // Export elements
   const statCookiesCount = document.getElementById("stat-cookies-count");
@@ -516,7 +518,59 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // ── Header Actions (Pop-out Window & Close) ──────────────────────────────
+
+  if (btnPopoutWindow) {
+    btnPopoutWindow.addEventListener("click", () => {
+      if (chrome.windows?.create) {
+        chrome.windows.create({
+          url: chrome.runtime.getURL("popup.html"),
+          type: "popup",
+          width: 620,
+          height: 600,
+          focused: true,
+        });
+      } else {
+        chrome.tabs.create({ url: chrome.runtime.getURL("popup.html") });
+      }
+    });
+  }
+
+  if (btnClosePopup) {
+    btnClosePopup.addEventListener("click", () => window.close());
+  }
+
   // ── Import & Injection Flow ──────────────────────────────────────────────
+
+  const togglePasteInput = document.getElementById("toggle-paste-input");
+  const pasteGroup = document.getElementById("paste-group");
+  const pasteTextarea = document.getElementById("paste-textarea");
+
+  if (togglePasteInput && pasteGroup && pasteTextarea) {
+    togglePasteInput.addEventListener("click", () => {
+      const isVisible = pasteGroup.style.display !== "none";
+      pasteGroup.style.display = isVisible ? "none" : "block";
+      togglePasteInput.textContent = isVisible
+        ? "Or paste raw session JSON / text payload"
+        : "Hide raw text input";
+    });
+
+    pasteTextarea.addEventListener("input", () => {
+      const text = pasteTextarea.value.trim();
+      if (text && (text.startsWith("{") || text.startsWith("["))) {
+        parseAndPreviewSession(text, "pasted-session.tokenade");
+      }
+    });
+  }
+
+  window.addEventListener("paste", (e) => {
+    if (document.getElementById("tab-import")?.classList.contains("active")) {
+      const text = e.clipboardData?.getData("text");
+      if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+        parseAndPreviewSession(text.trim(), "clipboard-session.tokenade");
+      }
+    }
+  });
 
   importDropzone.addEventListener("click", () => importFileInput.click());
   importDropzone.addEventListener("dragover", (e) => {

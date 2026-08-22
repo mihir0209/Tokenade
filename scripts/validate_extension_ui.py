@@ -100,7 +100,7 @@ def run_ui_validation() -> dict:
                     return results
 
                 popup = context.new_page()
-                popup.set_viewport_size({"width": 520, "height": 480})
+                popup.set_viewport_size({"width": 600, "height": 560})
                 popup.goto(f"chrome-extension://{ext_id}/popup.html", wait_until="domcontentloaded")
 
                 # Bring site to front and reload popup
@@ -114,10 +114,13 @@ def run_ui_validation() -> dict:
                 sidebar_box = popup.evaluate("() => { const s = document.querySelector('.sidebar').getBoundingClientRect(); return { width: s.width, height: s.height }; }")
                 workspace_box = popup.evaluate("() => { const w = document.querySelector('.workspace').getBoundingClientRect(); return { width: w.width, height: w.height, scrollWidth: document.querySelector('.workspace').scrollWidth }; }")
 
-                check("Body width is 520px", abs(body_box["width"] - 520) < 2, f"actual={body_box['width']}px")
+                check("Body width is 600px", abs(body_box["width"] - 600) < 2, f"actual={body_box['width']}px")
                 check("Body has no horizontal overflow", body_box["scrollWidth"] <= body_box["width"], f"scrollWidth={body_box['scrollWidth']} vs width={body_box['width']}")
-                check("Sidebar width is ~140px", 130 <= sidebar_box["width"] <= 150, f"actual={sidebar_box['width']}px")
-                check("Workspace width is ~380px", 360 <= workspace_box["width"] <= 390, f"actual={workspace_box['width']}px")
+                check("Sidebar width is ~145px", 135 <= sidebar_box["width"] <= 155, f"actual={sidebar_box['width']}px")
+                check("Workspace width is ~455px", 440 <= workspace_box["width"] <= 470, f"actual={workspace_box['width']}px")
+
+                check("Pop-out window button exists", popup.is_visible("#btn-popout-window"))
+                check("Close popup button exists", popup.is_visible("#btn-close-popup"))
 
                 print("\n=== 2. Color Contrast (Dark Theme) ===")
                 dark_colors = popup.evaluate("""() => {

@@ -25,13 +25,13 @@ def analyze_screenshot(png_path: Path) -> dict:
     width, height = im.size
     
     # 1. Dimensions
-    dim_ok = (width == 520 and height == 480)
+    dim_ok = (width == 600 and height == 560)
     
     # 2. Regional Slices
-    sidebar = im.crop((0, 0, 140, height))
-    header = im.crop((140, 0, width, 70))
-    main_content = im.crop((140, 70, width, height - 50))
-    footer_btn_area = im.crop((140, height - 55, width, height))
+    sidebar = im.crop((0, 0, 145, height))
+    header = im.crop((145, 0, width, 80))
+    main_content = im.crop((145, 80, width, height - 60))
+    footer_btn_area = im.crop((145, height - 60, width, height))
     
     # Brightness / Mean colors
     stat_full = ImageStat.Stat(im)
