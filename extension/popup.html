@@ -500,11 +500,23 @@
         </span>
         <span>Inject</span>
       </div>
+      <div class="nav-item" data-tab="tab-vault" id="nav-vault">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </span>
+        <span>Vault</span>
+      </div>
       <div class="nav-item" data-tab="tab-inspect" id="nav-inspect">
         <span class="icon">
           <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </span>
         <span>Inspect</span>
+      </div>
+      <div class="nav-item" data-tab="tab-health" id="nav-health">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </span>
+        <span>Health</span>
       </div>
       <div class="nav-item" data-tab="tab-settings" id="nav-settings">
         <span class="icon">
@@ -659,7 +671,34 @@
       </div>
     </section>
 
-    <!-- TAB 3: INSPECT -->
+    <!-- TAB 3: VAULT / LIBRARY -->
+    <section class="view-tab" id="tab-vault">
+      <div class="search-row">
+        <input type="text" class="form-control" id="vault-search" placeholder="Search stored sessions...">
+      </div>
+
+      <div class="table-container" id="vault-list-container" style="max-height: 270px;">
+        <div id="vault-sessions-list" style="padding: 6px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="text-align: center; color: var(--text-muted); padding: 16px; font-size: 11px;">
+            Connecting to local Tokenade Proxy Gateway...
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-store-active-to-vault">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <span>Store Active Session</span>
+        </button>
+        <button class="btn btn-secondary" id="btn-refresh-vault">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+      <div class="status-msg" id="vault-status"></div>
+    </section>
+
+    <!-- TAB 4: INSPECT -->
     <section class="view-tab" id="tab-inspect">
       <div class="search-row">
         <input type="text" class="form-control" id="cookie-search" placeholder="Search cookies by name or value...">
@@ -692,7 +731,40 @@
       </div>
     </section>
 
-    <!-- TAB 4: SETTINGS -->
+    <!-- TAB 5: HEALTH DIAGNOSTICS -->
+    <section class="view-tab" id="tab-health">
+      <div class="site-card" style="margin-bottom: 10px;">
+        <div class="site-meta">
+          <div class="site-domain" id="health-site-name">Active Session Health</div>
+          <div class="site-sub" id="health-auth-verdict">Evaluating auth and critical cookies...</div>
+        </div>
+        <span class="site-badge known" id="health-grade-badge">100%</span>
+      </div>
+
+      <div class="form-label" style="margin-top: 4px; margin-bottom: 6px;">Critical Authentication Cookies</div>
+      <div class="table-container" style="max-height: 140px; margin-bottom: 10px;">
+        <table class="cookie-table">
+          <thead>
+            <tr>
+              <th>Cookie Name</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="health-critical-body">
+            <tr><td colspan="2" style="text-align:center; color:var(--text-muted);">No known site rules active</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="form-label" style="margin-bottom: 6px;">Storage Origins Partition Map</div>
+      <div class="table-container" style="max-height: 100px; margin-bottom: 10px;">
+        <div id="health-origins-list" style="padding: 8px; font-size: 11px; color: var(--text);">
+          No storage origins recorded
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: SETTINGS -->
     <section class="view-tab" id="tab-settings">
       <div class="form-group">
         <label class="form-label" for="setting-proxy-url">Local Proxy Gateway Bridge</label>

@@ -126,12 +126,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnResetPreferences = document.getElementById("btn-reset-preferences");
   const settingsStatusEl = document.getElementById("settings-status");
 
+  // Vault elements
+  const vaultSearchInput = document.getElementById("vault-search");
+  const vaultSessionsList = document.getElementById("vault-sessions-list");
+  const btnStoreActiveToVault = document.getElementById("btn-store-active-to-vault");
+  const btnRefreshVault = document.getElementById("btn-refresh-vault");
+  const vaultStatusEl = document.getElementById("vault-status");
+
+  // Health elements
+  const healthSiteName = document.getElementById("health-site-name");
+  const healthAuthVerdict = document.getElementById("health-auth-verdict");
+  const healthGradeBadge = document.getElementById("health-grade-badge");
+  const healthCriticalBody = document.getElementById("health-critical-body");
+  const healthOriginsList = document.getElementById("health-origins-list");
+
   let currentTab = null;
   let currentDomain = "";
   let extractedSession = null;
   let activeCookiesList = [];
   let importedRawBytes = null;
   let importedParsedSession = null;
+  let activeMatchedSite = null;
+  let vaultStoredSessions = [];
 
   // ── Navigation Tab Switching ─────────────────────────────────────────────
 
@@ -141,7 +157,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
       nav.classList.add("active");
       const targetTab = document.getElementById(nav.getAttribute("data-tab"));
-      if (targetTab) targetTab.classList.add("active");
+      if (targetTab) {
+        targetTab.classList.add("active");
+        if (targetTab.id === "tab-vault") fetchVaultSessions();
+        if (targetTab.id === "tab-health") renderHealthDiagnostics();
+      }
     });
   });
 
@@ -212,9 +232,50 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── Tab Discovery & Known Site Diagnostics ───────────────────────────────
 
+  function detectKnownSite() {
+    let matched = null;
+    for (const [domainKey, meta] of Object.entries(KNOWN_SITES)) {
+      if (currentDomain === domainKey || currentDomain.endsWith("." + domainKey)) {
+        matched = meta;
+        break;
+      }
+    }
+    activeMatchedSite = matched;
+    if (matched) {
+      siteBadgeEl.textContent = matched.badge;
+      siteBadgeEl.className = "site-badge known";
+    } else {
+      siteBadgeEl.textContent = "SITE";
+      siteBadgeEl.className = "site-badge";
+    }
+  }
+
   async function initTab() {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramTabId = urlParams.get("tabId");
+      const paramDomain = urlParams.get("domain");
+
+      if (paramTabId && paramDomain) {
+        try {
+          const t = await chrome.tabs.get(parseInt(paramTabId, 10));
+          if (t && t.url) {
+            currentTab = t;
+            currentDomain = paramDomain;
+            activeDomainEl.textContent = currentDomain;
+            detectKnownSite();
+            return true;
+          }
+        } catch (_) {}
+      }
+
+      // Query active tab in the focused non-extension window
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      let tab = tabs[0];
+      if (!tab || tab.url?.startsWith("chrome-extension://")) {
+        const allTabs = await chrome.tabs.query({ active: true });
+        tab = allTabs.find((t) => !t.url?.startsWith("chrome-extension://")) || tab;
+      }
       currentTab = tab;
       if (!tab?.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")) {
         activeDomainEl.textContent = "Internal browser page";
@@ -225,24 +286,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const url = new URL(tab.url);
       currentDomain = url.hostname;
       activeDomainEl.textContent = currentDomain;
-
-      // Identify known site
-      let matched = null;
-      for (const [domainKey, meta] of Object.entries(KNOWN_SITES)) {
-        if (currentDomain === domainKey || currentDomain.endsWith("." + domainKey)) {
-          matched = meta;
-          break;
-        }
-      }
-      activeMatchedSite = matched;
-      if (matched) {
-        siteBadgeEl.textContent = matched.badge;
-        siteBadgeEl.className = "site-badge known";
-      } else {
-        siteBadgeEl.textContent = "SITE";
-        siteBadgeEl.className = "site-badge";
-      }
-
+      detectKnownSite();
       return true;
     } catch (e) {
       activeDomainEl.textContent = "Error reading active tab";
@@ -287,8 +331,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       return true;
     });
   }
-
-  let activeMatchedSite = null;
 
   async function fetchMultiOriginStorage(storageType = "localStorage") {
     const isLocal = storageType === "localStorage";
@@ -824,7 +866,182 @@ document.addEventListener("DOMContentLoaded", async () => {
     setTimeout(() => (btnInspectCopyAll.textContent = "Copy Filtered"), 1200);
   });
 
-  // ── Proxy Bridge & Settings ──────────────────────────────────────────────
+  // ── Vault / Library Operations ──────────────────────────────────────────
+
+  async function fetchVaultSessions() {
+    const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
+    vaultSessionsList.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:16px; font-size:11px;">Loading stored sessions from ${proxyUrl}...</div>`;
+    try {
+      const resp = await fetch(`${proxyUrl}/api/sessions`, { method: "GET", signal: AbortSignal.timeout(2000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        vaultStoredSessions = data.stored_sessions || [];
+        renderVaultList();
+      } else {
+        vaultSessionsList.innerHTML = `<div style="text-align:center; color:var(--error-text); padding:16px; font-size:11px;">Proxy returned HTTP ${resp.status}</div>`;
+      }
+    } catch (e) {
+      vaultSessionsList.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:16px; font-size:11px;">Proxy offline (${e.message}). Start \`tokenade proxy\` or \`tokenade gateway\` to view Vault.</div>`;
+    }
+  }
+
+  function renderVaultList() {
+    const query = (vaultSearchInput.value || "").trim().toLowerCase();
+    const filtered = vaultStoredSessions.filter(
+      (s) => !query || s.site_name.toLowerCase().includes(query) || s.name.toLowerCase().includes(query)
+    );
+
+    vaultSessionsList.innerHTML = "";
+    if (!filtered.length) {
+      vaultSessionsList.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:16px; font-size:11px;">${
+        query ? "No sessions match search query" : "No stored sessions found in ~/.tokenade/sessions/"
+      }</div>`;
+      return;
+    }
+
+    for (const s of filtered) {
+      const card = document.createElement("div");
+      card.className = "site-card";
+      card.style.marginBottom = "6px";
+      card.style.padding = "8px 10px";
+
+      const meta = document.createElement("div");
+      meta.className = "site-meta";
+
+      const title = document.createElement("div");
+      title.className = "site-domain";
+      title.textContent = s.site_name || s.name;
+
+      const sub = document.createElement("div");
+      sub.className = "site-sub";
+      sub.textContent = s.is_encrypted ? "AES-256-GCM encrypted" : `${s.cookies_count || 0} cookies · ${s.auth_status || "saved"}`;
+
+      meta.appendChild(title);
+      meta.appendChild(sub);
+
+      const btnInject = document.createElement("button");
+      btnInject.className = "icon-btn";
+      btnInject.style.marginLeft = "auto";
+      btnInject.textContent = "Inject";
+      btnInject.addEventListener("click", async () => {
+        const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
+        showStatus(vaultStatusEl, `Loading ${s.name} from proxy...`, "loading");
+        try {
+          const resp = await fetch(`${proxyUrl}/api/session/inject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: s.name }),
+          });
+          if (resp.ok) {
+            const sessData = await resp.json();
+            importedParsedSession = sessData;
+            document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+            document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
+            document.getElementById("nav-import").classList.add("active");
+            document.getElementById("tab-import").classList.add("active");
+            parseAndPreviewSession(JSON.stringify(sessData), s.filename || `${s.name}.tokenade`);
+          } else {
+            showStatus(vaultStatusEl, "Failed to load session from proxy", "error");
+          }
+        } catch (err) {
+          showStatus(vaultStatusEl, `Error: ${err.message}`, "error");
+        }
+      });
+
+      card.appendChild(meta);
+      card.appendChild(btnInject);
+      vaultSessionsList.appendChild(card);
+    }
+  }
+
+  vaultSearchInput.addEventListener("input", renderVaultList);
+  btnRefreshVault.addEventListener("click", fetchVaultSessions);
+
+  btnStoreActiveToVault.addEventListener("click", async () => {
+    if (!extractedSession) {
+      showStatus(vaultStatusEl, "No active session to store", "error");
+      return;
+    }
+    const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
+    showStatus(vaultStatusEl, "Packaging and storing session via proxy...", "loading");
+    try {
+      const resp = await fetch(`${proxyUrl}/api/session/store`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(extractedSession),
+      });
+      if (resp.ok) {
+        const res = await resp.json();
+        showStatus(vaultStatusEl, `Session stored to ${res.path}!`, "success");
+        setTimeout(fetchVaultSessions, 800);
+      } else {
+        showStatus(vaultStatusEl, `Store failed: HTTP ${resp.status}`, "error");
+      }
+    } catch (e) {
+      showStatus(vaultStatusEl, `Could not connect to proxy: ${e.message}`, "error");
+    }
+  });
+
+  // ── Health Diagnostics Rendering ─────────────────────────────────────────
+
+  function renderHealthDiagnostics() {
+    healthSiteName.textContent = currentDomain ? `${currentDomain} Diagnostics` : "Session Health";
+    const now = Date.now() / 1000;
+    const cookies = activeCookiesList || [];
+    const cookieNames = new Set(cookies.map((c) => c.name));
+
+    healthCriticalBody.innerHTML = "";
+    if (activeMatchedSite && activeMatchedSite.critical?.length) {
+      let presentCount = 0;
+      for (const name of activeMatchedSite.critical) {
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = name;
+        tdName.style.fontWeight = "600";
+
+        const tdStatus = document.createElement("td");
+        const isPresent = cookieNames.has(name);
+        if (isPresent) {
+          presentCount++;
+          tdStatus.innerHTML = '<span class="tag sec" style="color:var(--success-text);">PRESENT</span>';
+        } else {
+          tdStatus.innerHTML = '<span class="tag http" style="color:var(--error-text);">MISSING</span>';
+        }
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdStatus);
+        healthCriticalBody.appendChild(tr);
+      }
+
+      const score = Math.round((presentCount / activeMatchedSite.critical.length) * 100);
+      healthGradeBadge.textContent = `${score}%`;
+      healthGradeBadge.className = score >= 50 ? "site-badge known" : "site-badge";
+      healthAuthVerdict.textContent = score >= 50
+        ? `Authenticated session (${presentCount}/${activeMatchedSite.critical.length} critical cookies present)`
+        : `Unauthenticated / Expired (${presentCount}/${activeMatchedSite.critical.length} critical cookies)`;
+    } else {
+      healthCriticalBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:var(--text-muted); padding:10px;">Generic site — heuristics applied</td></tr>';
+      const expired = cookies.filter((c) => c.expirationDate && c.expirationDate < now).length;
+      const valid = cookies.length - expired;
+      const score = cookies.length ? Math.round((valid / cookies.length) * 100) : 0;
+      healthGradeBadge.textContent = `${score}%`;
+      healthAuthVerdict.textContent = `${valid} valid, ${expired} expired cookies`;
+    }
+
+    // Partition Map
+    healthOriginsList.innerHTML = "";
+    const storageOrigins = extractedSession?.metadata?.storage_origins || [];
+    if (storageOrigins.length) {
+      for (const orig of storageOrigins) {
+        const div = document.createElement("div");
+        div.style.marginBottom = "4px";
+        div.innerHTML = `<span class="tag sec">ORIGIN</span> <strong>${orig}</strong>`;
+        healthOriginsList.appendChild(div);
+      }
+    } else {
+      healthOriginsList.innerHTML = `<span style="color:var(--text-muted);">No secondary storage origins</span>`;
+    }
+  }
 
   async function checkProxyBridge() {
     const proxyUrl = settingProxyUrl.value.trim() || "http://127.0.0.1:9222";
@@ -877,6 +1094,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       btnInjectSession.disabled = false;
     },
     refreshSessionData,
+    renderVaultList,
+    setVaultStoredSessions: (list) => {
+      vaultStoredSessions = list;
+      renderVaultList();
+    },
+    renderHealthDiagnostics,
     getExtractedSession: () => extractedSession,
     getActiveCookies: () => activeCookiesList,
   };

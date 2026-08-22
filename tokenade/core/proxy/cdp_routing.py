@@ -337,19 +337,191 @@ async def handle_proxy(proxy: "CDPProxy", request: web.Request) -> web.Response:
 
 
 async def handle_api(proxy: "CDPProxy", request: web.Request) -> web.Response:
-    """Handle API requests under /api/."""
+    """Handle API requests under /api/ with CORS support."""
     path = request.path
 
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+        )
+
     if path == "/api/status":
-        return await proxy._handle_status(request)
+        resp = await proxy._handle_status(request)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
     elif path == "/api/stats":
-        return await proxy._handle_stats(request)
+        resp = await proxy._handle_stats(request)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+    elif path in ("/api/sessions", "/api/sessions/list"):
+        return await handle_api_sessions_list(proxy, request)
+    elif path == "/api/session/package":
+        return await handle_api_package(proxy, request)
+    elif path == "/api/session/store":
+        return await handle_api_store(proxy, request)
+    elif path == "/api/session/inject":
+        return await handle_api_inject(proxy, request)
     elif path.startswith("/api/page/") and path.endswith("/html"):
         return await handle_page_html(proxy, request)
     elif path.startswith("/api/page/") and path.endswith("/screenshot"):
         return await handle_page_screenshot(proxy, request)
 
-    return web.Response(text="Not found", status=404)
+    return web.Response(
+        text="Not found", status=404, headers={"Access-Control-Allow-Origin": "*"}
+    )
+
+
+async def handle_api_sessions_list(proxy: "CDPProxy", request: web.Request) -> web.Response:
+    """List stored sessions from ~/.tokenade/sessions/ and active proxy session."""
+    from pathlib import Path
+    sessions_dir = Path.home() / ".tokenade" / "sessions"
+    stored_list = []
+
+    if sessions_dir.is_dir():
+        for p in sorted(sessions_dir.glob("*.tokenade")):
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                stored_list.append({
+                    "name": p.stem,
+                    "filename": p.name,
+                    "site_name": data.get("site_name", p.stem),
+                    "created_at": data.get("created_at", ""),
+                    "auth_status": data.get("auth_status", "unknown"),
+                    "cookies_count": len(data.get("cookies", [])),
+                    "is_encrypted": False,
+                    "size_bytes": p.stat().st_size,
+                })
+            except Exception:
+                stored_list.append({
+                    "name": p.stem,
+                    "filename": p.name,
+                    "site_name": p.stem,
+                    "is_encrypted": True,
+                    "size_bytes": p.stat().st_size,
+                })
+
+    active_site = proxy.session.get("site_name", "active_session")
+    active_cookies = len(proxy.session.get("cookies", []))
+
+    return web.json_response({
+        "active_session": {
+            "site_name": active_site,
+            "cookies_count": active_cookies,
+            "auth_status": proxy.session.get("auth_status", "unknown"),
+        },
+        "stored_sessions": stored_list,
+        "count": len(stored_list),
+    }, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def handle_api_package(proxy: "CDPProxy", request: web.Request) -> web.Response:
+    """Package raw cookies and storage into canonical .tokenade format."""
+    try:
+        payload = await request.json()
+    except Exception as e:
+        return web.json_response({"error": f"Invalid JSON body: {e}"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    packager = SessionPackager()
+    cookies = payload.get("cookies", [])
+    browser = payload.get("browser", "chrome-extension")
+    profile = payload.get("profile", "active-tab")
+    storage = payload.get("storage")
+    tokens = payload.get("tokens", [])
+    metadata = payload.get("metadata", {})
+
+    try:
+        package = packager.package(
+            cookies,
+            browser=browser,
+            profile=profile,
+            storage=storage,
+            tokens=tokens,
+            metadata=metadata,
+        )
+        if payload.get("site_name"):
+            package["site_name"] = payload["site_name"]
+
+        return web.json_response(package, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"Failed to package session in API: {e}")
+        return web.json_response({"error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def handle_api_store(proxy: "CDPProxy", request: web.Request) -> web.Response:
+    """Store packaged session directly into ~/.tokenade/sessions/."""
+    try:
+        payload = await request.json()
+    except Exception as e:
+        return web.json_response({"error": f"Invalid JSON body: {e}"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+    from pathlib import Path
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    packager = SessionPackager()
+    sessions_dir = Path.home() / ".tokenade" / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if payload is already a full package or raw cookies
+    if "version" in payload and "cookies" in payload:
+        package = payload
+    else:
+        package = packager.package(
+            payload.get("cookies", []),
+            browser="chrome-extension",
+            storage=payload.get("storage"),
+            tokens=payload.get("tokens", []),
+            metadata=payload.get("metadata", {}),
+        )
+
+    site_name = payload.get("site_name") or package.get("site_name") or "session"
+    clean_name = "".join(c for c in site_name if c.isalnum() or c in (".", "-", "_")).strip() or "session"
+    output_file = sessions_dir / f"{clean_name}.tokenade"
+
+    try:
+        saved_path = packager.save(package, str(output_file))
+        logger.info(f"Stored extension session from API: {saved_path}")
+        return web.json_response({
+            "success": True,
+            "path": saved_path,
+            "site_name": package.get("site_name", clean_name),
+            "cookies_count": len(package.get("cookies", [])),
+        }, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"Failed to store session in API: {e}")
+        return web.json_response({"error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+async def handle_api_inject(proxy: "CDPProxy", request: web.Request) -> web.Response:
+    """Retrieve stored session data for injection."""
+    try:
+        payload = await request.json()
+    except Exception as e:
+        return web.json_response({"error": f"Invalid JSON body: {e}"}, status=400, headers={"Access-Control-Allow-Origin": "*"})
+
+    from pathlib import Path
+    from tokenade.core.importer.session_packager import SessionPackager
+
+    name = payload.get("name") or payload.get("site_name") or ""
+    clean_name = "".join(c for c in name if c.isalnum() or c in (".", "-", "_")).strip()
+    session_file = Path.home() / ".tokenade" / "sessions" / f"{clean_name}.tokenade"
+
+    if not session_file.is_file():
+        return web.json_response({"error": f"Session file not found: {clean_name}"}, status=404, headers={"Access-Control-Allow-Origin": "*"})
+
+    try:
+        packager = SessionPackager()
+        data = packager.load(str(session_file))
+        return web.json_response(data, headers={"Access-Control-Allow-Origin": "*"})
+    except Exception as e:
+        logger.error(f"Failed to load session file for inject: {e}")
+        return web.json_response({"error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
 async def handle_page_html(proxy: "CDPProxy", request: web.Request) -> web.Response:

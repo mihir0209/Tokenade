@@ -157,7 +157,9 @@ def run_ui_validation() -> dict:
                 for tab_id, tab_sel in [
                     ("Export", "#nav-export"),
                     ("Inject", "#nav-import"),
+                    ("Vault", "#nav-vault"),
                     ("Inspect", "#nav-inspect"),
+                    ("Health", "#nav-health"),
                     ("Settings", "#nav-settings"),
                 ]:
                     popup.click(tab_sel)

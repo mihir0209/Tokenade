@@ -38,6 +38,8 @@ def find_extension_id(context) -> str | None:
 
 
 def main() -> int:
+    if OUTPUT_DIR.exists():
+        shutil.rmtree(OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Saving extension visual screenshots to: {OUTPUT_DIR}")
 
@@ -130,6 +132,15 @@ def main() -> int:
                 popup.reload(wait_until="domcontentloaded")
                 popup.wait_for_timeout(1000)
 
+                # Seed mock vault sessions for rich UI capture
+                popup.evaluate("""() => {
+                    vaultStoredSessions = [
+                        { name: 'discord-default', filename: 'discord-default.tokenade', site_name: 'discord.com', cookies_count: 8, auth_status: 'authenticated', is_encrypted: false },
+                        { name: 'twitter-fresh', filename: 'twitter-fresh.tokenade.enc', site_name: 'x.com', cookies_count: 15, auth_status: 'authenticated', is_encrypted: true },
+                        { name: 'nowsecure-clearance', filename: 'nowsecure.nl.tokenade', site_name: 'nowsecure.nl', cookies_count: 1, auth_status: 'authenticated', is_encrypted: false },
+                    ];
+                }""")
+
                 # 1. Capture Export Tab (Dark)
                 popup.screenshot(path=str(OUTPUT_DIR / "01-export-dark.png"))
                 print("Captured 01-export-dark.png")
@@ -146,45 +157,75 @@ def main() -> int:
                 popup.screenshot(path=str(OUTPUT_DIR / "03-inject-dropzone-dark.png"))
                 print("Captured 03-inject-dropzone-dark.png")
 
-                # 4. Capture Inspect Tab (Cookie Table)
-                popup.click("#nav-inspect")
-                popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "04-inspect-cookies-dark.png"))
-                print("Captured 04-inspect-cookies-dark.png")
+                # 4. Capture Vault Tab (Dark)
+                popup.click("#nav-vault")
+                popup.wait_for_timeout(200)
+                popup.evaluate("""() => {
+                    window.TokenadePopup.setVaultStoredSessions([
+                        { name: 'discord-default', filename: 'discord-default.tokenade', site_name: 'discord.com', cookies_count: 8, auth_status: 'authenticated', is_encrypted: false },
+                        { name: 'twitter-fresh', filename: 'twitter-fresh.tokenade.enc', site_name: 'x.com', cookies_count: 15, auth_status: 'authenticated', is_encrypted: true },
+                        { name: 'nowsecure-clearance', filename: 'nowsecure.nl.tokenade', site_name: 'nowsecure.nl', cookies_count: 1, auth_status: 'authenticated', is_encrypted: false },
+                    ]);
+                }""")
+                popup.wait_for_timeout(200)
+                popup.screenshot(path=str(OUTPUT_DIR / "04-vault-dark.png"))
+                print("Captured 04-vault-dark.png")
 
-                # 5. Capture Inspect Tab (Search Filtered)
+                # 5. Capture Inspect Tab (Cookie Table)
+                popup.click("#nav-inspect")
+                popup.wait_for_selector("#tab-inspect.active", timeout=5000)
+                popup.wait_for_timeout(300)
+                popup.screenshot(path=str(OUTPUT_DIR / "05-inspect-cookies-dark.png"))
+                print("Captured 05-inspect-cookies-dark.png")
+
+                # 6. Capture Inspect Tab (Search Filtered)
+                popup.wait_for_selector("#cookie-search", state="visible", timeout=5000)
                 popup.fill("#cookie-search", "dcfduid")
                 popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "05-inspect-search-dark.png"))
-                print("Captured 05-inspect-search-dark.png")
+                popup.screenshot(path=str(OUTPUT_DIR / "06-inspect-search-dark.png"))
+                print("Captured 06-inspect-search-dark.png")
                 popup.fill("#cookie-search", "")
 
-                # 6. Capture Settings Tab (Dark)
+                # 7. Capture Health Tab (Dark)
+                popup.click("#nav-health")
+                popup.wait_for_timeout(300)
+                popup.screenshot(path=str(OUTPUT_DIR / "07-health-dark.png"))
+                print("Captured 07-health-dark.png")
+
+                # 8. Capture Settings Tab (Dark)
                 popup.click("#nav-settings")
                 popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "06-settings-dark.png"))
-                print("Captured 06-settings-dark.png")
+                popup.screenshot(path=str(OUTPUT_DIR / "08-settings-dark.png"))
+                print("Captured 08-settings-dark.png")
 
-                # 7. Switch to Light Theme and Capture All Tabs
+                # Switch to Light Theme and Capture Key Tabs
                 popup.select_option("#setting-theme", "light")
                 popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "07-settings-light.png"))
-                print("Captured 07-settings-light.png")
+                popup.screenshot(path=str(OUTPUT_DIR / "09-settings-light.png"))
+                print("Captured 09-settings-light.png")
 
                 popup.click("#nav-export")
                 popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "08-export-light.png"))
-                print("Captured 08-export-light.png")
+                popup.screenshot(path=str(OUTPUT_DIR / "10-export-light.png"))
+                print("Captured 10-export-light.png")
 
-                popup.click("#nav-inspect")
-                popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "09-inspect-light.png"))
-                print("Captured 09-inspect-light.png")
+                popup.click("#nav-vault")
+                popup.wait_for_timeout(200)
+                popup.evaluate("""() => {
+                    window.TokenadePopup.setVaultStoredSessions([
+                        { name: 'discord-default', filename: 'discord-default.tokenade', site_name: 'discord.com', cookies_count: 8, auth_status: 'authenticated', is_encrypted: false },
+                        { name: 'twitter-fresh', filename: 'twitter-fresh.tokenade.enc', site_name: 'x.com', cookies_count: 15, auth_status: 'authenticated', is_encrypted: true },
+                        { name: 'nowsecure-clearance', filename: 'nowsecure.nl.tokenade', site_name: 'nowsecure.nl', cookies_count: 1, auth_status: 'authenticated', is_encrypted: false },
+                    ]);
+                }""")
+                popup.wait_for_timeout(200)
+                popup.screenshot(path=str(OUTPUT_DIR / "11-vault-light.png"))
+                print("Captured 11-vault-light.png")
 
-                popup.click("#nav-import")
+                popup.click("#nav-health")
                 popup.wait_for_timeout(300)
-                popup.screenshot(path=str(OUTPUT_DIR / "10-inject-light.png"))
-                print("Captured 10-inject-light.png")
+                popup.screenshot(path=str(OUTPUT_DIR / "12-health-light.png"))
+                print("Captured 12-health-light.png")
 
             finally:
                 context.close()
