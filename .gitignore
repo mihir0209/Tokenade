@@ -65,6 +65,7 @@ reports/
 # Test outputs
 test_output*.log
 /tmp/*.png
+artifacts/
 
 temp_scripts/
 .tokenade_rotation_state
