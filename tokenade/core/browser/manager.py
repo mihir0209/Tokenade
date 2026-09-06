@@ -222,7 +222,7 @@ class PlaywrightBrowserManager(BrowserManager):
             launch_options["proxy"] = self.config.proxy
 
         pw_type = self.config.browser_type
-        if pw_type in ("cloakbrowser", "cloak", "chrome", "default", ""):
+        if pw_type in ("cloakbrowser", "cloak", "chrome", "playwright", "default", ""):
             pw_type = "chromium"
         browser_type = getattr(self._playwright, pw_type)
 

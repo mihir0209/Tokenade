@@ -4,6 +4,16 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Gateway TUI coherence** (`.agent/gateway/tui-ux.md` slice):
+  - Action labels now name Active vs Dropdown Selected targets (`Select Dropdown Session`, `Open Active Session`, `Route Next and Open`, `Select Dropdown and Open`, `Lease Active or Selected`, `Release Active Lease`, `Cleanup Inactive Contexts`) plus a separate advanced `Force Cleanup` (`{"force": true}`).
+  - State panel shows request file, base URL, dropdown-selected vs Gateway-active Session, routing strategy/scope/window policy, active context, and per-context page/lease detail; Lease button flips between `Lease Selected` / `Lease Active`.
+  - `Open Active Session` is blocked with a warning when no active Session exists; Lease/Release fall back to the active Session instead of demanding a dropdown selection.
+  - New `tokenade/tests/test_tui_gateway_coherence.py` (11 tests) pins labels, guards, and drain payloads.
+- **Gateway Playwright backend**: `browser_type="playwright"` (as sent by `BrowserManagerContextFactory`) now resolves to the Playwright `chromium` backend instead of raising `AttributeError: 'Playwright' object has no attribute 'playwright'`. Verified headless on Windows with stock Playwright Chromium.
+
 ## [1.4.0] - 2026-08-21
 
 ### Added

@@ -1444,29 +1444,43 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             active = self._gateway_status_data.get("active_session") or {}
             active_path = active.get("path") or "none"
             routing = self._gateway_status_data.get("routing") or {}
+            runtime = self._gateway_status_data.get("runtime") or {}
             contexts = self._gateway_contexts_data.get("contexts") or []
+            request_file = self._gateway_request_file() or "none"
+            base_url = self._gateway_base_url()
+            active_context_id = runtime.get("active_context_id") or "none"
             lines = [
+                f"Request: {request_file}",
+                f"Gateway: {base_url}",
                 f"Dropdown selected: {selected}",
                 f"Gateway active: {active_path}",
-                f"Routing: {routing.get('strategy', 'unknown')} · {routing.get('default_scope', 'unknown')}",
-                f"Contexts: {len(contexts)}",
+                f"Routing: {routing.get('strategy', 'unknown')} · scope={self._gateway_route_scope()} · window={self._gateway_window_policy()}",
+                f"Contexts: {len(contexts)} · active_context={active_context_id}",
             ]
             for context in contexts:
                 session = context.get("session") or {}
                 marker = (
                     "active"
-                    if session.get("id")
-                    == (self._gateway_status_data.get("runtime") or {}).get(
-                        "active_context_id"
-                    )
+                    if session.get("id") == runtime.get("active_context_id")
+                    or context.get("context_id") == runtime.get("active_context_id")
                     else "inactive"
                 )
                 lease = "leased" if context.get("leased") else "unleased"
-                lines.append(
-                    f"- {session.get('path', session.get('id', 'unknown'))} · {marker} · "
-                    f"pages={context.get('page_count', 0)} · {lease}"
-                )
+                detail = f"- {session.get('path', session.get('id', 'unknown'))} · {marker} · pages={context.get('page_count', 0)} · {lease}"
+                lease_id = context.get("lease_id")
+                lease_exp = context.get("lease_expires_at") or context.get("lease_expires")
+                if lease_id or lease_exp:
+                    detail += f" · lease_id={lease_id or '-'} exp={lease_exp or '-'}"
+                if context.get("context_id"):
+                    detail += f" · ctx={context.get('context_id')}"
+                lines.append(detail)
             self.query_one("#gateway-state-panel").update("\n".join(lines))
+            try:
+                lease_btn = self.query_one("#gateway-lease")
+                label = "Lease Selected" if selected != "none" else "Lease Active"
+                lease_btn.label = label
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -2080,8 +2094,12 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             payload.update(self._gateway_route_payload())
             self._gateway_run_http("route select", "POST", "/route/select", payload)
         elif btn_id == "gateway-open-tab":
+            active = (self._gateway_status_data.get("active_session") or {}) if isinstance(getattr(self, "_gateway_status_data", {}), dict) else {}
+            if not active.get("path") and not active.get("id"):
+                self.notify("No Gateway active Session — Route Next or Select first", severity="warning")
+                return
             self._gateway_run_http(
-                "open", "POST", "/tabs/new", self._gateway_open_payload()
+                "open active session", "POST", "/tabs/new", self._gateway_open_payload()
             )
         elif btn_id == "gateway-next-tab":
             self._gateway_next_tab()
@@ -2089,19 +2107,20 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._gateway_select_tab()
         elif btn_id == "gateway-lease":
             payload = self._gateway_selector()
-            if not payload:
-                self.notify("Select a request session first", severity="warning")
-                return
             payload.update({"ttl_seconds": 900, "leased_by": "tui"})
-            self._gateway_run_http("lease", "POST", "/contexts/lease", payload)
+            label = "lease selected" if self._gateway_selector() else "lease active"
+            self._gateway_run_http(label, "POST", "/contexts/lease", payload)
         elif btn_id == "gateway-release":
             payload = self._gateway_selector()
-            if not payload:
-                self.notify("Select a request session first", severity="warning")
+            active = (self._gateway_status_data.get("active_session") or {}) if isinstance(getattr(self, "_gateway_status_data", {}), dict) else {}
+            if not payload and not active.get("path") and not active.get("id"):
+                self.notify("No active lease to release — Route Next or Select first", severity="warning")
                 return
-            self._gateway_run_http("release", "POST", "/contexts/release", payload)
+            self._gateway_run_http("release active lease", "POST", "/contexts/release", payload)
         elif btn_id == "gateway-drain":
-            self._gateway_run_http("cleanup", "POST", "/contexts/drain")
+            self._gateway_run_http("cleanup inactive contexts", "POST", "/contexts/drain", {})
+        elif btn_id == "gateway-drain-force":
+            self._gateway_run_http("force cleanup inactive contexts", "POST", "/contexts/drain", {"force": True})
         elif btn_id == "share-copy-full":
             self._share_copy("full")
         elif btn_id == "share-copy-id":

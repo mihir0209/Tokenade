@@ -63,6 +63,29 @@ ROUTE_SCOPES: List[Tuple[str, str]] = [
     ("Open Target", "open-target"),
 ]
 
+GATEWAY_SCOPE_HELP = (
+    "Prepare Context: create/reuse browser context, no visible navigation.\n"
+    "Select Only: change Gateway active Session only, no browser effect.\n"
+    "Open Target: route and visibly open the target URL."
+)
+
+# (label, button-id, variant) — labels name Active vs Dropdown Selected targets
+# so routing-state changes are never mistaken for visible browser navigation.
+GATEWAY_ACTIONS: List[Tuple[str, str, str]] = [
+    ("Route Next", "gateway-route-next", "warning"),
+    ("Select Dropdown Session", "gateway-route-select", "default"),
+    ("Open Active Session", "gateway-open-tab", "success"),
+    ("Route Next and Open", "gateway-next-tab", "success"),
+    ("Select Dropdown and Open", "gateway-select-tab", "success"),
+    ("Lease Active or Selected", "gateway-lease", "primary"),
+    ("Release Active Lease", "gateway-release", "default"),
+    ("Cleanup Inactive Contexts", "gateway-drain", "error"),
+]
+
+GATEWAY_ADVANCED_ACTIONS: List[Tuple[str, str, str]] = [
+    ("Force Cleanup", "gateway-drain-force", "error"),
+]
+
 
 def gateway_request_options(root: Path | None = None) -> List[Tuple[str, str]]:
     """Return Gateway request JSON files from ~/.tokenade/requests by default."""
@@ -153,6 +176,11 @@ class GatewayView(BaseView):
             )
             yield Static("No request loaded", id="gateway-request-summary", classes="field-label")
             yield Static(
+                GATEWAY_SCOPE_HELP,
+                id="gateway-scope-help",
+                classes="field-label",
+            )
+            yield Static(
                 "Dropdown selected: none\nGateway active: unknown\nContexts: unknown",
                 id="gateway-state-panel",
             )
@@ -174,14 +202,17 @@ class GatewayView(BaseView):
                 classes="gateway-row",
             )
             yield Horizontal(
-                Button("Route Next", variant="warning", compact=True, id="gateway-route-next"),
-                Button("Select Dropdown", variant="default", compact=True, id="gateway-route-select"),
-                Button("Open Active", variant="success", compact=True, id="gateway-open-tab"),
-                Button("Route Next + Open", variant="success", compact=True, id="gateway-next-tab"),
-                Button("Select Dropdown + Open", variant="success", compact=True, id="gateway-select-tab"),
-                Button("Lease Selected", variant="primary", compact=True, id="gateway-lease"),
-                Button("Release Selected", variant="default", compact=True, id="gateway-release"),
-                Button("Cleanup Inactive", variant="error", compact=True, id="gateway-drain"),
+                *[
+                    Button(label, variant=variant, compact=True, id=button_id)
+                    for label, button_id, variant in GATEWAY_ACTIONS
+                ],
+                classes="gateway-row",
+            )
+            yield Horizontal(
+                *[
+                    Button(label, variant=variant, compact=True, id=button_id)
+                    for label, button_id, variant in GATEWAY_ADVANCED_ACTIONS
+                ],
                 classes="gateway-row",
             )
         yield RichLog(
