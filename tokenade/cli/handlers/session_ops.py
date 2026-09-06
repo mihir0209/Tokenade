@@ -592,8 +592,9 @@ def cmd_sync(args):
 
 def _cmd_peer_sync(args):
     from tokenade.core.sync import PeerConfig, PeerSync
+    from tokenade.core.utils.paths import tokenade_home
 
-    sync = PeerSync(str(Path.home() / ".tokenade/sessions"))
+    sync = PeerSync(str(tokenade_home() / ".tokenade/sessions"))
     command = args.sync_command
     if command == "peer":
         action = getattr(args, "peer_action", None)

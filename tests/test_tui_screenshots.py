@@ -109,7 +109,9 @@ def _svg_text(app) -> str:
 
 def _save_shot(name: str, svg: str) -> Path:
     path = SHOT_DIR / f"{name}.svg"
-    path.write_text(svg)
+    # Explicit UTF-8: Windows locale default (cp1252) cannot encode SVG
+    # glyphs such as U+2B58 emitted by Textual's export.
+    path.write_text(svg, encoding="utf-8")
     return path
 
 

@@ -383,7 +383,7 @@ CMD ["sh", "-c", "while true; do /app/refresh.sh; sleep $(( {config.refresh_inte
         """Save generated content to file."""
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         logger.info(f"Workflow saved: {path}")
 
@@ -425,7 +425,7 @@ def generate_all_workflows(
 
     for filename, content in workflows.items():
         filepath = output_path / filename
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
         logger.info(f"Generated: {filepath}")
 

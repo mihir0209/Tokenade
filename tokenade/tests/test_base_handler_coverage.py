@@ -225,7 +225,15 @@ class TestSiteHandler(unittest.TestCase):
         handler._session_data = SessionData(
             site_name="test", auth_status=AuthStatus.LOGGED_IN
         )
-        result = handler.save_session("/nonexistent/path/deep/file.json")
+        # A path routed through an existing *file* fails on every platform.
+        # (A hardcoded "/nonexistent/..." resolves to C:\nonexistent on
+        # Windows, which the test process can create, so it would succeed.)
+        with tempfile.NamedTemporaryFile(delete=False) as blocker:
+            blocker_path = blocker.name
+        self.addCleanup(os.unlink, blocker_path)
+        result = handler.save_session(
+            os.path.join(blocker_path, "deep", "file.json")
+        )
         self.assertFalse(result)
 
     def test_load_session_exception(self):

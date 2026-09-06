@@ -128,7 +128,7 @@ def generate_html_report(report: StealthTestReport, output_path: Optional[str] =
 
     output = output_path or str(Path.home() / ".tokenade" / "stealth_report.html")
     Path(output).parent.mkdir(parents=True, exist_ok=True)
-    with open(output, "w") as f:
+    with open(output, "w", encoding="utf-8") as f:
         f.write(html)
 
     logger.info(f"Stealth report saved: {output}")
@@ -160,8 +160,8 @@ def generate_json_report(report: StealthTestReport, output_path: Optional[str] =
 
     output = output_path or str(Path.home() / ".tokenade" / "stealth_report.json")
     Path(output).parent.mkdir(parents=True, exist_ok=True)
-    with open(output, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
     logger.info(f"JSON report saved: {output}")
     return output

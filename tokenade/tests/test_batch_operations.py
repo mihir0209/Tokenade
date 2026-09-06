@@ -248,10 +248,13 @@ class TestBatchExporter:
 
 
 class TestBatchLoader:
-    def test_load_nonexistent_dir(self):
+    def test_load_nonexistent_dir(self, tmp_path):
         loader = BatchLoader()
+        # A nested path under tmp_path is guaranteed missing on every
+        # platform. (A hardcoded "/nonexistent/..." resolves to
+        # C:\nonexistent on Windows, which the suite itself may create.)
         result = loader.load_batch(
-            sessions_dir="/nonexistent/path",
+            sessions_dir=str(tmp_path / "no-such-dir"),
             target_browser="chrome",
         )
         assert result.success is False

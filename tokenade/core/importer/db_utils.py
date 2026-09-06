@@ -50,17 +50,36 @@ def copy_db(db_path: str) -> str:
             except (PermissionError, shutil.Error):
                 logger.warning(f"Could not copy {suffix} file for {db_path}")
 
-    # Validate it's a real SQLite database
+    # Own the temp copies: copy2 propagates the source mode, so a read-only
+    # source yields read-only temp files that cannot be cleaned up on
+    # Windows (WinError 5). Owner-only mode also keeps cookie material
+    # out of reach of other local users on POSIX.
+    for p in (temp_path, temp_path + "-wal", temp_path + "-shm"):
+        if os.path.exists(p):
+            try:
+                os.chmod(p, 0o600)
+            except OSError:
+                pass
+
+    # Validate it's a real SQLite database. The connection must be closed
+    # on every path: Windows refuses to unlink a file with an open handle.
+    conn = None
     try:
         conn = sqlite3.connect(f"file:{temp_path}?mode=ro", uri=True)
         conn.execute("SELECT 1 FROM sqlite_master LIMIT 1")
-        conn.close()
     except sqlite3.DatabaseError:
-        os.unlink(temp_path)
-        for suffix in ("-wal", "-shm"):
-            p = temp_path + suffix
+        for p in [temp_path, temp_path + "-wal", temp_path + "-shm"]:
             if os.path.exists(p):
-                os.unlink(p)
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
         raise
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return temp_path

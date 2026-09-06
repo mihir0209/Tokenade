@@ -94,9 +94,14 @@ class TestCmdExtract:
         assert "no accounts" in capsys.readouterr().out.lower()
 
     @patch("tokenade.core.security.credentials.CredentialManager")
-    def test_extract_profile_not_found(self, mock_cm_cls, capsys):
+    def test_extract_profile_not_found(self, mock_cm_cls, capsys, tmp_path):
         mock_cm = MagicMock()
-        mock_cm.load_accounts.return_value = [_make_account(profile_dir="/nonexistent")]
+        # A nested path under tmp_path is guaranteed missing on every
+        # platform. (A hardcoded "/nonexistent" resolves to C:\nonexistent
+        # on Windows, which the test process itself may create.)
+        mock_cm.load_accounts.return_value = [
+            _make_account(profile_dir=str(tmp_path / "no-such-profile"))
+        ]
         mock_cm_cls.return_value = mock_cm
         with pytest.raises(SystemExit) as ei:
             cmd_extract(Namespace(visible=False))

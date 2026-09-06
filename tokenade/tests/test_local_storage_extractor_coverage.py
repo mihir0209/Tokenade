@@ -218,69 +218,58 @@ class TestLocalStorageExtractorListOrigins(unittest.TestCase):
 
 
 class TestLocalStorageExtractorParseJsonFile(unittest.TestCase):
-    def test_parse_flat_dict(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
-            import json
+    def _write_tmp_json(self, payload):
+        """Write payload to a closed temp file; caller must unlink the path.
 
-            json.dump({"token": "abc", "user": "john"}, f)
-            f.flush()
-            try:
-                result = LocalStorageExtractor.parse_json_file(f.name)
-                self.assertEqual(result["token"], "abc")
-            finally:
-                os.unlink(f.name)
+        The file handle is closed before returning: Windows forbids
+        unlinking (or re-opening for write elsewhere) while open.
+        """
+        import json
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as f:
+            json.dump(payload, f)
+            return f.name
+
+    def test_parse_flat_dict(self):
+        name = self._write_tmp_json({"token": "abc", "user": "john"})
+        try:
+            result = LocalStorageExtractor.parse_json_file(name)
+            self.assertEqual(result["token"], "abc")
+        finally:
+            os.unlink(name)
 
     def test_parse_structured_format(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
-            import json
-
-            json.dump(
-                {
-                    "data": [
-                        {"key": "token", "value": "abc"},
-                        {"key": "user", "value": "john"},
-                    ]
-                },
-                f,
-            )
-            f.flush()
-            try:
-                result = LocalStorageExtractor.parse_json_file(f.name)
-                self.assertEqual(result["token"], "abc")
-            finally:
-                os.unlink(f.name)
+        name = self._write_tmp_json(
+            {
+                "data": [
+                    {"key": "token", "value": "abc"},
+                    {"key": "user", "value": "john"},
+                ]
+            },
+        )
+        try:
+            result = LocalStorageExtractor.parse_json_file(name)
+            self.assertEqual(result["token"], "abc")
+        finally:
+            os.unlink(name)
 
     def test_parse_empty_dict(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
-            import json
-
-            json.dump({}, f)
-            f.flush()
-            try:
-                result = LocalStorageExtractor.parse_json_file(f.name)
-                self.assertEqual(result, {})
-            finally:
-                os.unlink(f.name)
+        name = self._write_tmp_json({})
+        try:
+            result = LocalStorageExtractor.parse_json_file(name)
+            self.assertEqual(result, {})
+        finally:
+            os.unlink(name)
 
     def test_parse_non_dict(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
-            import json
-
-            json.dump([], f)
-            f.flush()
-            try:
-                result = LocalStorageExtractor.parse_json_file(f.name)
-                self.assertEqual(result, {})
-            finally:
-                os.unlink(f.name)
+        name = self._write_tmp_json([])
+        try:
+            result = LocalStorageExtractor.parse_json_file(name)
+            self.assertEqual(result, {})
+        finally:
+            os.unlink(name)
 
     def test_parse_file_not_found(self):
         with self.assertRaises(FileNotFoundError):

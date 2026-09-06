@@ -1650,16 +1650,25 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify("No Gateway pid tracked", severity="warning")
             return
         pid = self._gateway_pid
-        try:
-            os.killpg(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        except Exception:
+        if os.name == "nt":
+            # Windows has no process groups for console children spawned via
+            # run_tokenade_async; terminate the tracked gateway process.
             try:
                 os.kill(pid, signal.SIGTERM)
             except Exception as exc:
                 self.notify(f"Stop failed: {exc}", severity="error")
                 return
+        else:
+            try:
+                os.killpg(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except Exception:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except Exception as exc:
+                    self.notify(f"Stop failed: {exc}", severity="error")
+                    return
         self._gateway_log(f"Stopped Gateway pid={pid}")
         self._gateway_pid = 0
         self._gateway_set_status("Gateway stopped")

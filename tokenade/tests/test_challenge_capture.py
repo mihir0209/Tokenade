@@ -121,7 +121,9 @@ class TestSolvedSessionCapturer:
             "https://labs.google/foo?bar=1") == "labs.google"
 
     def test_default_session_dir(self):
-        assert str(default_session_dir()).endswith(".tokenade/sessions")
+        from pathlib import Path
+
+        assert Path(default_session_dir()).parts[-2:] == (".tokenade", "sessions")
 
 
 class TestManagerCaptureWiring:

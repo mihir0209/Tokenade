@@ -70,7 +70,11 @@ class TestSystemBrowserLauncher:
 
     def test_browser_process_properties(self):
         import subprocess
-        proc = subprocess.Popen(["echo", "test"], stdout=subprocess.PIPE)
+        import sys
+        # sys.executable is portable; "echo" is a shell builtin on Windows.
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "print('test')"], stdout=subprocess.PIPE
+        )
         browser = BrowserProcess(
             process=proc,
             port=9222,

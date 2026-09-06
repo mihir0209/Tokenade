@@ -669,6 +669,18 @@ class SessionDaemon:
         """Check if a process with given PID is alive."""
         try:
             pid = int(pid)
+        except ValueError:
+            return False
+        if os.name == "nt":
+            # os.kill(pid, 0) raises WinError 87 for dead PIDs on Windows
+            # instead of ProcessLookupError; use the Win32 exit-code check.
+            from tokenade.core.utils.process import windows_pid_alive
+
+            try:
+                return windows_pid_alive(pid)
+            except Exception:
+                return False
+        try:
             os.kill(pid, 0)
             return True
         except (ProcessLookupError, ValueError, PermissionError):

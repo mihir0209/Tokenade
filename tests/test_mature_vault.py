@@ -3,6 +3,7 @@ import hashlib
 import json
 import multiprocessing
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -553,6 +554,10 @@ def _child_delayed_probe(vault_dir, master_key, result_q):
         result_q.put(("err", str(exc)))
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason='multiprocessing "fork" start method unavailable on Windows',
+)
 def test_other_process_is_refused_while_vault_dir_locked(tmp_path):
     root = tmp_path / "vault"
     config = VaultConfig(vault_path=str(root), master_key=KEY)
@@ -584,6 +589,10 @@ def test_other_process_is_refused_while_vault_dir_locked(tmp_path):
     assert payload is True
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason='multiprocessing "fork" start method unavailable on Windows',
+)
 def test_operations_blocked_until_migration_completes(tmp_path):
     root = tmp_path / "vault"
     root.mkdir()
@@ -716,6 +725,10 @@ def test_documented_vault_rotate_parse_and_run_on_explicit_key(tmp_path, monkeyp
     assert "rotate" in body["message"].lower()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason='multiprocessing "fork" start method unavailable on Windows',
+)
 def test_operation_blocked_during_migration_rollback(tmp_path):
     """CR-07: a concurrent process is refused while migration holds the lock
     through its rollback path after a forced verification failure."""

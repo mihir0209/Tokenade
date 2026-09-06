@@ -250,9 +250,11 @@ class SFTPTransport:
 
 class PeerSync:
     def __init__(self, local_root: str, config_dir: Optional[str] = None):
-        self.local_root = Path(local_root).expanduser().resolve()
+        from tokenade.core.utils.paths import expand_user, tokenade_home
+
+        self.local_root = expand_user(local_root).resolve()
         self.state_dir = (
-            Path(config_dir or Path.home() / ".tokenade/sync").expanduser().resolve()
+            expand_user(config_dir or tokenade_home() / ".tokenade/sync").resolve()
         )
         self.config_path = self.state_dir / "peers.json"
         self.db_path = self.state_dir / "state.sqlite3"

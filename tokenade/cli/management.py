@@ -106,7 +106,9 @@ def cmd_vault(args):
 
     source = None
     if args.vault_action == "store":
-        source = Path(args.file).expanduser()
+        from tokenade.core.utils.paths import expand_user
+
+        source = expand_user(args.file)
         if not source.is_absolute():
             source = Path.cwd() / source
         if not source.is_file():

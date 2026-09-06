@@ -306,5 +306,5 @@ def load_key_from_file(key_file: str) -> str:
     Returns:
         Password string
     """
-    with open(key_file, 'r') as f:
+    with open(key_file, 'r', encoding="utf-8") as f:
         return f.read().strip()

@@ -156,8 +156,12 @@ class TestSessionSyncDaemonGetDbMtime(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             daemon = SessionSyncDaemon(storage_dir=tmpdir)
             target = SyncTarget(name="test", domains=["test.com"])
+            # A nested path under the temp dir is guaranteed missing on every
+            # platform. (A hardcoded "/nonexistent" resolves to C:\nonexistent
+            # on Windows, which the test process itself may create.)
+            missing = Path(tmpdir) / "no-such-dir" / "cookies.sqlite"
             with patch.object(
-                daemon, "_get_db_path", return_value=Path("/nonexistent")
+                daemon, "_get_db_path", return_value=missing
             ):
                 result = daemon._get_db_mtime(target)
                 self.assertEqual(result, 0.0)

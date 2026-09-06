@@ -2,6 +2,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
@@ -112,6 +113,11 @@ class TestXvfbManager:
             num = xvfb._find_free_display()
             assert num == 99
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="X11 socket paths (/tmp/.X11-unix) do not exist on Windows; "
+        "WindowsPath stringifies with backslashes so the mock never matches",
+    )
     def test_find_free_display_occupied(self):
         xvfb = XvfbManager()
         occupied = {"/tmp/.X11-unix/X99"}

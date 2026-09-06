@@ -62,6 +62,17 @@ def _plugin_available(name):
     return False
 
 
+def _require_site(handler, site):
+    """Select a generic-handler site catalog, skipping when the installed
+    plugin revision does not ship that catalog (marketplace drift)."""
+    if handler is not None and hasattr(handler, "set_site"):
+        try:
+            handler.set_site(site)
+        except ValueError:
+            pytest.skip(f"installed generic-handler lacks {site!r} catalog")
+    return handler
+
+
 # ─── Google Handler Tests ───────────────────────────────────
 
 @pytest.mark.skipif(
@@ -70,10 +81,7 @@ def _plugin_available(name):
 )
 class TestGoogleHandler:
     def _get_handler(self):
-        h = _load_plugin("generic-handler")
-        if h and hasattr(h, "set_site"):
-            h.set_site("google")
-        return h
+        return _require_site(_load_plugin("generic-handler"), "google")
 
     def test_can_handle_google(self):
         h = self._get_handler()
@@ -151,10 +159,7 @@ class TestGoogleHandler:
 )
 class TestGitHubHandler:
     def _get_handler(self):
-        h = _load_plugin("generic-handler")
-        if h and hasattr(h, "set_site"):
-            h.set_site("github")
-        return h
+        return _require_site(_load_plugin("generic-handler"), "github")
 
     def test_can_handle_github(self):
         h = self._get_handler()

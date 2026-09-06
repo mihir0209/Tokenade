@@ -101,6 +101,10 @@ class TestEncryptFile:
         dec = enc.decrypt(dst.read_bytes(), "pw")
         assert dec == payload
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits (0o600) unenforceable on Windows",
+    )
     def test_encrypt_file_sets_restrictive_umask(self, tmp_path):
         enc = TokenadeEncryptor()
         src = tmp_path / "a.txt"
@@ -136,6 +140,10 @@ class TestDecryptFile:
         assert result == str(dec_path)
         assert dec_path.read_bytes() == original
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits (0o600) unenforceable on Windows",
+    )
     def test_decrypt_file_sets_restrictive_umask(self, tmp_path):
         enc = TokenadeEncryptor()
         enc_path = tmp_path / "enc.bin"
@@ -268,7 +276,7 @@ class TestLoadKeyFromFile:
 
     def test_loads_unicode_key(self, tmp_path):
         keyfile = tmp_path / "key.txt"
-        keyfile.write_text("contraseña密码\n")
+        keyfile.write_text("contraseña密码\n", encoding="utf-8")
         assert load_key_from_file(str(keyfile)) == "contraseña密码"
 
     def test_empty_file_returns_empty(self, tmp_path):

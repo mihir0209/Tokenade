@@ -485,9 +485,13 @@ class TestEdgeCases:
                 patch("tokenade.core.importer.cookie_extractor.CookieExtractor", return_value=mock_extractor), \
                 patch("tokenade.core.importer.session_packager.SessionPackager", return_value=mock_packager):
             d._extract_and_save(target)
-            # Verify packager.save was called with correct path
+            # Verify packager.save was called with correct path. Compare the
+            # recorded path argument directly: str(call_args) escapes
+            # backslashes in its repr on Windows, breaking substring checks.
             call_args = mock_packager.save.call_args
-            assert str(tmp_path / "output" / "test.session") in str(call_args)
+            assert call_args is not None
+            saved_path = call_args[0][1]
+            assert saved_path == str(tmp_path / "output" / "test.session")
 
     def test_extract_and_save_default_filename(self, tmp_path):
         """Verify default filename uses target name."""

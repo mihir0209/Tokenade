@@ -24,6 +24,13 @@ class ArtifactError(ValueError):
     pass
 
 
+def _windows_pid_alive(pid: int) -> bool:
+    """True if a process with *pid* is running on Windows (see utils.process)."""
+    from tokenade.core.utils.process import windows_pid_alive
+
+    return windows_pid_alive(pid)
+
+
 class SessionPolicyError(RuntimeError):
     pass
 
@@ -435,7 +442,12 @@ class ProfileArtifactManager:
     @staticmethod
     def _lock_owner_alive(lock: Path) -> bool:
         try:
-            pid = int(lock.read_text(encoding="ascii"))
+            pid = int(lock.read_text(encoding="ascii").strip())
+        except ValueError:
+            return True
+        if os.name == "nt":
+            return _windows_pid_alive(pid)
+        try:
             os.kill(pid, 0)
             return True
         except ProcessLookupError:

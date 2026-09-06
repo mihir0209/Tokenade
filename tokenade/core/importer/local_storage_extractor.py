@@ -75,6 +75,7 @@ class LocalStorageExtractor:
                     continue
 
             temp_db = self._copy_db(ls_path)
+            conn = None
             try:
                 conn = sqlite3.connect(temp_db)
                 cursor = conn.cursor()
@@ -88,13 +89,19 @@ class LocalStorageExtractor:
                         except UnicodeDecodeError:
                             value = value.decode("utf-8", errors="replace")
                     local_storage[str(key)] = str(value)
-
-                conn.close()
             except Exception as e:
                 logger.warning(f"Failed to read localStorage from {dir_name}: {e}")
             finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 if os.path.exists(temp_db):
-                    os.remove(temp_db)
+                    try:
+                        os.remove(temp_db)
+                    except OSError:
+                        pass
 
         logger.info(f"Extracted {len(local_storage)} localStorage entries from Firefox")
         return local_storage

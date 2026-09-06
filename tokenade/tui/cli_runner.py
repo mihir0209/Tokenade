@@ -99,7 +99,9 @@ def run_tokenade(
             _bg_log_dir() / f"{int(time.time())}_{args[0] if args else 'cmd'}.log"
         )
         try:
-            log_f = open(log_path, "w", buffering=1)
+            # Explicit UTF-8: the Windows locale default (cp1252) cannot
+            # encode CLI output containing unicode (paths, checkmarks).
+            log_f = open(log_path, "w", buffering=1, encoding="utf-8")
             log_f.write(f"$ {format_cli_display(argv)}\n\n")
             log_f.flush()
             proc = subprocess.Popen(
@@ -120,7 +122,7 @@ def run_tokenade(
                 pass
             tail = ""
             try:
-                tail = Path(log_path).read_text(errors="replace")[-2500:]
+                tail = Path(log_path).read_text(encoding="utf-8", errors="replace")[-2500:]
             except Exception:
                 pass
             if code is not None:

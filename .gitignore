@@ -65,7 +65,7 @@ reports/
 # Test outputs
 test_output*.log
 /tmp/*.png
-artifacts/
+/artifacts/
 
 temp_scripts/
 .tokenade_rotation_state
@@ -76,5 +76,5 @@ mutants/
 html/
 
 *.py[cod]
-artifacts/challenge-detection/
-artifacts/challenge-solving/
+/artifacts/challenge-detection/
+/artifacts/challenge-solving/

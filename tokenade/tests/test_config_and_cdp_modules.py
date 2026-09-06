@@ -352,6 +352,20 @@ class TestGetSiteUrl:
 
     def test_known_site_from_site_config(self):
         # "google" resolves from the generic-handler catalog before google-flow.
+        # Skip when the installed generic-handler revision ships no catalog
+        # (marketplace drift): google-flow then legitimately wins.
+        try:
+            from tokenade.core.integration.plugin_loader import PluginLoader
+
+            loader = PluginLoader()
+            loader.load_all()
+            generic = next(
+                (p for p in loader.list_all() if p.name == "generic-handler"), None
+            )
+            if generic is not None and hasattr(generic.instance, "set_site"):
+                generic.instance.set_site("google")
+        except ValueError:
+            pytest.skip("installed generic-handler lacks 'google' catalog")
         session = {"site_name": "google", "cookies": []}
         url = get_site_url(session)
         assert url == "https://mail.google.com"

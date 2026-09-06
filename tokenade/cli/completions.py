@@ -1,4 +1,5 @@
 """Shell completion scripts for bash, zsh, and fish."""
+import os
 from textwrap import dedent
 
 BASH_COMPLETION = dedent("""\
@@ -59,26 +60,40 @@ FISH_COMPLETION = dedent("""\
 """)
 
 
-def install_completion(shell: str = "bash"):
-    """Install shell completion."""
+def _completion_home():
+    """Home directory for completion installs.
+
+    Prefers an explicitly exported ``HOME`` (POSIX shells, Git Bash, test
+    isolation) and falls back to :meth:`pathlib.Path.home` on Windows, where
+    ``HOME`` is normally unset and ``USERPROFILE`` is authoritative.
+    """
     from pathlib import Path
 
+    home = os.environ.get("HOME")
+    if home:
+        return Path(home)
+    return Path.home()
+
+
+def install_completion(shell: str = "bash"):
+    """Install shell completion."""
+    home = _completion_home()
     if shell == "bash":
-        comp_dir = Path.home() / ".bash_completion.d"
+        comp_dir = home / ".bash_completion.d"
         comp_dir.mkdir(exist_ok=True)
         comp_file = comp_dir / "tokenade"
-        comp_file.write_text(BASH_COMPLETION)
+        comp_file.write_text(BASH_COMPLETION, encoding="utf-8")
         print(f"Installed bash completion to {comp_file}")
         print("Restart your shell or run: source ~/.bash_completion.d/tokenade")
     elif shell == "zsh":
-        comp_dir = Path.home() / ".zsh" / "completions"
+        comp_dir = home / ".zsh" / "completions"
         comp_dir.mkdir(parents=True, exist_ok=True)
         comp_file = comp_dir / "_tokenade"
-        comp_file.write_text(ZSH_COMPLETION)
+        comp_file.write_text(ZSH_COMPLETION, encoding="utf-8")
         print(f"Installed zsh completion to {comp_file}")
     elif shell == "fish":
-        comp_dir = Path.home() / ".config" / "fish" / "completions"
+        comp_dir = home / ".config" / "fish" / "completions"
         comp_dir.mkdir(parents=True, exist_ok=True)
         comp_file = comp_dir / "tokenade.fish"
-        comp_file.write_text(FISH_COMPLETION)
+        comp_file.write_text(FISH_COMPLETION, encoding="utf-8")
         print(f"Installed fish completion to {comp_file}")

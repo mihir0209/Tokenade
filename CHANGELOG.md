@@ -14,6 +14,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - New `tokenade/tests/test_tui_gateway_coherence.py` (11 tests) pins labels, guards, and drain payloads.
 - **Gateway Playwright backend**: `browser_type="playwright"` (as sent by `BrowserManagerContextFactory`) now resolves to the Playwright `chromium` backend instead of raising `AttributeError: 'Playwright' object has no attribute 'playwright'`. Verified headless on Windows with stock Playwright Chromium.
 
+### Fixed (Windows hardening — verified on Windows, `python -m tokenade`)
+- **Extension in CloakBrowser**: unpacked `extension/` loads in CloakBrowser 146 (service worker registers, `window.Tokenade` bridge injects, `getCookies` returns HttpOnly cookies, popup renders, packager round-trips). First-load service-worker cold start needs one page reload (same as stock Chromium).
+- **cp1252 crashes**: UTF-8 forced for CI workflow writes (`workflow_generator`), stealth HTML/JSON reports (`browser/dashboard`), key-file reads (`encryptor.load_key_from_file`), TUI background CLI logs, and TUI screenshot saves in tests. CLI entry (`main()`) reconfigures stdout/stderr to UTF-8 on Windows.
+- **`os.kill(pid, 0)` PID checks**: replaced with a Win32 OpenProcess/GetExitCodeProcess check (`core/utils/process.py`) in artifact lock reclaim (`artifacts/manager`) and daemon liveness (`daemon/session_daemon`). Dead restore locks are now reclaimed on Windows; previously they blocked restores forever.
+- **Stale `C:\nonexistent` assumption**: tests using hardcoded `/nonexistent/...` paths (resolves to creatable `C:\nonexistent` on Windows) now use tmp-dir or blocker-file paths (`base_handler`, `batch`, `cli_session`, `session_sync`).
+- **SQLite handle leaks**: `db_utils.copy_db` and `local_storage_extractor.extract_firefox` now close connections on every path and own temp-copy modes (0o600); fixes WinError 32 cleanup failures and hardens temp cookie copies.
+- **HOME-aware paths**: new `core/utils/paths.py` (`tokenade_home()`, `expand_user()`) honors an exported `HOME` on Windows for Tokenade data dirs and `~` CLI args; wired into completions install, vault store, and sync peer sessions/config dirs. Browser-profile discovery paths intentionally still use the OS home.
+- **Test isolation**: POSIX-only tests (permission bits, exec bit, `fork`, X11 paths, pywin32-absence) get `win32` skip markers; temp-file tests close handles before unlink; `echo` subprocess replaced with `sys.executable`; version-ordering made deterministic via monotonic `created_at`.
+- **Marketplace drift guards**: site-handler and site-URL tests skip when the installed `generic-handler` revision ships no site catalog instead of failing on upstream plugin changes.
+- **Repo hygiene**: `.gitignore` `artifacts/` rules rooted (`/artifacts/...`) — they previously shadowed the `tokenade/core/artifacts/` source package.
+
 ## [1.4.0] - 2026-08-21
 
 ### Added

@@ -226,39 +226,50 @@ class TestExtractFilters:
 
 
 class TestParseBinaryCookies:
+    @staticmethod
+    def _write_tmp_bin(payload: bytes) -> str:
+        """Write payload to a closed temp file; caller must unlink the path.
+
+        The handle is closed before returning: Windows forbids unlinking
+        a file that is still open.
+        """
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
+            f.write(payload)
+            return f.name
+
     @patch("tokenade.core.importer.safari_extractor.sys")
     def test_file_too_small(self, mock_sys):
         mock_sys.platform = "darwin"
         ext = SafariExtractor()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
-            f.write(b"co")
-            f.flush()
-            result = ext._parse_binary_cookies(f.name)
+        name = self._write_tmp_bin(b"co")
+        try:
+            result = ext._parse_binary_cookies(name)
             assert result == []
-            os.unlink(f.name)
+        finally:
+            os.unlink(name)
 
     @patch("tokenade.core.importer.safari_extractor.sys")
     def test_invalid_header(self, mock_sys):
         mock_sys.platform = "darwin"
         ext = SafariExtractor()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
-            f.write(b"xxxx" + b"\x00" * 20)
-            f.flush()
-            result = ext._parse_binary_cookies(f.name)
+        name = self._write_tmp_bin(b"xxxx" + b"\x00" * 20)
+        try:
+            result = ext._parse_binary_cookies(name)
             assert result == []
-            os.unlink(f.name)
+        finally:
+            os.unlink(name)
 
     @patch("tokenade.core.importer.safari_extractor.sys")
     def test_valid_single_page(self, mock_sys):
         mock_sys.platform = "darwin"
         ext = SafariExtractor()
         file_data = _build_safari_cookies_file([_build_safari_page_with_entry()])
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
-            f.write(file_data)
-            f.flush()
-            result = ext._parse_binary_cookies(f.name)
+        name = self._write_tmp_bin(file_data)
+        try:
+            result = ext._parse_binary_cookies(name)
             assert isinstance(result, list)
-            os.unlink(f.name)
+        finally:
+            os.unlink(name)
 
     @patch("tokenade.core.importer.safari_extractor.sys")
     def test_io_error(self, mock_sys):

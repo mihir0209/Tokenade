@@ -1,6 +1,9 @@
 """Tests for Chrome Binary Patcher (Phase 28)."""
 import os
 import stat
+import sys
+
+import pytest
 
 from tokenade.core.browser.patcher import ChromePatcher, PatchResult, CDC_PATTERN, CDC_REPLACEMENT_TEMPLATE
 
@@ -226,6 +229,10 @@ class TestPatch:
         assert result.patched_path == str(output)
         assert os.path.isfile(str(output))
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX exec-bit (0o755/S_IXUSR) unenforceable on Windows",
+    )
     def test_patch_preserves_permissions(self, tmp_path):
         original_content = b"{window.cdc_test = 1;}"
         binary = tmp_path / "chrome"

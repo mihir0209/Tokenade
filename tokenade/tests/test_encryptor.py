@@ -1,5 +1,6 @@
 """Tests for encryptor round-trip and backward compatibility."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -268,6 +269,10 @@ class TestEncryptorRoundTrip:
             enc.decrypt(encrypted, "wrong")
         assert ei.value.operation == "decrypt"
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits (0o600) unenforceable on Windows",
+    )
     def test_encrypt_file_permissions_and_log(self, tmp_path, caplog):
         import logging
         import stat
@@ -284,6 +289,10 @@ class TestEncryptorRoundTrip:
             r.getMessage() == f"File encrypted: {src} -> {dst}" for r in caplog.records
         )
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits (0o600) unenforceable on Windows",
+    )
     def test_decrypt_file_log_message_and_permissions(self, tmp_path, caplog):
         import logging
         import stat

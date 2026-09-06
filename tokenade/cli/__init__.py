@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 
@@ -4382,6 +4383,18 @@ def cmd_extension(args):
 
 def main():
     """Main CLI entry point."""
+    if os.name == "nt":
+        # Windows consoles default to a legacy codepage (e.g. cp1252/cp437)
+        # that cannot encode the checkmarks, arrows, and box-drawing glyphs
+        # the CLI prints. Prefer UTF-8 output instead of crashing.
+        for stream_name in ("stdout", "stderr"):
+            stream = getattr(sys, stream_name, None)
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                try:
+                    reconfigure(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
     parser = _build_parser()
     args = parser.parse_args()
 

@@ -763,7 +763,7 @@ class TestMacCookieCrypto:
 
 class TestCookieCryptoFactory:
     def test_get_platform_linux(self):
-        with patch("sys.platform", "linux"):
+        with patch("sys.platform", "linux"), patch.object(os, "name", "posix"):
             platform = CookieCryptoFactory.get_platform()
             assert platform in ("posix", "linux")
 
@@ -790,6 +790,9 @@ class TestCookieCryptoFactory:
         crypto = CookieCryptoFactory.create("darwin")
         assert isinstance(crypto, MacCookieCrypto)
 
+    @pytest.mark.skipif(
+        os.name == "nt", reason="requires absence of pywin32 (non-Windows)"
+    )
     def test_create_windows(self):
         with pytest.raises(ImportError):
             CookieCryptoFactory.create("windows")
@@ -825,6 +828,9 @@ class TestCookieCryptoFactory:
         crypto = CookieCryptoFactory.create("linux")
         assert isinstance(crypto, LinuxCookieCrypto)
 
+    @pytest.mark.skipif(
+        os.name == "nt", reason="requires absence of pywin32 (non-Windows)"
+    )
     def test_create_override_windows(self):
         """platform_override='windows' matches the windows check."""
         with pytest.raises(ImportError):
