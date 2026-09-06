@@ -20,8 +20,10 @@ Export and inject portable `.tokenade` sessions directly from the browser with n
 
 1. **Export (📤)**: Extract cookies and storage from the active tab or all browser domains. Select format (`.tokenade`, Cookie-Editor, Netscape) and optionally specify a password for AES-256-GCM encryption.
 2. **Inject (📥)**: Drag-and-drop or select any `.tokenade` or JSON cookie file to inject into the active browser tab. If encrypted, prompts for decryption password. Supports clean domain injection and auto-reload.
-3. **Inspect (🔍)**: Search, view, and copy active domain cookies with expiration, HttpOnly, Secure, and SameSite tags.
-4. **Settings (⚙️)**: Configure Tokenade Proxy Gateway bridge, switch themes (Dark, Light, System), and manage saved preferences.
+3. **Vault**: Store the active session into the local Tokenade Vault and browse stored sessions.
+4. **Inspect (🔍)**: Search, view, and copy active domain cookies with expiration, HttpOnly, Secure, and SameSite tags.
+5. **Health**: Diagnostics for the active session (cookie health, critical-cookie checks).
+6. **Settings (⚙️)**: Configure Tokenade Proxy Gateway bridge (`SEND_TO_PROXY`), switch themes (Dark, Light, System), and manage saved preferences.
 
 ## Install (Developer mode)
 

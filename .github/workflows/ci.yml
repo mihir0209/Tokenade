@@ -107,6 +107,50 @@ jobs:
           path: test-results-${{ matrix.python-version }}-${{ matrix.os }}.xml
           retention-days: 30
 
+  test-windows:
+    name: Test (Windows, foreground chunks)
+    runs-on: windows-latest
+    needs: lint
+    timeout-minutes: 20
+    env:
+      # Force UTF-8 stdio on Windows runners (legacy codepage cannot
+      # encode CLI glyphs); mirrors local `python -m tokenade` runs.
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ env.PYTHON_DEFAULT }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium
+
+      - name: Compile check
+        run: python -m compileall -q tokenade
+
+      - name: Run full quick gate (foreground, no background procs)
+        run: >-
+          python -m pytest
+          tokenade/tests tests
+          -q --tb=short --timeout=60
+          -m "not slow and not network"
+          -n 4
+          --junitxml=test-results-windows.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results-windows
+          path: test-results-windows.xml
+          retention-days: 30
+
   security:
     name: Security Check
     runs-on: ubuntu-latest
