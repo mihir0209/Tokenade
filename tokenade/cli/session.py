@@ -82,9 +82,18 @@ def _extract_via_cdp(port: int, domain_filter: str = None) -> dict:
                     return d.get("result", {})
             return {}
 
-        # 1. Get all cookies
-        result = await cmd("Storage.getCookies")
-        cdp_cookies = result.get("cookies", [])
+        # 1. Get all cookies. The cookie store populates lazily after
+        # browser launch (empty at first, fills in over ~10s on real
+        # profiles), so poll instead of trusting the first response.
+        cdp_cookies = []
+        for _ in range(12):
+            result = await cmd("Storage.getCookies")
+            cdp_cookies = result.get("cookies", [])
+            if cdp_cookies:
+                break
+            await asyncio.sleep(5)
+        if cdp_cookies:
+            print(f"   [OK] CDP cookie store ready ({len(cdp_cookies)} cookies)")
 
         # 2. Find tabs on target domains for localStorage/sessionStorage
         local_storage = {}

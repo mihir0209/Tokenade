@@ -2124,6 +2124,15 @@ Commands:
         type=int,
         help="Extract via CDP from running browser (bypasses SQLite decryption)",
     )
+    export_parser.add_argument(
+        "--cdp-launch",
+        action="store_true",
+        help="With --cdp-port: back up donor Cookies/Local State, quit "
+        "residual browser processes, and relaunch a disposable snapshot "
+        "with remote debugging when the port is not already listening "
+        "(reads live values, defeats app-bound encryption; the live "
+        "profile is never launched against)",
+    )
     export_parser.add_argument("--file-path", help="Export from cookies file")
     export_parser.add_argument(
         "--format",

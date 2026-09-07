@@ -95,6 +95,154 @@ def _site_handler_metadata(
     return metadata
 
 
+def _snapshot_chromium_profile(profile_path):
+    """Copy session-relevant profile files to a temp user-data tree.
+
+    Layout out: ``<tmp>/User Data/<Profile>/{Network/Cookies*, Local
+    Storage/leveldb, Session Storage, IndexedDB, Preferences}`` plus
+    ``<tmp>/User Data/Local State``. Caches are skipped. Best-effort per
+    file: a locked or missing file is skipped with a warning, never fatal.
+
+    Returns the temp dir Path (caller must delete it when done).
+    """
+    import shutil
+    import tempfile
+    from pathlib import Path as _Path
+
+    profile_path = _Path(str(profile_path))
+    user_data = profile_path.parent
+    tmp = _Path(tempfile.mkdtemp(prefix="tokenade_profile_snapshot_"))
+    dest_profile = tmp / "User Data" / profile_path.name
+
+    def _copy_glob(src_dir, pattern, dest_sub):
+        try:
+            matches = sorted(_Path(src_dir).glob(pattern))
+        except Exception:
+            return 0
+        count = 0
+        for src in matches:
+            if not src.is_file():
+                continue
+            try:
+                dst = dest_profile / dest_sub / src.name
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                count += 1
+            except Exception as exc:
+                logger.warning(f"Snapshot skipped {src}: {exc}")
+        return count
+
+    def _copy_tree(src_dir, dest_sub):
+        try:
+            src = _Path(src_dir)
+            if not src.is_dir():
+                return 0
+            count = 0
+            for src_file in sorted(src.rglob("*")):
+                if not src_file.is_file():
+                    continue
+                try:
+                    rel = src_file.relative_to(src)
+                    dst = dest_profile / dest_sub / rel
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_file, dst)
+                    count += 1
+                except Exception as exc:
+                    logger.warning(f"Snapshot skipped {src_file}: {exc}")
+            return count
+        except Exception:
+            return 0
+
+    total = 0
+    total += _copy_glob(str(profile_path / "Network"), "Cookies*", "Network")
+    total += _copy_glob(str(profile_path), "Cookies*", "")
+    total += _copy_tree(str(profile_path / "Local Storage" / "leveldb"), "Local Storage/leveldb")
+    total += _copy_tree(str(profile_path / "Session Storage"), "Session Storage")
+    total += _copy_tree(str(profile_path / "IndexedDB"), "IndexedDB")
+    for single in ("Preferences", "Secure Preferences"):
+        src = profile_path / single
+        if src.is_file():
+            try:
+                dst = dest_profile / single
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                total += 1
+            except Exception as exc:
+                logger.warning(f"Snapshot skipped {src}: {exc}")
+    try:
+        src = user_data / "Local State"
+        if src.is_file():
+            shutil.copy2(src, tmp / "User Data" / "Local State")
+            total += 1
+    except Exception as exc:
+        logger.warning(f"Snapshot skipped Local State: {exc}")
+
+    print(f"   [DIR] Snapshotted {total} profile file(s) (caches skipped)")
+    return tmp
+
+
+def _backup_donor_profile(profile_path, browser_name):
+    """Back up session-critical donor files before any destructive step.
+
+    Copies ``Cookies*`` and ``Local State`` to
+    ``~/.tokenade/profile-backups/<browser>-<timestamp>/``. Automation must
+    never be the reason a donor profile loses data: Chromium prunes cookie
+    rows it cannot decrypt, so a relaunch against live files can destroy
+    sessions (observed on Windows Edge). Best-effort; returns the backup
+    dir Path or None.
+    """
+    import time as _time
+    from pathlib import Path as _Path
+
+    from tokenade.core.utils.paths import tokenade_home
+
+    try:
+        profile_path = _Path(str(profile_path))
+        stamp = _time.strftime("%Y%m%d-%H%M%S")
+        dest = _Path(str(tokenade_home())) / ".tokenade" / "profile-backups" / f"{browser_name}-{stamp}"
+        dest.mkdir(parents=True, exist_ok=True)
+        import shutil as _shutil
+
+        copied = 0
+        for pattern in ("Network/Cookies*", "Cookies*"):
+            for src in sorted(profile_path.glob(pattern)):
+                if src.is_file():
+                    _shutil.copy2(src, dest / src.name)
+                    copied += 1
+        src_state = profile_path.parent / "Local State"
+        if src_state.is_file():
+            _shutil.copy2(src_state, dest / "Local State")
+            copied += 1
+        if copied:
+            print(f"   [DIR] Donor backup: {dest} ({copied} file(s))")
+            return dest
+    except Exception as exc:
+        logger.warning(f"Donor backup failed: {exc}")
+    return None
+
+
+def _is_live_user_data_dir(launch_user_data_dir, real_profile):
+    """True if a launch dir resolves inside the real browser data tree.
+
+    Launching automation there risks mutating the donor profile (cookie
+    pruning, lock fights). Callers must refuse and use a snapshot instead.
+    """
+    try:
+        from pathlib import Path as _Path
+
+        if not launch_user_data_dir or not real_profile:
+            return False
+        launch = _Path(str(launch_user_data_dir)).resolve()
+        real_ud = _Path(str(real_profile)).resolve()
+        if real_ud.is_file() or real_ud.suffix:
+            real_ud = real_ud.parent
+        if real_ud.name in ("Default",) or real_ud.name.startswith("Profile "):
+            real_ud = real_ud.parent
+        return launch == real_ud or real_ud in launch.parents
+    except Exception:
+        return False
+
+
 def cmd_export(args):
     """Export session from existing browser to .tokenade file."""
     from tokenade.cli.session import _extract_via_cdp
@@ -194,6 +342,7 @@ def cmd_export(args):
 
     if cdp_port:
         launched_browser = None
+        _snapshot_dir = None
         import urllib.request as _urllib_req
 
         try:
@@ -203,42 +352,98 @@ def cmd_export(args):
             import subprocess
             import platform
 
+            _exe_names = {
+                "chrome": "chrome",
+                "chromium": "chromium",
+                "edge": "msedge",
+                "brave": "brave",
+                "firefox": "firefox",
+                "vivaldi": "vivaldi",
+                "opera": "opera",
+            }
+            _exe = _exe_names.get((browser_name or "").lower(), browser_name)
             _ps_cmd = (
                 ["pgrep", "-c", browser_name]
                 if platform.system() != "Windows"
-                else ["tasklist", "/fi", f"imagename eq {browser_name}.exe"]
+                else ["tasklist", "/fi", f"imagename eq {_exe}.exe"]
             )
+            _browser_running = False
             try:
                 _running = subprocess.run(
                     _ps_cmd, capture_output=True, text=True, timeout=3
                 )
-                if (
-                    platform.system() != "Windows"
-                    and _running.returncode == 0
-                    and int(_running.stdout.strip()) > 0
-                ):
-                    print(
-                        f"   [WARN] {browser_name} is already running. Profile is locked."
+                if platform.system() != "Windows":
+                    _browser_running = (
+                        _running.returncode == 0
+                        and _running.stdout.strip().isdigit()
+                        and int(_running.stdout.strip()) > 0
                     )
-                    print(f"   Close all {browser_name} windows first, then retry.")
-                    print(
-                        f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}"
-                    )
-                    return
-                elif (
-                    platform.system() == "Windows"
-                    and browser_name.lower() in _running.stdout.lower()
-                ):
-                    print(
-                        f"   [WARN] {browser_name} is already running. Profile is locked."
-                    )
-                    print(f"   Close all {browser_name} windows first, then retry.")
-                    print(
-                        f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}"
-                    )
-                    return
+                else:
+                    _browser_running = _exe.lower() in _running.stdout.lower()
             except Exception:
                 pass
+
+            if _browser_running and not getattr(args, "cdp_launch", False):
+                print(
+                    f"   [WARN] {browser_name} is already running. Profile is locked."
+                )
+                print(f"   Close all {browser_name} windows first, then retry.")
+                print(
+                    f"   Or start {browser_name} with: {browser_name} --remote-debugging-port={cdp_port}"
+                )
+                print(
+                    "   Or pass --cdp-launch to quit it and relaunch with remote "
+                    "debugging automatically."
+                )
+                return
+
+            if _browser_running:
+                print(
+                    f"\n[CDP] --cdp-launch: quitting residual {browser_name} processes..."
+                )
+                _quit_cmd = (
+                    ["pkill", "-x", _exe]
+                    if platform.system() != "Windows"
+                    else ["taskkill", "/F", "/IM", f"{_exe}.exe"]
+                )
+                try:
+                    subprocess.run(_quit_cmd, capture_output=True, timeout=15)
+                except Exception as exc:
+                    print(f"   [WARN] Could not quit {browser_name}: {exc}")
+                import time as _quit_wait
+
+                for _ in range(15):
+                    try:
+                        _check = subprocess.run(
+                            _ps_cmd, capture_output=True, text=True, timeout=3
+                        )
+                        if platform.system() != "Windows":
+                            _gone = not (
+                                _check.returncode == 0
+                                and _check.stdout.strip().isdigit()
+                                and int(_check.stdout.strip()) > 0
+                            )
+                        else:
+                            _gone = _exe.lower() not in _check.stdout.lower()
+                        if _gone:
+                            break
+                    except Exception:
+                        break
+                    _quit_wait.sleep(1)
+                print(f"   [OK] {browser_name} quit; relaunching with remote debugging.")
+                # Back up AFTER quit (files are unlocked now) and BEFORE any
+                # automation launch: if a relaunch ever mutates the donor,
+                # Cookies/Local State are restorable.
+                try:
+                    from tokenade.core.importer.browser_discovery import (
+                        BrowserProfileDiscovery as _BPD2,
+                    )
+
+                    _pre2 = _BPD2().discover_browser(browser_name)
+                    if _pre2:
+                        _backup_donor_profile(str(_pre2[0].path), browser_name)
+                except Exception as exc:
+                    logger.warning(f"Donor backup skipped: {exc}")
 
             print(f"\n[...] Launching {browser_name} with CDP on port {cdp_port}...")
             from tokenade.core.browser.undetectable import SystemBrowserLauncher
@@ -246,18 +451,101 @@ def cmd_export(args):
             launcher = SystemBrowserLauncher()
             try:
                 real_profile = launcher._get_default_profile_dir(browser_name)
-                launched_browser = launcher.launch(
-                    browser=browser_name,
-                    visible=True,
-                    port=cdp_port,
-                    profile_dir=real_profile,
+                try:
+                    from tokenade.core.importer.browser_discovery import (
+                        BrowserProfileDiscovery as _BPD3,
+                    )
+
+                    _found = _BPD3().discover_browser(
+                        browser_name
+                    )
+                    if _found:
+                        real_profile = str(_found[0].path)
+                except Exception:
+                    pass
+                from pathlib import Path as _Path
+
+                _profile_path = _Path(str(real_profile)) if real_profile else None
+                _is_chromium = (browser_name or "").lower() in (
+                    "chrome", "chromium", "edge", "msedge",
+                    "brave", "vivaldi", "opera", "arc",
                 )
+                _launch_kwargs = {
+                    "browser": browser_name,
+                    "visible": True,
+                    "port": cdp_port,
+                    "profile_dir": real_profile,
+                }
+                if (
+                    _is_chromium
+                    and _profile_path is not None
+                    and (
+                        _profile_path.name == "Default"
+                        or _profile_path.name.startswith("Profile ")
+                    )
+                ):
+                    # Launch a SNAPSHOT, not the live profile: Edge refuses
+                    # --remote-debugging-port on its default data directory
+                    # ("requires a non-default data directory"), and automation
+                    # must never mutate the user's real profile. Cookies,
+                    # storage, and prefs are copied; caches are skipped.
+                    # The user may reopen their browser as soon as the
+                    # snapshot below finishes.
+                    _snapshot_dir = _snapshot_chromium_profile(_profile_path)
+                    print(f"   [DIR] Snapshot ready: {_snapshot_dir}")
+                    print("   [OK] You can reopen your browser now.")
+                    _launch_kwargs["user_data_dir"] = str(_snapshot_dir / "User Data")
+                    _launch_kwargs["extra_args"] = [
+                        f"--profile-directory={_profile_path.name}"
+                    ]
+                    _launch_kwargs["profile_dir"] = str(_snapshot_dir)
+                # Hard refusal: automation must never launch against the live
+                # user-data tree (cookie pruning / lock fights destroy donor
+                # sessions). Snapshot above is the only allowed Chromium path.
+                _effective_ud = _launch_kwargs.get(
+                    "user_data_dir", _launch_kwargs.get("profile_dir")
+                )
+                if _is_chromium and _is_live_user_data_dir(
+                    _effective_ud, str(_profile_path) if _profile_path else None
+                ):
+                    print(
+                        "[ERROR] Refusing to launch automation against the live "
+                        "browser profile (donor safety)."
+                    )
+                    import shutil as _shutil2
+
+                    try:
+                        if _snapshot_dir is not None:
+                            _shutil2.rmtree(_snapshot_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+                    return
+                try:
+                    launched_browser = launcher.launch(**_launch_kwargs)
+                except RuntimeError as e:
+                    print(f"[ERROR] Failed to launch browser: {e}")
+                    import shutil as _shutil3
+
+                    try:
+                        if _snapshot_dir is not None:
+                            _shutil3.rmtree(_snapshot_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+                    _snapshot_dir = None
+                    return
                 print(f"   [OK] Browser launched (PID: {launched_browser.pid})")
                 import time as _time
 
                 _time.sleep(3)
-            except RuntimeError as e:
-                print(f"[ERROR] Failed to launch browser: {e}")
+            except Exception as e:
+                print(f"[ERROR] CDP launch preparation failed: {e}")
+                import shutil as _shutil4
+
+                try:
+                    if _snapshot_dir is not None:
+                        _shutil4.rmtree(_snapshot_dir, ignore_errors=True)
+                except Exception:
+                    pass
                 return
 
         session_state = _extract_via_cdp(
@@ -270,6 +558,14 @@ def cmd_export(args):
         if launched_browser:
             try:
                 launched_browser.close()
+            except Exception:
+                pass
+            print("   [OK] Relaunched browser closed — reopen it normally.")
+        if _snapshot_dir is not None:
+            import shutil as _shutil
+
+            try:
+                _shutil.rmtree(_snapshot_dir, ignore_errors=True)
             except Exception:
                 pass
 

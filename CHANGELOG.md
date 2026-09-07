@@ -25,6 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Marketplace drift guards**: site-handler and site-URL tests skip when the installed `generic-handler` revision ships no site catalog instead of failing on upstream plugin changes.
 - **Repo hygiene**: `.gitignore` `artifacts/` rules rooted (`/artifacts/...`) — they previously shadowed the `tokenade/core/artifacts/` source package.
 
+### Added
+- **`export --cdp-launch`** (with `--cdp-port`): backs up donor Cookies/Local State to `~/.tokenade/profile-backups/`, quits residual browser processes, snapshots the profile (caches skipped, user may reopen immediately), relaunches the snapshot flagged, extracts via CDP, closes, and cleans up. Automation is refused against live user-data trees (Chromium prunes undecryptable rows there — observed data loss on Windows Edge). Covered by `tokenade/tests/test_cdp_launch_safety.py`.
+
 ## [1.4.0] - 2026-08-21
 
 ### Added
