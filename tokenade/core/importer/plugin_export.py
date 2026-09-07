@@ -58,7 +58,16 @@ class PluginExporter:
             loader = PluginLoader()
             loader.load_all()
             handlers = loader.list_handlers()
+            manifests = {m["name"]: m for m in loader.discover()}
             for name, handler in handlers.items():
+                manifest = manifests.get(name) or {}
+                # Utility plugins (backup/merge/...) subclass the site-handler
+                # base but match every domain via permissive can_handle; they
+                # must never win domain auto-discovery (wrong export lineage
+                # and storage routing). Unknown/legacy manifests stay eligible.
+                if manifest.get("category") == "utility":
+                    logger.debug(f"Skipping utility plugin for domain match: {name}")
+                    continue
                 self._handlers[name] = handler
         except Exception as e:
             logger.debug(f"Failed to load handler plugins: {e}")

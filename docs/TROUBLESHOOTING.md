@@ -162,6 +162,21 @@ Cookie decryption: 0 succeeded, 50 failed (of 50 encrypted)
 
 **Cause:** Cookie encryption key not accessible (platform keyring not available, or wrong profile).
 
+> **Windows Chromium (Chrome / Edge / Brave v127+) — app-bound encryption:**
+> If *every* cookie fails (`0 succeeded, N failed`) and values export as
+> **empty**, the donor uses **app-bound encryption**: the profile's
+> `Local State` contains `os_crypt.app_bound_encrypted_key`, which only the
+> browser's own Elevation Service can unwrap. Quitting the browser does
+> **not** help — the key itself is unreachable to third parties.
+> `tokenade export` now prints an explicit `[WARN] All cookie values are
+> EMPTY` diagnosis in this case. Workarounds that read live values instead
+> of the SQLite file:
+> - **Browser extension** (`extension/`, load unpacked) — reads cookies via
+>   the extension API; no decryption needed. No TLS fingerprint.
+> - **CDP export** — start the browser with `--remote-debugging-port=9222`,
+>   then `tokenade export --cdp-port 9222 --domains ...`.
+> - **Firefox donor** — Firefox does not use Chromium app-bound encryption.
+
 **Solutions:**
 ```bash
 # Linux: Install keyring support

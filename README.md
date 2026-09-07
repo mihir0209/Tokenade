@@ -115,7 +115,7 @@ tokenade export --list-profiles
 
 | Path | When | Caveat |
 |------|------|--------|
-| **CLI SQLite** `tokenade export --browser-name …` | Full profile + optional fingerprint + site handlers | Prefer **fully quitting** the browser so the cookie DB is not locked |
+| **CLI SQLite** `tokenade export --browser-name …` | Full profile + optional fingerprint + site handlers | Prefer **fully quitting** the browser so the cookie DB is not locked. **Windows Chromium v127+:** app-bound encryption makes cookie *values* unreadable via SQLite (names only) — use Extension / CDP / Firefox donor instead |
 | **Extension** (`extension/`, load unpacked) | Browser stays open; quick `.tokenade` from the active tab | **No TLS fingerprint**; storage is current-tab origin only |
 | **Convert** `tokenade convert -i dump.json` | You already have Cookie-Editor / Playwright / HAR / Netscape | Quality depends on the dump; not a live browser read |
 

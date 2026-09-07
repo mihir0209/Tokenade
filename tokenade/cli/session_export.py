@@ -476,6 +476,34 @@ def cmd_export(args):
 
     print(f"   [STATS] Total cookies: {len(cookies)}")
 
+    if cookies and not any(c.get("value") for c in cookies):
+        # Names without values: Chromium's DPAPI key would not decrypt.
+        # On Windows this is almost always app-bound encryption (Chrome 127+).
+        app_bound = False
+        try:
+            import json as _json
+
+            local_state = Path(str(browser_path)).parent / "Local State"
+            if local_state.is_file():
+                app_bound = "app_bound_encrypted_key" in _json.loads(
+                    local_state.read_text(encoding="utf-8")
+                ).get("os_crypt", {})
+        except Exception:
+            pass
+        print("   [WARN] All cookie values are EMPTY — names only, no session material.")
+        if app_bound:
+            print(
+                "   [WARN] Donor uses app-bound encryption (Chrome 127+ on Windows): "
+                "third-party SQLite reads cannot decrypt values."
+            )
+        else:
+            print(
+                "   [WARN] Cookie values would not decrypt (wrong profile key or "
+                "locked/rotated DPAPI state)."
+            )
+        print("   [TIP] Use the browser extension (live cookie API, no decryption needed)")
+        print("         or --cdp-port export from a running browser, or a Firefox donor.")
+
     if domain_filter and not args.file_path:
         filtered = []
         for c in cookies:
@@ -553,6 +581,24 @@ def cmd_export(args):
                 print(
                     f"   [STATS] Extracted {len(local_storage)} localStorage entries for plugin origins"
                 )
+                if not local_storage:
+                    try:
+                        import plyvel  # noqa: F401
+
+                        print(
+                            "   [WARN] Handler declares storage origins but none were captured — "
+                            "the donor profile may be logged out of those origins."
+                        )
+                    except ImportError:
+                        print(
+                            "   [WARN] localStorage skipped: 'plyvel' is unavailable on this "
+                            "platform (Linux-only dependency), so Chromium storage "
+                            "cannot be read here even when present."
+                        )
+                        print(
+                            "   [TIP] On Windows use the browser extension or --cdp-port "
+                            "export for storage-backed sites (Discord, Telegram)."
+                        )
             elif args.local_storage_origin:
                 local_storage = ls_extractor.extract(
                     origin_filter=args.local_storage_origin
