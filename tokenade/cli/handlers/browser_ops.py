@@ -847,6 +847,65 @@ def _refresh_logged_in_heuristic(page_url: str, page_title: str, cookies) -> boo
     return True
 
 
+_GENERIC_LOGOUT_SELECTORS = (
+    "a[href='/login']",
+    "a[href='/signin']",
+)
+
+
+def _resolve_logout_selectors(cookies, site_name=""):
+    """Collect DOM logged-out selectors for the refresh login check.
+
+    Prefers the site handler's ``site_config.json``
+    (``logged_out_selectors`` + ``login_indicator_css``), falls back to
+    generic login-link selectors. Never raises; returns at most 8.
+    """
+    selectors = []
+    try:
+        from tokenade.core.importer.plugin_export import PluginExporter
+
+        domains = sorted(
+            {
+                (c.get("domain") or "").lstrip(".")
+                for c in cookies or []
+                if c.get("domain")
+            }
+        )
+        if not domains and site_name and "." in str(site_name):
+            domains = [str(site_name).lstrip(".")]
+        handler = PluginExporter().find_handler(domains) if domains else None
+        if handler is not None and hasattr(handler, "get_site_config"):
+            try:
+                cfg = handler.get_site_config() or {}
+            except Exception:
+                cfg = {}
+            for sel in cfg.get("logged_out_selectors") or []:
+                if sel and str(sel) not in selectors:
+                    selectors.append(str(sel))
+            login_css = cfg.get("login_indicator_css")
+            if login_css and str(login_css) not in selectors:
+                selectors.append(str(login_css))
+    except Exception as e:
+        logger.debug("logout selector resolution failed: %s", e)
+    for sel in _GENERIC_LOGOUT_SELECTORS:
+        if sel not in selectors:
+            selectors.append(sel)
+    return selectors[:8]
+
+
+def _default_refresh_output(session_file):
+    """Default refresh output: ``<stem>.refreshed.tokenade`` next to input.
+
+    The source session is never overwritten unless ``--output`` points at
+    it explicitly (refreshing merges target-browser cookies into the jar,
+    which would otherwise pollute the donor file).
+    """
+    from pathlib import Path as _Path
+
+    p = _Path(str(session_file))
+    return str(p.with_name(p.stem + ".refreshed" + p.suffix))
+
+
 def cmd_refresh_browser(args):
     """Refresh session: inject -> navigate -> extract -> login-check -> exit.
 
@@ -955,7 +1014,9 @@ def cmd_refresh_browser(args):
                     raw = refresher.refresh(session, plugin_creds)
                     session = _unwrap_refresh_result(raw, session)
 
-                    save_path = output or str(session_file)
+                    save_path = output or _default_refresh_output(session_file)
+                    if not output:
+                        print(f"   [i] Source left unchanged; refreshed copy: {save_path}")
                     packager.save(session, save_path)
                     print(f"[OK] Session refreshed via plugin: {save_path}")
                     _run_post_refresh_plugins(loader, session)
@@ -972,6 +1033,13 @@ def cmd_refresh_browser(args):
             print("[WARN] Plugin system not available. Proceeding with browser refresh.")
         except Exception as e:
             print(f"[WARN] Plugin error: {e}. Proceeding with browser refresh.")
+
+    # DOM login-check selectors (site handler config + generic fallbacks).
+    # URL/title heuristics alone pass SPA shells that redirect to /login
+    # after the wait (observed with Discord), so selector hits veto PASS.
+    logout_selectors = _resolve_logout_selectors(cookies, site_name)
+    if logout_selectors:
+        print(f"   [CDP] Logout selectors: {', '.join(logout_selectors)}")
 
     # Determine target URL
     target_url = getattr(args, "url", None)
@@ -1103,6 +1171,7 @@ def cmd_refresh_browser(args):
 
         page_url_holder = [""]
         page_title_holder = [""]
+        dom_hits_holder = [[]]
 
         async def refresh():
             msg_id_counter = [0]
@@ -1200,6 +1269,47 @@ def cmd_refresh_browser(args):
                 print(f"   [FILE] Page: {page_title_holder[0]}")
                 print(f"   [URL] URL: {page_url_holder[0]}")
 
+                async def _dom_logout_hits():
+                    hits = []
+                    for sel in logout_selectors:
+                        try:
+                            expr = "document.querySelector(%s) !== null" % json.dumps(sel)
+                            r = await cdp_cmd(
+                                tab_ws, "Runtime.evaluate",
+                                {"expression": expr, "returnByValue": True},
+                            )
+                            if ((r.get("result") or {}).get("value")):
+                                hits.append(sel)
+                        except Exception:
+                            # No signal (e.g. frame detached): never fail on it.
+                            continue
+                    return hits
+
+                dom_hits_holder[0] = await _dom_logout_hits()
+                if dom_hits_holder[0]:
+                    print(f"   [WARN] Logout markers in DOM: {', '.join(dom_hits_holder[0])}")
+
+                # SPAs often redirect to /login *after* the wait above
+                # (Discord did at ~8-12s). Settle, then re-read URL + DOM;
+                # either reading showing logged-out state fails the check.
+                await asyncio.sleep(5)
+                try:
+                    url2 = await cdp_cmd(
+                        tab_ws, "Runtime.evaluate",
+                        {"expression": "window.location.href", "returnByValue": True},
+                    )
+                    page_url_holder[0] = (url2.get("result") or {}).get("value", "") or page_url_holder[0]
+                    hits2 = await _dom_logout_hits()
+                    for sel in hits2:
+                        if sel not in dom_hits_holder[0]:
+                            dom_hits_holder[0].append(sel)
+                    if hits2:
+                        print(f"   [WARN] Logout markers in DOM (settled): {', '.join(hits2)}")
+                    if page_url_holder[0]:
+                        print(f"   [URL] Settled URL: {page_url_holder[0]}")
+                except Exception as _settle_err:
+                    logger.debug("settle re-read failed: %s", _settle_err)
+
                 print("\n[SYNC] Extracting refreshed cookies...")
                 # Use the open tab WS - avoid nested asyncio.run(_extract_via_cdp)
                 all_ck = await cdp_cmd(tab_ws, "Network.getAllCookies")
@@ -1260,6 +1370,12 @@ def cmd_refresh_browser(args):
         logged_in = _refresh_logged_in_heuristic(
             page_url_holder[0], page_title_holder[0], fresh_cookies or cookies
         )
+        if logged_in and dom_hits_holder[0]:
+            print(
+                "\n[ERROR] Login check failed (logout markers in page DOM: "
+                f"{', '.join(dom_hits_holder[0])})."
+            )
+            logged_in = False
 
         if not fresh_cookies:
             print("\n[ERROR] No cookies extracted after refresh. Session may be expired.")
@@ -1306,7 +1422,9 @@ def cmd_refresh_browser(args):
         session["metadata"]["last_refreshed"] = datetime.now(timezone.utc).isoformat()
         session["auth_status"] = "authenticated"
 
-        out_path = output or str(session_file)
+        out_path = output or _default_refresh_output(session_file)
+        if not output:
+            print(f"   [i] Source left unchanged; refreshed copy: {out_path}")
         packager.save(session, out_path)
         print(f"\n[SAVE] Session saved: {out_path}")
         print(f"   Cookies: {len(fresh_cookies)}")

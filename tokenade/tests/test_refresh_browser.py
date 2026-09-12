@@ -6,7 +6,11 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from argparse import Namespace
 
 from tokenade.cli.management import cmd_refresh_browser
-from tokenade.cli.handlers.browser_ops import _unwrap_refresh_result
+from tokenade.cli.handlers.browser_ops import (
+    _default_refresh_output,
+    _resolve_logout_selectors,
+    _unwrap_refresh_result,
+)
 from tokenade.plugin.api import PluginResult
 
 
@@ -607,3 +611,181 @@ class TestPluginIntegration:
 
         mock_launcher.launch.assert_called_once()
         assert code == 1
+
+
+def _mocked_browser_run(args, fresh_cookies, title="GitHub",
+                        first_url="https://github.com/",
+                        settled_url=None, dom_hit=False):
+    """Run cmd_refresh_browser with a fully mocked CDP browser.
+
+    Args:
+        settled_url: URL returned by the post-settle location.href read
+            (defaults to ``first_url``).
+        dom_hit: when True every ``querySelector`` logout-selector probe
+            reports a match.
+    """
+    from unittest.mock import patch, MagicMock, AsyncMock
+
+    settled_url = first_url if settled_url is None else settled_url
+    href_reads = []
+
+    mock_browser = MagicMock()
+    mock_browser.pid = 12345
+    mock_browser.port = 9222
+    mock_browser.cdp_url = "http://127.0.0.1:9222"
+    mock_browser.close = MagicMock()
+
+    async def fake_send(raw):
+        fake_send.last = json.loads(raw)
+
+    fake_send.last = {}
+
+    async def smart_recv():
+        msg = fake_send.last
+        mid = msg.get("id", 1)
+        method = msg.get("method", "")
+        if method == "Network.getAllCookies":
+            return json.dumps({"id": mid, "result": {"cookies": fresh_cookies}})
+        if method == "Runtime.evaluate":
+            expr = (msg.get("params") or {}).get("expression", "")
+            if "querySelector" in expr:
+                return json.dumps({
+                    "id": mid,
+                    "result": {"result": {"value": bool(dom_hit)}},
+                })
+            if "document.title" in expr:
+                return json.dumps({"id": mid, "result": {"result": {"value": title}}})
+            if "location.href" in expr:
+                href_reads.append(1)
+                url = settled_url if len(href_reads) > 1 else first_url
+                return json.dumps({"id": mid, "result": {"result": {"value": url}}})
+            if "localStorage" in expr or "sessionStorage" in expr:
+                return json.dumps({"id": mid, "result": {"result": {"value": "[]"}}})
+            return json.dumps({"id": mid, "result": {"result": {"value": ""}}})
+        return json.dumps({"id": mid, "result": {}})
+
+    with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as MockLauncher:
+        mock_launcher = MagicMock()
+        MockLauncher.return_value = mock_launcher
+        mock_launcher.launch.return_value = mock_browser
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = json.dumps({
+                "id": "test-tab",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/test",
+            }).encode()
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_resp
+            mock_ws = AsyncMock()
+            mock_ws.send = AsyncMock(side_effect=fake_send)
+            mock_ws.recv = AsyncMock(side_effect=smart_recv)
+            mock_ws.close = AsyncMock()
+
+            async def _connect(*a, **k):
+                return mock_ws
+
+            with patch("websockets.connect", side_effect=_connect):
+                with patch("asyncio.sleep", new_callable=AsyncMock):
+                    code = _run_refresh(args)
+    mock_browser.close.assert_called()
+    return code
+
+
+def _refresh_args(session_file, **kw):
+    base = dict(
+        session=str(session_file),
+        browser="chrome",
+        url="https://github.com",
+        port=9222,
+        headless=True,
+        wait=1,
+        output=None,
+        plugin=None,
+        no_plugin=True,
+        plugin_arg=[],
+        proxy=None,
+        visible=False,
+    )
+    base.update(kw)
+    return Namespace(**base)
+
+
+class TestRefreshDomLoginCheck:
+    def test_dom_logout_marker_vetoes_pass(self, sample_session, fresh_cookies):
+        _, session_file = sample_session
+        code = _mocked_browser_run(
+            _refresh_args(session_file), fresh_cookies, dom_hit=True
+        )
+        assert code == 1
+
+    def test_settled_login_redirect_fails(self, sample_session, fresh_cookies):
+        _, session_file = sample_session
+        code = _mocked_browser_run(
+            _refresh_args(session_file),
+            fresh_cookies,
+            first_url="https://discord.com/channels/@me",
+            settled_url="https://discord.com/login?redirect_to=%2Fchannels%2F%40me",
+        )
+        assert code == 1
+
+    def test_clean_dom_and_url_passes(self, sample_session, fresh_cookies, tmp_path):
+        _, session_file = sample_session
+        code = _mocked_browser_run(
+            _refresh_args(session_file), fresh_cookies
+        )
+        assert code == 0
+        default_out = tmp_path / "github.refreshed.tokenade"
+        # default goes to <stem>.refreshed.tokenade next to the input
+        assert Path(_default_refresh_output(session_file)) == default_out
+
+    def test_source_file_never_overwritten_by_default(
+        self, sample_session, fresh_cookies
+    ):
+        session, session_file = sample_session
+        before = session_file.read_bytes()
+        code = _mocked_browser_run(
+            _refresh_args(session_file), fresh_cookies
+        )
+        assert code == 0
+        assert session_file.read_bytes() == before
+        refreshed = Path(_default_refresh_output(session_file))
+        assert refreshed.exists()
+        data = json.loads(refreshed.read_text())
+        assert data["cookies"][0]["value"] == "fresh_xyz789"
+
+
+class TestLogoutSelectorResolution:
+    def test_generic_fallback_for_unknown_site(self):
+        sels = _resolve_logout_selectors(
+            [{"domain": ".example-unknown-xyz.com", "name": "s", "value": "v"}],
+            "unknownsite12345",
+        )
+        assert "a[href='/login']" in sels
+        assert "a[href='/signin']" in sels
+
+    def test_discord_handler_selectors_preferred(self):
+        pytest.importorskip("tokenade.core.importer.plugin_export")
+        from tokenade.core.importer.plugin_export import PluginExporter
+
+        try:
+            handler = PluginExporter().find_handler(["discord.com"])
+        except Exception:
+            handler = None
+        if handler is None:
+            pytest.skip("discord-handler plugin not installed")
+        sels = _resolve_logout_selectors(
+            [{"domain": ".discord.com", "name": "a", "value": "b"}], "discord"
+        )
+        assert "a[href='/login']" in sels
+
+    def test_never_raises(self):
+        assert isinstance(_resolve_logout_selectors(None, ""), list)
+        assert isinstance(_resolve_logout_selectors([], ""), list)
+
+    def test_default_output_naming(self, tmp_path):
+        src = tmp_path / "brave-github-real.tokenade"
+        src.write_text("{}")
+        assert _default_refresh_output(src) == str(
+            tmp_path / "brave-github-real.refreshed.tokenade"
+        )

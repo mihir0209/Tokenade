@@ -176,6 +176,16 @@ Cookie decryption: 0 succeeded, 50 failed (of 50 encrypted)
 > - **CDP export** — start the browser with `--remote-debugging-port=9222`,
 >   then `tokenade export --cdp-port 9222 --domains ...`.
 > - **Firefox donor** — Firefox does not use Chromium app-bound encryption.
+>
+> > **v20 launch rule (Windows, verified on Brave 153):** when starting the
+> > browser for CDP, pass *only* `--remote-debugging-port` — do **not** pass
+> > `--user-data-dir` explicitly, even with the identical path. An explicit
+> > user-data-dir breaks v20 app-bound decryption in the new process
+> > (observed: 80 cookies → 21, tabs render logged-out homepages), while a
+> > bare `--remote-debugging-port` launch yields the full warm store.
+> > Related: `export --cdp-launch` snapshots are cold by nature — the store
+> > populates lazily, so always pass `--domains` (or `--plugin`, which now
+> > contributes its export domains) to warm the right origins.
 
 **Solutions:**
 ```bash

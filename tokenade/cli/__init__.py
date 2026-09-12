@@ -3542,7 +3542,9 @@ Commands:
         help="Seconds to wait for session refresh (default: 8)",
     )
     refresh_browser_parser.add_argument(
-        "--output", "-o", help="Output file (default: overwrite original)"
+        "--output",
+        "-o",
+        help="Output file (default: <name>.refreshed.tokenade next to the input; input is never overwritten)",
     )
     refresh_browser_parser.add_argument(
         "--plugin", help="Plugin to use for refresh (e.g., oauth2)"
