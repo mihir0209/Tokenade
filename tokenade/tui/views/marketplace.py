@@ -45,6 +45,7 @@ except ImportError:
         pass
 
 
+from tokenade.tui.ids import safe_id
 from tokenade.tui.views.base import BaseView
 
 
@@ -118,10 +119,10 @@ class PluginCard(Widget if _OK else object):
                 "Installed" if self.installed else "Install",
                 variant="default" if self.installed else "success",
                 compact=True,
-                id=f"install-{name}",
+                id=safe_id("install-", name),
                 disabled=self.installed,
             ),
-            Button("Details", variant="primary", compact=True, id=f"details-{name}"),
+            Button("Details", variant="primary", compact=True, id=safe_id("details-", name)),
             classes="tile-actions",
         )
 

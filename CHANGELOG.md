@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).
+- **TUI `BadIdentifier` crash on dotted names**: all dynamic widget ids (session tiles, marketplace/installed plugin tiles, vault entries) go through new `tokenade/tui/ids.py` (`safe_id`/`resolve_id`); button-press handlers resolve back to the original name. Covered by `tokenade/tests/test_tui_safe_ids.py` (87 tests).
 - **Gateway TUI coherence** (`.agent/gateway/tui-ux.md` slice):
   - Action labels now name Active vs Dropdown Selected targets (`Select Dropdown Session`, `Open Active Session`, `Route Next and Open`, `Select Dropdown and Open`, `Lease Active or Selected`, `Release Active Lease`, `Cleanup Inactive Contexts`) plus a separate advanced `Force Cleanup` (`{"force": true}`).
   - State panel shows request file, base URL, dropdown-selected vs Gateway-active Session, routing strategy/scope/window policy, active context, and per-context page/lease detail; Lease button flips between `Lease Selected` / `Lease Active`.

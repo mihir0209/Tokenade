@@ -116,6 +116,7 @@ except ImportError:
         return decorator
 
 
+from tokenade.tui.ids import resolve_id, safe_id
 from tokenade.tui.config import (
     TOKENADE_DIR,
     SESSIONS_DIR,
@@ -1750,13 +1751,13 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
                                     "Retrieve Session",
                                     variant="primary",
                                     compact=True,
-                                    id=f"vault-retrieve-{entry_id}",
+                                    id=safe_id("vault-retrieve-", entry_id),
                                 ),
                                 Button(
                                     "Delete From Vault",
                                     variant="error",
                                     compact=True,
-                                    id=f"vault-delete-{entry_id}",
+                                    id=safe_id("vault-delete-", entry_id),
                                 ),
                                 classes="action-row",
                             ),
@@ -1979,15 +1980,15 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         btn_id = event.button.id or ""
 
         if btn_id.startswith("install-"):
-            self.install_plugin(btn_id.removeprefix("install-"))
+            self.install_plugin(resolve_id(btn_id, "install-"))
         elif btn_id.startswith("uninstall-"):
-            self.uninstall_plugin(btn_id.removeprefix("uninstall-"))
+            self.uninstall_plugin(resolve_id(btn_id, "uninstall-"))
         elif btn_id.startswith("reload-"):
-            self._reload_plugin(btn_id.removeprefix("reload-"))
+            self._reload_plugin(resolve_id(btn_id, "reload-"))
         elif btn_id.startswith("configure-"):
-            self._configure_plugin(btn_id.removeprefix("configure-"))
+            self._configure_plugin(resolve_id(btn_id, "configure-"))
         elif btn_id.startswith("details-"):
-            name = btn_id.removeprefix("details-")
+            name = resolve_id(btn_id, "details-")
             plugin = next((p for p in self._plugins if p.get("name") == name), None)
             if plugin:
                 self.push_screen(PluginDetailScreen(plugin))
@@ -2017,9 +2018,9 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "vault-restore":
             self._vault_restore()
         elif btn_id.startswith("vault-retrieve-"):
-            self._vault_retrieve(btn_id.removeprefix("vault-retrieve-"))
+            self._vault_retrieve(resolve_id(btn_id, "vault-retrieve-"))
         elif btn_id.startswith("vault-delete-"):
-            self._vault_delete(btn_id.removeprefix("vault-delete-"))
+            self._vault_delete(resolve_id(btn_id, "vault-delete-"))
         elif btn_id == "sync-save-peer":
             self._sync_save_peer()
         elif btn_id == "sync-status":
@@ -2039,11 +2040,11 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
         elif btn_id == "share-refresh-sessions":
             self._refresh_share_sessions()
         elif btn_id.startswith("health-"):
-            self._session_health(btn_id.removeprefix("health-"))
+            self._session_health(resolve_id(btn_id, "health-"))
         elif btn_id.startswith("delete-"):
-            self._session_delete(btn_id.removeprefix("delete-"))
+            self._session_delete(resolve_id(btn_id, "delete-"))
         elif btn_id.startswith("select-"):
-            self._session_select(btn_id.removeprefix("select-"))
+            self._session_select(resolve_id(btn_id, "select-"))
         elif btn_id == "session-launch":
             self._session_action_launch()
         elif btn_id == "session-load":

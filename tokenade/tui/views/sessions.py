@@ -55,6 +55,7 @@ except ImportError:
 
 
 from tokenade.tui.config import SESSIONS_DIR
+from tokenade.tui.ids import safe_id
 from tokenade.tui.views.base import BaseView
 
 
@@ -316,9 +317,9 @@ class SessionTile(Widget if _OK else object):
                 classes="st-meta",
             )
         yield Horizontal(
-            Button("Sel", variant="default", compact=True, id=f"select-{name}"),
-            Button("Health", variant="primary", compact=True, id=f"health-{name}"),
-            Button("Del", variant="error", compact=True, id=f"delete-{name}"),
+            Button("Sel", variant="default", compact=True, id=safe_id("select-", name)),
+            Button("Health", variant="primary", compact=True, id=safe_id("health-", name)),
+            Button("Del", variant="error", compact=True, id=safe_id("delete-", name)),
             classes="st-actions",
         )
 

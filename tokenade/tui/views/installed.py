@@ -33,6 +33,7 @@ except ImportError:
         pass
 
 
+from tokenade.tui.ids import safe_id
 from tokenade.tui.views.base import BaseView
 
 
@@ -103,9 +104,9 @@ class InstalledRow(Widget if _OK else object):
             info += f"  ·  {str(err)[:40]}"
         yield Static(info, markup=False, classes="inst-info")
         yield Horizontal(
-            Button("Reload", variant="default", compact=True, id=f"reload-{name}"),
-            Button("Config", variant="default", compact=True, id=f"configure-{name}"),
-            Button("Remove", variant="error", compact=True, id=f"uninstall-{name}"),
+            Button("Reload", variant="default", compact=True, id=safe_id("reload-", name)),
+            Button("Config", variant="default", compact=True, id=safe_id("configure-", name)),
+            Button("Remove", variant="error", compact=True, id=safe_id("uninstall-", name)),
             classes="inst-actions",
         )
 
