@@ -548,8 +548,26 @@ def cmd_export(args):
                     pass
                 return
 
+        cdp_domains = getattr(args, "domains", None)
+        if not cdp_domains and getattr(args, "plugin", None):
+            # --plugin without --domains: use the handler's export domains
+            # so CDP warms/reads the right origins (and the cookie filter
+            # below matches). Without this the store is never warmed and
+            # cold launches yield "No cookies extracted via CDP".
+            try:
+                from tokenade.core.importer.plugin_export import PluginExporter
+
+                _pe = PluginExporter()
+                _pe._load_handlers()
+                _ph = _pe.get_handler(args.plugin)
+                _pd = list((_ph.get_export_domains() or []) if _ph else [])
+                if _pd:
+                    cdp_domains = ",".join(_pd)
+                    print(f"   [HIT] Plugin export domains: {', '.join(_pd)}")
+            except Exception as e:
+                logger.debug(f"plugin domain pre-resolution failed: {e}")
         session_state = _extract_via_cdp(
-            cdp_port, domain_filter=getattr(args, "domains", None)
+            cdp_port, domain_filter=cdp_domains
         )
         cookies = session_state["cookies"]
         local_storage = session_state.get("local_storage", {})

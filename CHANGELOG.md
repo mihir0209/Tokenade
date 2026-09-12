@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).
 - **Gateway TUI coherence** (`.agent/gateway/tui-ux.md` slice):
   - Action labels now name Active vs Dropdown Selected targets (`Select Dropdown Session`, `Open Active Session`, `Route Next and Open`, `Select Dropdown and Open`, `Lease Active or Selected`, `Release Active Lease`, `Cleanup Inactive Contexts`) plus a separate advanced `Force Cleanup` (`{"force": true}`).
   - State panel shows request file, base URL, dropdown-selected vs Gateway-active Session, routing strategy/scope/window policy, active context, and per-context page/lease detail; Lease button flips between `Lease Selected` / `Lease Active`.
