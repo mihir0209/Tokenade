@@ -857,14 +857,17 @@ _GENERIC_LOGOUT_SELECTORS = (
 )
 
 
-def _resolve_logout_selectors(cookies, site_name=""):
+def _resolve_logout_selectors(cookies, site_name="", use_plugins=True):
     """Collect DOM logged-out selectors for the refresh login check.
 
     Prefers the site handler's ``site_config.json``
     (``logged_out_selectors`` + ``login_indicator_css``), falls back to
-    generic login-link selectors. Never raises; returns at most 8.
+    generic login-link selectors. With ``use_plugins=False`` (``--no-plugin``)
+    no plugin code runs at all. Never raises; returns at most 8.
     """
     selectors = []
+    if not use_plugins:
+        return list(_GENERIC_LOGOUT_SELECTORS)
     try:
         from tokenade.core.importer.plugin_export import PluginExporter
 
@@ -1041,7 +1044,9 @@ def cmd_refresh_browser(args):
     # DOM login-check selectors (site handler config + generic fallbacks).
     # URL/title heuristics alone pass SPA shells that redirect to /login
     # after the wait (observed with Discord), so selector hits veto PASS.
-    logout_selectors = _resolve_logout_selectors(cookies, site_name)
+    logout_selectors = _resolve_logout_selectors(
+        cookies, site_name, use_plugins=not no_plugin
+    )
     if logout_selectors:
         print(f"   [CDP] Logout selectors: {', '.join(logout_selectors)}")
 
