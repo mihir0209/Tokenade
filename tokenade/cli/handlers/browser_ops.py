@@ -687,6 +687,13 @@ def cmd_launch(args):
                     + (f" (skipped {inject_res['failed_cookies']})" if inject_res['failed_cookies'] else ""),
                     flush=True,
                 )
+                from tokenade.core.importer.session_loader import (
+                    storage_shortfall_message,
+                )
+
+                _shortfall = storage_shortfall_message(inject_res)
+                if _shortfall:
+                    print(f"   [WARN] {_shortfall}")
                 if inject_res.get("title") or inject_res.get("url"):
                     print(f"\n   [FILE] Page: {inject_res.get('title')}")
                     print(f"   [URL] URL: {inject_res.get('url')}")

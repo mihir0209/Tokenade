@@ -24,6 +24,43 @@ from tokenade.handlers.base import AuthStatus, SessionData
 logger = logging.getLogger(__name__)
 
 
+def storage_shortfall_message(result):
+    """Warning when storage existed but injection fell short, else None.
+
+    Anti-automation pages (discord.com deletes window.localStorage after
+    boot) silently drop programmatic storage writes while cookies land
+    fine — a cookies-only "success" then misleads. Works for both the
+    Playwright ``load()`` result shape (totals vs injected counts) and
+    the CDP ``inject_into_cdp_tab`` shape (totals + failed flags).
+    """
+    gaps = []
+    lt = result.get("local_storage_total", 0) or 0
+    if lt:
+        if result.get("storage_failed_local", False):
+            gaps.append("localStorage write failed (%s entries)" % lt)
+        elif "local_storage_injected" in result and result["local_storage_injected"] < lt:
+            gaps.append(
+                "localStorage %s/%s"
+                % (result["local_storage_injected"], lt)
+            )
+    st = result.get("session_storage_total", 0) or 0
+    if st:
+        if result.get("storage_failed_session", False):
+            gaps.append("sessionStorage write failed (%s entries)" % st)
+        elif "session_storage_injected" in result and result["session_storage_injected"] < st:
+            gaps.append(
+                "sessionStorage %s/%s"
+                % (result["session_storage_injected"], st)
+            )
+    if not gaps:
+        return None
+    return (
+        "Storage fell short (%s) — the page may block automation storage "
+        "writes (observed on discord.com). Cookies transferred; use the "
+        "browser extension Inject for storage-backed auth." % ", ".join(gaps)
+    )
+
+
 class SessionLoader:
     """Loads .tokenade session packages and injects into browsers."""
 
@@ -503,6 +540,25 @@ class SessionLoader:
                 except Exception:
                     pass
 
+            # Anti-automation pages (discord.com) delete window.localStorage
+            # after boot: post-load writes fail while document-start scripts
+            # still land. Track write failures so callers can warn instead
+            # of reporting a cookies-only load as fully successful.
+            storage_failed_local = False
+            storage_failed_session = False
+
+            def _storage_write_failed(cdp_result):
+                # cdp_cmd already raises on protocol errors, so anything
+                # reaching here is a result payload: a page-level exception
+                # (anti-automation storage deletion) shows up as
+                # exceptionDetails or an error-typed inner result.
+                if not isinstance(cdp_result, dict):
+                    return True
+                if cdp_result.get("exceptionDetails"):
+                    return True
+                inner = cdp_result.get("result") or {}
+                return inner.get("subtype") == "error"
+
             if local_data or session_data:
                 init_storage = json.dumps({
                     "origin": current_origin,
@@ -513,8 +569,8 @@ class SessionLoader:
                     "source": (
                         f"(function(){{const d={init_storage};"
                         "if(d.origin&&location.origin!==d.origin)return;"
-                        "Object.entries(d.local).forEach(([k,v])=>localStorage.setItem(k,v));"
-                        "Object.entries(d.session).forEach(([k,v])=>sessionStorage.setItem(k,v));"
+                        "try{Object.entries(d.local).forEach(([k,v])=>localStorage.setItem(k,v));}catch(e){}"
+                        "try{Object.entries(d.session).forEach(([k,v])=>sessionStorage.setItem(k,v));}catch(e){}"
                         "}})();"
                     ),
                 })
@@ -527,17 +583,27 @@ class SessionLoader:
 
                 if local_data:
                     ls_json = json.dumps(local_data)
-                    await cdp_cmd(tab_ws, "Runtime.evaluate", {
-                        "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
-                        "returnByValue": True,
-                    })
+                    try:
+                        ls_res = await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{localStorage.setItem(e[0],e[1])}})}})({ls_json})",
+                            "returnByValue": True,
+                        })
+                        if _storage_write_failed(ls_res):
+                            storage_failed_local = True
+                    except Exception:
+                        storage_failed_local = True
 
                 if session_data:
                     ss_json = json.dumps(session_data)
-                    await cdp_cmd(tab_ws, "Runtime.evaluate", {
-                        "expression": f"(function(d){{Object.entries(d).forEach(function(e){{sessionStorage.setItem(e[0],e[1])}})}})({ss_json})",
-                        "returnByValue": True,
-                    })
+                    try:
+                        ss_res = await cdp_cmd(tab_ws, "Runtime.evaluate", {
+                            "expression": f"(function(d){{Object.entries(d).forEach(function(e){{sessionStorage.setItem(e[0],e[1])}})}})({ss_json})",
+                            "returnByValue": True,
+                        })
+                        if _storage_write_failed(ss_res):
+                            storage_failed_session = True
+                    except Exception:
+                        storage_failed_session = True
 
                 if local_data or session_data:
                     await cdp_cmd(tab_ws, "Page.navigate", {"url": url})
@@ -561,6 +627,10 @@ class SessionLoader:
                 "total_cookies": len(cdp_cookies),
                 "title": page_title,
                 "url": final_url,
+                "local_storage_total": len(local_data),
+                "session_storage_total": len(session_data),
+                "storage_failed_local": storage_failed_local,
+                "storage_failed_session": storage_failed_session,
             }
         finally:
             await tab_ws.close()

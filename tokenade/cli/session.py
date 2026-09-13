@@ -393,6 +393,14 @@ def cmd_load(args):
             if result.get("local_storage_total", 0) > 0:
                 print(f"   localStorage: {result['local_storage_injected']}/{result['local_storage_total']}")
 
+            from tokenade.core.importer.session_loader import (
+                storage_shortfall_message,
+            )
+
+            _shortfall = storage_shortfall_message(result)
+            if _shortfall:
+                print(f"   [WARN] {_shortfall}")
+
             if result.get("validation"):
                 v = result["validation"]
                 print(f"   Auth: {v.get('auth_status', 'unknown')}")
