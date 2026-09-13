@@ -763,6 +763,8 @@ class TestLogoutSelectorResolution:
         )
         assert "a[href='/login']" in sels
         assert "a[href='/signin']" in sels
+        # Login forms served without redirect (Discord SPA shell) must fail.
+        assert "input[type='password']" in sels
 
     def test_discord_handler_selectors_preferred(self):
         pytest.importorskip("tokenade.core.importer.plugin_export")

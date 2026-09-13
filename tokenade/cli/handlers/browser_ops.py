@@ -850,6 +850,10 @@ def _refresh_logged_in_heuristic(page_url: str, page_title: str, cookies) -> boo
 _GENERIC_LOGOUT_SELECTORS = (
     "a[href='/login']",
     "a[href='/signin']",
+    # A visible password field on a dashboard URL means logged out even
+    # when the SPA has not redirected yet (Discord serves the login form
+    # at /channels/@me's shell without flipping URL/title in time).
+    "input[type='password']",
 )
 
 

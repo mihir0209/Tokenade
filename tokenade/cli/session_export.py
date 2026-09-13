@@ -595,6 +595,18 @@ def cmd_export(args):
             print(f"   [OK] Extracted {len(local_storage)} localStorage entries")
         if session_storage:
             print(f"   [OK] Extracted {len(session_storage)} sessionStorage entries")
+        if getattr(args, "full", False) and not local_storage and not session_storage:
+            # Page JS contexts can hide Web Storage from CDP (observed:
+            # localStorage undefined in-page on discord.com while the tab
+            # is logged in). Stay loud instead of shipping a hollow jar.
+            print(
+                "   [WARN] --full requested but no Web Storage captured via CDP — "
+                "the page context may hide storage from automation."
+            )
+            print(
+                "   [TIP] Use the browser extension (in-page context) for "
+                "storage-backed sites (Discord, Telegram)."
+            )
     else:
         print(f"\n Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)

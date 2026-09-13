@@ -186,6 +186,24 @@ Cookie decryption: 0 succeeded, 50 failed (of 50 encrypted)
 > > Related: `export --cdp-launch` snapshots are cold by nature — the store
 > > populates lazily, so always pass `--domains` (or `--plugin`, which now
 > > contributes its export domains) to warm the right origins.
+>
+> **Discord (and similar anti-automation sites) — storage invisible outside
+> the page:** on `discord.com`, `window.localStorage`/`sessionStorage` are
+> absent (`SecurityError: Access is denied for this document`) in *every*
+> automated context tested (Playwright Chromium, CDP-driven real Brave,
+> fresh or existing profiles) — while `example.com`/`github.com` work fine
+> in the same binaries. The tab can still *be* logged in (in-memory
+> session), but no automation API (CDP `Runtime.evaluate`, `DOMStorage`
+> domain, Playwright) can read or write the token. Consequences:
+> - CLI `export`/`refresh-browser`/`load` for Discord are cookies-only and
+>   cannot produce or verify a working session — `refresh-browser` now
+>   includes `input[type='password']` in its generic logout selectors so a
+>   served login form fails the check instead of passing on URL/title.
+> - Use the **browser extension** for Discord end to end: it runs in-page
+>   and captures `local_storage["https://discord.com"]` (`token` + ~90
+>   keys) in the exact shape `discord-handler` validates/consumes
+>   (`plugin.validate` score 86.7 on a real export). Extension Inject is
+>   likewise the only working Discord load path.
 
 **Solutions:**
 ```bash
