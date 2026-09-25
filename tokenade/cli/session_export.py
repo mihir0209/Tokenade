@@ -908,23 +908,10 @@ def cmd_export(args):
                     f"   [STATS] Extracted {len(local_storage)} localStorage entries for plugin origins"
                 )
                 if not local_storage:
-                    try:
-                        import plyvel  # noqa: F401
-
-                        print(
-                            "   [WARN] Handler declares storage origins but none were captured — "
-                            "the donor profile may be logged out of those origins."
-                        )
-                    except ImportError:
-                        print(
-                            "   [WARN] localStorage skipped: 'plyvel' is unavailable on this "
-                            "platform (Linux-only dependency), so Chromium storage "
-                            "cannot be read here even when present."
-                        )
-                        print(
-                            "   [TIP] On Windows use the browser extension or --cdp-port "
-                            "export for storage-backed sites (Discord, Telegram)."
-                        )
+                    print(
+                        "   [WARN] Handler declares storage origins but none were captured — "
+                        "the donor profile may be logged out of those origins."
+                    )
             elif args.local_storage_origin:
                 local_storage = ls_extractor.extract(
                     origin_filter=args.local_storage_origin

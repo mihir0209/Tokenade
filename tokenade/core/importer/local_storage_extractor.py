@@ -106,12 +106,37 @@ class LocalStorageExtractor:
         logger.info(f"Extracted {len(local_storage)} localStorage entries from Firefox")
         return local_storage
 
+    def _user_data_dir(self) -> str:
+        """Directory holding ``Local State`` (parent of Default/Profile *)."""
+        base = os.path.basename(os.path.normpath(self.profile_path))
+        if base == "Default" or base.startswith("Profile ") or base in (
+            "Guest Profile", "System Profile",
+        ):
+            return os.path.dirname(os.path.normpath(self.profile_path))
+        return os.path.normpath(self.profile_path)
+
+    def _oscrypt_key(self) -> Optional[bytes]:
+        """Unwrap the OSCrypt key for encrypted (v10/v11) storage values."""
+        try:
+            from tokenade.core.crypto.cookie_crypto import CookieCryptoFactory
+
+            key = CookieCryptoFactory.create().get_encryption_key(
+                self._user_data_dir()
+            )
+            return key
+        except Exception as e:
+            logger.debug(f"OSCrypt key unavailable: {e}")
+            return None
+
     def extract_chrome(self, origin_filter: Optional[str] = None) -> Dict[str, str]:
         """
         Extract localStorage from Chrome's LevelDB.
 
         Chrome stores localStorage in profile/Local Storage/leveldb/
-        using Google's LevelDB format. This requires the plyvel library.
+        using Google's LevelDB format. Prefers plyvel when installed;
+        otherwise uses the built-in pure-Python reader
+        (:mod:`tokenade.core.importer.leveldb`), which also works on
+        Windows/macOS and on locked (running browser) profiles.
 
         Args:
             origin_filter: Optional origin to filter by
@@ -127,9 +152,9 @@ class LocalStorageExtractor:
         try:
             import plyvel
         except ImportError:
-            logger.error("plyvel library required for Chrome localStorage extraction. "
-                         "Install with: pip install plyvel")
-            return {}
+            plyvel = None
+        if plyvel is None:
+            return self.extract_chrome_pure(origin_filter)
 
         local_storage = {}
 
@@ -177,6 +202,43 @@ class LocalStorageExtractor:
             return {}
 
         logger.info(f"Extracted {len(local_storage)} localStorage entries from Chrome")
+        return local_storage
+
+    def extract_chrome_pure(self, origin_filter: Optional[str] = None) -> Dict[str, str]:
+        """Extract via the built-in pure-Python LevelDB reader (no plyvel).
+
+        Same return shape as :meth:`extract_chrome`: with ``origin_filter``
+        the plain ``{js_key: value}`` mapping, otherwise keys prefixed as
+        ``[origin] key``.
+        """
+        from tokenade.core.importer import leveldb as _leveldb
+
+        leveldb_path = os.path.join(self.profile_path, "Local Storage", "leveldb")
+        if not os.path.exists(leveldb_path):
+            logger.warning(f"Chrome LevelDB not found: {leveldb_path}")
+            return {}
+        key = self._oscrypt_key()
+        local_storage: Dict[str, str] = {}
+        if origin_filter:
+            for origin in _leveldb.list_origins(leveldb_path):
+                if origin_filter in origin:
+                    for js_key, value in _leveldb.extract_origin(
+                        leveldb_path, origin, oscrypt_key=key
+                    ).items():
+                        local_storage[js_key] = value
+            logger.info(
+                f"Extracted {len(local_storage)} localStorage entries "
+                f"for {origin_filter} (pure reader)"
+            )
+            return local_storage
+        for origin in _leveldb.list_origins(leveldb_path):
+            for js_key, value in _leveldb.extract_origin(
+                leveldb_path, origin, oscrypt_key=key
+            ).items():
+                local_storage[f"[{origin}] {js_key}"] = value
+        logger.info(
+            f"Extracted {len(local_storage)} localStorage entries (pure reader)"
+        )
         return local_storage
 
     def extract(self, origin_filter: Optional[str] = None) -> Dict[str, str]:
@@ -241,7 +303,9 @@ class LocalStorageExtractor:
         try:
             import plyvel
         except ImportError:
-            return []
+            from tokenade.core.importer import leveldb as _leveldb
+
+            return _leveldb.list_origins(leveldb_path)
 
         origins = set()
 
