@@ -907,6 +907,41 @@ def _resolve_logout_selectors(cookies, site_name="", use_plugins=True):
     return selectors[:8]
 
 
+def _resolve_login_selectors(cookies, site_name="", use_plugins=True):
+    """Collect DOM logged-in selectors for the refresh login check.
+
+    Uses the site handler's ``logged_in_selectors`` (positive proof of an
+    authenticated page). Empty when the handler declares none — callers
+    then fall back to the negative heuristic. Never raises.
+    """
+    selectors = []
+    if not use_plugins:
+        return selectors
+    try:
+        from tokenade.core.importer.plugin_export import PluginExporter
+
+        domains = sorted(
+            {
+                (c.get("domain") or "").lstrip(".")
+                for c in cookies or []
+                if c.get("domain")
+            }
+        )
+        if not domains and site_name and "." in str(site_name):
+            domains = [str(site_name).lstrip(".")]
+        handler = PluginExporter().find_handler(domains) if domains else None
+        if handler is not None and hasattr(handler, "get_logged_in_selectors"):
+            try:
+                for sel in handler.get_logged_in_selectors() or []:
+                    if sel and str(sel) not in selectors:
+                        selectors.append(str(sel))
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug("login selector resolution failed: %s", e)
+    return selectors[:8]
+
+
 def _default_refresh_output(session_file):
     """Default refresh output: ``<stem>.refreshed.tokenade`` next to input.
 
@@ -1056,6 +1091,11 @@ def cmd_refresh_browser(args):
     )
     if logout_selectors:
         print(f"   [CDP] Logout selectors: {', '.join(logout_selectors)}")
+    login_selectors = _resolve_login_selectors(
+        cookies, site_name, use_plugins=not no_plugin
+    )
+    if login_selectors:
+        print(f"   [CDP] Login selectors (positive proof): {', '.join(login_selectors)}")
 
     # Determine target URL
     target_url = getattr(args, "url", None)
@@ -1188,6 +1228,7 @@ def cmd_refresh_browser(args):
         page_url_holder = [""]
         page_title_holder = [""]
         dom_hits_holder = [[]]
+        dom_login_hits_holder = [[]]
 
         async def refresh():
             msg_id_counter = [0]
@@ -1233,6 +1274,41 @@ def cmd_refresh_browser(args):
                     )
                 except Exception as _stealth_err:
                     print(f"   [WARN] Stealth inject skipped ({_stealth_err}); continuing cookies")
+
+                # Storage injection at document-start (before any navigate):
+                # pages like discord.com delete window.localStorage after
+                # boot, so post-load writes silently no-op. Seeding here is
+                # the only programmatic path; the DOM login check afterwards
+                # verifies it took effect.
+                _storage = session.get("storage") if isinstance(session.get("storage"), dict) else {}
+                _local_by_origin = _storage.get("local") if isinstance(_storage.get("local"), dict) else {}
+                _sess_by_origin = _storage.get("session") if isinstance(_storage.get("session"), dict) else {}
+                _seed_local = dict(session.get("local_storage") or {})
+                _seed_session = dict(session.get("session_storage") or {})
+                for _origin, _entries in _local_by_origin.items():
+                    if isinstance(_entries, dict):
+                        _seed_local.update(_entries)
+                for _origin, _entries in _sess_by_origin.items():
+                    if isinstance(_entries, dict):
+                        _seed_session.update(_entries)
+                if _seed_local or _seed_session:
+                    try:
+                        _seed_payload = json.dumps({"local": _seed_local, "session": _seed_session})
+                        await cdp_cmd(tab_ws, "Page.addScriptToEvaluateOnNewDocument", {
+                            "source": (
+                                "(function(){try{var d=" + _seed_payload + ";"
+                                "if(d.local&&typeof localStorage!=='undefined'){"
+                                "Object.entries(d.local).forEach(function(e){"
+                                "try{localStorage.setItem(e[0],typeof e[1]==='string'?e[1]:JSON.stringify(e[1]))}catch(_){}});}"
+                                "if(d.session&&typeof sessionStorage!=='undefined'){"
+                                "Object.entries(d.session).forEach(function(e){"
+                                "try{sessionStorage.setItem(e[0],typeof e[1]==='string'?e[1]:JSON.stringify(e[1]))}catch(_){}});}"
+                                "}catch(_){}})();"
+                            ),
+                        })
+                        print(f"   [OK] Storage seed registered ({len(_seed_local)} local, {len(_seed_session)} session)")
+                    except Exception as _seed_err:
+                        print(f"   [WARN] Storage seed skipped ({_seed_err}); cookies only")
 
                 print(f"\n Injecting {len(cookies)} cookies...")
                 cdp_cookies = []
@@ -1285,9 +1361,9 @@ def cmd_refresh_browser(args):
                 print(f"   [FILE] Page: {page_title_holder[0]}")
                 print(f"   [URL] URL: {page_url_holder[0]}")
 
-                async def _dom_logout_hits():
+                async def _dom_hits(selectors):
                     hits = []
-                    for sel in logout_selectors:
+                    for sel in selectors:
                         try:
                             expr = "document.querySelector(%s) !== null" % json.dumps(sel)
                             r = await cdp_cmd(
@@ -1301,7 +1377,7 @@ def cmd_refresh_browser(args):
                             continue
                     return hits
 
-                dom_hits_holder[0] = await _dom_logout_hits()
+                dom_hits_holder[0] = await _dom_hits(logout_selectors)
                 if dom_hits_holder[0]:
                     print(f"   [WARN] Logout markers in DOM: {', '.join(dom_hits_holder[0])}")
 
@@ -1315,7 +1391,7 @@ def cmd_refresh_browser(args):
                         {"expression": "window.location.href", "returnByValue": True},
                     )
                     page_url_holder[0] = (url2.get("result") or {}).get("value", "") or page_url_holder[0]
-                    hits2 = await _dom_logout_hits()
+                    hits2 = await _dom_hits(logout_selectors)
                     for sel in hits2:
                         if sel not in dom_hits_holder[0]:
                             dom_hits_holder[0].append(sel)
@@ -1325,6 +1401,25 @@ def cmd_refresh_browser(args):
                         print(f"   [URL] Settled URL: {page_url_holder[0]}")
                 except Exception as _settle_err:
                     logger.debug("settle re-read failed: %s", _settle_err)
+
+                # Positive proof: when the handler declares logged_in
+                # selectors, absence of logout markers is not enough (SPA
+                # shells render cleanly while logged out) — poll briefly
+                # for authenticated content and fail without it.
+                dom_login_hits_holder[0] = []
+                if login_selectors and not dom_hits_holder[0]:
+                    for _poll in range(3):
+                        _pos = await _dom_hits(login_selectors)
+                        if _pos:
+                            dom_login_hits_holder[0] = _pos
+                            print(f"   [OK] Authenticated markers: {', '.join(_pos)}")
+                            break
+                        await asyncio.sleep(4)
+                    if not dom_login_hits_holder[0]:
+                        print(
+                            "   [WARN] No authenticated content "
+                            f"({', '.join(login_selectors)}) after settle."
+                        )
 
                 print("\n[SYNC] Extracting refreshed cookies...")
                 # Use the open tab WS - avoid nested asyncio.run(_extract_via_cdp)
@@ -1390,6 +1485,13 @@ def cmd_refresh_browser(args):
             print(
                 "\n[ERROR] Login check failed (logout markers in page DOM: "
                 f"{', '.join(dom_hits_holder[0])})."
+            )
+            logged_in = False
+        if logged_in and login_selectors and not dom_login_hits_holder[0]:
+            print(
+                "\n[ERROR] Login check failed (no authenticated content for "
+                f"{', '.join(login_selectors)}; declare logged_in_selectors "
+                "in the handler to prove login, or check the session)."
             )
             logged_in = False
 

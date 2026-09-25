@@ -8,6 +8,7 @@ from argparse import Namespace
 from tokenade.cli.management import cmd_refresh_browser
 from tokenade.cli.handlers.browser_ops import (
     _default_refresh_output,
+    _resolve_login_selectors,
     _resolve_logout_selectors,
     _unwrap_refresh_result,
 )
@@ -615,7 +616,7 @@ class TestPluginIntegration:
 
 def _mocked_browser_run(args, fresh_cookies, title="GitHub",
                         first_url="https://github.com/",
-                        settled_url=None, dom_hit=False):
+                        settled_url=None, dom_hit=False, dom_hits=()):
     """Run cmd_refresh_browser with a fully mocked CDP browser.
 
     Args:
@@ -649,9 +650,10 @@ def _mocked_browser_run(args, fresh_cookies, title="GitHub",
         if method == "Runtime.evaluate":
             expr = (msg.get("params") or {}).get("expression", "")
             if "querySelector" in expr:
+                hit = bool(dom_hit) or any(h in expr for h in dom_hits)
                 return json.dumps({
                     "id": mid,
-                    "result": {"result": {"value": bool(dom_hit)}},
+                    "result": {"result": {"value": hit}},
                 })
             if "document.title" in expr:
                 return json.dumps({"id": mid, "result": {"result": {"value": title}}})
@@ -785,9 +787,119 @@ class TestLogoutSelectorResolution:
         assert isinstance(_resolve_logout_selectors(None, ""), list)
         assert isinstance(_resolve_logout_selectors([], ""), list)
 
+    def test_login_selectors_never_raise_and_no_plugin_empty(self):
+        assert isinstance(_resolve_login_selectors(None, ""), list)
+        assert _resolve_login_selectors(
+            [{"domain": ".x.com", "name": "a", "value": "b"}], "x",
+            use_plugins=False,
+        ) == []
+
+    def test_positive_proof_pass_and_fail(self, sample_session, fresh_cookies):
+        """Declared logged_in_selectors must be observed, else FAIL."""
+        from unittest.mock import patch
+
+        _, session_file = sample_session
+        with patch(
+            "tokenade.cli.handlers.browser_ops._resolve_login_selectors",
+            return_value=["#app-shell"],
+        ):
+            # selector observed -> PASS
+            assert _mocked_browser_run(
+                _refresh_args(session_file), fresh_cookies,
+                dom_hits=["#app-shell"],
+            ) == 0
+            # selector never observed -> FAIL even with clean URL/title
+            assert _mocked_browser_run(
+                _refresh_args(session_file), fresh_cookies,
+                dom_hits=[],
+            ) == 1
+
     def test_default_output_naming(self, tmp_path):
         src = tmp_path / "brave-github-real.tokenade"
         src.write_text("{}")
         assert _default_refresh_output(src) == str(
             tmp_path / "brave-github-real.refreshed.tokenade"
         )
+
+    def test_storage_seed_registered_before_navigate(self, tmp_path, fresh_cookies):
+        """Sessions carrying Web Storage get a document-start seed script.
+
+        Regression guard: without it, storage-backed logins (Discord)
+        inject cookies only and can never restore the session.
+        """
+        session = {
+            "version": "3.0",
+            "site_name": "discord",
+            "auth_status": "logged_in",
+            "cookies": [
+                {"name": "a", "value": "b", "domain": ".discord.com"},
+            ],
+            "storage": {"local": {"https://discord.com": {"token": "T"}}},
+            "metadata": {},
+        }
+        session_file = tmp_path / "discord.tokenade"
+        session_file.write_text(json.dumps(session))
+        sent = []
+
+        async def fake_send(raw):
+            msg = json.loads(raw)
+            sent.append(msg)
+            fake_send.last = msg
+
+        fake_send.last = {}
+
+        async def smart_recv():
+            msg = fake_send.last
+            mid = msg.get("id", 1)
+            method = msg.get("method", "")
+            if method == "Network.getAllCookies":
+                return json.dumps({"id": mid, "result": {"cookies": fresh_cookies}})
+            if method == "Runtime.evaluate":
+                expr = (msg.get("params") or {}).get("expression", "")
+                if "document.title" in expr:
+                    return json.dumps({"id": mid, "result": {"result": {"value": "Discord"}}})
+                if "location.href" in expr:
+                    return json.dumps({"id": mid, "result": {"result": {"value": "https://discord.com/channels/@me"}}})
+                return json.dumps({"id": mid, "result": {"result": {"value": ""}}})
+            return json.dumps({"id": mid, "result": {}})
+
+        from unittest.mock import patch, MagicMock, AsyncMock
+
+        mock_browser = MagicMock()
+        mock_browser.pid = 1
+        mock_browser.port = 9222
+        mock_browser.close = MagicMock()
+        with patch("tokenade.core.browser.undetectable.SystemBrowserLauncher") as MockLauncher:
+            MockLauncher.return_value.launch.return_value = mock_browser
+            with patch("urllib.request.urlopen") as mock_urlopen:
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = json.dumps({
+                    "id": "t", "webSocketDebuggerUrl": "ws://x",
+                }).encode()
+                mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+                mock_resp.__exit__ = MagicMock(return_value=False)
+                mock_urlopen.return_value = mock_resp
+                mock_ws = AsyncMock()
+                mock_ws.send = AsyncMock(side_effect=fake_send)
+                mock_ws.recv = AsyncMock(side_effect=smart_recv)
+                mock_ws.close = AsyncMock()
+
+                async def _connect(*a, **k):
+                    return mock_ws
+
+                with patch("websockets.connect", side_effect=_connect):
+                    with patch("asyncio.sleep", new_callable=AsyncMock):
+                        code = _run_refresh(_refresh_args(
+                            session_file, url="https://discord.com/channels/@me",
+                        ))
+        assert code == 0
+        seeds = [m for m in sent
+                 if m.get("method") == "Page.addScriptToEvaluateOnNewDocument"
+                 and "localStorage.setItem" in json.dumps(m.get("params", {}))]
+        assert seeds, "expected a storage seed script before navigate"
+        assert any("token" in json.dumps(m.get("params", {})) for m in seeds)
+        nav_idx = next(i for i, m in enumerate(sent) if m.get("method") == "Page.navigate")
+        seed_idx = next(i for i, m in enumerate(sent)
+                        if m.get("method") == "Page.addScriptToEvaluateOnNewDocument"
+                        and "localStorage.setItem" in json.dumps(m.get("params", {})))
+        assert seed_idx < nav_idx

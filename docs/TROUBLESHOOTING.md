@@ -202,8 +202,10 @@ Cookie decryption: 0 succeeded, 50 failed (of 50 encrypted)
 > - Use the **browser extension** for Discord end to end: it runs in-page
 >   and captures `local_storage["https://discord.com"]` (`token` + ~90
 >   keys) in the exact shape `discord-handler` validates/consumes
->   (`plugin.validate` score 86.7 on a real export). Extension Inject is
->   likewise the only working Discord load path.
+>   (`plugin.validate` score 86.7 on a real export). CLI `refresh-browser`
+>   / `launch` seed carried storage at document-start (same mechanism),
+>   but only a *complete* client state boots an authenticated session —
+>   token-only jars still fail honestly at the login check.
 
 **Solutions:**
 ```bash
