@@ -166,3 +166,87 @@ class TestInjectIntoCdpTabStorageFlags:
         res = _run_cdp_inject({"result": {"type": "undefined"}})
         assert res["storage_failed_local"] is False
         assert res["storage_failed_session"] is False
+
+
+class TestStorageSeedScript:
+    def _pkg(self, **kw):
+        base = {
+            "version": "3.0",
+            "site_name": "discord",
+            "cookies": [{"name": "a", "value": "b", "domain": ".discord.com"}],
+            "storage": {"local": {"https://discord.com": {"token": "tok-abc-123"}}},
+        }
+        base.update(kw)
+        return base
+
+    def test_none_when_no_storage(self):
+        loader = SessionLoader()
+        assert loader.build_storage_seed_script({"cookies": []}) is None
+        assert loader.build_storage_seed_script({}) is None
+
+    def test_seed_contains_token_and_origin_gate(self):
+        loader = SessionLoader()
+        script = loader.build_storage_seed_script(self._pkg())
+        assert script is not None
+        assert "tok-abc-123" in script  # token value embedded
+        assert "https://discord.com" in script
+        assert "location.origin" in script
+        assert "localStorage.setItem" in script
+
+    def test_seed_includes_session_storage(self):
+        loader = SessionLoader()
+        pkg = self._pkg(storage={"session": {"https://discord.com": {"s": "1"}}})
+        script = loader.build_storage_seed_script(pkg)
+        assert script is not None
+        assert "sessionStorage.setItem" in script
+
+    def test_seed_legacy_flat_storage(self):
+        loader = SessionLoader()
+        pkg = {"site_name": "discord.com",
+               "cookies": [{"name": "a", "value": "b", "domain": ".discord.com"}],
+               "local_storage": {"token": "T"}}
+        script = loader.build_storage_seed_script(pkg)
+        assert script is not None and "token" in script
+
+    def test_load_registers_seed(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        f = tmp_path / "d.tokenade"
+        import json as _json
+        f.write_text(_json.dumps(self._pkg()))
+        mock_bm = MagicMock()
+        with patch("tokenade.core.importer.session_loader.BrowserFactory") as MockFactory:
+            MockFactory.create.return_value = mock_bm
+            result = SessionLoader().load(str(f), validate=False)
+        mock_bm.add_init_script.assert_called_once()
+        script = mock_bm.add_init_script.call_args[0][0]
+        assert "localStorage.setItem" in script
+        assert result["success"] is True
+
+    def test_load_skips_seed_without_storage(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        f = tmp_path / "g.tokenade"
+        import json as _json
+        f.write_text(_json.dumps({
+            "version": "3.0", "site_name": "github",
+            "cookies": [{"name": "a", "value": "b", "domain": ".github.com"}],
+        }))
+        mock_bm = MagicMock()
+        with patch("tokenade.core.importer.session_loader.BrowserFactory") as MockFactory:
+            MockFactory.create.return_value = mock_bm
+            SessionLoader().load(str(f), validate=False)
+        mock_bm.add_init_script.assert_not_called()
+
+    def test_load_survives_backend_without_init_support(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        f = tmp_path / "d.tokenade"
+        import json as _json
+        f.write_text(_json.dumps(self._pkg()))
+        mock_bm = MagicMock(spec=["launch", "close", "add_cookies", "navigate",
+                                  "evaluate_with_arg"])
+        with patch("tokenade.core.importer.session_loader.BrowserFactory") as MockFactory:
+            MockFactory.create.return_value = mock_bm
+            result = SessionLoader().load(str(f), validate=False)
+        assert result["success"] is True

@@ -786,6 +786,20 @@ class SessionLoader:
             self._browser = BrowserFactory.create(**config.__dict__)
             self._browser.launch()
 
+            # Step 4b: Seed carried Web Storage at document-start so it
+            # lands before anti-automation storage deletion. Best-effort:
+            # backends without init-script support keep the post-load
+            # evaluate path below.
+            if inject_local_storage:
+                try:
+                    seed = self.build_storage_seed_script(package, site_config)
+                    add_init = getattr(self._browser, "add_init_script", None)
+                    if seed and callable(add_init):
+                        add_init(seed)
+                        logger.info("Registered document-start storage seed")
+                except Exception as e:
+                    logger.debug(f"Storage seed skipped: {e}")
+
             # Step 5: Apply source fingerprint from package (if no target specified)
             if not target_fp_name and package.get("fingerprint"):
                 self.apply_fingerprint(
@@ -916,6 +930,41 @@ class SessionLoader:
                     pass
 
         return result
+
+    def build_storage_seed_script(
+        self,
+        package: Dict,
+        site_config: Optional[Dict] = None,
+    ) -> Optional[str]:
+        """Build a document-start init script seeding carried Web Storage.
+
+        Returns None when the package carries no storage. The script applies
+        entries only on matching origins and tolerates missing storage APIs,
+        so it is safe to register unconditionally. This is the only hook
+        that precedes anti-automation storage deletion (discord.com).
+        """
+        pairs = self._local_storage_by_origin(package, site_config)
+        spairs = self._session_storage_by_origin(package, site_config)
+        if not pairs and not spairs:
+            return None
+        payload = json.dumps({
+            "local": {o or "": e for o, e in pairs},
+            "session": {o or "": e for o, e in spairs},
+        })
+        return (
+            "(function(){try{var d=" + payload + ";"
+            "var origins=Object.keys(d.local).concat(Object.keys(d.session));"
+            "var ok=origins.some(function(o){return o&&location.origin===o;});"
+            "if(!ok)return;"
+            "var L=d.local[location.origin]||{},S=d.session[location.origin]||{};"
+            "if(typeof localStorage!=='undefined'){"
+            "Object.entries(L).forEach(function(e){"
+            "try{localStorage.setItem(e[0],typeof e[1]==='string'?e[1]:JSON.stringify(e[1]))}catch(_){}});}"
+            "if(typeof sessionStorage!=='undefined'){"
+            "Object.entries(S).forEach(function(e){"
+            "try{sessionStorage.setItem(e[0],typeof e[1]==='string'?e[1]:JSON.stringify(e[1]))}catch(_){}});}"
+            "}catch(_){}})();"
+        )
 
     def _local_storage_by_origin(
         self,

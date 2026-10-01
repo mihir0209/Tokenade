@@ -763,3 +763,23 @@ class TestBrowserFactory:
     def test_registry_contains_playwright(self):
         assert "playwright" in BrowserFactory._registry
         assert BrowserFactory._registry["playwright"] is PlaywrightBrowserManager
+
+
+# ---------------------------------------------------------------------------
+# add_init_script
+# ---------------------------------------------------------------------------
+
+
+class TestAddInitScript:
+    def test_delegates_to_context(self):
+        mgr = PlaywrightBrowserManager.__new__(PlaywrightBrowserManager)
+        mgr._context = MagicMock()
+        mgr.add_init_script('window.__x=1;')
+        mgr._context.add_init_script.assert_called_once_with('window.__x=1;')
+
+    def test_requires_launch(self):
+        mgr = PlaywrightBrowserManager.__new__(PlaywrightBrowserManager)
+        mgr._context = None
+        with pytest.raises(RuntimeError):
+            mgr.add_init_script('x')
+

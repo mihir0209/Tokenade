@@ -381,6 +381,16 @@ class PlaywrightBrowserManager(BrowserManager):
             raise RuntimeError("Browser not launched")
         return self._page.evaluate(expression, arg)
 
+    def add_init_script(self, script: str) -> None:
+        """Register a document-start script on the browser context.
+
+        Runs before any page script on every future document — the only
+        hook that precedes anti-automation storage deletion (discord.com).
+        """
+        if not self._context:
+            raise RuntimeError("Browser not launched")
+        self._context.add_init_script(script)
+
     def query_selector(self, selector: str, timeout: Optional[int] = None):
         """Query element on page."""
         if not self._page:
