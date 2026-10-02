@@ -243,6 +243,26 @@ def _is_live_user_data_dir(launch_user_data_dir, real_profile):
         return False
 
 
+def _merge_live_storage(local_storage, session_storage, storage,
+                        live_local_storage, live_session_storage,
+                        live_storage):
+    """Merge live-extracted values (CDP / extension bridge) into file-based
+    results. Live values take precedence: they are fresher than profile
+    files on disk. Mutates and returns the ``(local, session, storage)``
+    triple containers."""
+    for _k, _v in (live_local_storage or {}).items():
+        local_storage.setdefault(_k, _v)
+    for _k, _v in (live_session_storage or {}).items():
+        session_storage.setdefault(_k, _v)
+    for _origin, _entries in (live_storage or {}).get("local", {}).items():
+        if _entries:
+            storage["local"].setdefault(_origin, dict(_entries))
+    for _origin, _entries in (live_storage or {}).get("session", {}).items():
+        if _entries:
+            storage["session"].setdefault(_origin, dict(_entries))
+    return local_storage, session_storage, storage
+
+
 def cmd_export(args):
     """Export session from existing browser to .tokenade file."""
     from tokenade.cli.session import _extract_via_cdp
@@ -253,6 +273,12 @@ def cmd_export(args):
     print("\n" + "=" * 80)
     print("TOKENADE - Session Export")
     print("=" * 80)
+
+    # Pre-initialized so the live-value snapshot below never hits
+    # UnboundLocalError on paths that assign these names later.
+    local_storage = {}
+    session_storage = {}
+    storage = {"local": {}, "session": {}}
 
     if args.list_profiles:
         print("\n[SEARCH] Discovering browser profiles...")
@@ -566,12 +592,44 @@ def cmd_export(args):
                     print(f"   [HIT] Plugin export domains: {', '.join(_pd)}")
             except Exception as e:
                 logger.debug(f"plugin domain pre-resolution failed: {e}")
-        session_state = _extract_via_cdp(
-            cdp_port, domain_filter=cdp_domains
-        )
-        cookies = session_state["cookies"]
-        local_storage = session_state.get("local_storage", {})
-        session_storage = session_state.get("session_storage", {})
+        if getattr(args, "via_extension", False):
+            from tokenade.core.importer.extension_bridge import (
+                ExtensionBridgeMissing,
+                export_via_bridge_sync,
+            )
+
+            _bridge_domains = [d for d in (cdp_domains or "").split(",") if d.strip()]
+            if not _bridge_domains:
+                print(
+                    "[ERROR] --via-extension needs --domains (or --plugin "
+                    "with export domains), e.g. --domains discord.com"
+                )
+                return
+            try:
+                session_state = export_via_bridge_sync(cdp_port, _bridge_domains)
+            except ExtensionBridgeMissing as e:
+                print(f"[ERROR] {e}")
+                return
+            except Exception as e:
+                print(f"[ERROR] Extension bridge export failed: {e}")
+                return
+            print("   [OK] Read via extension bridge (in-page context)")
+            cookies = session_state["cookies"]
+            local_storage = session_state.get("local_storage", {})
+            session_storage = session_state.get("session_storage", {})
+            _bridge_storage = session_state.get("storage") or {}
+            if _bridge_storage.get("local") or _bridge_storage.get("session"):
+                storage = {
+                    "local": dict(_bridge_storage.get("local", {})),
+                    "session": dict(_bridge_storage.get("session", {})),
+                }
+        else:
+            session_state = _extract_via_cdp(
+                cdp_port, domain_filter=cdp_domains
+            )
+            cookies = session_state["cookies"]
+            local_storage = session_state.get("local_storage", {})
+            session_storage = session_state.get("session_storage", {})
 
         if launched_browser:
             try:
@@ -587,10 +645,12 @@ def cmd_export(args):
             except Exception:
                 pass
 
-        if not cookies:
-            print("[ERROR] No cookies extracted via CDP")
+        _via = "extension bridge" if getattr(args, "via_extension", False) else "CDP"
+        if not cookies and not local_storage and not session_storage:
+            print(f"[ERROR] No cookies or storage extracted via {_via}")
             return
-        print(f"   [OK] Extracted {len(cookies)} cookies via CDP")
+        if cookies:
+            print(f"   [OK] Extracted {len(cookies)} cookies via {_via}")
         if local_storage:
             print(f"   [OK] Extracted {len(local_storage)} localStorage entries")
         if session_storage:
@@ -600,13 +660,14 @@ def cmd_export(args):
             # localStorage undefined in-page on discord.com while the tab
             # is logged in). Stay loud instead of shipping a hollow jar.
             print(
-                "   [WARN] --full requested but no Web Storage captured via CDP — "
+                f"   [WARN] --full requested but no Web Storage captured via {_via} — "
                 "the page context may hide storage from automation."
             )
-            print(
-                "   [TIP] Use the browser extension (in-page context) for "
-                "storage-backed sites (Discord, Telegram)."
-            )
+            if not getattr(args, "via_extension", False):
+                print(
+                    "   [TIP] Retry with --via-extension (in-page context) for "
+                    "storage-backed sites (Discord, Telegram)."
+                )
     else:
         print(f"\n Extracting cookies from: {browser_path}")
         extractor = CookieExtractor(browser_path, browser=browser_name)
@@ -871,6 +932,16 @@ def cmd_export(args):
                 f"   [HIT] Filtered to {len(cookies)} cookies for domains: {', '.join(domains)}"
             )
 
+    # Live extraction (CDP / extension bridge) already produced values
+    # above; file-based extraction below must merge into them, never
+    # replace them (it previously reset these to {} and silently dropped
+    # everything CDP had captured).
+    live_local_storage = dict(local_storage or {})
+    live_session_storage = dict(session_storage or {})
+    live_storage = {
+        "local": dict((storage or {}).get("local", {})),
+        "session": dict((storage or {}).get("session", {})),
+    }
     local_storage = {}
     session_storage = {}
     storage = {"local": {}, "session": {}}
@@ -885,7 +956,7 @@ def cmd_export(args):
         or handler_has_storage
     )
 
-    if do_extract_storage:
+    if do_extract_storage and browser_path:
         print(f"\n[SAVE] Extracting localStorage from: {browser_path}")
         ls_extractor = LocalStorageExtractor(browser_path, browser=browser_name)
 
@@ -955,6 +1026,18 @@ def cmd_export(args):
                     print("   [TIP] Re-run with --extract-local-storage to include it")
         except Exception:
             pass
+
+    # Merge back live-extracted values (CDP / extension bridge take
+    # precedence: they are fresher than profile files on disk).
+    _merge_live_storage(
+        local_storage, session_storage, storage,
+        live_local_storage, live_session_storage, live_storage,
+    )
+    if live_local_storage or live_session_storage:
+        print(
+            f"   [OK] Kept {len(live_local_storage)} local + "
+            f"{len(live_session_storage)} session live entries"
+        )
 
     profile_data = {}
     if site_handler and hasattr(site_handler, "export_profile_data") and browser_path:

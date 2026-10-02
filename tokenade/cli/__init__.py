@@ -2133,6 +2133,14 @@ Commands:
         "(reads live values, defeats app-bound encryption; the live "
         "profile is never launched against)",
     )
+    export_parser.add_argument(
+        "--via-extension",
+        action="store_true",
+        help="With --cdp-port: read cookies/storage through the Tokenade "
+        "browser extension's in-page bridge instead of CDP automation APIs "
+        "(reaches storage that pages hide from automation, e.g. Discord). "
+        "Requires the unpacked extension/ loaded in that browser.",
+    )
     export_parser.add_argument("--file-path", help="Export from cookies file")
     export_parser.add_argument(
         "--format",
