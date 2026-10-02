@@ -384,7 +384,10 @@ class CIRunner:
 
     def run(self) -> CIReport:
         """Execute the CI pipeline."""
-        start = time.time()
+        # perf_counter (not wall-clock time): highest resolution and
+        # immune to clock adjustments; wall time can read 0.0 elapsed
+        # on coarse-timer platforms (Windows).
+        start = time.perf_counter()
         report = CIReport(config_path=self.base_dir)
         report.session_results = []
 
@@ -407,12 +410,12 @@ class CIRunner:
         else:
             report.overall_status = "pass"
 
-        report.duration_ms = (time.time() - start) * 1000
+        report.duration_ms = (time.perf_counter() - start) * 1000
         return report
 
     def _run_session(self, entry: SessionEntry) -> SessionCIResult:
         """Run CI checks on a single session."""
-        start = time.time()
+        start = time.perf_counter()
         result = SessionCIResult(name=entry.name, file=entry.file)
 
         # Resolve file path
@@ -423,7 +426,7 @@ class CIRunner:
         if not os.path.exists(session_path):
             result.status = "error"
             result.error = f"File not found: {entry.file}"
-            result.duration_ms = (time.time() - start) * 1000
+            result.duration_ms = (time.perf_counter() - start) * 1000
             return result
 
         # Health check
@@ -439,7 +442,7 @@ class CIRunner:
         except Exception as e:
             result.status = "error"
             result.error = f"Health check failed: {e}"
-            result.duration_ms = (time.time() - start) * 1000
+            result.duration_ms = (time.perf_counter() - start) * 1000
             return result
 
         # Load session for details
@@ -544,5 +547,5 @@ class CIRunner:
             else:
                 result.status = "pass"
 
-        result.duration_ms = (time.time() - start) * 1000
+        result.duration_ms = (time.perf_counter() - start) * 1000
         return result
