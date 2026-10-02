@@ -3433,6 +3433,13 @@ Commands:
         "--headless", action="store_true", help="Run headless (no window)"
     )
     launch_parser.add_argument(
+        "--timeout",
+        "-t",
+        type=int,
+        default=0,
+        help="Auto-close after N seconds (default 0 = wait for Ctrl+C)",
+    )
+    launch_parser.add_argument(
         "--extra-args", help="Extra browser args (comma-separated)"
     )
     launch_parser.add_argument("--browser-path", help="Path to browser executable")

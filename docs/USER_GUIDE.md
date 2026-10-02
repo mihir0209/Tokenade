@@ -162,6 +162,32 @@ tokenade load --file session.tokenade --no-auto-solve
 tokenade load --file session.tokenade --capture-session --capture-dir ~/.tokenade/sessions
 ```
 
+### `tokenade refresh-browser`
+
+Revalidate a session end to end: inject cookies + Web Storage into a
+fresh browser copy, navigate to the site, extract the refreshed state,
+and check login — then exit. Exit 0 means logged in, 1 means expired.
+
+```bash
+# Browser-based refresh (closes automatically when done)
+tokenade refresh-browser -s github.tokenade --browser brave
+
+# Refresh into a specific file (default: <name>.refreshed.tokenade
+# next to the input — the source file is never overwritten)
+tokenade refresh-browser -s github.tokenade -o github-fresh.tokenade
+```
+
+Behavior notes:
+
+- Carried Web Storage is seeded at document-start, before navigation,
+  so storage-backed logins survive pages that hide storage post-load.
+- The verdict combines URL/title heuristics with DOM checks: handler
+  `logged_out_selectors` (plus generic login-link/password-field
+  fallbacks) must be absent after a settle re-read, and declared
+  `logged_in_selectors` must be observed when the handler provides any.
+- `--plugin` selects a refresher plugin (e.g. `oauth2`); `--no-plugin`
+  skips the entire plugin system, including selector lookup.
+
 ### `tokenade validate`
 
 Validate session files in a directory.

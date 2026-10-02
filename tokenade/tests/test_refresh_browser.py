@@ -1,5 +1,6 @@
 """Tests for cookie-based session refresh (Phase 30 + exit/login-check contract)."""
 import json
+import os
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -820,6 +821,23 @@ class TestLogoutSelectorResolution:
         assert _default_refresh_output(src) == str(
             tmp_path / "brave-github-real.refreshed.tokenade"
         )
+
+    def test_temp_profile_cleaned_up(self, sample_session, fresh_cookies, tmp_path):
+        import tempfile
+
+        tmp_root = os.path.realpath(tempfile.gettempdir())
+        before = {
+            d for d in os.listdir(tmp_root) if d.startswith("tokenade_refresh_")
+        }
+        _, session_file = sample_session
+        code = _mocked_browser_run(
+            _refresh_args(session_file), fresh_cookies
+        )
+        assert code == 0
+        after = {
+            d for d in os.listdir(tmp_root) if d.startswith("tokenade_refresh_")
+        }
+        assert after <= before
 
     def test_storage_seed_registered_before_navigate(self, tmp_path, fresh_cookies):
         """Sessions carrying Web Storage get a document-start seed script.

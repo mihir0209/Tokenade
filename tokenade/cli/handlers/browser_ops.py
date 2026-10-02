@@ -789,12 +789,37 @@ def cmd_launch(args):
         print(f"  1. Open http://127.0.0.1:{browser.port} in another browser")
         print(f"  2. Use Chrome DevTools to connect to ws://127.0.0.1:{browser.port}")
         print("  3. Or let it run and control via CDP WebSocket")
-        print("\nPress Ctrl+C to close the browser")
+        launch_timeout = 0
+        try:
+            launch_timeout = int(getattr(args, "timeout", 0) or 0)
+        except (TypeError, ValueError):
+            launch_timeout = 0
+        if launch_timeout > 0:
+            print(f"\nAuto-closing in {launch_timeout}s (--timeout); Ctrl+C closes now")
+        else:
+            print("\nPress Ctrl+C to close the browser")
         print(f"{'=' * 80}\n")
 
-        # Keep browser running
+        # Keep browser running (forever, or until --timeout elapses)
         try:
-            browser.process.wait()
+            if launch_timeout > 0:
+                deadline = time.time() + launch_timeout
+                _proc = getattr(browser, "process", None)
+                _poll = getattr(_proc, "poll", None) if _proc is not None else None
+                while time.time() < deadline:
+                    if _proc is None:
+                        break
+                    if callable(_poll):
+                        try:
+                            if _proc.poll() is not None:
+                                break
+                        except Exception:
+                            break
+                    time.sleep(1)
+                print(f"\n[TIME] --timeout {launch_timeout}s elapsed - closing browser...")
+                browser.close()
+            else:
+                browser.process.wait()
         except KeyboardInterrupt:
             print("\n[STOP] Closing browser...")
             browser.close()
@@ -970,6 +995,7 @@ def cmd_refresh_browser(args):
 
     exit_ok = False
     browser = None
+    profile_dir = ""
     session_file = Path(args.session)
     if not session_file.exists():
         print(f"[ERROR] Session file not found: {args.session}")
@@ -1563,12 +1589,24 @@ def cmd_refresh_browser(args):
             except Exception:
                 pass
             print("   [LOCK] Browser closed")
-        # Ensure process tree for cloak is gone
+        # Remove our temp profile copy (never a real profile: always a
+        # fresh mkdtemp dir). Guarded by basename so a programming error
+        # can never wipe anything else.
         try:
             import shutil
-            # profile_dir may still exist; leave OS tmp cleaner
-        except Exception:
-            pass
+            import tempfile as _tempfile
+
+            _tmp_root = os.path.realpath(_tempfile.gettempdir())
+            _prof = os.path.realpath(profile_dir) if profile_dir else ""
+            if (
+                _prof
+                and os.path.basename(_prof).startswith("tokenade_refresh_")
+                and os.path.dirname(_prof) == _tmp_root
+                and os.path.isdir(_prof)
+            ):
+                shutil.rmtree(_prof, ignore_errors=True)
+        except Exception as e:
+            logger.debug("temp profile cleanup skipped: %s", e)
 
     raise SystemExit(0 if exit_ok else 1)
 
