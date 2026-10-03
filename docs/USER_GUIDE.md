@@ -829,6 +829,24 @@ HTTPServer(("127.0.0.1", 18766), H).serve_forever()
 Fill in your real country/ASN. Without an echo URL the circuit still pairs and
 proxies, but the egress check reports `unverified` instead of `ok`.
 
+### Cross-machine handoff checklist (e.g. India → UK)
+
+You need: a rendezvous both machines can reach (VPS relay or SSH box),
+the origin machine online, and the jar transferred by any channel.
+
+1. **Origin (India)**: start `tunnel relay` (VPS) or use your SSH box;
+   `tunnel share --remote-ref india-home` → bundle; `tunnel serve` (stays up).
+2. **Origin**: `export --with-egress --egress-ref india-home [...]` — embeds the
+   egress block + signed oracle snapshot. Move the `.tokenade` file to the UK
+   machine (USB, scp, vault — any channel; tokens aren't in the jar).
+3. **Consumer (UK)**: `tunnel pair --bundle-file bundle.json`, then
+   `load session.tokenade --tunnel auto --tunnel-echo-url <responder>`.
+   Expect `Egress check passed` + `Oracle: live`. Use the session normally.
+4. **Rules**: one egress at a time (don't browse the same session from India
+   simultaneously — velocity still fires); keep clocks in sync (snapshot TTL);
+   `tunnel revoke` when done. Google-class device-bound sites still need OAuth
+   automation — the tunnel fixes the network half, not device binding.
+
 ## Plugin Types
 
 | Type | Description | Example |

@@ -2231,6 +2231,22 @@ Commands:
         help="Echo responder URL recorded in the egress block",
     )
     export_parser.add_argument(
+        "--egress-transport",
+        choices=["wss-reverse", "ssh-reverse"],
+        default="wss-reverse",
+        help="Egress transport recorded in the block (default: wss-reverse)",
+    )
+    export_parser.add_argument(
+        "--egress-ssh-host", help="SSH box hostname (with --egress-transport ssh-reverse)"
+    )
+    export_parser.add_argument(
+        "--egress-ssh-port", type=int, default=22, help="SSH port (default: 22)"
+    )
+    export_parser.add_argument(
+        "--egress-ssh-remote-port", type=int, default=0,
+        help="Remote forwarded port on the SSH box",
+    )
+    export_parser.add_argument(
         "--egress-policy-warn",
         action="store_true",
         help="Egress mismatch warns instead of refusing (default: deny)",
@@ -2656,16 +2672,34 @@ Commands:
         "tunnel", help="Origin-egress tunnel circuits (serve/share/pair/status/revoke)"
     )
     tunnel_sub = tunnel_parser.add_subparsers(dest="tunnel_action")
+    def _add_transport_args(parser):
+        parser.add_argument("--transport", default="wss-reverse",
+                            choices=["wss-reverse", "ssh-reverse"],
+                            help="Egress transport (default: wss-reverse)")
+        parser.add_argument("--ssh-host", help="SSH box hostname (ssh-reverse)")
+        parser.add_argument("--ssh-user", help="SSH username (ssh-reverse)")
+        parser.add_argument("--ssh-port", type=int, default=22,
+                            help="SSH port (default: 22)")
+        parser.add_argument("--ssh-key", help="SSH private key path (ssh-reverse)")
+        parser.add_argument("--ssh-password",
+                            help="SSH password (prefer TOKENADE_SSH_PASSWORD env)")
+        parser.add_argument("--ssh-remote-port", type=int,
+                            help="Remote forwarded port on the SSH box")
     tunnel_serve = tunnel_sub.add_parser("serve", help="Run the origin daemon")
-    tunnel_serve.add_argument("--relay", required=True, help="Rendezvous relay URL (ws://host:port)")
+    tunnel_serve.add_argument("--relay", help="Rendezvous relay URL (ws://host:port)")
     tunnel_serve.add_argument("--remote-ref", required=True, help="Circuit name")
     tunnel_serve.add_argument("--token", action="append", default=[],
                               help="Extra consumer token (repeatable)")
     tunnel_serve.add_argument("--snapshot-file", help="JSON scalar values for the snapshot oracle")
+    tunnel_serve.add_argument("--live-oracle", action="store_true",
+                              help="Answer oracle queries from a live headless browser "
+                              "(snapshot fallback when it fails)")
+    _add_transport_args(tunnel_serve)
     tunnel_share = tunnel_sub.add_parser("share", help="Mint a pairing code + bundle")
-    tunnel_share.add_argument("--relay", required=True, help="Rendezvous relay URL (ws://host:port)")
+    tunnel_share.add_argument("--relay", help="Rendezvous relay URL (ws://host:port)")
     tunnel_share.add_argument("--remote-ref", required=True, help="Circuit name")
     tunnel_share.add_argument("--token", help="Consumer token (generated if omitted)")
+    _add_transport_args(tunnel_share)
     tunnel_pair = tunnel_sub.add_parser("pair", help="Redeem a code or bundle")
     tunnel_pair.add_argument("code", nargs="?",
                              help="Pairing code or JSON bundle from `tunnel share`")

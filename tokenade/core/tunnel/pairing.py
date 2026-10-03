@@ -99,6 +99,7 @@ def redeem_pairing(code: str, store: Optional[Path] = None) -> Dict[str, str]:
 def save_consumer_record(
     remote_ref: str, relay_url: str, consumer_token: str,
     store: Optional[Path] = None,
+    ssh: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Persist a redeemed pairing on the consumer side + keyring ref."""
     path = Path(store) if store else _tunnel_dir() / "consumers.json"
@@ -107,6 +108,7 @@ def save_consumer_record(
         "relay_url": relay_url,
         "token_ref": f"keyring:tokenade-tunnel-{remote_ref}",
         "saved_at": time.time(),
+        **({"ssh": ssh} if ssh else {}),
     }
     _save_json(path, data)
     try:

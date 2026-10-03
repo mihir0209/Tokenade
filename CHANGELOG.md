@@ -20,6 +20,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   endpoint with snapshot oracle, consumer circuit, pairing, thread-owned TunnelSession),
   `EgressProviderPlugin` + `FingerprintOraclePlugin` seams (loader + tester registered).
   `.tokenade` v3.0 → **v3.1** (additive `egress`/`oracle_snapshot`; old jars load unchanged).
+- **Tunnel Phase 2**: `ssh-reverse` transport (paramiko client-only; origin reverse-forwards
+  `sshbox:remote_port` to a Bearer-gated local egress proxy with `tokenade.echo` /
+  `tokenade.oracle` special hosts, giving echo + snapshot-backed live oracle parity with
+  the WSS path). Dispatch by `relay.transport`; CLI serve/share/export carry SSH fields;
+  secrets stay in flags/env, never the jar. **Live-browser oracle**: `serve --live-oracle`
+  answers scalar probes from a real headless page (5-min cache, snapshot fallback, source
+  labels; render reads structurally unanswerable). **Worker parity proven + gap pinned**:
+  native tier (UA/tz/locale) agrees main-vs-worker; `add_init_script` navigator spoofs do
+  NOT reach Workers (engine-level fix backloged). **WebRTC flags verified into the
+  CloakBrowser command line** by test. Proven live: real `load --tunnel auto` (egress ok,
+  1/1 cookies). USER_GUIDE gains the cross-machine handoff checklist.
 
 ### Fixed
 - **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).

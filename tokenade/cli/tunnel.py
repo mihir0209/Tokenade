@@ -68,8 +68,9 @@ def cmd_tunnel_serve(args):
 
     relay_url = getattr(args, "relay", None)
     remote_ref = getattr(args, "remote_ref", None)
-    if not relay_url or not remote_ref:
-        print("[ERROR] serve needs --relay ws://host:port and --remote-ref NAME")
+    transport = (getattr(args, "transport", None) or "wss-reverse").lower()
+    if not remote_ref:
+        print("[ERROR] serve needs --remote-ref NAME (plus --relay for wss-reverse)")
         raise SystemExit(2)
 
     snapshot_values = {}
@@ -82,14 +83,26 @@ def cmd_tunnel_serve(args):
             raise SystemExit(2)
 
     extra_tokens = getattr(args, "token", None) or []
+    live_oracle = bool(getattr(args, "live_oracle", False))
     print("\n" + "=" * 80)
     print("TOKENADE - Tunnel Origin Daemon")
     print("=" * 80)
-    print(f"   Relay:      {relay_url}")
+    print(f"   Transport:  {transport}")
     print(f"   Remote ref: {remote_ref}")
+    if transport == "wss-reverse":
+        print(f"   Relay:      {relay_url}")
     print("   Mode:       outbound-only (no listening sockets)")
     print("   Stop:       Ctrl+C")
     print("=" * 80 + "\n")
+
+    if transport == "ssh-reverse":
+        return _serve_ssh(args, remote_ref, snapshot_values, extra_tokens)
+    if transport != "wss-reverse":
+        print(f"[ERROR] Unknown --transport {transport!r} (wss-reverse|ssh-reverse)")
+        raise SystemExit(2)
+    if not relay_url:
+        print("[ERROR] wss-reverse serve needs --relay ws://host:port")
+        raise SystemExit(2)
 
     delay = 1.0
     try:
@@ -103,6 +116,7 @@ def cmd_tunnel_serve(args):
                 relay_url, remote_ref, consumer_tokens=tokens,
                 snapshot_values=snapshot_values,
                 oracle_allowlist=list(ORACLE_ALLOWLIST),
+                live_oracle=live_oracle,
             )
             try:
                 asyncio.run(endpoint.start())
@@ -117,6 +131,59 @@ def cmd_tunnel_serve(args):
         print("\n[STOP] Origin daemon stopped.")
 
 
+def _serve_ssh(args, remote_ref, snapshot_values, extra_tokens):
+    """Run the SSH-reverse origin (paramiko reverse-forward to --ssh-host)."""
+    import os
+    import threading
+
+    from tokenade.core.session_runtime.plan import ORACLE_ALLOWLIST
+    from tokenade.core.tunnel.ssh_reverse import SshReverseOrigin
+
+    ssh_host = getattr(args, "ssh_host", None)
+    remote_port = getattr(args, "ssh_remote_port", None)
+    if not ssh_host or not remote_port:
+        print("[ERROR] ssh-reverse serve needs --ssh-host and --ssh-remote-port")
+        raise SystemExit(2)
+    origin = SshReverseOrigin(
+        ssh_host=ssh_host,
+        ssh_port=int(getattr(args, "ssh_port", None) or 22),
+        ssh_user=getattr(args, "ssh_user", None) or os.environ.get("USER", "root"),
+        remote_port=int(remote_port),
+        key_path=getattr(args, "ssh_key", None),
+        password=getattr(args, "ssh_password", None) or os.environ.get("TOKENADE_SSH_PASSWORD"),
+        consumer_tokens=set(),
+        snapshot_values=snapshot_values,
+        oracle_allowlist=list(ORACLE_ALLOWLIST),
+        live_oracle=live_oracle,
+    )
+    approved = _load_approved()
+    origin.consumer_tokens = set(approved.get(remote_ref, [])) | set(extra_tokens)
+
+    def _watch_approved():
+        import time as _time
+
+        while True:
+            _time.sleep(20)
+            try:
+                fresh = _load_approved()
+                origin.consumer_tokens = (
+                    set(fresh.get(remote_ref, [])) | set(extra_tokens))
+            except Exception:
+                pass
+
+    watcher = threading.Thread(target=_watch_approved, daemon=True)
+    watcher.start()
+    print(f"   SSH box:    {origin.ssh_user}@{origin.ssh_host}:{origin.ssh_port} "
+          f"→ remote :{origin.remote_port}")
+    try:
+        origin.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        origin.stop()
+    print("\n[STOP] Origin daemon stopped.")
+
+
 def cmd_tunnel_share(args):
     """Mint a pairing code + cross-machine bundle; approve the token."""
     import secrets
@@ -125,26 +192,38 @@ def cmd_tunnel_share(args):
 
     relay_url = getattr(args, "relay", None)
     remote_ref = getattr(args, "remote_ref", None)
-    if not relay_url or not remote_ref:
-        print("[ERROR] share needs --relay ws://host:port and --remote-ref NAME")
+    transport = (getattr(args, "transport", None) or "wss-reverse").lower()
+    ssh = {
+        "host": getattr(args, "ssh_host", None),
+        "port": int(getattr(args, "ssh_port", None) or 22),
+        "remote_port": int(getattr(args, "ssh_remote_port", None) or 0),
+    } if transport == "ssh-reverse" else None
+    if not remote_ref or (transport == "wss-reverse" and not relay_url):
+        print("[ERROR] share needs --remote-ref NAME "
+              "(plus --relay ws://host:port for wss-reverse)")
+        raise SystemExit(2)
+    if transport == "ssh-reverse" and (not ssh["host"] or not ssh["remote_port"]):
+        print("[ERROR] ssh-reverse share needs --ssh-host and --ssh-remote-port")
+        raise SystemExit(2)
+    if transport not in ("wss-reverse", "ssh-reverse"):
+        print(f"[ERROR] Unknown --transport {transport!r}")
         raise SystemExit(2)
     token = getattr(args, "token", None) or secrets.token_urlsafe(24)
-    created = create_pairing(remote_ref, relay_url, token)
+    created = create_pairing(remote_ref, relay_url or "", token)
     approved = _load_approved()
     approved.setdefault(remote_ref, [])
     if token not in approved[remote_ref]:
         approved[remote_ref].append(token)
     _save_approved(approved)
-    bundle = json.dumps(
-        {"relay_url": relay_url, "remote_ref": remote_ref, "consumer_token": token}
-    )
+    bundle = {"transport": transport, "relay_url": relay_url or "",
+              "remote_ref": remote_ref, "consumer_token": token}
+    if ssh:
+        bundle["ssh"] = ssh
     print("\n[OK] Pairing created (single-use code):")
     print(f"   Code:   {created['code']}")
     print("   Bundle (cross-machine; hand to the consumer out-of-band):")
-    print(f"   {bundle}")
-    print("\n   Consumer runs: tokenade tunnel pair '<bundle>'")
-    print("   Origin daemon: tokenade tunnel serve --relay "
-          f"{relay_url} --remote-ref {remote_ref}")
+    print(f"   {json.dumps(bundle)}")
+    print("\n   Consumer runs: tokenade tunnel pair --bundle-file bundle.json")
 
 
 def cmd_tunnel_pair(args):
@@ -167,8 +246,9 @@ def cmd_tunnel_pair(args):
             details = json.loads(code)
             record = {
                 "remote_ref": details["remote_ref"],
-                "relay_url": details["relay_url"],
+                "relay_url": details.get("relay_url", ""),
                 "consumer_token": details["consumer_token"],
+                "ssh": details.get("ssh"),
             }
         except (ValueError, KeyError) as exc:
             print(f"[ERROR] Bad bundle: {exc}")
@@ -179,7 +259,8 @@ def cmd_tunnel_pair(args):
         except Exception as exc:
             print(f"[ERROR] Pairing failed: {exc}")
             raise SystemExit(2)
-    save_consumer_record(record["remote_ref"], record["relay_url"], record["consumer_token"])
+    save_consumer_record(record["remote_ref"], record.get("relay_url", ""),
+                         record["consumer_token"], ssh=record.get("ssh"))
     print(f"\n[OK] Paired '{record['remote_ref']}' via {record['relay_url']}")
     print("   Token stored in OS keyring (never in the jar).")
     print(f"   Use: tokenade load session.tokenade --tunnel auto")

@@ -52,6 +52,7 @@ class OriginEndpoint:
         oracle_allowlist=None,
         dial_timeout: float = 10.0,
         echo_timeout: float = 15.0,
+        live_oracle: bool = False,
     ):
         self.relay_url = relay_url
         self.remote_ref = remote_ref
@@ -63,6 +64,11 @@ class OriginEndpoint:
         self._approved: Set[str] = set()
         self._streams: Dict[int, Dict[str, Any]] = {}
         self._tasks: Set[asyncio.Task] = set()
+        self._live = None
+        if live_oracle:
+            from tokenade.core.tunnel.live_oracle import LiveBrowserOracle
+
+            self._live = LiveBrowserOracle(oracle_allowlist)
 
     # -- lifecycle --
 
@@ -89,8 +95,11 @@ class OriginEndpoint:
             self._ws = None
 
     async def stop(self) -> None:
-        """Close the relay socket and all streams."""
+        """Close the relay socket, streams, and live oracle browser."""
         await self._close_all_streams()
+        if self._live is not None:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._live.stop)
         if self._ws is not None:
             try:
                 await self._ws.close()
@@ -177,14 +186,45 @@ class OriginEndpoint:
         if consumer is None:
             await self._send(
                 {"t": "answer", "consumer": str(frame.get("consumer", "")),
-                 "id": qid, "value": None, "error": "not paired"}
+                 "id": qid, "value": None, "error": "not paired", "source": "none"}
             )
             return
-        value, error = self.oracle.answer(str(frame.get("method", "")))
+        value, error, source = await self._answer_query(str(frame.get("method", "")))
         await self._send(
             {"t": "answer", "consumer": consumer, "id": qid,
-             "value": value, "error": error}
+             "value": value, "error": error, "source": source}
         )
+
+    async def _answer_query(self, method: str):
+        """Answer a probe: live browser first, snapshot fallback.
+
+        Returns (value, error, source) with source in
+        live|snapshot|snapshot-fallback|none.
+        """
+        if self._live is not None:
+            loop = asyncio.get_running_loop()
+
+            def _ask():
+                try:
+                    self._live.start()
+                except Exception as exc:
+                    return None, f"oracle offline: {exc}"
+                return self._live.answer(method)
+
+            value, error = await loop.run_in_executor(None, _ask)
+            if error is None:
+                return value, None, "live"
+            if error.startswith("denied:"):
+                return None, error, "none"
+            # Live failed (browser down, eval error): fall back to snapshot
+            # rather than failing the session's fingerprint reads.
+            value, snap_error = self.oracle.answer(method)
+            if snap_error is None:
+                logger.warning("live oracle failed (%s); snapshot fallback", error)
+                return value, None, "snapshot-fallback"
+            return None, error, "none"
+        value, error = self.oracle.answer(method)
+        return value, error, ("snapshot" if error is None else "none")
 
     async def _on_echo(self, frame: dict) -> None:
         consumer = self._approved_consumer(frame)

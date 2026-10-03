@@ -176,11 +176,21 @@ def open_tunnel_for_jar(
             "re-export with --with-egress."
         )
     token = load_consumer_token(remote_ref)
-    session = TunnelSession(
-        rendezvous, remote_ref, token,
-        echo_url=echo_url or relay.get("echo_url"),
-    )
-    session.open(timeout_s=timeout_s)
+    transport = str(relay.get("transport", "wss-reverse")).lower()
+    if transport == "ssh-reverse":
+        session = _open_ssh_session(relay, remote_ref, token,
+                                    echo_url or relay.get("echo_url"),
+                                    timeout_s)
+    elif transport == "wss-reverse":
+        session = TunnelSession(
+            rendezvous, remote_ref, token,
+            echo_url=echo_url or relay.get("echo_url"),
+        )
+        session.open(timeout_s=timeout_s)
+    else:
+        raise EgressCheckError(
+            f"Unknown egress transport {transport!r} (want wss-reverse|ssh-reverse)."
+        )
     hint = egress.get("origin_hint", {}) if isinstance(egress.get("origin_hint"), dict) else {}
     policy = resolve_policy(package)
     state: Dict[str, Any] = {
@@ -205,6 +215,36 @@ def open_tunnel_for_jar(
         }
         logger.warning(state["egress_check"]["message"])
     return state
+
+
+def _open_ssh_session(relay: Dict[str, Any], remote_ref: str, token: str,
+                      echo_url: Optional[str], timeout_s: float):
+    """Open an ssh-reverse consumer session from a jar relay block."""
+    from urllib.parse import urlparse as _urlparse
+
+    from tokenade.core.tunnel.ssh_reverse import SshTunnelSession
+
+    ssh_host = str(relay.get("ssh_host", "") or "")
+    ssh_port = int(relay.get("ssh_port", 22) or 22)
+    rendezvous = str(relay.get("rendezvous", "") or "")
+    if rendezvous.startswith("ssh://") and not ssh_host:
+        parsed = _urlparse(rendezvous)
+        ssh_host = parsed.hostname or ""
+        ssh_port = parsed.port or 22
+    try:
+        remote_port = int(relay.get("ssh_remote_port", 0) or 0)
+    except (TypeError, ValueError):
+        remote_port = 0
+    if not ssh_host or not remote_port:
+        raise EgressCheckError(
+            "SSH egress block needs relay.ssh_host and relay.ssh_remote_port; "
+            "re-export with --egress-transport ssh-reverse --egress-ssh-host H "
+            "--egress-ssh-remote-port R."
+        )
+    session = SshTunnelSession(ssh_host, ssh_port, remote_port, token,
+                               echo_url=echo_url)
+    session.open(timeout_s=timeout_s)
+    return session
 
 
 def snapshot_values_from_fingerprint(fingerprint: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -252,6 +292,10 @@ def capture_egress_block(
     echo_url: Optional[str] = None,
     policy_fallback: str = "deny",
     timeout_s: float = 20.0,
+    transport: str = "wss-reverse",
+    ssh_host: str = "",
+    ssh_port: int = 22,
+    ssh_remote_port: int = 0,
 ) -> Dict[str, Any]:
     """Build a v3.1 egress block + signed oracle snapshot for export.
 
@@ -274,14 +318,18 @@ def capture_egress_block(
     raw_ip = network.get("ip") or ""
     if raw_ip:
         hint["ip_hash"] = "sha256:" + _hashlib.sha256(raw_ip.encode()).hexdigest()
+    relay: Dict[str, Any] = {
+        "transport": transport,
+        "rendezvous": relay_url,
+        "remote_ref": remote_ref,
+        **({"echo_url": echo_url} if echo_url else {}),
+    }
+    if transport == "ssh-reverse":
+        relay.update({"ssh_host": ssh_host, "ssh_port": ssh_port,
+                      "ssh_remote_port": ssh_remote_port})
     egress = {
         "mode": "origin-relay",
-        "relay": {
-            "transport": "wss-reverse",
-            "rendezvous": relay_url,
-            "remote_ref": remote_ref,
-            **({"echo_url": echo_url} if echo_url else {}),
-        },
+        "relay": relay,
         "origin_hint": hint,
         "policy": {"required": True, "fallback": policy_fallback},
     }

@@ -47,8 +47,8 @@ def test_share_and_pair_roundtrip(tmp_path, monkeypatch, capsys):
 
     saved = {}
 
-    def fake_save(ref, url, token, store=None):
-        saved.update(ref=ref, url=url, token=token)
+    def fake_save(ref, url, token, store=None, ssh=None):
+        saved.update(ref=ref, url=url, token=token, ssh=ssh)
 
     monkeypatch.setattr("tokenade.core.tunnel.pairing.create_pairing", fake_create)
     monkeypatch.setattr("tokenade.core.tunnel.pairing.redeem_pairing", fake_redeem)
@@ -70,12 +70,15 @@ def test_pair_bundle_json(monkeypatch, capsys):
     saved = {}
     monkeypatch.setattr(
         "tokenade.core.tunnel.pairing.save_consumer_record",
-        lambda ref, url, token, store=None: saved.update(ref=ref, token=token),
+        lambda ref, url, token, store=None, ssh=None: saved.update(
+            ref=ref, token=token, ssh=ssh),
     )
     bundle = json.dumps({"relay_url": "ws://r:1", "remote_ref": "b1",
-                         "consumer_token": "tok"})
+                         "consumer_token": "tok",
+                         "ssh": {"host": "box", "port": 22, "remote_port": 18080}})
     cmd_tunnel(_args(tunnel_action="pair", code=bundle))
-    assert saved == {"ref": "b1", "token": "tok"}
+    assert saved == {"ref": "b1", "token": "tok",
+                     "ssh": {"host": "box", "port": 22, "remote_port": 18080}}
     assert "Paired" in capsys.readouterr().out
 
 
@@ -88,7 +91,8 @@ def test_pair_bundle_file(tmp_path, monkeypatch, capsys):
     saved = {}
     monkeypatch.setattr(
         "tokenade.core.tunnel.pairing.save_consumer_record",
-        lambda ref, url, token, store=None: saved.update(ref=ref, token=token),
+        lambda ref, url, token, store=None, ssh=None: saved.update(
+            ref=ref, token=token),
     )
     bundle = tmp_path / "bundle.json"
     bundle.write_text(json.dumps({"relay_url": "ws://r:1", "remote_ref": "f1",

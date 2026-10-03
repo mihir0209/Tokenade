@@ -1136,10 +1136,22 @@ def cmd_export(args):
 
         relay_url = getattr(args, "egress_relay", None)
         remote_ref = getattr(args, "egress_ref", None)
-        if not relay_url or not remote_ref:
-            print("[ERROR] --with-egress needs --egress-relay ws://host:port "
-                  "and --egress-ref NAME")
+        transport = getattr(args, "egress_transport", "wss-reverse") or "wss-reverse"
+        if not remote_ref:
+            print("[ERROR] --with-egress needs --egress-ref NAME")
             raise SystemExit(2)
+        if transport == "wss-reverse" and not relay_url:
+            print("[ERROR] --with-egress needs --egress-relay ws://host:port")
+            raise SystemExit(2)
+        if transport == "ssh-reverse":
+            if not getattr(args, "egress_ssh_host", None) or not getattr(
+                    args, "egress_ssh_remote_port", 0):
+                print("[ERROR] ssh-reverse --with-egress needs --egress-ssh-host "
+                      "and --egress-ssh-remote-port")
+                raise SystemExit(2)
+            relay_url = relay_url or (
+                f"ssh://{getattr(args, 'egress_ssh_host')}"
+                f":{getattr(args, 'egress_ssh_port', 22) or 22}")
         try:
             captured = capture_egress_block(
                 relay_url=relay_url,
@@ -1147,6 +1159,10 @@ def cmd_export(args):
                 fingerprint=package.get("fingerprint"),
                 echo_url=getattr(args, "egress_echo_url", None),
                 policy_fallback="warn" if getattr(args, "egress_policy_warn", False) else "deny",
+                transport=getattr(args, "egress_transport", "wss-reverse") or "wss-reverse",
+                ssh_host=getattr(args, "egress_ssh_host", None) or "",
+                ssh_port=getattr(args, "egress_ssh_port", 22) or 22,
+                ssh_remote_port=getattr(args, "egress_ssh_remote_port", 0) or 0,
             )
         except Exception as e:
             print(f"[ERROR] Egress capture failed: {e}")
