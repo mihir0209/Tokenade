@@ -105,6 +105,7 @@ class RuntimePlan:
     launch_args: List[str] = field(default_factory=list)
     oracle: Dict[str, Any] = field(default_factory=dict)
     policy: Dict[str, Any] = field(default_factory=dict)
+    split: Dict[str, Any] = field(default_factory=dict)
     fingerprint_source: str = "none"  # cli | jar | none
     report: Dict[str, Any] = field(default_factory=dict)
 
@@ -214,6 +215,16 @@ class RuntimePlanBuilder:
             )
         plan.oracle = oracle_cfg
 
+        # --- Split routing: explicit opt-in only; empty list refuses.
+        from tokenade.core.session_runtime.split import resolve_split
+
+        plan.split = resolve_split(package, cli.get("tunnel_split"))
+        if plan.split["enabled"] and not plan.split["domains"]:
+            raise EgressCheckError(
+                "Split routing enabled but no domains resolved — refusing, "
+                "because an empty list would send EVERYTHING direct."
+            )
+
         # --- Egress self-check when a circuit echo is available.
         if tunnel and isinstance(tunnel.get("egress_echo"), dict):
             hint = package.get("egress", {}).get("origin_hint", {})
@@ -248,6 +259,7 @@ class RuntimePlanBuilder:
                 "webrtc_lockdown": any(
                     "webrtc" in a.lower() for a in plan.launch_args
                 ),
+                "split": plan.split,
             }
         )
         return plan

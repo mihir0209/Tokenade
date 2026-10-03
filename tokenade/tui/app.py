@@ -149,6 +149,7 @@ from tokenade.tui.views.gateway import (
 )
 from tokenade.tui.views.vault import VaultView
 from tokenade.tui.views.sync import SyncView
+from tokenade.tui.views.tunnel import TunnelView, format_status_rows
 from tokenade.tui.views.share import ShareView, session_select_options
 from tokenade.tui.views.settings import SettingsView
 from tokenade.tui.cli_runner import (
@@ -535,6 +536,7 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             yield TabPane("Gateway", GatewayView(), id="tab-gateway")
             yield TabPane("Vault", VaultView(), id="tab-vault")
             yield TabPane("Sync", SyncView(), id="tab-sync")
+            yield TabPane("Tunnel", TunnelView(), id="tab-tunnel")
             yield TabPane("Installed plugins", InstalledView(), id="tab-installed")
             yield TabPane("Marketplace", MarketplaceView(), id="tab-marketplace")
             yield TabPane("Settings", SettingsView(), id="tab-settings")
@@ -2025,6 +2027,8 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self._sync_save_peer()
         elif btn_id == "sync-status":
             self._sync_status()
+        elif btn_id == "tunnel-refresh":
+            self._tunnel_refresh()
         elif btn_id == "sync-plan":
             self._sync_plan()
         elif btn_id == "sync-bidir":
@@ -2375,6 +2379,19 @@ class TokenadeTUI(App if _TEXTUAL_AVAILABLE else object):
             self.notify("Peer name required", severity="warning")
             return
         self._run_feature_cli(cmd_sync_action("status", name), "#sync-log")
+
+    def _tunnel_refresh(self):
+        from tokenade.cli.tunnel import collect_tunnel_status
+
+        try:
+            rows = collect_tunnel_status()
+        except Exception as exc:
+            self.notify(f"Tunnel status failed: {exc}", severity="error")
+            return
+        try:
+            self.query_one("#tunnel-status", Static).update(format_status_rows(rows))
+        except Exception:
+            self.notify(format_status_rows(rows))
 
     def _sync_plan(self):
         form = self._sync_form()

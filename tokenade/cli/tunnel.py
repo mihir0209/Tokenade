@@ -266,8 +266,12 @@ def cmd_tunnel_pair(args):
     print(f"   Use: tokenade load session.tokenade --tunnel auto")
 
 
-def cmd_tunnel_status(args):
-    """Show paired remotes, token presence, relay reachability."""
+def collect_tunnel_status(remote_ref=None):
+    """Collect paired-remote status rows (shared by CLI and TUI).
+
+    Returns a list of {"remote_ref", "relay_url", "token_state",
+    "relay_reachable", "transport"} dicts (empty when nothing paired).
+    """
     from tokenade.core.tunnel.pairing import _tunnel_dir
 
     consumers_path = _tunnel_dir() / "consumers.json"
@@ -275,15 +279,14 @@ def cmd_tunnel_status(args):
         records = json.loads(consumers_path.read_text())
     except (ValueError, OSError):
         records = {}
-    want = getattr(args, "remote_ref", None)
-    if want:
-        records = {want: records.get(want, {})} if want in records else {}
+    if remote_ref:
+        records = {remote_ref: records.get(remote_ref, {})} \
+            if remote_ref in records else {}
 
-    if not records:
-        print("No paired remotes. Run `tokenade tunnel pair '<bundle>'` first.")
-        return
+    rows = []
     for ref, rec in records.items():
-        relay_url = (rec or {}).get("relay_url", "?")
+        rec = rec or {}
+        relay_url = rec.get("relay_url", "?")
         try:
             from tokenade.core.tunnel.pairing import load_consumer_token
 
@@ -291,10 +294,33 @@ def cmd_tunnel_status(args):
             token_state = "present (keyring)"
         except Exception as exc:
             token_state = f"MISSING ({exc})"
-        host, port = _relay_host_port(relay_url)
-        reachable = _tcp_probe(host, port)
-        print(f"   {ref}: relay={relay_url} token={token_state} "
-              f"relay_reachable={reachable}")
+        ssh = rec.get("ssh") if isinstance(rec.get("ssh"), dict) else None
+        if ssh:
+            host, port = ssh.get("host", "?"), int(ssh.get("remote_port", 0) or 0)
+            transport = "ssh-reverse"
+        else:
+            host, port = _relay_host_port(relay_url)
+            transport = "wss-reverse"
+        rows.append({
+            "remote_ref": ref,
+            "relay_url": relay_url,
+            "token_state": token_state,
+            "relay_reachable": _tcp_probe(host, port),
+            "transport": transport,
+        })
+    return rows
+
+
+def cmd_tunnel_status(args):
+    """Show paired remotes, token presence, relay reachability."""
+    rows = collect_tunnel_status(getattr(args, "remote_ref", None))
+    if not rows:
+        print("No paired remotes. Run `tokenade tunnel pair '<bundle>'` first.")
+        return
+    for row in rows:
+        print(f"   {row['remote_ref']}: relay={row['relay_url']} "
+              f"token={row['token_state']} "
+              f"relay_reachable={row['relay_reachable']}")
 
 
 def cmd_tunnel_revoke(args):

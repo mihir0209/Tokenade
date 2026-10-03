@@ -385,12 +385,14 @@ def cmd_load(args):
             relay_url=getattr(args, "tunnel_relay", None),
             echo_url=getattr(args, "tunnel_echo_url", None),
             allow_unpaired=bool(getattr(args, "tunnel_allow_unpaired", False)),
+            tunnel_split=getattr(args, "tunnel_split", None),
         )
         tunnel_session = tunnel_state.pop("_session")
         plan = RuntimePlanBuilder().build(
             preview,
             tunnel=tunnel_state,
-            cli_overrides={"tunnel": tunnel_mode, "stealth_level": args.stealth_level},
+            cli_overrides={"tunnel": tunnel_mode, "stealth_level": args.stealth_level,
+                           "tunnel_split": getattr(args, "tunnel_split", None)},
         )
         load_proxy = plan.proxy
         load_extra_args = plan.launch_args or None
@@ -399,6 +401,10 @@ def cmd_load(args):
         print(f"   Proxy: {load_proxy.get('server') if load_proxy else 'none'}")
         print(f"   Oracle: {plan.report.get('oracle_mode')} "
               f"(fingerprint: {plan.report.get('fingerprint_source')})")
+        split_report = plan.report.get("split", {})
+        if split_report.get("enabled"):
+            print(f"   Split: tunnel {', '.join(split_report.get('domains', []))} "
+                  f"({split_report.get('mode')}); rest direct")
 
     try:
         result = loader.load(

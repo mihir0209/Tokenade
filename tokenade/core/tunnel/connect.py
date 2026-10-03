@@ -45,11 +45,13 @@ class TunnelSession:
         remote_ref: str,
         consumer_token: str,
         echo_url: Optional[str] = None,
+        split: Optional[Dict[str, Any]] = None,
     ):
         self.relay_url = relay_url
         self.remote_ref = remote_ref
         self._consumer_token = consumer_token
         self.echo_url = echo_url
+        self.split = split or {"enabled": False, "domains": [], "mode": "off"}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._circuit: Optional[ConsumerCircuit] = None
@@ -76,7 +78,8 @@ class TunnelSession:
         return self
 
     async def _setup(self) -> Dict[str, Any]:
-        circuit = ConsumerCircuit(self.relay_url, self.remote_ref, self._consumer_token)
+        circuit = ConsumerCircuit(self.relay_url, self.remote_ref, self._consumer_token,
+                                  split=self.split)
         await circuit.ensure_connected()
         await circuit.serve_local_listener()
         self._circuit = circuit
@@ -147,6 +150,7 @@ def open_tunnel_for_jar(
     echo_url: Optional[str] = None,
     timeout_s: float = 30.0,
     allow_unpaired: bool = False,
+    tunnel_split: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Open a verified tunnel session for a jar (or None when mode=off).
 
@@ -155,9 +159,16 @@ def open_tunnel_for_jar(
     Raises EgressCheckError / AuthError / TunnelError fail-closed.
     """
     from tokenade.core.session_runtime.policy import FALLBACK_DIRECT
+    from tokenade.core.session_runtime.split import resolve_split
 
     if str(mode).lower() == "off":
         return None
+    split = resolve_split(package, tunnel_split)
+    if split["enabled"] and not split["domains"]:
+        raise EgressCheckError(
+            "Split routing enabled but no domains resolved — refusing, "
+            "because an empty list would send EVERYTHING direct."
+        )
     egress = package.get("egress") if isinstance(package, dict) else None
     if not isinstance(egress, dict):
         if allow_unpaired:
@@ -180,11 +191,12 @@ def open_tunnel_for_jar(
     if transport == "ssh-reverse":
         session = _open_ssh_session(relay, remote_ref, token,
                                     echo_url or relay.get("echo_url"),
-                                    timeout_s)
+                                    timeout_s, split)
     elif transport == "wss-reverse":
         session = TunnelSession(
             rendezvous, remote_ref, token,
             echo_url=echo_url or relay.get("echo_url"),
+            split=split,
         )
         session.open(timeout_s=timeout_s)
     else:
@@ -197,6 +209,7 @@ def open_tunnel_for_jar(
         "local_proxy": session.local_proxy,
         "oracle": session.oracle,
         "egress_echo": session.echo,
+        "split": split,
         "_session": session,
     }
     if session.echo:
@@ -218,7 +231,8 @@ def open_tunnel_for_jar(
 
 
 def _open_ssh_session(relay: Dict[str, Any], remote_ref: str, token: str,
-                      echo_url: Optional[str], timeout_s: float):
+                      echo_url: Optional[str], timeout_s: float,
+                      split: Optional[Dict[str, Any]] = None):
     """Open an ssh-reverse consumer session from a jar relay block."""
     from urllib.parse import urlparse as _urlparse
 
@@ -242,7 +256,9 @@ def _open_ssh_session(relay: Dict[str, Any], remote_ref: str, token: str,
             "--egress-ssh-remote-port R."
         )
     session = SshTunnelSession(ssh_host, ssh_port, remote_port, token,
-                               echo_url=echo_url)
+                               echo_url=echo_url,
+                               split=split or {"enabled": False, "domains": [],
+                                               "mode": "off"})
     session.open(timeout_s=timeout_s)
     return session
 

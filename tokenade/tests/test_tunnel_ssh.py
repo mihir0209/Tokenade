@@ -33,6 +33,7 @@ async def _free_port():
 
 
 async def _pipe(src, dst):
+    # Half-close cascade (mirrors lib pipes): EOF upstream closes downstream.
     try:
         while True:
             chunk = await src.read(32768)
@@ -42,6 +43,11 @@ async def _pipe(src, dst):
             await dst.drain()
     except Exception:
         pass
+    finally:
+        try:
+            dst.close()
+        except Exception:
+            pass
 
 
 class _Origin:
@@ -262,6 +268,52 @@ async def test_consumer_session_via_stub_box():
         origin.responder.close()
 
 
+async def _connect_readback(lport, host, port, payload: bytes) -> bytes:
+    async def _run():
+        reader, writer = await asyncio.open_connection("127.0.0.1", lport)
+        try:
+            writer.write(f"CONNECT {host}:{port} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+            await writer.drain()
+            head = await reader.readuntil(b"\r\n\r\n")
+            assert b"200" in head
+            writer.write(payload)
+            await writer.drain()
+            return await reader.readexactly(len(payload))
+        finally:
+            writer.close()
+
+    # Bounded: a stall here must fail loudly, never wedge the suite.
+    return await asyncio.wait_for(_run(), timeout=20)
+
+
+async def test_ssh_split_direct_then_tunneled():
+    origin = await live_origin()
+    box, box_port = await _stub_box(origin.proxy_port)
+    session = SshTunnelSession(
+        "127.0.0.1", 22, box_port, "tok123",
+        split={"enabled": True, "domains": ["tunneled.invalid"], "mode": "manual"})
+    try:
+        await session.aopen(20.0)
+        try:
+            lport = int(session.local_proxy["server"].rsplit(":", 1)[1])
+            assert await _connect_readback(
+                lport, "127.0.0.1", origin.echo_port, b"ssh-dir") == b"ssh-dir"
+            assert session.split_stats == {"tunneled": 0, "direct": 1}
+            session.split = {"enabled": True, "domains": ["127.0.0.1"],
+                             "mode": "manual"}
+            assert await _connect_readback(
+                lport, "127.0.0.1", origin.echo_port, b"ssh-tun") == b"ssh-tun"
+            assert session.split_stats == {"tunneled": 1, "direct": 1}
+        finally:
+            await session.aclose()
+    finally:
+        box.close()
+        await box.wait_closed()
+        await origin.proxy.aclose()
+        origin.echo_server.close()
+        origin.responder.close()
+
+
 async def test_consumer_wrong_token_rejected():
     origin = await live_origin()
     box, box_port = await _stub_box(origin.proxy_port)
@@ -295,7 +347,7 @@ def test_open_dispatch_ssh_transport(monkeypatch):
         def oracle(self):
             return {"mode": "live"}
 
-    def fake_open(relay, ref, token, echo_url, timeout):
+    def fake_open(relay, ref, token, echo_url, timeout, split=None):
         calls.update(relay=relay, ref=ref, token=token)
         return _StubSession()
 

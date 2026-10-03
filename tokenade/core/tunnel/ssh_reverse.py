@@ -256,7 +256,7 @@ class TokenGatedEgressProxy:
         return None, f"unknown: {method}", "none"
 
     @staticmethod
-    def _split_host_port(target: str, default: int):
+    def _split_host_port(target: str, default: int):  # TokenGatedEgressProxy
         if ":" in target:
             host, port_s = target.rsplit(":", 1)
             try:
@@ -266,6 +266,8 @@ class TokenGatedEgressProxy:
         return target, default
 
     async def _pipe(self, reader, writer, reader2, writer2) -> None:
+        # Half-close cascade: EOF upstream closes downstream, so FIN
+        # propagates hop-by-hop and no idle pipe wedges wait_closed().
         async def _forward(src, dst):
             try:
                 while True:
@@ -276,6 +278,11 @@ class TokenGatedEgressProxy:
                     await dst.drain()
             except Exception:
                 pass
+            finally:
+                try:
+                    dst.close()
+                except Exception:
+                    pass
 
         await asyncio.gather(_forward(reader, writer2), _forward(reader2, writer))
         for w in (writer2, writer):
@@ -507,6 +514,7 @@ class SshTunnelSession:
         consumer_token: str,
         echo_url: Optional[str] = None,
         loopback_host: str = "127.0.0.1",
+        split: Optional[Dict[str, Any]] = None,
     ):
         self.ssh_host = ssh_host
         self.ssh_port = ssh_port
@@ -516,9 +524,12 @@ class SshTunnelSession:
         self.loopback_host = loopback_host
         self._loop = None
         self._thread = None
+        self._owns_loop = False
         self._listener = None
         self._client_tasks: Set[asyncio.Task] = set()
         self.echo: Dict[str, Any] = {}
+        self.split = split or {"enabled": False, "domains": [], "mode": "off"}
+        self.split_stats = {"tunneled": 0, "direct": 0}
 
     # -- lifecycle --
 
@@ -533,13 +544,26 @@ class SshTunnelSession:
         thread.start()
         self._loop = loop
         self._thread = thread
+        self._owns_loop = True
         try:
-            self._submit(self._setup(), timeout_s)
-            if self.echo_url:
-                self.echo = self._submit(self._fetch_echo(self.echo_url), timeout_s)
+            self._submit(self.aopen(timeout_s), timeout_s)
         except Exception:
             self.close()
             raise
+        return self
+
+    async def aopen(self, timeout_s: float = 30.0) -> "SshTunnelSession":
+        """Native-async open on the CALLER's loop (tests, embedding).
+
+        Unlike open(), this neither starts a thread nor takes ownership of
+        the running loop — the caller owns teardown via aclose().
+        """
+        self._loop = asyncio.get_running_loop()
+        self._owns_loop = False
+        await asyncio.wait_for(self._setup(), timeout=timeout_s)
+        if self.echo_url:
+            self.echo = await asyncio.wait_for(
+                self._fetch_echo(self.echo_url), timeout=timeout_s)
         return self
 
     async def _setup(self) -> None:
@@ -600,45 +624,49 @@ class SshTunnelSession:
         return {"mode": "live", "snapshot_backed": True,
                 "allowlist": list(ORACLE_ALLOWLIST)}
 
+    async def aclose(self) -> None:
+        """Native-async teardown on the caller's loop (pairs with aopen)."""
+        for task in list(self._client_tasks):
+            task.cancel()
+        if self._client_tasks:
+            await asyncio.gather(*self._client_tasks, return_exceptions=True)
+            self._client_tasks.clear()
+        if self._listener is not None:
+            self._listener.close()
+            try:
+                await self._listener.wait_closed()
+            except Exception:
+                pass
+            self._listener = None
+
     def close(self) -> None:
         """Tear down listener and thread (idempotent)."""
         try:
             if self._loop is not None:
-                async def _down():
-                    for task in list(self._client_tasks):
-                        task.cancel()
-                    if self._client_tasks:
-                        await asyncio.gather(*self._client_tasks,
-                                             return_exceptions=True)
-                        self._client_tasks.clear()
-                    if self._listener is not None:
-                        self._listener.close()
-                        try:
-                            await self._listener.wait_closed()
-                        except Exception:
-                            pass
-
-                fut = asyncio.run_coroutine_threadsafe(_down(), self._loop)
+                fut = asyncio.run_coroutine_threadsafe(self.aclose(), self._loop)
                 try:
                     fut.result(10)
                 except Exception:
                     pass
         finally:
             self._listener = None
-            if self._loop is not None:
-                try:
-                    self._loop.call_soon_threadsafe(self._loop.stop)
-                except Exception:
-                    pass
-            if self._thread is not None:
-                self._thread.join(timeout=10)
+            if self._owns_loop:
+                if self._loop is not None:
+                    try:
+                        self._loop.call_soon_threadsafe(self._loop.stop)
+                    except Exception:
+                        pass
+                if self._thread is not None:
+                    self._thread.join(timeout=10)
+                    self._thread = None
+                if self._loop is not None:
+                    try:
+                        self._loop.close()
+                    except Exception:
+                        pass
+                    self._loop = None
+            else:
                 self._thread = None
-            if self._loop is not None:
-                try:
-                    self._loop.close()
-                except Exception:
-                    pass
-                self._loop = None
 
     # -- box I/O --
 
@@ -728,6 +756,19 @@ class SshTunnelSession:
                 await writer.drain()
                 return
             host, port = url.hostname, url.port or 80
+        # Split routing (explicit opt-in only): non-listed hosts dial
+        # DIRECT from this machine instead of the SSH box. Origin-local
+        # special hosts ALWAYS ride the circuit (undiallable directly).
+        from tokenade.core.session_runtime.split import host_in_domains
+
+        if self.split.get("enabled") and host.lower() not in (
+                ECHO_HOST, ORACLE_HOST) and not host_in_domains(
+                host, self.split.get("domains", [])):
+            self.split_stats["direct"] += 1
+            logger.info("split: direct %s", host)
+            await self._handle_direct(reader, writer, method, head, host, port)
+            return
+        self.split_stats["tunneled"] += 1
         try:
             reader2, writer2 = await asyncio.wait_for(
                 asyncio.open_connection(self.ssh_host, self.remote_port), timeout=10)
@@ -775,7 +816,35 @@ class SshTunnelSession:
                 pass
         return target, default
 
+    async def _handle_direct(self, reader, writer, method: str, head: bytes,
+                             host: str, port: int) -> None:
+        """Split-routing direct path: dial from THIS machine (opt-in only)."""
+        try:
+            reader2, writer2 = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=10)
+        except Exception:
+            try:
+                writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+                await writer.drain()
+            except Exception:
+                pass
+            return
+        try:
+            if method.upper() == "CONNECT":
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+            else:
+                writer2.write(head)
+                await writer2.drain()
+            await self._pipe(reader, writer, reader2, writer2)
+        finally:
+            try:
+                writer2.close()
+            except Exception:
+                pass
+
     async def _pipe(self, reader, writer, reader2, writer2) -> None:
+        # Half-close cascade (see TokenGatedEgressProxy._pipe).
         async def _forward(src, dst):
             try:
                 while True:
@@ -786,6 +855,11 @@ class SshTunnelSession:
                     await dst.drain()
             except Exception:
                 pass
+            finally:
+                try:
+                    dst.close()
+                except Exception:
+                    pass
 
         await asyncio.gather(_forward(reader, writer2), _forward(reader2, writer))
         for w in (writer2, writer):

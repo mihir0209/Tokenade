@@ -30,7 +30,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   native tier (UA/tz/locale) agrees main-vs-worker; `add_init_script` navigator spoofs do
   NOT reach Workers (engine-level fix backloged). **WebRTC flags verified into the
   CloakBrowser command line** by test. Proven live: real `load --tunnel auto` (egress ok,
-  1/1 cookies). USER_GUIDE gains the cross-machine handoff checklist.
+  1/1 cookies).   USER_GUIDE gains the cross-machine handoff checklist.
+- **Tunnel Phase 3**: per-site **split routing** (`load/launch --tunnel-split`,
+  `auto` derives domains from the jar; listed domains ride the circuit, everything
+  else goes direct as an explicit opt-in; empty list refuses fail-closed). Enforced in
+  both transports' listeners; socket pipes now cascade half-close so teardown can't
+  wedge. **TUI Tunnel tab** (read-only status of paired remotes; serve/share/pair stay
+  CLI). Pairing QR deferred (no new dep; `--bundle-file` covers it). Decision: self-host
+  relay stays the default — a hosted relay is safe for the threat model (egress stays
+  at origin) but is a business/ops call, not an engineering gap.
 
 ### Fixed
 - **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).

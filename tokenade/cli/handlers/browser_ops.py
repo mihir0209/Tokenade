@@ -266,12 +266,14 @@ def cmd_launch(args):
             relay_url=getattr(args, "tunnel_relay", None),
             echo_url=getattr(args, "tunnel_echo_url", None),
             allow_unpaired=bool(getattr(args, "tunnel_allow_unpaired", False)),
+            tunnel_split=getattr(args, "tunnel_split", None),
         )
         tunnel_state.pop("_session", None)  # owned by atexit for launch's lifetime
         plan = RuntimePlanBuilder().build(
             session,
             tunnel=tunnel_state,
-            cli_overrides={"tunnel": tunnel_mode},
+            cli_overrides={"tunnel": tunnel_mode,
+                           "tunnel_split": getattr(args, "tunnel_split", None)},
         )
         if plan.proxy:
             upstream_proxy = plan.proxy["server"]

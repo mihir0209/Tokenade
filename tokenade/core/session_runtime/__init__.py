@@ -20,6 +20,12 @@ from tokenade.core.session_runtime.policy import (
     enforce_egress,
     resolve_policy,
 )
+from tokenade.core.session_runtime.split import (
+    derive_tunnel_domains,
+    host_in_domains,
+    normalize_domain,
+    resolve_split,
+)
 from tokenade.core.session_runtime.webrtc import (
     WEBRTC_LOCKDOWN_ARGS,
     webrtc_lockdown_args,
@@ -40,12 +46,16 @@ __all__ = [
     "RuntimePlanBuilder",
     "WEBRTC_LOCKDOWN_ARGS",
     "build_oracle_bootstrap_script",
+    "derive_tunnel_domains",
     "enforce_egress",
+    "host_in_domains",
     "generate_origin_keypair",
     "load_origin_private_key",
     "load_origin_public_key",
+    "normalize_domain",
     "origin_key_paths",
     "resolve_policy",
+    "resolve_split",
     "sign_snapshot",
     "verify_snapshot",
     "webrtc_lockdown_args",

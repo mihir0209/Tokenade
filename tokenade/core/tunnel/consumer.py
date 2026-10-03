@@ -83,12 +83,15 @@ class ConsumerCircuit:
         consumer_token: str,
         loopback_host: str = "127.0.0.1",
         open_timeout: float = 10.0,
+        split: Optional[Dict[str, Any]] = None,
     ):
         self.relay_url = relay_url
         self.remote_ref = remote_ref
         self.consumer_token = consumer_token
         self.loopback_host = loopback_host
         self.open_timeout = open_timeout
+        self.split = split or {"enabled": False, "domains": [], "mode": "off"}
+        self.split_stats = {"tunneled": 0, "direct": 0}
         self._ws = None
         self._reader_task: Optional[asyncio.Task] = None
         self._streams: Dict[int, TunnelStream] = {}
@@ -352,21 +355,32 @@ class ConsumerCircuit:
             method, target = parts[0].upper(), parts[1]
             if method == "CONNECT":
                 host, port = self._split_host_port(target, 443)
-                stream = await self.open_stream(host, port)
-                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                await writer.drain()
-                await self._pipe(reader, writer, stream)
             else:
                 url = urlparse(target)
                 if not url.hostname:
                     writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
                     writer.close()
                     return
-                stream = await self.open_stream(
-                    url.hostname, url.port or (443 if url.scheme == "https" else 80)
-                )
+                host, port = url.hostname, url.port or (443 if url.scheme == "https" else 80)
+            # Split routing (explicit opt-in only): non-listed hosts dial
+            # DIRECT from this machine. Without --tunnel-split everything
+            # rides the circuit (fail-closed default).
+            from tokenade.core.session_runtime.split import host_in_domains
+
+            if self.split.get("enabled") and not host_in_domains(
+                    host, self.split.get("domains", [])):
+                self.split_stats["direct"] += 1
+                logger.info("split: direct %s", host)
+                await self._handle_direct(reader, writer, method, head, host, port)
+                return
+            self.split_stats["tunneled"] += 1
+            stream = await self.open_stream(host, port)
+            if method == "CONNECT":
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+            else:
                 await stream.write(head)
-                await self._pipe(reader, writer, stream)
+            await self._pipe(reader, writer, stream)
         except TunnelError:
             try:
                 writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
@@ -391,6 +405,61 @@ class ConsumerCircuit:
             except ValueError:
                 pass
         return target, default
+
+    async def _handle_direct(self, reader, writer, method: str, head: bytes,
+                             host: str, port: int) -> None:
+        """Split-routing direct path: dial from THIS machine (opt-in only)."""
+        try:
+            reader2, writer2 = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=10)
+        except Exception:
+            try:
+                writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            except Exception:
+                pass
+            writer.close()
+            return
+        try:
+            if method == "CONNECT":
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+            else:
+                writer2.write(head)
+                await writer2.drain()
+            await self._pipe_sockets(reader, writer, reader2, writer2)
+        finally:
+            try:
+                writer2.close()
+            except Exception:
+                pass
+
+    async def _pipe_sockets(self, reader, writer, reader2, writer2) -> None:
+        """Bidirectional pipe between two local socket pairs.
+
+        Half-close cascade: EOF upstream closes downstream so FIN propagates
+        hop-by-hop and idle pipes can't wedge wait_closed().
+        """
+        async def _forward(src, dst):
+            try:
+                while True:
+                    chunk = await src.read(32768)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+                    await dst.drain()
+            except Exception:
+                pass
+            finally:
+                try:
+                    dst.close()
+                except Exception:
+                    pass
+
+        await asyncio.gather(_forward(reader, writer2), _forward(reader2, writer))
+        try:
+            writer.close()
+        except Exception:
+            pass
 
     async def _pipe(self, reader, writer, stream: TunnelStream) -> None:
         async def _up():

@@ -2377,6 +2377,12 @@ Commands:
         action="store_true",
         help="Proceed (warn) when the jar has no egress block",
     )
+    load_parser.add_argument(
+        "--tunnel-split",
+        help="Split routing: tunnel only these comma-separated domains "
+        "('auto' derives from the jar); everything else goes direct. "
+        "Without this flag ALL traffic rides the circuit.",
+    )
 
     # Inject Profile
     inject_parser = subparsers.add_parser(
@@ -3583,6 +3589,12 @@ Commands:
         "--tunnel-allow-unpaired",
         action="store_true",
         help="Proceed (warn) when the jar has no egress block",
+    )
+    launch_parser.add_argument(
+        "--tunnel-split",
+        help="Split routing: tunnel only these comma-separated domains "
+        "('auto' derives from the jar); everything else goes direct. "
+        "Without this flag ALL traffic rides the circuit.",
     )
     launch_parser.add_argument(
         "--proxy-file", help="Proxy list file for rotation (one proxy per line)"
