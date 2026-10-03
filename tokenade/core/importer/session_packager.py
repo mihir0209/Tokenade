@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class SessionPackager:
     """Packages cookies into portable .tokenade session files."""
 
-    TOKENADE_VERSION = "3.0"
+    TOKENADE_VERSION = "3.1"
 
     def __init__(self, site_filter: Optional[SiteFilter] = None, cache_ttl: int = 300):
         """
@@ -149,9 +149,11 @@ class SessionPackager:
                 tls_profile: Optional[Dict] = None,
                 oauth_config: Optional[Dict] = None,
                 extra_cookies: Optional[List[Dict]] = None,
-                metadata: Optional[Dict] = None) -> Dict:
+                metadata: Optional[Dict] = None,
+                egress: Optional[Dict] = None,
+                oracle_snapshot: Optional[Dict] = None) -> Dict:
         """
-        Package cookies into .tokenade format (v3.0).
+        Package cookies into .tokenade format (v3.1).
 
         Args:
             cookies: List of extracted cookies
@@ -166,9 +168,13 @@ class SessionPackager:
             tls_profile: Optional TLS profile for proxy mode
             oauth_config: Optional OAuth 2.0 configuration dict
             metadata: Optional additional metadata to merge into package metadata
+            egress: Optional origin-egress descriptor {"mode", "relay": {...},
+                "origin_hint": {...}, "policy": {...}} (v3.1; --with-egress)
+            oracle_snapshot: Optional Ed25519-signed fingerprint snapshot
+                (v3.1; see core.session_runtime.oracle_snapshot)
 
         Returns:
-            .tokenade format dictionary (v3.0)
+            .tokenade format dictionary (v3.1)
         """
         site_name = self.detect_site(cookies)
         auth_status = self.infer_auth_status(cookies, site_name)
@@ -209,6 +215,11 @@ class SessionPackager:
         if not email and extra_cookies:
             email = self._extract_email(extra_cookies, site_name)
 
+        if egress is not None and not isinstance(egress, dict):
+            raise ValueError("egress must be a dict (v3.1 egress block) or None")
+        if oracle_snapshot is not None and not isinstance(oracle_snapshot, dict):
+            raise ValueError("oracle_snapshot must be a dict or None")
+
         package_metadata = {
             "extraction_method": "sqlite_direct",
             "cookie_count": len(cookies),
@@ -216,6 +227,7 @@ class SessionPackager:
             "local_storage_count": sum(len(v) for v in storage_data["local"].values()),
             "session_storage_count": sum(len(v) for v in storage_data["session"].values()),
             **({"email": email} if email else {}),
+            **({"egress_mode": egress.get("mode")} if isinstance(egress, dict) else {}),
         }
         if metadata:
             package_metadata.update(metadata)
@@ -237,6 +249,8 @@ class SessionPackager:
             "fingerprint": fingerprint,
             "tls_profile": tls_profile,
             "oauth_config": oauth_config,
+            "egress": egress,
+            "oracle_snapshot": oracle_snapshot,
             "metadata": package_metadata,
         }
 
@@ -479,6 +493,12 @@ class SessionPackager:
         if "profile_artifacts" not in package:
             package["profile_artifacts"] = []
 
+        # v3.1 optional blocks: absent on older jars, default to None.
+        if "egress" not in package:
+            package["egress"] = None
+        if "oracle_snapshot" not in package:
+            package["oracle_snapshot"] = None
+
         # Add cookie count to metadata if missing
         if "cookie_count" not in package.get("metadata", {}):
             package["metadata"]["cookie_count"] = len(package.get("cookies", []))
@@ -539,6 +559,17 @@ class SessionPackager:
             lines.append(f"  Screen: {fp.get('screen_width', 0)}x{fp.get('screen_height', 0)}")
         else:
             lines.append("Fingerprint: not collected")
+
+        egress = package.get("egress")
+        if isinstance(egress, dict):
+            lines.append(f"Egress: {egress.get('mode', 'origin-relay')}")
+            hint = egress.get("origin_hint", {})
+            if isinstance(hint, dict) and hint.get("country"):
+                lines.append(f"  Origin: {hint.get('country')}/{hint.get('asn', '?')}")
+        snap = package.get("oracle_snapshot")
+        if isinstance(snap, dict):
+            lines.append(f"Oracle snapshot: {snap.get('collected_at', '?')} "
+                         f"(ttl {snap.get('ttl_s', '?')}s)")
 
         lines.append("=" * 60)
         return "\n".join(lines)

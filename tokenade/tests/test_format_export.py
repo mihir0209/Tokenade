@@ -250,7 +250,7 @@ class TestFormatImporterPlaywright:
         p.write_text(state_json)
 
         session = FormatImporter.from_playwright_storagestate(str(p))
-        assert session["version"] == "3.0"
+        assert session["version"] == "3.1"
         assert len(session["cookies"]) == 5
 
     def test_cookie_fields_preserved(self, exporter, tmp_path):

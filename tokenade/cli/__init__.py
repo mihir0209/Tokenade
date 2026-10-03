@@ -13,6 +13,7 @@ from tokenade.cli.session_export import cmd_export, cmd_convert
 from tokenade.cli.handlers.session_ops import cmd_inspect
 from tokenade.cli.security import cmd_encrypt, cmd_decrypt, cmd_rekey
 from tokenade.cli.proxy import cmd_proxy
+from tokenade.cli.tunnel import cmd_tunnel
 from tokenade.cli.management import (
     cmd_sessions,
     cmd_health,
@@ -84,6 +85,7 @@ VISIBLE_COMMANDS = (
     "refresh-browser",
     "recommend",
     "proxy",
+    "tunnel",
     "gateway",
     "dashboard",
     "vault",
@@ -325,6 +327,7 @@ COMMAND_DESCRIPTIONS = {
     "refresh-browser": "Refresh session through a browser-backed flow",
     "recommend": "Recommend site/plugin/browser",
     "proxy": "Proxy management and verification",
+    "tunnel": "Origin-egress tunnel circuits (serve/share/pair/status/revoke)",
     "gateway": "Start local session proxy gateway",
     "dashboard": "Launch web dashboard",
     "vault": "Manage encrypted session vault",
@@ -2209,6 +2212,29 @@ Commands:
         "--proxy-plugin",
         help="Record intended proxy provider plugin metadata without routing export traffic",
     )
+    export_parser.add_argument(
+        "--with-egress",
+        action="store_true",
+        help="Embed origin-egress block + signed oracle snapshot (v3.1) for "
+        "`load/launch --tunnel auto`",
+    )
+    export_parser.add_argument(
+        "--egress-relay",
+        help="Rendezvous relay URL for the egress block (with --with-egress)",
+    )
+    export_parser.add_argument(
+        "--egress-ref",
+        help="Remote ref name for the egress block (with --with-egress)",
+    )
+    export_parser.add_argument(
+        "--egress-echo-url",
+        help="Echo responder URL recorded in the egress block",
+    )
+    export_parser.add_argument(
+        "--egress-policy-warn",
+        action="store_true",
+        help="Egress mismatch warns instead of refusing (default: deny)",
+    )
 
     # Convert cookie file → .tokenade
     convert_parser = subparsers.add_parser(
@@ -2315,6 +2341,25 @@ Commands:
     load_parser.add_argument(
         "--capture-dir",
         help="Directory to save captured solved sessions",
+    )
+    load_parser.add_argument(
+        "--tunnel",
+        default="off",
+        help="Origin-egress tunnel: 'auto' (jar egress block), 'off' (default), "
+        "or a provider name",
+    )
+    load_parser.add_argument(
+        "--tunnel-relay", help="Override relay URL from the jar egress block"
+    )
+    load_parser.add_argument(
+        "--tunnel-echo-url",
+        help="Echo responder URL for egress verification "
+        "(must return JSON {ip, country, asn})",
+    )
+    load_parser.add_argument(
+        "--tunnel-allow-unpaired",
+        action="store_true",
+        help="Proceed (warn) when the jar has no egress block",
     )
 
     # Inject Profile
@@ -2605,6 +2650,34 @@ Commands:
 
     proxy_legacy = proxy_sub.add_parser("legacy", help=argparse.SUPPRESS)
     add_legacy_proxy_arguments(proxy_legacy)
+
+    # Tunnel - origin-egress circuits
+    tunnel_parser = subparsers.add_parser(
+        "tunnel", help="Origin-egress tunnel circuits (serve/share/pair/status/revoke)"
+    )
+    tunnel_sub = tunnel_parser.add_subparsers(dest="tunnel_action")
+    tunnel_serve = tunnel_sub.add_parser("serve", help="Run the origin daemon")
+    tunnel_serve.add_argument("--relay", required=True, help="Rendezvous relay URL (ws://host:port)")
+    tunnel_serve.add_argument("--remote-ref", required=True, help="Circuit name")
+    tunnel_serve.add_argument("--token", action="append", default=[],
+                              help="Extra consumer token (repeatable)")
+    tunnel_serve.add_argument("--snapshot-file", help="JSON scalar values for the snapshot oracle")
+    tunnel_share = tunnel_sub.add_parser("share", help="Mint a pairing code + bundle")
+    tunnel_share.add_argument("--relay", required=True, help="Rendezvous relay URL (ws://host:port)")
+    tunnel_share.add_argument("--remote-ref", required=True, help="Circuit name")
+    tunnel_share.add_argument("--token", help="Consumer token (generated if omitted)")
+    tunnel_pair = tunnel_sub.add_parser("pair", help="Redeem a code or bundle")
+    tunnel_pair.add_argument("code", help="Pairing code or JSON bundle from `tunnel share`")
+    tunnel_status = tunnel_sub.add_parser("status", help="Show paired remotes")
+    tunnel_status.add_argument("--remote-ref", help="Only show this remote")
+    tunnel_revoke = tunnel_sub.add_parser("revoke", help="Remove a consumer token (origin)")
+    tunnel_revoke.add_argument("--remote-ref", required=True, help="Circuit name")
+    tunnel_revoke.add_argument("--token", help="Single token (omit to revoke all)")
+    tunnel_token = tunnel_sub.add_parser("token", help="Show where a token lives")
+    tunnel_token.add_argument("--remote-ref", required=True, help="Circuit name")
+    tunnel_relay = tunnel_sub.add_parser("relay", help="Run the reference relay")
+    tunnel_relay.add_argument("--host", default="127.0.0.1", help="Listen host")
+    tunnel_relay.add_argument("--port", type=int, default=8765, help="Listen port")
 
     # Sessions (subcommand group)
     sessions_parser = subparsers.add_parser("sessions", help="Manage multiple sessions")
@@ -3453,6 +3526,25 @@ Commands:
     launch_parser.add_argument("--browser-path", help="Path to browser executable")
     launch_parser.add_argument(
         "--proxy", help="Upstream proxy URL (e.g. socks5://user:pass@host:port)"
+    )
+    launch_parser.add_argument(
+        "--tunnel",
+        default="off",
+        help="Origin-egress tunnel: 'auto' (jar egress block), 'off' (default), "
+        "or a provider name",
+    )
+    launch_parser.add_argument(
+        "--tunnel-relay", help="Override relay URL from the jar egress block"
+    )
+    launch_parser.add_argument(
+        "--tunnel-echo-url",
+        help="Echo responder URL for egress verification "
+        "(must return JSON {ip, country, asn})",
+    )
+    launch_parser.add_argument(
+        "--tunnel-allow-unpaired",
+        action="store_true",
+        help="Proceed (warn) when the jar has no egress block",
     )
     launch_parser.add_argument(
         "--proxy-file", help="Proxy list file for rotation (one proxy per line)"
@@ -4472,6 +4564,7 @@ def main():
         "session-diff": cmd_session_diff,
         "logs": cmd_logs,
         "proxy": cmd_proxy,
+        "tunnel": cmd_tunnel,
         "sessions": cmd_sessions,
         "share": cmd_share,
         "unshare": cmd_unshare,

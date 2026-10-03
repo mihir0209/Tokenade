@@ -172,7 +172,7 @@ class TestPackage:
     def test_basic_package(self, packager):
         cookies = [{"name": "pref_lang", "value": "en", "domain": ".example.com", "path": "/"}]
         pkg = packager.package(cookies=cookies, browser="chrome", profile="default")
-        assert pkg["version"] == "3.0"
+        assert pkg["version"] == "3.1"
         assert pkg["source_device"]["browser"] == "chrome"
         assert pkg["source_device"]["profile"] == "default"
         assert pkg["site_name"] == "unknown"
@@ -274,7 +274,7 @@ class TestSaveLoad:
         path = str(tmp_path / "test.tokenade")
         packager.save(pkg, path)
         loaded = packager.load(path)
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
         assert len(loaded["cookies"]) == 1
 
     def test_load_not_found(self, packager, tmp_path):
@@ -307,7 +307,7 @@ class TestSaveLoad:
         # Clear cache to force reload from file
         packager_with_cache._cache._cache.clear()
         loaded = packager_with_cache.load(path)
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
         # Verify it's now in cache
         abs_path = str(Path(path).absolute())
         assert packager_with_cache._cache.get(abs_path) is not None
@@ -327,10 +327,10 @@ class TestLRUCache:
         path = str(tmp_path / "cached.tokenade")
         packager_with_cache.save(pkg, path)
         loaded = packager_with_cache.load(path)
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
         # Second load should hit cache
         loaded2 = packager_with_cache.load(path)
-        assert loaded2["version"] == "3.0"
+        assert loaded2["version"] == "3.1"
 
     def test_cache_disabled(self, packager, tmp_path):
         pkg = packager.package(cookies=[])
@@ -338,7 +338,7 @@ class TestLRUCache:
         packager.save(pkg, path)
         assert packager._cache is None
         loaded = packager.load(path)
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
 
     def test_cache_load_not_found(self, packager_with_cache, tmp_path):
         # Verify cache does not prevent FileNotFoundError

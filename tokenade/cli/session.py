@@ -365,6 +365,41 @@ def cmd_load(args):
     loader = SessionLoader()
     keep_open = bool(getattr(args, "visible", False))
 
+    # Origin-egress tunnel: open + verify the circuit BEFORE the browser
+    # exists, then hand the plan's proxy/args/scripts to the loader.
+    tunnel_state = None
+    tunnel_session = None
+    tunnel_mode = getattr(args, "tunnel", "off") or "off"
+    load_proxy = None
+    load_extra_args = None
+    load_init_scripts = None
+    if str(tunnel_mode).lower() != "off":
+        from tokenade.core.importer.session_packager import SessionPackager
+        from tokenade.core.session_runtime.plan import RuntimePlanBuilder
+        from tokenade.core.tunnel.connect import open_tunnel_for_jar
+
+        preview = SessionPackager().load(file_path)
+        tunnel_state = open_tunnel_for_jar(
+            preview,
+            mode=tunnel_mode,
+            relay_url=getattr(args, "tunnel_relay", None),
+            echo_url=getattr(args, "tunnel_echo_url", None),
+            allow_unpaired=bool(getattr(args, "tunnel_allow_unpaired", False)),
+        )
+        tunnel_session = tunnel_state.pop("_session")
+        plan = RuntimePlanBuilder().build(
+            preview,
+            tunnel=tunnel_state,
+            cli_overrides={"tunnel": tunnel_mode, "stealth_level": args.stealth_level},
+        )
+        load_proxy = plan.proxy
+        load_extra_args = plan.launch_args or None
+        load_init_scripts = plan.init_scripts or None
+        print(f"\n[TUNNEL] {plan.report.get('egress_check', {}).get('message', '')}")
+        print(f"   Proxy: {load_proxy.get('server') if load_proxy else 'none'}")
+        print(f"   Oracle: {plan.report.get('oracle_mode')} "
+              f"(fingerprint: {plan.report.get('fingerprint_source')})")
+
     try:
         result = loader.load(
             file_path=file_path,
@@ -380,6 +415,9 @@ def cmd_load(args):
             auto_solve_challenges=not bool(getattr(args, "no_auto_solve", False)),
             capture_solved_sessions=bool(getattr(args, "capture_session", False)),
             session_output_dir=getattr(args, "capture_dir", None),
+            proxy=load_proxy,
+            extra_args=load_extra_args,
+            init_scripts=load_init_scripts,
         )
 
         if result["success"]:
@@ -444,6 +482,8 @@ def cmd_load(args):
         raise SystemExit(1) from e
     finally:
         loader.close()
+        if tunnel_session is not None:
+            tunnel_session.close()
 
 
 def cmd_transfer(args):

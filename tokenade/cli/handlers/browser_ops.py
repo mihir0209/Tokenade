@@ -251,6 +251,39 @@ def cmd_launch(args):
     if upstream_proxy:
         print(f"[PROXY] Upstream proxy: {upstream_proxy}")
 
+    # Origin-egress tunnel: circuit first, then the plan overrides proxy/args.
+    # The TunnelSession self-closes at process exit (atexit); nothing here
+    # may fall back to direct when the circuit fails — open() raises.
+    tunnel_extra_args: list = []
+    tunnel_mode = getattr(args, "tunnel", "off") or "off"
+    if str(tunnel_mode).lower() != "off" and session:
+        from tokenade.core.session_runtime.plan import RuntimePlanBuilder
+        from tokenade.core.tunnel.connect import open_tunnel_for_jar
+
+        tunnel_state = open_tunnel_for_jar(
+            session,
+            mode=tunnel_mode,
+            relay_url=getattr(args, "tunnel_relay", None),
+            echo_url=getattr(args, "tunnel_echo_url", None),
+            allow_unpaired=bool(getattr(args, "tunnel_allow_unpaired", False)),
+        )
+        tunnel_state.pop("_session", None)  # owned by atexit for launch's lifetime
+        plan = RuntimePlanBuilder().build(
+            session,
+            tunnel=tunnel_state,
+            cli_overrides={"tunnel": tunnel_mode},
+        )
+        if plan.proxy:
+            upstream_proxy = plan.proxy["server"]
+            print(f"[TUNNEL] Origin-egress via {upstream_proxy}")
+        tunnel_extra_args = plan.launch_args or []
+        if plan.oracle.get("mode") != "off":
+            print(f"[TUNNEL] Oracle: {plan.oracle['mode']} "
+                  f"(fingerprint: {plan.fingerprint_source})")
+        check = plan.report.get("egress_check", {})
+        if check.get("message"):
+            print(f"[TUNNEL] {check['message']}")
+
     try:
         if browser_name == "firefox":
             if not session_path:
@@ -356,6 +389,7 @@ def cmd_launch(args):
                 proxy=upstream_proxy,
                 headless=not args.visible,
                 user_data_dir=profile_dir,
+                extra_args=(tunnel_extra_args or None),
             )
             browser = BrowserProcess(
                 process=proc,
@@ -472,12 +506,16 @@ def cmd_launch(args):
                     print(f"[ERROR] Profile artifact restore failed: {exc}")
                     return
 
+            merged_extra = args.extra_args.split(",") if args.extra_args else []
+            for arg in tunnel_extra_args:
+                if arg.split("=", 1)[0] not in {a.split("=", 1)[0] for a in merged_extra}:
+                    merged_extra.append(arg)
             browser = launcher.launch(
                 browser=system_browser,
                 visible=args.visible,
                 port=args.port,
                 profile_dir=profile_dir,
-                extra_args=args.extra_args.split(",") if args.extra_args else [],
+                extra_args=merged_extra,
                 upstream_proxy=upstream_proxy,
             )
 

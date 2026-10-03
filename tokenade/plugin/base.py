@@ -821,6 +821,105 @@ class NotificationPlugin(PluginBase):
         return None
 
 
+class EgressProviderPlugin(PluginBase):
+    """Plugin for origin-egress tunnel transports (WSS-reverse, SSH-reverse, ...).
+
+    Providers implement this to supply the circuit that carries a session's
+    traffic back out through the export machine. The built-in transports
+    (`wss-reverse` over tokenade.core.tunnel, `ssh-reverse` via paramiko)
+    need no plugin; third parties add e.g. WireGuard or Cloudflare-backed
+    transports by implementing this interface.
+
+    Example:
+        class WireGuardEgressPlugin(EgressProviderPlugin):
+            name = "wireguard-egress"
+            version = "1.0.0"
+            description = "WireGuard origin-egress transport"
+            author = "Example"
+            transport = "wireguard"
+
+            def open_circuit(self, descriptor, auth):
+                ...
+                return PluginResult(success=True, data={
+                    "local_proxy": {"server": "http://127.0.0.1:PORT"},
+                    "oracle": {"mode": "snapshot"},
+                    "egress_echo": {"country": "IN", "asn": "AS1"},
+                })
+    """
+
+    transport: str = "generic"
+
+    @abstractmethod
+    def open_circuit(self, descriptor: Dict[str, Any], auth: Dict[str, Any]) -> "PluginResult":
+        """Open an origin-egress circuit from a jar egress descriptor.
+
+        Args:
+            descriptor: Jar egress block (transport, rendezvous, remote_ref...).
+            auth: {"token_ref": str, "timeout_s": float, ...} (no raw secrets;
+                resolve via keyring inside).
+
+        Returns:
+            PluginResult with data={"local_proxy": {"server": ...},
+                "oracle": {"mode": ...}, "egress_echo": {...}} — the tunnel
+                state dict consumed by RuntimePlanBuilder.
+        """
+
+    def close_circuit(self, circuit: Dict[str, Any]) -> "PluginResult":
+        """Tear down a circuit opened by open_circuit (best-effort)."""
+        from tokenade.plugin.api import PluginResult as _PR
+
+        return _PR(success=True)
+
+    def check_health(self, circuit: Dict[str, Any]) -> "PluginResult":
+        """Check circuit liveness (best-effort; default healthy)."""
+        from tokenade.plugin.api import PluginResult as _PR
+
+        return _PR(success=True, data={"healthy": True})
+
+
+class FingerprintOraclePlugin(PluginBase):
+    """Plugin for fingerprint-oracle strategies (live origin, snapshot, ...).
+
+    Oracles answer allowlisted scalar probes with the ORIGIN device's real
+    values. Render-readback probes (canvas/WebGL pixels, audio sums) must
+    NEVER be answered remotely — see plan doc .agent/plans/tunnel.md §3.2.
+
+    Example:
+        class SnapshotOraclePlugin(FingerprintOraclePlugin):
+            name = "snapshot-oracle"
+            version = "1.0.0"
+            description = "Signed-snapshot oracle"
+            author = "Example"
+
+            def answer(self, query):
+                # query={"method": "navigator.platform", "args": None}
+                return PluginResult(success=True, data={"value": "Win32"})
+    """
+
+    @abstractmethod
+    def answer(self, query: Dict[str, Any]) -> "PluginResult":
+        """Answer one oracle query.
+
+        Args:
+            query: {"method": str, "args": Any} (method pre-checked against
+                the allowlist by the caller).
+
+        Returns:
+            PluginResult with data={"value": Any} or success=False with
+            error for denied/unknown methods.
+        """
+
+    def snapshot(self) -> "PluginResult":
+        """Return a signed snapshot dict for embedding at export (optional)."""
+        from tokenade.plugin.api import PluginResult as _PR
+
+        return _PR(success=False, error="snapshot not supported")
+
+    def capabilities(self) -> Dict[str, Any]:
+        """Return {"methods": [...], "live": bool} describing coverage."""
+        return {"methods": [], "live": False}
+
+
 PLUGIN_TYPE_BASE_CLASSES: Dict[str, tuple] = {
     "handler": (SiteHandlerPlugin,),
     "export_format": (ExportFormatPlugin,),
@@ -828,6 +927,8 @@ PLUGIN_TYPE_BASE_CLASSES: Dict[str, tuple] = {
     "session_refresh": (SessionRefreshPlugin,),
     "stealth": (StealthPlugin,),
     "proxy": (ProxyProviderPlugin,),
+    "egress_provider": (EgressProviderPlugin,),
+    "fingerprint_oracle": (FingerprintOraclePlugin,),
     "notification": (NotificationPlugin,),
     "captcha": (CaptchaPlugin,),
     "challenge_detector": (ChallengeDetectorPlugin,),
@@ -841,6 +942,8 @@ PLUGIN_TYPE_REQUIRED_METHODS: Dict[str, List[str]] = {
     "session_refresh": ["can_refresh", "refresh"],
     "stealth": ["get_patches"],
     "proxy": ["get_proxy"],
+    "egress_provider": ["open_circuit"],
+    "fingerprint_oracle": ["answer"],
     "notification": ["send", "get_supported_events"],
     "captcha": ["get_supported_types", "solve"],
     "challenge_detector": ["detect_challenge"],

@@ -1131,6 +1131,32 @@ def cmd_export(args):
         metadata=export_metadata or None,
     )
 
+    if getattr(args, "with_egress", False):
+        from tokenade.core.tunnel.connect import capture_egress_block
+
+        relay_url = getattr(args, "egress_relay", None)
+        remote_ref = getattr(args, "egress_ref", None)
+        if not relay_url or not remote_ref:
+            print("[ERROR] --with-egress needs --egress-relay ws://host:port "
+                  "and --egress-ref NAME")
+            raise SystemExit(2)
+        try:
+            captured = capture_egress_block(
+                relay_url=relay_url,
+                remote_ref=remote_ref,
+                fingerprint=package.get("fingerprint"),
+                echo_url=getattr(args, "egress_echo_url", None),
+                policy_fallback="warn" if getattr(args, "egress_policy_warn", False) else "deny",
+            )
+        except Exception as e:
+            print(f"[ERROR] Egress capture failed: {e}")
+            raise SystemExit(1) from e
+        package["egress"] = captured["egress"]
+        package["oracle_snapshot"] = captured["oracle_snapshot"]
+        hint = captured["egress"]["origin_hint"]
+        print(f"   [NET] Egress block: origin {hint.get('country')}/{hint.get('asn')} "
+              f"(policy={captured['egress']['policy']['fallback']})")
+
     if profile_data:
         from tokenade import __version__
         from tokenade.core.artifacts import ProfileArtifactManager

@@ -47,7 +47,7 @@ class TestHypothesisFuzzing:
             indexeddb=idb,
         )
 
-        assert pkg["version"] == "3.0"
+        assert pkg["version"] == "3.1"
         assert "storage" in pkg
         assert "indexeddb" in pkg["storage"]
         assert "local" in pkg["storage"]

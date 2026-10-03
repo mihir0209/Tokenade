@@ -93,7 +93,7 @@ class TestFormatImporterPlaywright:
             for entries in local.values()
             if isinstance(entries, dict)
         )
-        assert result.get("version") == "3.0"
+        assert result.get("version") == "3.1"
 
     def test_missing_expires(self, tmp_path):
         data = {"cookies": [{"name": "a", "value": "b", "domain": ".x.com"}]}
@@ -251,7 +251,7 @@ class TestFormatImporterBuildSession:
     def test_build_session(self):
         cookies = [{"name": "a", "value": "1", "domain": ".example.com", "path": "/"}]
         result = FormatImporter._build_session(cookies, {"k": "v"}, "test_format")
-        assert result["version"] == "3.0"
+        assert result["version"] == "3.1"
         assert result["cookies"][0]["name"] == "a"
         assert "storage" in result
         assert result["metadata"]["extraction_method"] == "import_test_format"

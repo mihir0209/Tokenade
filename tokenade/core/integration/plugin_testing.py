@@ -120,6 +120,7 @@ class PluginTestRunner:
                 "handler", "export_format", "validator", "session_refresh",
                 "stealth", "proxy", "captcha", "notification",
                 "challenge_detector", "challenge_solver",
+                "egress_provider", "fingerprint_oracle",
             ]
             if meta["type"] not in valid_types:
                 return PluginTestResult(
@@ -278,12 +279,15 @@ class PluginTestRunner:
             if entry_class is None:
                 from tokenade.plugin.base import (
                     CaptchaPlugin, ChallengeDetectorPlugin, ChallengeSolverPlugin,
-                    ExportFormatPlugin, NotificationPlugin,
+                    EgressProviderPlugin, ExportFormatPlugin, FingerprintOraclePlugin,
+                    NotificationPlugin,
                     PluginBase, ProxyProviderPlugin, SessionRefreshPlugin,
                     SessionValidatorPlugin, SiteHandlerPlugin, StealthPlugin,
                 )
                 base_map = {
                     "handler": SiteHandlerPlugin,
+                    "egress_provider": EgressProviderPlugin,
+                    "fingerprint_oracle": FingerprintOraclePlugin,
                     "export_format": ExportFormatPlugin,
                     "validator": SessionValidatorPlugin,
                     "session_refresh": SessionRefreshPlugin,

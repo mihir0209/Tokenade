@@ -168,7 +168,7 @@ class TestV3Format:
             "session": {"https://example.com": {"skey": "sval"}},
         }
         pkg = packager.package(cookies=cookies, storage=storage)
-        assert pkg["version"] == "3.0"
+        assert pkg["version"] == "3.1"
         assert pkg["storage"]["local"]["https://example.com"]["key1"] == "val1"
         assert pkg["storage"]["session"]["https://example.com"]["skey"] == "sval"
         assert pkg["metadata"]["local_storage_count"] == 1
@@ -180,7 +180,7 @@ class TestV3Format:
         cookies = [{"name": "c1", "value": "v1", "domain": ".example.com"}]
         local = {"key1": "val1"}
         pkg = packager.package(cookies=cookies, local_storage=local)
-        assert pkg["version"] == "3.0"
+        assert pkg["version"] == "3.1"
         assert pkg["storage"]["local"]["https://example.com"]["key1"] == "val1"
 
     def test_v3_save_load_roundtrip(self, tmp_path):
@@ -198,7 +198,7 @@ class TestV3Format:
         with open(path) as f:
             loaded = json.load(f)
 
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
         assert loaded["storage"]["local"]["https://example.com"]["k"] == "v"
         assert len(loaded["cookies"]) == 1
 

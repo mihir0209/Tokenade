@@ -692,6 +692,8 @@ class SessionLoader:
         auto_solve_challenges: Optional[bool] = None,
         capture_solved_sessions: Optional[bool] = None,
         session_output_dir: Optional[str] = None,
+        extra_args: Optional[List[str]] = None,
+        init_scripts: Optional[List[str]] = None,
     ) -> Dict:
         """
         Complete load workflow: read file, launch browser, inject cookies, validate.
@@ -708,6 +710,8 @@ class SessionLoader:
             browser_type: Browser backend requested from BrowserFactory
             proxy: Optional Playwright proxy configuration
             target_url: Final product URL and storage-origin scope
+            extra_args: Optional extra Chromium launch args (e.g. WebRTC lockdown)
+            init_scripts: Optional document-start init scripts (e.g. oracle stub)
 
         Returns:
             Load result dict
@@ -751,6 +755,12 @@ class SessionLoader:
             }
             if proxy:
                 config_kwargs["proxy"] = proxy
+            if extra_args:
+                merged_args = list(config_kwargs.get("args", []) or [])
+                for arg in extra_args:
+                    if arg.split("=", 1)[0] not in {a.split("=", 1)[0] for a in merged_args}:
+                        merged_args.append(arg)
+                config_kwargs["args"] = merged_args
             if package.get("profile_artifacts") and not profile_dir:
                 import tempfile
 
@@ -799,6 +809,20 @@ class SessionLoader:
                         logger.info("Registered document-start storage seed")
                 except Exception as e:
                     logger.debug(f"Storage seed skipped: {e}")
+
+            # Step 4c: Register caller-supplied document-start init scripts
+            # (e.g. fingerprint-oracle bootstrap). Best-effort per backend.
+            for script in init_scripts or []:
+                try:
+                    add_init = getattr(self._browser, "add_init_script", None)
+                    if callable(add_init):
+                        add_init(script)
+                        logger.info("Registered runtime init script")
+                    else:
+                        logger.debug("Backend has no init-script support; skipping")
+                        break
+                except Exception as e:
+                    logger.debug(f"Runtime init script skipped: {e}")
 
             # Step 5: Apply source fingerprint from package (if no target specified)
             if not target_fp_name and package.get("fingerprint"):

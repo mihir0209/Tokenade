@@ -155,6 +155,8 @@ class PluginLoader:
         self._notifications: Dict[str, Any] = {}
         self._challenge_detectors: Dict[str, Any] = {}
         self._challenge_solvers: Dict[str, Any] = {}
+        self._egress_providers: Dict[str, Any] = {}
+        self._fingerprint_oracles: Dict[str, Any] = {}
         self._disabled: set = set()
         self._discovery_cache: Optional[List[Dict]] = None
         self._discovery_cache_time: float = 0.0
@@ -545,6 +547,10 @@ class PluginLoader:
             self._challenge_detectors[name] = instance
         elif plugin_type == "challenge_solver":
             self._challenge_solvers[name] = instance
+        elif plugin_type == "egress_provider":
+            self._egress_providers[name] = instance
+        elif plugin_type == "fingerprint_oracle":
+            self._fingerprint_oracles[name] = instance
         else:
             logger.warning(
                 f"Plugin {name}: unknown type '{plugin_type}' — loaded but not typed-registered"
@@ -673,6 +679,14 @@ class PluginLoader:
             self._challenge_solvers = {
                 k: v for k, v in self._challenge_solvers.items() if v is not plugin.instance
             }
+        elif plugin.plugin_type == "egress_provider":
+            self._egress_providers = {
+                k: v for k, v in self._egress_providers.items() if v is not plugin.instance
+            }
+        elif plugin.plugin_type == "fingerprint_oracle":
+            self._fingerprint_oracles = {
+                k: v for k, v in self._fingerprint_oracles.items() if v is not plugin.instance
+            }
 
         logger.info(f"Unloaded plugin: {name}")
 
@@ -783,6 +797,22 @@ class PluginLoader:
     def list_challenge_solvers(self) -> Dict[str, Any]:
         """List all loaded challenge solver plugins."""
         return dict(self._challenge_solvers)
+
+    def get_egress_provider(self, name: str) -> Optional[Any]:
+        """Get an egress provider plugin by name."""
+        return self._egress_providers.get(name)
+
+    def list_egress_providers(self) -> Dict[str, Any]:
+        """List all loaded egress provider plugins."""
+        return dict(self._egress_providers)
+
+    def get_fingerprint_oracle(self, name: str) -> Optional[Any]:
+        """Get a fingerprint oracle plugin by name."""
+        return self._fingerprint_oracles.get(name)
+
+    def list_fingerprint_oracles(self) -> Dict[str, Any]:
+        """List all loaded fingerprint oracle plugins."""
+        return dict(self._fingerprint_oracles)
 
     def list_all(self) -> List[LoadedPlugin]:
         """List all loaded plugins."""

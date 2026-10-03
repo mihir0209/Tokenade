@@ -1,0 +1,20 @@
+version: '3.8'
+
+# Self-hosted rendezvous relay for `tokenade tunnel` (origin-egress circuits).
+#
+#   docker compose -f deploy/tunnel-relay/docker-compose.yml up -d
+#   tokenade tunnel serve --relay ws://YOUR-VPS:8765 --remote-ref india-home
+#
+# The relay routes opaque frames between one origin socket and N consumer
+# sockets per remote_ref. It holds no credentials: consumer tokens are
+# verified end-to-end by the origin. Run YOUR OWN relay (the default);
+# never route sessions through a relay you don't operate.
+services:
+  tunnel-relay:
+    build: ../..
+    container_name: tokenade-tunnel-relay
+    command: ["python", "-m", "tokenade.core.tunnel.relay",
+              "--host", "0.0.0.0", "--port", "8765"]
+    ports:
+      - "8765:8765"
+    restart: unless-stopped

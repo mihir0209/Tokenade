@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Origin-egress tunnel, Phase 1** (plan: `.agent/plans/tunnel.md`): use a session
+  exported on machine A from machine B without tripping impossible-travel checks.
+  `tokenade tunnel serve` (origin daemon, outbound-only) + `tunnel share/pair/status/revoke`
+  + `tunnel relay` (self-hosted reference rendezvous; `deploy/tunnel-relay/` compose).
+  WSS-reverse transport in-house over `websockets` (zero new deps); consumer gets a
+  localhost-only HTTP proxy Playwright uses per context. `load/launch --tunnel auto`
+  opens, verifies, and routes through the circuit fail-closed (never silently direct);
+  `export --with-egress` embeds the v3.1 `egress` block + Ed25519-signed oracle snapshot.
+  New: `core/session_runtime/` (RuntimePlanBuilder single choke point for launch/load,
+  per-jar policy default-deny, WebRTC lockdown args), `core/tunnel/` (relay, origin
+  endpoint with snapshot oracle, consumer circuit, pairing, thread-owned TunnelSession),
+  `EgressProviderPlugin` + `FingerprintOraclePlugin` seams (loader + tester registered).
+  `.tokenade` v3.0 → **v3.1** (additive `egress`/`oracle_snapshot`; old jars load unchanged).
+
 ### Fixed
 - **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).
 - **TUI `BadIdentifier` crash on dotted names**: all dynamic widget ids (session tiles, marketplace/installed plugin tiles, vault entries) go through new `tokenade/tui/ids.py` (`safe_id`/`resolve_id`); button-press handlers resolve back to the original name. Covered by `tokenade/tests/test_tui_safe_ids.py` (87 tests).

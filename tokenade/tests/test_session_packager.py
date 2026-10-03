@@ -19,7 +19,7 @@ class TestSessionPackager:
             browser="firefox",
             profile="default",
         )
-        assert package["version"] == "3.0"
+        assert package["version"] == "3.1"
         assert len(package["cookies"]) == 2
         assert package["source_device"]["browser"] == "firefox"
 
@@ -101,7 +101,7 @@ class TestSessionPackager:
         output = str(tmp_path / "test.tokenade")
         saved = packager.save(package, output)
         loaded = packager.load(saved)
-        assert loaded["version"] == "3.0"
+        assert loaded["version"] == "3.1"
         assert len(loaded["cookies"]) == 1
 
     def test_validate_format_valid(self, packager):
