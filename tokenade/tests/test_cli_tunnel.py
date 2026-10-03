@@ -84,12 +84,34 @@ def test_pair_bad_bundle_exits():
         cmd_tunnel(_args(tunnel_action="pair", code="{bad json"))
 
 
+def test_pair_bundle_file(tmp_path, monkeypatch, capsys):
+    saved = {}
+    monkeypatch.setattr(
+        "tokenade.core.tunnel.pairing.save_consumer_record",
+        lambda ref, url, token, store=None: saved.update(ref=ref, token=token),
+    )
+    bundle = tmp_path / "bundle.json"
+    bundle.write_text(json.dumps({"relay_url": "ws://r:1", "remote_ref": "f1",
+                                  "consumer_token": "tok"}))
+    cmd_tunnel(_args(tunnel_action="pair", code=None, bundle_file=str(bundle)))
+    assert saved == {"ref": "f1", "token": "tok"}
+    assert "Paired" in capsys.readouterr().out
+
+
+def test_pair_bundle_file_missing_exits(tmp_path):
+    with pytest.raises(SystemExit):
+        cmd_tunnel(_args(tunnel_action="pair", code=None,
+                         bundle_file=str(tmp_path / "nope.json")))
+
+
 def test_pair_missing_code_exits():
     with pytest.raises(SystemExit):
         cmd_tunnel(_args(tunnel_action="pair", code=""))
 
 
-def test_status_no_remotes(capsys):
+def test_status_no_remotes(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "tokenade.core.tunnel.pairing._tunnel_dir", lambda: tmp_path)
     cmd_tunnel(_args(tunnel_action="status"))
     assert "pair" in capsys.readouterr().out
 

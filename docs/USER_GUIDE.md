@@ -779,6 +779,56 @@ tokenade plugin configure capsolver-solver --set api_key="your-key"
 | `tokenade logs` | View structured logs |
 | `tokenade serve` | Start API server |
 
+## Origin-Egress Tunnel
+
+Some sites invalidate sessions used from a far-away IP (impossible-travel checks).
+The tunnel makes the using machine's traffic **egress from the export machine**,
+so the site keeps seeing the original IP/ASN. Both sides dial out to a rendezvous
+relay — nothing listens on the open internet.
+
+```bash
+# 1. Relay (run YOUR OWN; never route sessions through a relay you don't operate)
+python -m tokenade.core.tunnel.relay --host 0.0.0.0 --port 8765
+# or: docker compose -f deploy/tunnel-relay/docker-compose.yml up -d
+
+# 2. Origin machine (export side): approve a consumer, start the daemon
+tokenade tunnel share --relay ws://YOUR-VPS:8765 --remote-ref india-home
+tokenade tunnel serve --relay ws://YOUR-VPS:8765 --remote-ref india-home
+
+# 3. Using machine: redeem the bundle, export/use through the circuit
+tokenade tunnel pair --bundle-file bundle.json   # or: pair '<code>'
+tokenade export --with-egress --egress-relay ws://YOUR-VPS:8765 --egress-ref india-home
+tokenade load session.tokenade --tunnel auto --tunnel-echo-url https://echo.example.com/e.json
+tokenade launch --session session.tokenade --tunnel auto
+```
+
+Rules: `--tunnel auto` **refuses to launch** when the circuit can't be verified
+(per-jar policy, default deny) — it never silently goes direct. Consumer tokens
+live in the OS keyring, never in the jar. `tunnel status` shows pairing health;
+`tunnel revoke --remote-ref NAME` cuts a consumer off.
+
+**Echo responder** (for `--tunnel-echo-url` / `--egress-echo-url`): any URL that
+returns JSON `{ip, country, asn}` as seen by the *origin* machine. Self-host it
+next to your relay — five lines, no dependencies beyond stdlib:
+
+```python
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"ip": self.client_address[0],
+                           "country": "IN", "asn": "AS24560"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+HTTPServer(("127.0.0.1", 18766), H).serve_forever()
+```
+
+Fill in your real country/ASN. Without an echo URL the circuit still pairs and
+proxies, but the egress check reports `unverified` instead of `ok`.
+
 ## Plugin Types
 
 | Type | Description | Example |
@@ -788,6 +838,8 @@ tokenade plugin configure capsolver-solver --set api_key="your-key"
 | `notification` | Expiry alerts, webhooks | session-expiry-alert, webhook-notify |
 | `proxy` | Proxy rotation, health | proxy-health, proxy-rotate |
 | `export_format` | Custom export formats | bulk-export, cookie-export |
+| `egress_provider` | Origin-egress tunnel transports | wss-reverse (built-in) |
+| `fingerprint_oracle` | Origin device-value oracles | snapshot-oracle (built-in) |
 
 ## Configuration
 

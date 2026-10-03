@@ -2667,7 +2667,11 @@ Commands:
     tunnel_share.add_argument("--remote-ref", required=True, help="Circuit name")
     tunnel_share.add_argument("--token", help="Consumer token (generated if omitted)")
     tunnel_pair = tunnel_sub.add_parser("pair", help="Redeem a code or bundle")
-    tunnel_pair.add_argument("code", help="Pairing code or JSON bundle from `tunnel share`")
+    tunnel_pair.add_argument("code", nargs="?",
+                             help="Pairing code or JSON bundle from `tunnel share`")
+    tunnel_pair.add_argument("--bundle-file",
+                             help="Read the JSON bundle from a file "
+                             "(avoids shell-quoting issues)")
     tunnel_status = tunnel_sub.add_parser("status", help="Show paired remotes")
     tunnel_status.add_argument("--remote-ref", help="Only show this remote")
     tunnel_revoke = tunnel_sub.add_parser("revoke", help="Remove a consumer token (origin)")

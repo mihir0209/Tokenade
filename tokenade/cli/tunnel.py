@@ -152,6 +152,13 @@ def cmd_tunnel_pair(args):
     from tokenade.core.tunnel.pairing import redeem_pairing, save_consumer_record
 
     code = (getattr(args, "code", None) or "").strip()
+    bundle_file = getattr(args, "bundle_file", None)
+    if bundle_file:
+        try:
+            code = Path(bundle_file).read_text().strip()
+        except OSError as exc:
+            print(f"[ERROR] Cannot read --bundle-file: {exc}")
+            raise SystemExit(2)
     if not code:
         print("[ERROR] pair needs a code or bundle: tokenade tunnel pair '<code>'")
         raise SystemExit(2)
