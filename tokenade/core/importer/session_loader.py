@@ -830,6 +830,16 @@ class SessionLoader:
                     self._browser, package["fingerprint"], stealth_level
                 )
 
+            # Step 5b: Worker-parity check (best-effort, never fails the load).
+            # Makes the add_init_script-vs-Worker gap visible per session:
+            # detectors re-read identity in workers, where JS spoofs don't run.
+            try:
+                from tokenade.core.fingerprint.injector import validate_worker_parity
+
+                result["worker_parity"] = validate_worker_parity(self._browser)
+            except Exception as e:
+                result["worker_parity"] = {"status": "unknown", "reason": str(e)}
+
             # Step 6: Inject cookies
             cookies = package.get("cookies", [])
             result["cookies_injected"] = self.inject_cookies(self._browser, cookies)

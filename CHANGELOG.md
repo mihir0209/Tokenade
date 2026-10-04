@@ -31,6 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   NOT reach Workers (engine-level fix backloged). **WebRTC flags verified into the
   CloakBrowser command line** by test. Proven live: real `load --tunnel auto` (egress ok,
   1/1 cookies).   USER_GUIDE gains the cross-machine handoff checklist.
+- **Tunnel follow-ups**: worker-parity validation — `load` now reports whether
+  main-thread and Web Worker fingerprint reads agree (`match`/`mismatch` with
+  diverged fields; the known `add_init_script`-vs-Worker gap is visible per session
+  instead of silent). New `scripts/tunnel_preflight.py` (offline jar/egress/snapshot/
+  pairing/reachability checks for either side of a handoff) and `scripts/witness_ssh_box.py`
+  (env-driven live SSH-box E2E). Re-proven live loopback: egress ok, live oracle,
+  via-circuit fetch 200.
 - **Tunnel Phase 3**: per-site **split routing** (`load/launch --tunnel-split`,
   `auto` derives domains from the jar; listed domains ride the circuit, everything
   else goes direct as an explicit opt-in; empty list refuses fail-closed). Enforced in

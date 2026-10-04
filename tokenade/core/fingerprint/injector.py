@@ -50,6 +50,74 @@ def inject_stealth_script(browser_manager, fingerprint: BrowserFingerprint, leve
         return False
 
 
+WORKER_PARITY_SCRIPT = """() => (async () => {
+    const main = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        languages: Array.from(navigator.languages || []),
+    };
+    let worker = null;
+    try {
+        const code = `
+            self.postMessage({
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                languages: (navigator.languages ? Array.from(navigator.languages) : []),
+            });
+        `;
+        const w = new Worker(URL.createObjectURL(
+            new Blob([code], {type: 'application/javascript'})));
+        worker = await Promise.race([
+            new Promise((resolve) => { w.onmessage = (e) => resolve(e.data); }),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('worker timeout')), 5000)),
+        ]);
+        w.terminate();
+    } catch (e) {
+        return {main: main, worker: null, worker_error: String(e)};
+    }
+    return {main: main, worker: worker, worker_error: null};
+})()"""
+
+
+def validate_worker_parity(browser_manager) -> Dict[str, Any]:
+    """
+    Compare main-thread vs Web Worker fingerprint reads.
+
+    Detectors re-probe identity inside Workers precisely because JS spoofs
+    (add_init_script) do not run there. This check makes the gap VISIBLE per
+    load instead of silent: status is "match" (native tier holds),
+    "mismatch" (lists diverged fields — expected under JS spoofing), or
+    "unknown" (backend couldn't evaluate). Never raises.
+    """
+    evaluate = getattr(browser_manager, "evaluate", None)
+    if not callable(evaluate):
+        return {"status": "unknown", "reason": "backend has no evaluate()"}
+    try:
+        result = evaluate(WORKER_PARITY_SCRIPT)
+    except Exception as e:
+        return {"status": "unknown", "reason": f"evaluate failed: {e}"}
+    try:
+        main = dict(result.get("main", {}) or {})
+        worker = result.get("worker")
+    except (AttributeError, TypeError, ValueError):
+        return {"status": "unknown", "reason": "unreadable evaluate result"}
+    if not isinstance(worker, dict):
+        return {"status": "unknown", "reason": result.get("worker_error") or "no worker read",
+                "main": main}
+    mismatches = sorted(
+        key for key in set(main) | set(worker) if main.get(key) != worker.get(key)
+    )
+    if mismatches:
+        return {"status": "mismatch", "mismatches": mismatches,
+                "main": main, "worker": worker}
+    return {"status": "match", "probes": sorted(main), "main": main}
+
+
 def validate_injection(browser_manager) -> Dict[str, Any]:
     """
     Verify spoofing is active by checking overridden APIs.
