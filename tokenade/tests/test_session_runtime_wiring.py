@@ -32,10 +32,12 @@ def test_load_applies_extra_args_and_init_scripts(tmp_path):
         factory.create.side_effect = fake_create
         result = SessionLoader().load(
             path, validate=False,
+            proxy={"server": "http://127.0.0.1:19999"},
             extra_args=["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
             init_scripts=["window.__x = 1;"],
         )
     assert result["success"] is True
+    assert captured["proxy"] == {"server": "http://127.0.0.1:19999"}
     assert "--force-webrtc-ip-handling-policy=disable_non_proxied_udp" in captured["args"]
     scripts = [call[0][0] for call in mock_bm.add_init_script.call_args_list]
     assert any("__x" in s for s in scripts)
