@@ -44,8 +44,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   both transports' listeners; socket pipes now cascade half-close so teardown can't
   wedge. **TUI Tunnel tab** (read-only status of paired remotes; serve/share/pair stay
   CLI). Pairing QR deferred (no new dep; `--bundle-file` covers it). Decision: self-host
-  relay stays the default — a hosted relay is safe for the threat model (egress stays
-  at origin) but is a business/ops call, not an engineering gap.
+   relay stays the default — a hosted relay is safe for the threat model (egress stays
+   at origin) but is a business/ops call, not an engineering gap.
+- **Tunnel wiring test**: loader path asserts the resolved proxy reaches
+  `BrowserConfig` (`b21a0c1`), pinning the `RuntimePlan` → browser-config handoff.
+
+### Fixed
+- **Five NameErrors on untested paths (found by flake8 F821 sweep, fixed 2026-10-06)**:
+  `cli/container.py` imported non-existent `print_section` (every `container` command died on import — now uses existing `output.heading`); `cli/tunnel.py` `_serve_ssh` used unbound `live_oracle` (`serve --transport ssh-reverse` would crash — now threaded from `args` like the WSS path); `core/proxy/cdp_routing.py` missed `import json` (`handle_api_sessions_list` would crash); `handlers/resolve.py` missed `AuthStatus` import (plugin-backed `check_auth_status()` would crash — called from `core/portability.py`); `cli/session.py` `cmd_extract` used `session` before assignment (now recommends from nothing and keeps the `"google"` legacy default). Verified: F821 clean on all five files, 151 targeted tests green, full gate 6210 passed / 47 skipped.
 
 ### Fixed
 - **`export --plugin X --cdp-port` without `--domains`**: the plugin's `get_export_domains()` now feeds the CDP extraction filter, so the cookie store is warmed/read on the right origins instead of failing with `No cookies extracted via CDP` (found via `discord-handler`).

@@ -285,11 +285,12 @@ def cmd_extract(args):
 
             site = getattr(account, "site", None)
             if not isinstance(site, str) or not site:
-                # Consult recommend() if site_name missing; fall back to "google"
-                # only as a final legacy default (per ADR-0003).
+                # No session loaded yet at this point (session comes from the
+                # handler below), so there is nothing to recommend from —
+                # fall back to "google" as the final legacy default (per ADR-0003).
                 try:
                     from tokenade.core.recommend import recommend_site
-                    rec_site = recommend_site(session=session)
+                    rec_site = recommend_site()
                     site = rec_site or "google"
                 except Exception:
                     site = "google"

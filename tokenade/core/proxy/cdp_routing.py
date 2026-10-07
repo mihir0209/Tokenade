@@ -3,6 +3,7 @@ CDP Proxy — Request routing, forwarding via curl-cffi/aiohttp, and reverse pro
 """
 
 import asyncio
+import json
 import logging
 from typing import Optional, Dict, TYPE_CHECKING
 from urllib.parse import urlparse

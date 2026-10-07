@@ -96,7 +96,7 @@ def cmd_tunnel_serve(args):
     print("=" * 80 + "\n")
 
     if transport == "ssh-reverse":
-        return _serve_ssh(args, remote_ref, snapshot_values, extra_tokens)
+        return _serve_ssh(args, remote_ref, snapshot_values, extra_tokens, live_oracle)
     if transport != "wss-reverse":
         print(f"[ERROR] Unknown --transport {transport!r} (wss-reverse|ssh-reverse)")
         raise SystemExit(2)
@@ -131,7 +131,7 @@ def cmd_tunnel_serve(args):
         print("\n[STOP] Origin daemon stopped.")
 
 
-def _serve_ssh(args, remote_ref, snapshot_values, extra_tokens):
+def _serve_ssh(args, remote_ref, snapshot_values, extra_tokens, live_oracle=False):
     """Run the SSH-reverse origin (paramiko reverse-forward to --ssh-host)."""
     import os
     import threading

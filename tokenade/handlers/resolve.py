@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Optional, Type
 
-from tokenade.handlers.base import SiteHandler
+from tokenade.handlers.base import AuthStatus, SiteHandler
 
 logger = logging.getLogger(__name__)
 

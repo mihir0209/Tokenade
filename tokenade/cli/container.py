@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from tokenade.cli.output import heading
+
 
 def cmd_container(args: argparse.Namespace) -> None:
     """Container management commands."""
-    from tokenade.cli.output import print_json, print_section
-
     if args.container_command == "build":
         _container_build(args)
     elif args.container_command == "run":
@@ -35,7 +35,7 @@ def cmd_container(args: argparse.Namespace) -> None:
 
 def _container_build(args: argparse.Namespace) -> None:
     """Build Docker image."""
-    print_section("Building Tokenade Docker Image", style="bold blue")
+    heading("Building Tokenade Docker Image")
 
     dockerfile = Path(args.dockerfile) if args.dockerfile else Path("Dockerfile")
     if not dockerfile.exists():
@@ -61,7 +61,7 @@ def _container_build(args: argparse.Namespace) -> None:
 
 def _container_run(args: argparse.Namespace) -> None:
     """Run Tokenade in a container."""
-    print_section("Running Tokenade Container", style="bold blue")
+    heading("Running Tokenade Container")
 
     image = args.image or "tokenade:latest"
     tag = args.tag or "tokenade-run"
@@ -106,7 +106,7 @@ def _container_run(args: argparse.Namespace) -> None:
 
 def _container_stop(args: argparse.Namespace) -> None:
     """Stop a running container."""
-    print_section("Stopping Tokenade Container", style="bold blue")
+    heading("Stopping Tokenade Container")
 
     container = args.container
     cmd = ["docker", "stop", container]
@@ -121,7 +121,7 @@ def _container_stop(args: argparse.Namespace) -> None:
 
 def _container_status(args: argparse.Namespace) -> None:
     """Show container status."""
-    print_section("Tokenade Container Status", style="bold blue")
+    heading("Tokenade Container Status")
 
     cmd = ["docker", "ps", "-a", "--filter", "name=tokenade", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"]
 
