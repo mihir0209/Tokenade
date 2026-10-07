@@ -17,7 +17,7 @@ tokenade --version
 # tokenade 1.2.0
 ```
 
-This guide tracks the published PyPI line around `tokenade==1.2.0` plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install. See `VAULT_SYNC.md` for the mature local data workflows.
+This guide tracks the published PyPI line around `tokenade==1.4.0` (`.tokenade` v3.1 + origin-egress tunnel) plus in-tree TUI/convert/extension work. Prefer `tokenade --help` for flags on your install. See `VAULT_SYNC.md` for the mature local data workflows.
 
 ## Quick Start
 

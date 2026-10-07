@@ -4,15 +4,28 @@ Tokenade extracts, transfers, and injects browser sessions across machines and b
 
 ## Local Witness Environment
 
-All currently working browser sessions to export are in Firefox's default Snap profile:
+Current host is Windows (PowerShell 5.1, `python -m tokenade`, Python 3.12).
+The legacy Linux Firefox Snap donor below is historical — see
+`docs/PLATFORM_SUPPORT.md` and `.agent/KT.md` §6 for the current Windows
+validation (Brave/Edge 153, bare `--remote-debugging-port` v20 rule).
+
+Historical Linux donor profile:
 
 `/home/ghostrider/snap/firefox/common/.mozilla/firefox/nj40lj6y.default`
 
 Use repo-local commands for pre-release witnesses:
 
-`python3 -m tokenade ...`
+`python -m tokenade ...` (Windows) / `python3 -m tokenade ...` (Linux)
 
 Do not use the system-wide installed `tokenade` binary for local end-to-end validation.
+
+## Session Format & Tunnel Pointer
+
+Session jars are `.tokenade` JSON v3.1 (`version`, `cookies`, `tokens`,
+`storage`, `fingerprint`, `tls_profile`, plus additive `egress` +
+`oracle_snapshot`; see `tokenade/core/importer/session_packager.py`).
+Origin-egress tunnel (`tokenade tunnel serve/share/pair`, `load --tunnel auto`,
+fail-closed) is documented in `docs/USER_GUIDE.md` and `.agent/plans/tunnel.md`.
 
 ## Language
 

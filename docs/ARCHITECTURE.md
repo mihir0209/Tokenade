@@ -86,7 +86,26 @@ tokenade/
 │   │   ├── tor_extractor.py            # Tor Browser extraction
 │   │   ├── adb_extractor.py            # Android ADB extraction
 │   │   ├── local_storage_extractor.py  # localStorage extraction
+│   │   ├── leveldb.py                # Pure-Python Chromium LevelDB reader (no plyvel; Windows/macOS)
+│   │   ├── extension_bridge.py       # --via-extension in-page extract over CDP (Discord storage)
 │   │   └── db_utils.py                 # SQLite database utilities
+│   │   │
+│   │   ├── session_runtime/              # Single choke point for launch/load (tunnel-era)
+│   │   │   ├── plan.py                 # RuntimePlanBuilder (CLI > plugin > jar > defaults)
+│   │   │   ├── policy.py               # Per-jar egress policy (default deny)
+│   │   │   ├── webrtc.py               # WebRTC lockdown flags
+│   │   │   ├── oracle_snapshot.py      # Ed25519 snapshot sign/verify
+│   │   │   └── split.py                # Split-routing matcher
+│   │   │
+│   │   ├── tunnel/                       # Origin-egress tunnel (see .agent/plans/tunnel.md)
+│   │   │   ├── protocol.py             # JSON frames
+│   │   │   ├── relay.py                # Reference rendezvous relay
+│   │   │   ├── origin.py               # WSS origin endpoint (snapshot/live oracle, echo)
+│   │   │   ├── consumer.py             # WSS consumer (pair gate, loopback HTTP listener)
+│   │   │   ├── ssh_reverse.py          # ssh-reverse transport (paramiko, Bearer-gated)
+│   │   │   ├── live_oracle.py          # Headless-Chromium scalar probes
+│   │   │   ├── pairing.py              # Single-use codes, bundles, keyring (tokenade-tunnel)
+│   │   │   └── connect.py              # TunnelSession, open_tunnel_for_jar (fail-closed)
 │   │
 │   ├── refresh/                        # Session rotation and health-weighted refresh
 │   │   ├── rotator.py                  # SessionRotationMonitor (login event tracking)
@@ -116,11 +135,11 @@ tokenade/
 │   │   └── at_rest.py                  # At-rest encryption utilities
 │   │
 │   ├── browser/                        # Browser management
-│   │   ├── cloak.py                    # CloakBrowser integration
+│   │   ├── manager.py                  # PlaywrightBrowserManager (Cloak-first; config.proxy/args flow)
 │   │   ├── stealth.py                  # JS stealth patches (fallback)
-│   │   ├── stealth/                    # Stealth subsystem
+│   │   ├── stealth/                    # Stealth subsystem (live path)
 │   │   │   ├── backend.py              # Stealth backend abstraction
-│   │   │   ├── cloak.py                # CloakBrowser stealth layer
+│   │   │   ├── cloak.py                # CloakBrowserBackend (launch/launch_context/serve_cdp; extra_args reach binary)
 │   │   │   ├── launcher.py             # Stealth browser launcher
 │   │   │   └── manager.py              # Stealth manager
 │   │   ├── session_state.py            # .tokenade ↔ storage_state conversion
@@ -397,7 +416,18 @@ Browser Extension ←──WebSocket──→ ExtensionBridge ←──Callback�
 
 ## Session Format
 
-### TokenadeSession v2.0
+### TokenadeSession v3.1 (additive over v3.0; v2.0 example below)
+
+Current jars are **v3.1**: all v2.0 keys plus optional top-level `egress`
+(`{mode: origin-relay, relay: {...}, origin_hint: {country, asn, ip_hash},
+policy: {required, fallback: deny|warn}}`) and `oracle_snapshot`
+(`{values, collected_at, ttl_s, origin_pub, origin_sig}` Ed25519-signed).
+Secrets stay out of the jar — only `token_ref` → OS keyring
+(service `tokenade-tunnel`). Old jars load unchanged
+(`SessionPackager._normalize_legacy` defaults new keys to None).
+See `tokenade/core/importer/session_packager.py` and `.agent/KT.md` §4.
+
+### TokenadeSession v2.0 (base shape)
 
 The `.tokenade` file is a JSON document with the following structure:
 
@@ -562,10 +592,14 @@ SKIP_HEADERS = {
 - Local cache: `~/.tokenade/plugins/.registry_cache.json` (1-hour TTL)
 - Plugin metadata: name, version, description, author, type, entry_point
 
-**Plugin types**:
+**Plugin types** (canonical: `tokenade/plugin/base.py`
+`PLUGIN_TYPE_BASE_CLASSES` / `PLUGIN_TYPE_REQUIRED_METHODS`):
 - `handler` — Site-specific request/response handling
 - `export_format` — Custom export formats
 - `validator` — Custom validation rules
+- `session_refresh` / `notification` / `proxy` / `stealth` / `captcha` — refresh, alerts, proxy providers, patches, solvers
+- `egress_provider` (`EgressProviderPlugin.open_circuit`) — origin-egress tunnel transports (built-in `wss-reverse`)
+- `fingerprint_oracle` (`FingerprintOraclePlugin.answer`) — origin device-value oracles (built-in snapshot oracle)
 
 ### Local Plugins
 

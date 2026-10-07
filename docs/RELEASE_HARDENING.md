@@ -12,9 +12,16 @@ Goal: make the published package installable, verifiable, and usable from a clea
 - If a command is broken, fix it or document the limitation explicitly.
 - Prefer repeatable scripts over manual verification steps.
 
-### Remote Policy
+### Remote Policy (updated 2026-10-06 — no push made)
 
-- `origin` (`https://github.com/mihir0209/Tokenade.git`) is the canonical GitHub
+- `origin` = GitHub `https://github.com/mihir0209/tokenade.git` (canonical;
+  verified read-only via `fetch`, `origin/main` = `40655e4`). **No pushes
+  without explicit user permission.**
+- `codeberg` = `https://codeberg.org/mihir0209/tokenade.git` (previous origin,
+  kept as a named remote).
+- Historical mapping below predates the move (kept for tag history):
+
+- `origin` (`https://github.com/mihir0209/Tokenade.git`) was the canonical GitHub
   repository. Push release tags here and create GitHub releases/assets here.
 - `codeberg` is the canonical Codeberg mirror and may receive release tags.
 - `duplicate` (`yashpatil5005/mihir-tokenade`) is strictly a CI mirror. Push the

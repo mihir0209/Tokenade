@@ -194,18 +194,23 @@ Cookie decryption: 0 succeeded, 50 failed (of 50 encrypted)
 > fresh or existing profiles) — while `example.com`/`github.com` work fine
 > in the same binaries. The tab can still *be* logged in (in-memory
 > session), but no automation API (CDP `Runtime.evaluate`, `DOMStorage`
-> domain, Playwright) can read or write the token. Consequences:
-> - CLI `export`/`refresh-browser`/`load` for Discord are cookies-only and
->   cannot produce or verify a working session — `refresh-browser` now
->   includes `input[type='password']` in its generic logout selectors so a
->   served login form fails the check instead of passing on URL/title.
-> - Use the **browser extension** for Discord end to end: it runs in-page
->   and captures `local_storage["https://discord.com"]` (`token` + ~90
->   keys) in the exact shape `discord-handler` validates/consumes
->   (`plugin.validate` score 86.7 on a real export). CLI `refresh-browser`
->   / `launch` seed carried storage at document-start (same mechanism),
->   but only a *complete* client state boots an authenticated session —
->   token-only jars still fail honestly at the login check.
+> domain, Playwright) can read or write the token. Current end-to-end path
+> (verified — see CHANGELOG + `.agent/KT.md` §6):
+> - Export via the **browser extension**: it runs in-page and captures
+>   `local_storage["https://discord.com"]` (`token` + ~90 keys) in the exact
+>   shape `discord-handler` validates/consumes (`plugin.validate` score 86.7
+>   on a real export). Proven with real Friends/DM content in Brave and Edge
+>   targets.
+> - `refresh-browser` / `load` / `launch` seed carried storage at
+>   document-start (`Page.addScriptToEvaluateOnNewDocument` /
+>   `SessionLoader.build_storage_seed_script`) — the only moment the token is
+>   observable. `--full` CDP exports with zero storage warn instead of
+>   shipping hollow jars; failed programmatic writes print an explicit
+>   `[WARN]` naming the shortfall on load.
+> - Limits that remain: token-only jars (no full client state) still fail
+>   honestly at the login check; `refresh-browser` includes
+>   `input[type='password']` in its generic logout selectors so a served
+>   login form fails instead of passing on URL/title.
 
 **Solutions:**
 ```bash
