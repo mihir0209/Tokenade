@@ -312,7 +312,7 @@ def cmd_share_url(args):
             print(json.dumps({"success": True, **stats}, indent=2))
         else:
             print(
-                f"Cleaned local share store: "
+                "Cleaned local share store: "
                 f"expired={stats.get('expired', 0)}, "
                 f"stripped_embeds={stats.get('stripped', 0)}, "
                 f"removed={stats.get('removed', 0)}, "

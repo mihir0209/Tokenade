@@ -28,19 +28,19 @@ def cmd_batch_export(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n[STATS] Results:")
+        print("\n[STATS] Results:")
         print(f"   Total: {result.total}")
         print(f"   [OK] Success: {len(result.successes)}")
         print(f"   [ERROR] Failed: {len(result.failures)}")
         print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n[OK] Successful exports:")
+            print("\n[OK] Successful exports:")
             for item in result.successes:
                 print(f"   - {item['browser']} -> {item.get('session_file', 'unknown')}")
 
         if result.failures:
-            print(f"\n[ERROR] Failed exports:")
+            print("\n[ERROR] Failed exports:")
             for item in result.failures:
                 print(f"   - {item['item']['browser']}: {item['error']}")
 
@@ -65,19 +65,19 @@ def cmd_batch_load(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n[STATS] Results:")
+        print("\n[STATS] Results:")
         print(f"   Total: {result.total}")
         print(f"   [OK] Success: {len(result.successes)}")
         print(f"   [ERROR] Failed: {len(result.failures)}")
         print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n[OK] Successful loads:")
+            print("\n[OK] Successful loads:")
             for item in result.successes:
                 print(f"   - {item['session_file']} -> {item['browser']}")
 
         if result.failures:
-            print(f"\n[ERROR] Failed loads:")
+            print("\n[ERROR] Failed loads:")
             for item in result.failures:
                 print(f"   - {item['item']['session_file']}: {item['error']}")
 
@@ -101,19 +101,19 @@ def cmd_batch_refresh(args: argparse.Namespace) -> None:
     if args.json:
         print_json(result.to_dict())
     else:
-        print(f"\n[STATS] Results:")
+        print("\n[STATS] Results:")
         print(f"   Total: {result.total}")
         print(f"   [OK] Success: {len(result.successes)}")
         print(f"   [ERROR] Failed: {len(result.failures)}")
         print(f"   [TIME] Duration: {result.duration:.1f}s")
 
         if result.successes:
-            print(f"\n[OK] Successful refreshes:")
+            print("\n[OK] Successful refreshes:")
             for item in result.successes:
                 print(f"   - {item['original']} -> {item['refreshed']}")
 
         if result.failures:
-            print(f"\n[ERROR] Failed refreshes:")
+            print("\n[ERROR] Failed refreshes:")
             for item in result.failures:
                 print(f"   - {item['item']['session_file']}: {item['error']}")
 

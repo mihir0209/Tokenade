@@ -353,7 +353,7 @@ def cmd_launch(args):
                     )
                     print("   Or use: tokenade launch --browser firefox|brave|edge|chrome")
                     raise SystemExit(1)
-            print(f"\n[NET] Browser: cloak (CloakBrowser)")
+            print("\n[NET] Browser: cloak (CloakBrowser)")
             print(f"[CDP] CDP Port: {args.port}")
             print(f"[UI] Visible: {args.visible}")
             import tempfile
@@ -436,7 +436,7 @@ def cmd_launch(args):
                     if _is_running:
                         print(f"   [WARN] {system_browser} is already running. Default profile is locked.")
                         print(f"   Close all {system_browser} windows first, then retry.")
-                        print(f"   Or omit --use-original-profile to launch an isolated profile copy.")
+                        print("   Or omit --use-original-profile to launch an isolated profile copy.")
                         return
                 except Exception:
                     pass
@@ -495,7 +495,7 @@ def cmd_launch(args):
                     if _copy_launch_profile(real_dir, profile_dir):
                         print(f"   [OK] Profile copied to: {profile_dir}")
                     else:
-                        print(f"   [WARN] Profile copy failed, using fresh profile")
+                        print("   [WARN] Profile copy failed, using fresh profile")
 
             if session and session.get("profile_artifacts"):
                 try:
@@ -650,9 +650,9 @@ def cmd_launch(args):
                 "chrome", "chromium", "chrome-canary", "chrome-beta", "google-chrome",
             )
             if site_hint == "google":
-                print(f"   [TIP] Google recipe: donor + target should be Firefox/Brave/Edge (not Chrome).")
-                print(f"   [OK] Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
-                print(f"   [NAV] Open the product URL (mail.google.com) - avoid bouncing through accounts.google.com after inject.")
+                print("   [TIP] Google recipe: donor + target should be Firefox/Brave/Edge (not Chrome).")
+                print("   [OK] Same .tokenade works multi-browser + multi-device on non-Chrome targets.")
+                print("   [NAV] Open the product URL (mail.google.com) - avoid bouncing through accounts.google.com after inject.")
             if site_hint == "google" and chrome_like:
                 print(f"   [WARN] Target is {args.browser}: Google usually rejects portable sessions in Chrome-family browsers.")
                 print(f"   ->  Prefer: tokenade launch --browser brave --session {args.session} --profile-dir /tmp/tokenade-brave-clean --visible")
@@ -1790,7 +1790,7 @@ def _accounts_status(manager, args):
             print(f"{s.site_name:<15} {'?':<10} {'?':<12} {'?':<10} {'?':<20} [ERROR] ERROR: {e}")
 
     print(f"\n   [+] Fresh: {healthy}   Stale: {expiring}  [!] Old: {expired}")
-    print(f"   [TIP] Run 'tokenade accounts refresh' to refresh stale sessions")
+    print("   [TIP] Run 'tokenade accounts refresh' to refresh stale sessions")
 
 
 def _accounts_refresh(manager, args):
@@ -1908,7 +1908,7 @@ def _accounts_refresh(manager, args):
                         _run_post_refresh_plugins(plugin_loader, session)
                         continue
                     else:
-                        print(f"   [WARN] Plugin can't handle this session, falling back to browser")
+                        print("   [WARN] Plugin can't handle this session, falling back to browser")
                 except Exception as e:
                     print(f"   [WARN] Plugin refresh failed: {e}, falling back to browser")
 
@@ -1943,7 +1943,7 @@ def _accounts_refresh(manager, args):
 
     # Summary
     print(f"\n{'=' * 80}")
-    print(f"REFRESH COMPLETE")
+    print("REFRESH COMPLETE")
     print(f"{'=' * 80}")
     print(f"   [OK] Succeeded: {succeeded}")
     print(f"   [ERROR] Failed: {failed}")

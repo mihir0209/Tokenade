@@ -518,7 +518,7 @@ def cmd_plugin(args):
             print(f"   [ERROR] Plugin not found: {args.name}")
             return
         if conflicts and not reg_name:
-            print(f"   [WARN] Found in multiple registries:")
+            print("   [WARN] Found in multiple registries:")
             for c in conflicts:
                 print(f"      - {c.get('_registry', '?')} (v{c.get('version', '?')})")
             print(f"   Use: tokenade plugin install {args.name} --registry <name>")
@@ -675,7 +675,7 @@ def cmd_plugin(args):
                     for m in run_spec.methods
                 )
                 print(f"   Runnable methods: {methods}")
-                print(f"   Run: tokenade run --request request.json")
+                print("   Run: tokenade run --request request.json")
             else:
                 print("   Runnable methods: none (internal only)")
         from tokenade.core.integration.plugin_dependencies import (
@@ -703,7 +703,7 @@ def cmd_plugin(args):
             )
         else:
             print(
-                f"   Integrity: unregistered (run 'tokenade plugin verify' to register)"
+                "   Integrity: unregistered (run 'tokenade plugin verify' to register)"
             )
 
     elif args.plugin_command == "enable":
@@ -731,7 +731,7 @@ def cmd_plugin(args):
             if not outdated and not force:
                 print("\n[OK] All plugins are up to date.")
                 return
-            print(f"\n[SYNC] Updating plugins...")
+            print("\n[SYNC] Updating plugins...")
         results = registry.update(plugin_name=name, force=force, dry_run=dry_run)
         if results["updated"]:
             for item in results["updated"]:
@@ -881,7 +881,7 @@ def cmd_plugin(args):
             else:
                 print("   [OK] No circular dependencies")
             if depth:
-                print(f"   [WARN] Depth violations:")
+                print("   [WARN] Depth violations:")
                 for e in depth:
                     print(f"      {e}")
             else:
@@ -1305,7 +1305,7 @@ def _plugin_ratings(registry, args):
             )
         if not sync.has_pat():
             print(
-                f"\n  [TIP] Set github-token to sync: tokenade config set github-token <PAT>"
+                "\n  [TIP] Set github-token to sync: tokenade config set github-token <PAT>"
             )
 
 
@@ -1389,7 +1389,7 @@ def _plugin_outdated(registry):
         if p.get("description"):
             print(f"    {p['description']}")
 
-    print(f"\n  Run 'tokenade plugin update' to update all.")
+    print("\n  Run 'tokenade plugin update' to update all.")
     print(f"{'=' * 60}\n")
 
 
@@ -1476,7 +1476,7 @@ def _plugin_configure(args):
         config = mgr.load_config(args.name)
         errors = mgr.validate_config(args.name, config)
         if errors:
-            print(f"\n   [ERROR] Config validation errors:")
+            print("\n   [ERROR] Config validation errors:")
             for e in errors:
                 print(f"      {e}")
         else:
@@ -1602,7 +1602,7 @@ def cmd_profile(args):
             nav = profile.fingerprint.get("navigator", {})
             gl = profile.fingerprint.get("webgl", {})
             scr = profile.fingerprint.get("screen", {})
-            print(f"\n  Fingerprint:")
+            print("\n  Fingerprint:")
             print(f"    Platform: {nav.get('platform', '?')}")
             print(f"    Language: {nav.get('language', '?')}")
             print(
@@ -1637,7 +1637,7 @@ def cmd_profile(args):
         if not profiles:
             print("\nNo recently used profiles.\n")
             return
-        print(f"\nRecently used profiles:")
+        print("\nRecently used profiles:")
         for i, p in enumerate(profiles, 1):
             last_used = (
                 time.strftime("%Y-%m-%d %H:%M", time.localtime(p.last_used))
@@ -1649,7 +1649,7 @@ def cmd_profile(args):
 
     elif args.profile_command == "stats":
         stats = manager.get_stats()
-        print(f"\nProfile Statistics:")
+        print("\nProfile Statistics:")
         print(f"  Total: {stats['total']}")
         for browser, count in stats.get("by_browser", {}).items():
             print(f"  {browser}: {count}")
@@ -1703,7 +1703,7 @@ def cmd_stealth(args):
         import json
         from pathlib import Path
 
-        print(f"\n[STATS] Stealth Report")
+        print("\n[STATS] Stealth Report")
         manager = StealthManager()
         config = manager.get_config_dict()
         enabled = [
@@ -1734,10 +1734,10 @@ def cmd_stealth(args):
             for pkg in report["missing_packages"]:
                 print(f"     [ERROR] {pkg}")
         else:
-            print(f"   [OK] All dependencies installed")
+            print("   [OK] All dependencies installed")
 
     elif args.stealth_action == "deps-install":
-        print(f"\n[PKG] Installing missing dependencies...")
+        print("\n[PKG] Installing missing dependencies...")
         checker = DependencyChecker()
         results = checker.install_playwright_deps()
         installed = sum(1 for r in results if r.success)
@@ -1828,19 +1828,19 @@ def cmd_deps(args):
         print(f"   Browser: {browser}")
         print(f"   Installed: {report['installed']}/{report['total']}")
         if report["missing_packages"]:
-            print(f"   Missing packages:")
+            print("   Missing packages:")
             for pkg in report["missing_packages"]:
                 print(f"     [ERROR] {pkg}")
-            print(f"\n   Install: tokenade deps install")
+            print("\n   Install: tokenade deps install")
         else:
-            print(f"   [OK] All dependencies installed")
+            print("   [OK] All dependencies installed")
 
     elif args.deps_action == "install":
         browser = getattr(args, "browser", "chromium")
         playwright_only = getattr(args, "playwright", False)
 
         if playwright_only:
-            print(f"\n[PKG] Installing Playwright dependencies...")
+            print("\n[PKG] Installing Playwright dependencies...")
             results = checker.install_playwright_deps()
         else:
             print(f"\n[PKG] Installing {browser} dependencies...")
@@ -1872,7 +1872,7 @@ def cmd_serve(args):
         cors_origins=args.cors.split(",") if args.cors else None,
     )
 
-    print(f"\n[...] Starting Tokenade API server...")
+    print("\n[...] Starting Tokenade API server...")
     print(f"   Host: {config.host}")
     print(f"   Port: {config.port}")
     print(f"   Auth: {'API key required' if config.api_key else 'no authentication'}")

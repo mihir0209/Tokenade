@@ -218,7 +218,7 @@ class FingerprintGenerator:
             return f"Mozilla/5.0 ({ua_os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36"
         elif browser == "safari":
             safari_ver = f"{int(version.split('.')[0]) + 3}.{version.split('.')[1]}"
-            webkit_ver = f"605.1.15"
+            webkit_ver = "605.1.15"
             return f"Mozilla/5.0 ({ua_os}) AppleWebKit/{webkit_ver} (KHTML, like Gecko) Version/{safari_ver} Safari/605.1.15"
         return f"Mozilla/5.0 ({ua_os}) AppleWebKit/537.36 Chrome/{version} Safari/537.36"
 

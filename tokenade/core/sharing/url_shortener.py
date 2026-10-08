@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class URLShortenerConfig:
     """Configuration for URL shortener integration."""
-    
+
     backend: str = "local"  # local, bitly, tinyurl, custom
     api_key: Optional[str] = None
     api_url: Optional[str] = None
@@ -33,7 +33,7 @@ class URLShortenerConfig:
     require_password: bool = True
     password_min_length: int = 8
     max_uses: int = 0  # 0 = unlimited
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'URLShortenerConfig':
         return cls(
@@ -46,7 +46,7 @@ class URLShortenerConfig:
             password_min_length=data.get("password_min_length", 8),
             max_uses=data.get("max_uses", 0),
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "backend": self.backend,
@@ -62,7 +62,7 @@ class URLShortenerConfig:
 @dataclass
 class ShortenedURL:
     """A shortened URL with metadata."""
-    
+
     short_id: str
     original_url: str
     short_url: str
@@ -72,7 +72,7 @@ class ShortenedURL:
     max_uses: int = 0
     current_uses: int = 0
     revoked: bool = False
-    
+
     @property
     def is_valid(self) -> bool:
         if self.revoked:
@@ -82,7 +82,7 @@ class ShortenedURL:
         if self.max_uses > 0 and self.current_uses >= self.max_uses:
             return False
         return True
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "short_id": self.short_id,
@@ -100,15 +100,15 @@ class ShortenedURL:
 
 class URLShortenerBackend:
     """Base class for URL shortener backends."""
-    
+
     def shorten(self, url: str) -> Optional[str]:
         """Shorten a URL. Returns shortened URL or None on failure."""
         raise NotImplementedError
-    
+
     def expand(self, short_url: str) -> Optional[str]:
         """Expand a shortened URL. Returns original URL or None."""
         raise NotImplementedError
-    
+
     def is_available(self) -> bool:
         """Check if this backend is available."""
         raise NotImplementedError
@@ -116,44 +116,44 @@ class URLShortenerBackend:
 
 class LocalURLShortener(URLShortenerBackend):
     """Local URL shortener using tokenade:// protocol."""
-    
+
     def __init__(self, base_url: str = "tokenade://share"):
         self.base_url = base_url
-    
+
     def shorten(self, url: str) -> Optional[str]:
         """Create a local share URL."""
         short_id = secrets.token_urlsafe(16)
         return f"{self.base_url}/{short_id}"
-    
+
     def expand(self, short_url: str) -> Optional[str]:
         """Extract share ID from local URL."""
         if short_url.startswith(self.base_url + "/"):
             return short_url[len(self.base_url) + 1:]
         return None
-    
+
     def is_available(self) -> bool:
         return True
 
 
 class BitlyURLShortener(URLShortenerBackend):
     """Bitly URL shortener backend."""
-    
+
     def __init__(self, api_key: str, custom_domain: Optional[str] = None):
         self.api_key = api_key
         self.custom_domain = custom_domain or "bit.ly"
         self.api_url = "https://api-ssl.bitly.com/v4/shorten"
-    
+
     def shorten(self, url: str) -> Optional[str]:
         """Shorten URL using Bitly API."""
         import urllib.request
         import urllib.error
-        
+
         try:
             data = json.dumps({
                 "long_url": url,
                 "domain": self.custom_domain,
             }).encode()
-            
+
             req = urllib.request.Request(
                 self.api_url,
                 data=data,
@@ -162,82 +162,82 @@ class BitlyURLShortener(URLShortenerBackend):
                     "Content-Type": "application/json",
                 },
             )
-            
+
             with urllib.request.urlopen(req) as response:
                 result = json.loads(response.read())
                 return result.get("link")
-                
+
         except Exception as e:
             logger.error(f"Bitly shortening failed: {e}")
             return None
-    
+
     def expand(self, short_url: str) -> Optional[str]:
         """Expand Bitly URL."""
         import urllib.request
-        
+
         try:
             url = f"https://api-ssl.bitly.com/v4/expand?bitlink={short_url}"
             req = urllib.request.Request(
                 url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
             )
-            
+
             with urllib.request.urlopen(req) as response:
                 result = json.loads(response.read())
                 return result.get("long_url")
-                
+
         except Exception as e:
             logger.error(f"Bitly expand failed: {e}")
             return None
-    
+
     def is_available(self) -> bool:
         return bool(self.api_key)
 
 
 class TinyURLShortener(URLShortenerBackend):
     """TinyURL URL shortener backend."""
-    
+
     def __init__(self, custom_domain: Optional[str] = None):
         self.custom_domain = custom_domain
         self.api_url = "https://tinyurl.com/api-create.php"
-    
+
     def shorten(self, url: str) -> Optional[str]:
         """Shorten URL using TinyURL API."""
         import urllib.request
         import urllib.parse
-        
+
         try:
             params = urllib.parse.urlencode({"url": url})
             if self.custom_domain:
                 params += f"&domain={self.custom_domain}"
-            
+
             api_url = f"{self.api_url}?{params}"
-            
+
             with urllib.request.urlopen(api_url) as response:
                 return response.read().decode()
-                
+
         except Exception as e:
             logger.error(f"TinyURL shortening failed: {e}")
             return None
-    
+
     def expand(self, short_url: str) -> Optional[str]:
         """Expand TinyURL (follow redirects)."""
         import urllib.request
-        
+
         try:
             req = urllib.request.Request(
                 short_url,
                 method="HEAD",
             )
             req.add_header("User-Agent", "Tokenade/1.0")
-            
+
             with urllib.request.urlopen(req) as response:
                 return response.url
-                
+
         except Exception as e:
             logger.error(f"TinyURL expand failed: {e}")
             return None
-    
+
     def is_available(self) -> bool:
         return True
 
@@ -252,7 +252,7 @@ class SessionURLShortener:
     - Automatic cleanup of expired links
     - Support for request.json in session files
     """
-    
+
     def __init__(
         self,
         config: Optional[URLShortenerConfig] = None,
@@ -265,7 +265,7 @@ class SessionURLShortener:
         self._url_store = Path("~/.tokenade/shortened_urls.json").expanduser()
         self._supabase_config = supabase_config
         self._load_urls()
-    
+
     def create_share(
         self,
         session_file: str,
@@ -290,15 +290,15 @@ class SessionURLShortener:
         session_path = Path(session_file)
         if not session_path.exists():
             raise FileNotFoundError(f"Session file not found: {session_file}")
-        
+
         if len(password) < self.config.password_min_length:
             raise ValueError(
                 f"Password must be at least {self.config.password_min_length} characters"
             )
-        
+
         with open(session_path, "rb") as f:
             session_data = f.read()
-        
+
         session_json = self._parse_session(session_data)
 
         # Preserve original basename for receiver default output path
@@ -310,7 +310,7 @@ class SessionURLShortener:
             meta = {}
             session_json["metadata"] = meta
         meta["file_name"] = file_name
-        
+
         if include_request_json:
             request_json = self._load_request_json(session_path.parent)
             if request_json:
@@ -331,11 +331,11 @@ class SessionURLShortener:
             password,
         )
         ct_len = len(encrypted)
-        
+
         short_id = secrets.token_urlsafe(16)
         expiry = expiry_hours or self.config.expiry_hours
         expires_at = time.time() + (expiry * 3600) if expiry > 0 else 0
-        
+
         password_hash = hashlib.sha256(password.encode()).hexdigest()
 
         # Embed payload only when small enough for local store / paste
@@ -460,7 +460,7 @@ class SessionURLShortener:
             "pruned": bool(prune_note),
             "message": msg,
         }
-    
+
     @staticmethod
     def session_file_name(session_json: Any) -> str:
         """Basename from share metadata, or received.tokenade fallback."""
@@ -666,7 +666,7 @@ class SessionURLShortener:
                 "Supabase project (or your private TOKENADE_SUPABASE_* override)."
             ),
         }
-    
+
     def revoke(self, short_id: str) -> bool:
         """Revoke a local share link entry (remote revoke is separate)."""
         sid = (short_id or "").strip()
@@ -677,11 +677,11 @@ class SessionURLShortener:
         url_entry = self._urls.get(sid)
         if not url_entry:
             return False
-        
+
         url_entry.revoked = True
         self._save_urls()
         return True
-    
+
     def list_shares(self) -> List[Dict[str, Any]]:
         """List all active shares."""
         return [
@@ -689,20 +689,20 @@ class SessionURLShortener:
             for url_entry in self._urls.values()
             if url_entry.is_valid
         ]
-    
+
     def cleanup_expired(self) -> int:
         """Remove expired shares. Returns count removed."""
         expired = [
             sid for sid, url_entry in self._urls.items()
             if not url_entry.is_valid
         ]
-        
+
         for sid in expired:
             del self._urls[sid]
-        
+
         if expired:
             self._save_urls()
-        
+
         return len(expired)
 
     # Strip embedded ?data= payloads larger than this from local store
@@ -758,7 +758,7 @@ class SessionURLShortener:
             "removed": pruned.get("removed", 0),
             "remaining": pruned.get("remaining", len(self._urls)),
         }
-    
+
     def _get_backend(self) -> URLShortenerBackend:
         """Get the URL shortener backend."""
         if self.config.backend == "bitly" and self.config.api_key:
@@ -770,7 +770,7 @@ class SessionURLShortener:
             return TinyURLShortener(self.config.custom_domain)
         else:
             return LocalURLShortener()
-    
+
     def _extract_short_id(self, url_or_id: str) -> Optional[str]:
         """Extract short ID from URL or return as-is if it's an ID."""
         # Handle tokenade://share/ID format
@@ -784,7 +784,7 @@ class SessionURLShortener:
             if len(parts) > 1:
                 return parts[1].split("?")[0]
         return url_or_id
-    
+
     def _extract_encrypted_data(self, original_url: str) -> Optional[str]:
         """Extract encrypted data from original URL."""
         if "data=" in original_url:
@@ -792,7 +792,7 @@ class SessionURLShortener:
             if len(parts) > 1:
                 return parts[1].split("&")[0]
         return None
-    
+
     @staticmethod
     def _origin_matches_needles(origin: str, needles: List[str]) -> bool:
         o = (origin or "").lower()
@@ -946,7 +946,7 @@ class SessionURLShortener:
             return json.loads(data)
         except json.JSONDecodeError:
             return {"raw_data": base64.b64encode(data).decode()}
-    
+
     def _load_request_json(self, session_dir: Path) -> Optional[Dict[str, Any]]:
         """Load request.json if it exists in session directory."""
         request_file = session_dir / "request.json"
@@ -957,14 +957,14 @@ class SessionURLShortener:
             except Exception as e:
                 logger.warning(f"Failed to load request.json: {e}")
         return None
-    
+
     def _encrypt_with_password(self, data: bytes, password: str) -> str:
         """Encrypt data with password using PBKDF2 + Fernet."""
         try:
             from cryptography.fernet import Fernet
             from cryptography.hazmat.primitives import hashes
             from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-            
+
             salt = secrets.token_bytes(16)
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
@@ -973,28 +973,28 @@ class SessionURLShortener:
                 iterations=480000,
             )
             key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-            
+
             fernet = Fernet(key)
             encrypted = fernet.encrypt(data)
-            
+
             result = base64.urlsafe_b64encode(salt + encrypted).decode()
             return result
-            
+
         except ImportError:
             logger.warning("cryptography not installed, using basic encoding")
             return base64.urlsafe_b64encode(data).decode()
-    
+
     def _decrypt_with_password(self, encrypted: str, password: str) -> bytes:
         """Decrypt data with password using PBKDF2 + Fernet."""
         try:
             from cryptography.fernet import Fernet
             from cryptography.hazmat.primitives import hashes
             from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-            
+
             raw = base64.urlsafe_b64decode(encrypted)
             salt = raw[:16]
             encrypted_data = raw[16:]
-            
+
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
@@ -1002,15 +1002,15 @@ class SessionURLShortener:
                 iterations=480000,
             )
             key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-            
+
             fernet = Fernet(key)
             decrypted = fernet.decrypt(encrypted_data)
             return decrypted
-            
+
         except ImportError:
             logger.warning("cryptography not installed, using basic decoding")
             return base64.urlsafe_b64decode(encrypted)
-    
+
     def _load_urls(self) -> None:
         """Load URLs from storage."""
         if self._url_store.exists():
@@ -1022,7 +1022,7 @@ class SessionURLShortener:
                     size = 0
                 with open(self._url_store) as f:
                     data = json.load(f)
-                
+
                 for url_data in data:
                     # Remove is_valid if present (it's a computed property)
                     url_data.pop("is_valid", None)
@@ -1070,15 +1070,15 @@ class SessionURLShortener:
                         )
                     except Exception:
                         pass
-                    
+
             except Exception as e:
                 logger.warning(f"Failed to load shortened URLs: {e}")
-    
+
     def _save_urls(self) -> None:
         """Save URLs to storage."""
         try:
             self._url_store.parent.mkdir(parents=True, exist_ok=True)
-            
+
             data = []
             for url_entry in self._urls.values():
                 row = url_entry.to_dict()
@@ -1092,9 +1092,9 @@ class SessionURLShortener:
                         f"tokenade://share/{row.get('short_id')}"
                     )
                 data.append(row)
-            
+
             with open(self._url_store, "w") as f:
                 json.dump(data, f, indent=2)
-                
+
         except Exception as e:
             logger.warning(f"Failed to save shortened URLs: {e}")

@@ -492,7 +492,7 @@ class PluginRegistry:
 
         if plugin_name in _install_chain:
             logger.error(
-                f"Circular dependency detected: "
+                "Circular dependency detected: "
                 f"{' -> '.join(_install_chain)} -> {plugin_name}"
             )
             return False

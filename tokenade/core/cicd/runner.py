@@ -158,13 +158,13 @@ class CIConfig:
 
         if self.on_failure.action not in ("warn", "error", "webhook"):
             errors.append(
-                f"on_failure.action must be warn|error|webhook, "
+                "on_failure.action must be warn|error|webhook, "
                 f"got: {self.on_failure.action}"
             )
 
         if self.output.format not in ("text", "json", "junit"):
             errors.append(
-                f"output.format must be text|json|junit, "
+                "output.format must be text|json|junit, "
                 f"got: {self.output.format}"
             )
 
@@ -305,7 +305,7 @@ class CIReport:
         for r in self.session_results:
             lines.append(
                 f'    <testcase name="{r.name}" '
-                f'classname="tokenade.ci" '
+                'classname="tokenade.ci" '
                 f'time="{r.duration_ms / 1000:.3f}">'
             )
             if r.status == "fail":

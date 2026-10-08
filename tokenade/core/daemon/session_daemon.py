@@ -559,7 +559,7 @@ class SessionDaemon:
             self._stop_event.set()
 
         def handle_reload(signum, _frame):
-            logger.info(f"Received SIGHUP, reloading config...")
+            logger.info("Received SIGHUP, reloading config...")
             self._reload_event.set()
 
         signal.signal(signal.SIGTERM, handle_stop)

@@ -72,7 +72,7 @@ def resolve_legacy_handler_class(site_name: Optional[str] = None) -> Optional[Ty
     # 3. No handler found
     logger.warning(
         f"No handler found for site '{key}'. "
-        f"Install a handler plugin or check tokenade-plugins marketplace."
+        "Install a handler plugin or check tokenade-plugins marketplace."
     )
     return None
 

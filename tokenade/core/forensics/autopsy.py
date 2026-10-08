@@ -356,7 +356,7 @@ class SessionAutopsy:
 
         # Autopsy time
         events.append(
-            f"Autopsy performed: "
+            "Autopsy performed: "
             f"{datetime.now(timezone.utc).isoformat()}"
         )
 
@@ -436,7 +436,7 @@ class SessionAutopsy:
                 domains = SITE_DETECTION[site]["domains"]
                 domain_str = ",".join(domains[:3])
                 recs.append(
-                    f"Re-export with correct domains: "
+                    "Re-export with correct domains: "
                     f"tokenade export --domains '{domain_str}'"
                 )
             else:

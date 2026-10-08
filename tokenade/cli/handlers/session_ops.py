@@ -397,7 +397,7 @@ def cmd_share(args):
         share_url, session_id = sharer.create_share_link(session, config)
         generate_share_html(session, output_path)
         print(f"\n[FILE] Share page saved to: {output_path}")
-        print(f"[WARN] WARNING: HTML file contains session data in plaintext!")
+        print("[WARN] WARNING: HTML file contains session data in plaintext!")
         print(f" Session ID: {session_id}")
     else:
         share_url, session_id = sharer.create_share_link(session, config)
@@ -479,7 +479,7 @@ def cmd_import(args):
     print("=" * 60)
 
     if not url.startswith("tokenade://share/"):
-        print(f"[ERROR] Invalid share URL (must start with tokenade://share/)")
+        print("[ERROR] Invalid share URL (must start with tokenade://share/)")
         return
 
     print(f"\n[URL] URL: {url[:60]}...")
@@ -499,7 +499,7 @@ def cmd_import(args):
 
     cookies = session.get("cookies", [])
     site_name = session.get("site_name", "unknown")
-    print(f"\n[OK] Session loaded successfully")
+    print("\n[OK] Session loaded successfully")
     print(f"   Site: {site_name}")
     print(f"   Cookies: {len(cookies)}")
 
@@ -747,12 +747,12 @@ def cmd_encrypted_refresh(args):
         )
 
         if result.success:
-            print(f"\n[OK] Refresh successful")
+            print("\n[OK] Refresh successful")
             print(f"   Method: {result.method}")
             print(f"   Encrypted: {result.was_encrypted}")
             print(f"   Duration: {result.duration_ms:.0f}ms")
         else:
-            print(f"\n[ERROR] Refresh failed")
+            print("\n[ERROR] Refresh failed")
             if result.error:
                 print(f"   Error: {result.error}")
 
@@ -1030,9 +1030,9 @@ def cmd_rollback(args):
     print(f"   {target.cookie_count} cookies | {target.created_at[:19]}")
 
     if mgr.rollback(session_path, version):
-        print(f"[OK] Rollback complete")
+        print("[OK] Rollback complete")
     else:
-        print(f"[ERROR] Rollback failed")
+        print("[ERROR] Rollback failed")
 
 
 def cmd_session_diff(args):
@@ -1072,7 +1072,7 @@ def cmd_session_diff(args):
     print(f"\n   Unchanged: {diff.cookies_unchanged}")
 
     if diff.storage_changes:
-        print(f"\n   Storage changes:")
+        print("\n   Storage changes:")
         for key, change in diff.storage_changes.items():
             print(f"     {key}: changed")
     print()
@@ -1241,7 +1241,7 @@ def cmd_mobile_import(args):
         browser = device.available_browsers[0]
         print(f"   Auto-selected browser: {browser}")
 
-    print(f"\n[SYNC] Extracting cookies...")
+    print("\n[SYNC] Extracting cookies...")
 
     result = manager.extract(
         device=device,
@@ -1252,7 +1252,7 @@ def cmd_mobile_import(args):
     )
 
     if result.success:
-        print(f"\n[OK] Extraction successful")
+        print("\n[OK] Extraction successful")
         print(f"   Browser: {result.browser}")
         print(f"   Cookies: {result.cookie_count}")
         print(f"   Site: {result.site_name}")
@@ -1271,7 +1271,7 @@ def _mobile_list_devices(manager):
     devices = manager.list_devices()
 
     print(f"\n{'=' * 60}")
-    print(f"TOKENADE - Mobile Devices")
+    print("TOKENADE - Mobile Devices")
     print(f"{'=' * 60}")
 
     if not devices:
@@ -1287,7 +1287,7 @@ def _mobile_list_devices(manager):
         if d.available_browsers:
             print(f"      Browsers: {', '.join(d.available_browsers)}")
         else:
-            print(f"      Browsers: none detected")
+            print("      Browsers: none detected")
 
     print(f"\n{'=' * 60}")
     print(f"Total: {len(devices)} device(s)")
@@ -1370,18 +1370,18 @@ def cmd_clone_profile(args):
         result = cloner.clone_default_profile(dest, browser, profile_name, session)
 
     if result.success:
-        print(f"\n[OK] Profile cloned successfully")
+        print("\n[OK] Profile cloned successfully")
         print(f"   Files: {result.files_copied}")
         print(f"   Size: {result.size_bytes / (1024 * 1024):.1f} MB")
         if result.session_injected:
             print(f"   Cookies injected: {result.cookies_injected}")
         print(f"   Location: {result.dest_path}")
-        print(f"\n   Launch with:")
+        print("\n   Launch with:")
         print(
             f"   tokenade launch --browser {browser} --profile-dir {result.dest_path}"
         )
     else:
-        print(f"\n[ERROR] Clone failed:")
+        print("\n[ERROR] Clone failed:")
         for err in result.errors:
             print(f"   {err}")
 

@@ -148,7 +148,7 @@ class TokenadeProxy:
             safe_msg = html_module.escape(str(e))
             return web.Response(
                 text=f"<html><body><h1>Proxy Error</h1><p>{safe_msg}</p>"
-                     f"<p><a href='/'>Back to Proxy</a></p></body></html>",
+                     "<p><a href='/'>Back to Proxy</a></p></body></html>",
                 content_type="text/html", status=502,
             )
 

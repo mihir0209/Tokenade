@@ -170,14 +170,14 @@ class PluginLoader:
             use_cache: If True, return cached results if available and fresh.
         """
         import time as _time
-        
+
         # Return cache if fresh
         if use_cache and self._discovery_cache is not None:
             age = _time.time() - self._discovery_cache_time
             if age < self._cache_ttl:
                 logger.debug("Using cached plugin discovery (age: %.1fs)", age)
                 return self._discovery_cache
-        
+
         plugins = []
         if not self.plugins_dir.exists():
             return plugins
@@ -201,7 +201,7 @@ class PluginLoader:
         # Update cache
         self._discovery_cache = plugins
         self._discovery_cache_time = _time.time()
-        
+
         return plugins
 
     def get_manifest(self, name: str) -> Optional[Dict]:
@@ -334,7 +334,7 @@ class PluginLoader:
             return None
 
         plugin_dir = Path(meta.get("_path", self.plugins_dir / name))
-        
+
         # Security validation
         try:
             from tokenade.core.integration.plugin_security import validate_plugin_security
@@ -347,7 +347,7 @@ class PluginLoader:
         except Exception as e:
             logger.error(f"Plugin {name} security check failed: {e}")
             return None
-        
+
         entry_point = meta.get("entry_point", "")
         plugin_type = meta.get("type", "handler")
 

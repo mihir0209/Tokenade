@@ -100,7 +100,7 @@ class RatingSync:
             body = f"⭐ {rating}\nPlugin: {name}\nStars: {stars}"
             if review:
                 body += f"\n\n{review}"
-            body += f"\n\n---\n*Synced from Tokenade v6.2.0*"
+            body += "\n\n---\n*Synced from Tokenade v6.2.0*"
 
             # Post comment
             url = f"https://api.github.com/repos/{PLUGINS_REPO}/issues/{issue_number}/comments"

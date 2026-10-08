@@ -124,7 +124,7 @@ async def run_site_check(browser, context, site_name, cookie_domains, nav_url, l
                 except Exception:
                     pass
             else:
-                print(f"  ❓ Status unknown (no selectors matched)")
+                print("  ❓ Status unknown (no selectors matched)")
 
     except Exception as e:
         print(f"\n{site_name}: ERROR {str(e)[:100]}")
@@ -191,13 +191,13 @@ async def main():
             # Check for chat list
             chat = await page.query_selector(".chat-list")
             if chat:
-                print(f"  ✅ LOGGED IN (selector: .chat-list)")
+                print("  ✅ LOGGED IN (selector: .chat-list)")
             else:
                 auth_form = await page.query_selector(".auth-form")
                 if auth_form:
-                    print(f"  ❌ NOT LOGGED IN (selector: .auth-form)")
+                    print("  ❌ NOT LOGGED IN (selector: .auth-form)")
                 else:
-                    print(f"  ❓ Status unknown")
+                    print("  ❓ Status unknown")
 
         except Exception as e:
             print(f"  ERROR: {str(e)[:100]}")

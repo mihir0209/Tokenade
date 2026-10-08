@@ -53,7 +53,7 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
             )
 
             output_file = importer.export_to_tokenade(session, args.output_dir or ".")
-            print(f"\n[OK] Session imported successfully")
+            print("\n[OK] Session imported successfully")
             print(f"   Output: {output_file}")
             print(f"   Site: {session.site_name}")
             print(f"   Cookies: {len(session.cookies)}")
@@ -87,7 +87,7 @@ def cmd_mobile_import(args: argparse.Namespace) -> None:
             )
 
             output_file = importer.export_to_tokenade(session, args.output_dir or ".")
-            print(f"\n[OK] Session imported successfully")
+            print("\n[OK] Session imported successfully")
             print(f"   Output: {output_file}")
             print(f"   Device: {device.name}")
             print(f"   Site: {session.site_name}")

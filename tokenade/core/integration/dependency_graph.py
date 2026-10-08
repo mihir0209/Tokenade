@@ -244,7 +244,7 @@ class DependencyGraph:
                 if dep not in self._deps:
                     errors.append(
                         f"Plugin {name} depends on '{dep}' "
-                        f"which is not in the graph"
+                        "which is not in the graph"
                     )
 
         return errors

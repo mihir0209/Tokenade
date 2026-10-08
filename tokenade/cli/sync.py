@@ -12,9 +12,9 @@ def cmd_sync(args):
     if not hasattr(args, "sync_action"):
         print("Usage: tokenade sync <action> [options]", file=sys.stderr)
         sys.exit(1)
-    
+
     from tokenade.core.sync import SessionSyncer, SyncConfig
-    
+
     config = SyncConfig(
         remote_host=getattr(args, "remote_host", "") or "",
         remote_port=getattr(args, "remote_port", 22) or 22,
@@ -26,9 +26,9 @@ def cmd_sync(args):
         s3_endpoint_url=getattr(args, "s3_endpoint", None),
         s3_region=getattr(args, "s3_region", "us-east-1") or "us-east-1",
     )
-    
+
     syncer = SessionSyncer(config)
-    
+
     if args.sync_action == "push":
         result = syncer.push()
         if args.json:
@@ -37,7 +37,7 @@ def cmd_sync(args):
             print(f"Pushed {len(result.synced)} files")
             if result.errors:
                 print(f"Errors: {len(result.errors)}")
-    
+
     elif args.sync_action == "pull":
         result = syncer.pull()
         if args.json:
@@ -46,7 +46,7 @@ def cmd_sync(args):
             print(f"Pulled {len(result.synced)} files")
             if result.errors:
                 print(f"Errors: {len(result.errors)}")
-    
+
     elif args.sync_action == "bidirectional":
         result = syncer.bidirectional()
         if args.json:
@@ -55,7 +55,7 @@ def cmd_sync(args):
             print(f"Synced {len(result.synced)} files")
             if result.conflicts:
                 print(f"Conflicts: {len(result.conflicts)}")
-    
+
     elif args.sync_action == "status":
         status = syncer.status()
         if args.json:
@@ -66,7 +66,7 @@ def cmd_sync(args):
             print(f"Pending push: {status['pending_push']}")
             print(f"Pending pull: {status['pending_pull']}")
             print(f"Conflicts: {status['conflicts']}")
-    
+
     else:
         print(f"Unknown sync action: {args.sync_action}", file=sys.stderr)
         sys.exit(1)
@@ -78,9 +78,9 @@ def register_sync_parser(subparsers):
         "sync",
         help="Synchronize sessions across machines",
     )
-    
+
     sync_subparsers = sync_parser.add_subparsers(dest="sync_action")
-    
+
     for action, help_text in [
         ("push", "Push sessions to remote"),
         ("pull", "Pull sessions from remote"),
@@ -99,5 +99,5 @@ def register_sync_parser(subparsers):
         if action == "bidirectional":
             p.add_argument("--conflict", choices=["newest", "oldest", "local", "remote"], default="newest", help="Conflict resolution")
         p.add_argument("--json", action="store_true", help="JSON output")
-    
+
     return sync_parser

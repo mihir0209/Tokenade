@@ -375,7 +375,7 @@ class MobileImportManager:
             if not pulled:
                 return MobileExtractResult(
                     success=False, device=device, browser=browser,
-                    error=f"Failed to pull cookie database from device",
+                    error="Failed to pull cookie database from device",
                 )
 
             # Extract cookies

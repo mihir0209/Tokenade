@@ -137,7 +137,7 @@ async def test_connect_tunnel_roundtrip():
         reader, writer = await asyncio.open_connection("127.0.0.1", origin.proxy_port)
         try:
             writer.write(f"CONNECT 127.0.0.1:{origin.echo_port} HTTP/1.1\r\n"
-                         f"Host: x\r\n".encode() + _auth() + b"\r\n")
+                         "Host: x\r\n".encode() + _auth() + b"\r\n")
             await writer.drain()
             head = await reader.readuntil(b"\r\n\r\n")
             assert b"200" in head
@@ -158,7 +158,7 @@ async def test_absolute_uri_fetch():
         reader, writer = await asyncio.open_connection("127.0.0.1", origin.proxy_port)
         try:
             head = (f"GET http://127.0.0.1:{origin.echo_port}/p HTTP/1.1\r\n"
-                    f"Host: 127.0.0.1\r\n".encode() + _auth() + b"\r\n")
+                    "Host: 127.0.0.1\r\n".encode() + _auth() + b"\r\n")
             writer.write(head + b"hello-abs")
             await writer.drain()
             # Echo target returns the forwarded head first, then the body.

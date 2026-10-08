@@ -712,7 +712,7 @@ class SshTunnelSession:
         try:
             request = (f"{method} http://{host}{path} HTTP/1.1\r\nHost: {host}\r\n"
                        f"Proxy-Authorization: Bearer {self._consumer_token}\r\n"
-                       f"Connection: close\r\n\r\n").encode()
+                       "Connection: close\r\n\r\n").encode()
             writer.write(request)
             await writer.drain()
             # Bounded read (never read(-1)): the box/origin may hold the

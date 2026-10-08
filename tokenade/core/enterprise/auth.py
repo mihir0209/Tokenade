@@ -21,21 +21,21 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Permission:
     """A permission grant."""
-    
+
     resource: str  # e.g., "session", "vault", "sync"
     action: str    # e.g., "read", "write", "delete", "admin"
-    
+
     def __str__(self):
         return f"{self.resource}:{self.action}"
-    
+
     def __eq__(self, other):
         if isinstance(other, Permission):
             return self.resource == other.resource and self.action == other.action
         return False
-    
+
     def __hash__(self):
         return hash((self.resource, self.action))
-    
+
     @classmethod
     def from_string(cls, s: str) -> 'Permission':
         """Parse 'resource:action' string."""
@@ -43,7 +43,7 @@ class Permission:
         if len(parts) == 2:
             return cls(resource=parts[0], action=parts[1])
         return cls(resource=parts[0], action="*")
-    
+
     def matches(self, required: 'Permission') -> bool:
         """Check if this permission matches a required permission."""
         if self.resource == "*" or self.resource == required.resource:
@@ -55,19 +55,19 @@ class Permission:
 @dataclass
 class Role:
     """A role with associated permissions."""
-    
+
     name: str
     description: str = ""
     permissions: List[Permission] = field(default_factory=list)
     parent_roles: List[str] = field(default_factory=list)
-    
+
     def has_permission(self, permission: Permission) -> bool:
         """Check if role has a specific permission."""
         for p in self.permissions:
             if p.matches(permission):
                 return True
         return False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -75,7 +75,7 @@ class Role:
             "permissions": [str(p) for p in self.permissions],
             "parent_roles": self.parent_roles,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Role':
         return cls(
@@ -89,14 +89,14 @@ class Role:
 @dataclass
 class User:
     """A user with assigned roles."""
-    
+
     user_id: str
     username: str
     email: Optional[str] = None
     roles: List[str] = field(default_factory=list)
     active: bool = True
     created_at: float = field(default_factory=time.time)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "user_id": self.user_id,
@@ -106,7 +106,7 @@ class User:
             "active": self.active,
             "created_at": self.created_at,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'User':
         return cls(
@@ -130,14 +130,14 @@ class RBACManager:
     - Access verification
     - Persistent storage
     """
-    
+
     def __init__(self, config_path: Optional[str] = None):
         self._config_path = Path(config_path or "~/.tokenade/rbac.json").expanduser()
         self._roles: Dict[str, Role] = {}
         self._users: Dict[str, User] = {}
         self._init_default_roles()
         self._load()
-    
+
     def _init_default_roles(self):
         """Initialize default roles."""
         self._roles["admin"] = Role(
@@ -147,7 +147,7 @@ class RBACManager:
                 Permission("*", "*"),
             ],
         )
-        
+
         self._roles["operator"] = Role(
             name="operator",
             description="Can manage sessions and sync",
@@ -160,7 +160,7 @@ class RBACManager:
                 Permission("vault", "read"),
             ],
         )
-        
+
         self._roles["viewer"] = Role(
             name="viewer",
             description="Read-only access",
@@ -169,7 +169,7 @@ class RBACManager:
                 Permission("sync", "read"),
             ],
         )
-        
+
         self._roles["auditor"] = Role(
             name="auditor",
             description="Audit log access",
@@ -178,7 +178,7 @@ class RBACManager:
                 Permission("audit", "write"),
             ],
         )
-    
+
     def create_role(
         self,
         name: str,
@@ -193,35 +193,35 @@ class RBACManager:
             permissions=[Permission.from_string(p) for p in (permissions or [])],
             parent_roles=parent_roles or [],
         )
-        
+
         self._roles[name] = role
         self._save()
         return role
-    
+
     def delete_role(self, name: str) -> bool:
         """Delete a role."""
         if name in ("admin", "operator", "viewer"):
             return False
-        
+
         if name in self._roles:
             del self._roles[name]
-            
+
             for user in self._users.values():
                 if name in user.roles:
                     user.roles.remove(name)
-            
+
             self._save()
             return True
         return False
-    
+
     def get_role(self, name: str) -> Optional[Role]:
         """Get a role by name."""
         return self._roles.get(name)
-    
+
     def list_roles(self) -> List[Role]:
         """List all roles."""
         return list(self._roles.values())
-    
+
     def create_user(
         self,
         user_id: str,
@@ -236,11 +236,11 @@ class RBACManager:
             email=email,
             roles=roles or ["viewer"],
         )
-        
+
         self._users[user_id] = user
         self._save()
         return user
-    
+
     def delete_user(self, user_id: str) -> bool:
         """Delete a user."""
         if user_id in self._users:
@@ -248,43 +248,43 @@ class RBACManager:
             self._save()
             return True
         return False
-    
+
     def get_user(self, user_id: str) -> Optional[User]:
         """Get a user by ID."""
         return self._users.get(user_id)
-    
+
     def list_users(self) -> List[User]:
         """List all users."""
         return list(self._users.values())
-    
+
     def assign_role(self, user_id: str, role_name: str) -> bool:
         """Assign a role to a user."""
         user = self._users.get(user_id)
         role = self._roles.get(role_name)
-        
+
         if not user or not role:
             return False
-        
+
         if role_name not in user.roles:
             user.roles.append(role_name)
             self._save()
-        
+
         return True
-    
+
     def revoke_role(self, user_id: str, role_name: str) -> bool:
         """Revoke a role from a user."""
         user = self._users.get(user_id)
-        
+
         if not user:
             return False
-        
+
         if role_name in user.roles:
             user.roles.remove(role_name)
             self._save()
             return True
-        
+
         return False
-    
+
     def check_permission(self, user_id: str, permission: Permission) -> bool:
         """
         Check if a user has a specific permission.
@@ -299,70 +299,70 @@ class RBACManager:
         user = self._users.get(user_id)
         if not user or not user.active:
             return False
-        
+
         for role_name in user.roles:
             role = self._roles.get(role_name)
             if role:
                 if role.has_permission(permission):
                     return True
-                
+
                 for parent_name in role.parent_roles:
                     parent = self._roles.get(parent_name)
                     if parent and parent.has_permission(permission):
                         return True
-        
+
         return False
-    
+
     def get_user_permissions(self, user_id: str) -> Set[Permission]:
         """Get all permissions for a user."""
         user = self._users.get(user_id)
         if not user:
             return set()
-        
+
         permissions = set()
-        
+
         for role_name in user.roles:
             role = self._roles.get(role_name)
             if role:
                 permissions.update(role.permissions)
-                
+
                 for parent_name in role.parent_roles:
                     parent = self._roles.get(parent_name)
                     if parent:
                         permissions.update(parent.permissions)
-        
+
         return permissions
-    
+
     def _load(self):
         """Load configuration from disk."""
         if self._config_path.exists():
             try:
                 with open(self._config_path) as f:
                     data = json.load(f)
-                
+
                 for role_data in data.get("roles", []):
                     role = Role.from_dict(role_data)
                     self._roles[role.name] = role
-                
+
                 for user_data in data.get("users", []):
                     user = User.from_dict(user_data)
                     self._users[user.user_id] = user
-                    
+
             except Exception as e:
                 logger.warning(f"Failed to load RBAC config: {e}")
-    
+
     def _save(self):
         """Save configuration to disk."""
         try:
             self._config_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             data = {
                 "roles": [role.to_dict() for role in self._roles.values()],
                 "users": [user.to_dict() for user in self._users.values()],
             }
-            
+
             with open(self._config_path, "w") as f:
                 json.dump(data, f, indent=2)
-                
+
         except Exception as e:
             logger.warning(f"Failed to save RBAC config: {e}")

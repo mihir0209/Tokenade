@@ -453,12 +453,12 @@ def cmd_load(args):
 
             parity = result.get("worker_parity") or {}
             if parity.get("status") == "match":
-                print(f"   [OK] Worker parity: main==worker "
+                print("   [OK] Worker parity: main==worker "
                       f"({len(parity.get('probes', []))} probes)")
             elif parity.get("status") == "mismatch":
-                print(f"   [WARN] Worker parity diverged on "
+                print("   [WARN] Worker parity diverged on "
                       f"{', '.join(parity.get('mismatches', []))}: "
-                      f"detectors re-reading in workers see unspoofed values")
+                      "detectors re-reading in workers see unspoofed values")
 
             if args.runtime:
                 print("\n Loading into RuntimeEngine...")

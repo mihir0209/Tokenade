@@ -38,10 +38,10 @@ def cmd_cicd(args):
         for filename in workflows:
             print(f"   - {args.output_dir}/{filename}")
 
-        print(f"\n Next steps:")
-        print(f"   1. Copy .github/workflows/ to your repository")
+        print("\n Next steps:")
+        print("   1. Copy .github/workflows/ to your repository")
         print(f"   2. Add your .tokenade files to {args.sessions_dir}/")
-        print(f"   3. Push to GitHub - workflows will run automatically")
+        print("   3. Push to GitHub - workflows will run automatically")
         return
 
     if args.workflow_type == "github":
@@ -79,7 +79,7 @@ def cmd_cicd(args):
         output_path = args.output or f"{args.sessions_dir}/refresh.sh"
         generator.save(script, output_path)
         print(f"\n[OK] Generated cron script: {output_path}")
-        print(f"\n Add to crontab:")
+        print("\n Add to crontab:")
         print(f"   0 */{args.interval_hours} * * * {output_path}")
 
 

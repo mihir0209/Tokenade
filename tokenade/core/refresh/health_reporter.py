@@ -112,11 +112,11 @@ class HealthReport:
         lines.append(f"OWASP Score: {self.overall_owasp_score:.1f}/100")
 
         if self.exit_code == 0:
-            lines.append(f"Status: ALL HEALTHY")
+            lines.append("Status: ALL HEALTHY")
         elif self.exit_code == 1:
-            lines.append(f"Status: UNHEALTHY SESSIONS DETECTED")
+            lines.append("Status: UNHEALTHY SESSIONS DETECTED")
         else:
-            lines.append(f"Status: MIXED (some healthy, some unhealthy)")
+            lines.append("Status: MIXED (some healthy, some unhealthy)")
 
         lines.append("")
         lines.append("-" * 70)

@@ -137,7 +137,7 @@ def _container_start(args):
                 "python", "-c",
                 "from tokenade.core.api.server import TokenadeAPIServer; import asyncio; s=TokenadeAPIServer(); asyncio.run(s.start())",
             ], capture_output=True, text=True, check=True, timeout=30)
-            print(f"   [OK] API server started")
+            print("   [OK] API server started")
         except Exception as e:
             print(f"   [ERROR] API server failed: {e}")
 
@@ -246,7 +246,7 @@ def _container_scale(args):
     session_files = list(sessions_dir.glob("*.tokenade"))[:args.replicas]
 
     if not session_files:
-        print(f"[ERROR] No .tokenade files found")
+        print("[ERROR] No .tokenade files found")
         return
 
     # Stop existing

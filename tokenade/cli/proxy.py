@@ -200,7 +200,7 @@ def cmd_proxy_legacy(args):
             with open(temp_path, 'w') as f:
                 json.dump(session_data, f)
             session_file = temp_path
-            print(f" Decrypted session with password")
+            print(" Decrypted session with password")
         except Exception as e:
             print(f"[ERROR] Decryption failed: {e}")
             return
@@ -222,11 +222,11 @@ def cmd_proxy_legacy(args):
             s.close()
         except Exception:
             external_ip = "<your-ip>"
-        print(f"\n    MULTI-DEVICE ACCESS:")
-        print(f"   Other devices can access this proxy at:")
+        print("\n    MULTI-DEVICE ACCESS:")
+        print("   Other devices can access this proxy at:")
         print(f"   -> http://{external_ip}:{args.port}")
-        print(f"\n   [WARN] All traffic routes through THIS machine's IP.")
-        print(f"   Sessions stay valid because cookies never leave this device.")
+        print("\n   [WARN] All traffic routes through THIS machine's IP.")
+        print("   Sessions stay valid because cookies never leave this device.")
 
     if args.mode == "forward":
         print(f"   Configure browser: HTTP_PROXY=http://{args.host}:{args.port}")

@@ -263,7 +263,7 @@ def cmd_tunnel_pair(args):
                          record["consumer_token"], ssh=record.get("ssh"))
     print(f"\n[OK] Paired '{record['remote_ref']}' via {record['relay_url']}")
     print("   Token stored in OS keyring (never in the jar).")
-    print(f"   Use: tokenade load session.tokenade --tunnel auto")
+    print("   Use: tokenade load session.tokenade --tunnel auto")
 
 
 def collect_tunnel_status(remote_ref=None):

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DashboardConfig:
     """Configuration for monitoring dashboard."""
-    
+
     host: str = "127.0.0.1"
     port: int = 8080
     title: str = "Tokenade Session Monitor"
@@ -41,7 +41,7 @@ class DashboardConfig:
     ssl_certfile: Optional[str] = None
     ssl_keyfile: Optional[str] = None
     session_secret: str = ""
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'DashboardConfig':
         return cls(
@@ -57,7 +57,7 @@ class DashboardConfig:
             ssl_keyfile=data.get("ssl_keyfile"),
             session_secret=data.get("session_secret", ""),
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "host": self.host,
@@ -73,15 +73,15 @@ class DashboardConfig:
 
 class DashboardHandler(BaseHTTPRequestHandler):
     """HTTP request handler for dashboard."""
-    
+
     dashboard = None
-    
+
     def do_GET(self):
         """Handle GET requests."""
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
-        
+
         if path == "/":
             self._serve_index()
         elif path == "/api/sessions":
@@ -98,20 +98,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_static(path)
         else:
             self._send_404()
-    
+
     def do_POST(self):
         """Handle POST requests."""
         parsed = urlparse(self.path)
         path = parsed.path
-        
+
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length) if content_length > 0 else b""
-        
+
         try:
             data = json.loads(body) if body else {}
         except json.JSONDecodeError:
             data = {}
-        
+
         if path == "/api/auth/login":
             self._handle_login(data)
         elif path == "/api/auth/logout":
@@ -124,138 +124,138 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_delete(data)
         else:
             self._send_404()
-    
+
     def _serve_index(self):
         """Serve the main dashboard page."""
         if self.dashboard and self.dashboard.config.require_auth:
             if not self._check_auth():
                 self._send_redirect("/login")
                 return
-        
+
         html = self._get_dashboard_html()
         self._send_html(html)
-    
+
     def _serve_login_page(self):
         """Serve the login page."""
         html = self._get_login_html()
         self._send_html(html)
-    
+
     def _handle_login(self, data: Dict):
         """Handle login request."""
         username = data.get("username", "")
         password = data.get("password", "")
-        
+
         if (
             username == self.dashboard.config.username
             and password == self.dashboard.config.password
         ):
-            
+
             token = secrets.token_urlsafe(32)
             self.dashboard._auth_tokens[token] = {
                 "username": username,
                 "created_at": time.time(),
                 "expires_at": time.time() + 3600,
             }
-            
+
             self._send_json({"success": True, "token": token})
         else:
             self._send_json({"success": False, "error": "Invalid credentials"}, 401)
-    
+
     def _handle_logout(self):
         """Handle logout request."""
         token = self._get_auth_token()
         if token and token in self.dashboard._auth_tokens:
             del self.dashboard._auth_tokens[token]
         self._send_json({"success": True})
-    
+
     def _check_auth(self) -> bool:
         """Check if request is authenticated."""
         token = self._get_auth_token()
         if not token:
             return False
-        
+
         auth_info = self.dashboard._auth_tokens.get(token)
         if not auth_info:
             return False
-        
+
         if time.time() > auth_info["expires_at"]:
             del self.dashboard._auth_tokens[token]
             return False
-        
+
         return True
-    
+
     def _get_auth_token(self) -> Optional[str]:
         """Get auth token from cookie or header."""
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             return auth_header[7:]
-        
+
         cookie = self.headers.get("Cookie", "")
         for part in cookie.split(";"):
             part = part.strip()
             if part.startswith("tokenade_token="):
                 return part.split("=", 1)[1]
-        
+
         return None
-    
+
     def _serve_sessions(self):
         """Serve sessions list."""
         if self.dashboard and self.dashboard.config.require_auth:
             if not self._check_auth():
                 self._send_json({"error": "Unauthorized"}, 401)
                 return
-        
+
         sessions = self.dashboard.get_sessions()
         self._send_json(sessions)
-    
+
     def _serve_health(self):
         """Serve health status."""
         health = self.dashboard.get_health()
         self._send_json(health)
-    
+
     def _serve_stats(self):
         """Serve statistics."""
         stats = self.dashboard.get_stats()
         self._send_json(stats)
-    
+
     def _serve_config(self):
         """Serve dashboard config."""
         config = self.dashboard.config.to_dict()
         self._send_json(config)
-    
+
     def _handle_refresh(self, data: Dict):
         """Handle session refresh."""
         if self.dashboard and self.dashboard.config.require_auth:
             if not self._check_auth():
                 self._send_json({"error": "Unauthorized"}, 401)
                 return
-        
+
         name = data.get("name", "")
         result = self.dashboard.refresh_session(name)
         self._send_json(result)
-    
+
     def _handle_validate(self, data: Dict):
         """Handle session validation."""
         if self.dashboard and self.dashboard.config.require_auth:
             if not self._check_auth():
                 self._send_json({"error": "Unauthorized"}, 401)
                 return
-        
+
         name = data.get("name", "")
         result = self.dashboard.validate_session(name)
         self._send_json(result)
-    
+
     def _handle_delete(self, data: Dict):
         """Handle session deletion."""
         if self.dashboard and self.dashboard.config.require_auth:
             if not self._check_auth():
                 self._send_json({"error": "Unauthorized"}, 401)
                 return
-        
+
         name = data.get("name", "")
         result = self.dashboard.delete_session(name)
         self._send_json(result)
-    
+
     def _send_json(self, data: Any, status: int = 200):
         """Send JSON response."""
         response = json.dumps(data, indent=2)
@@ -264,7 +264,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", len(response))
         self.end_headers()
         self.wfile.write(response.encode())
-    
+
     def _send_html(self, html: str, status: int = 200):
         """Send HTML response."""
         self.send_response(status)
@@ -272,28 +272,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", len(html))
         self.end_headers()
         self.wfile.write(html.encode())
-    
+
     def _send_redirect(self, url: str):
         """Send redirect response."""
         self.send_response(302)
         self.send_header("Location", url)
         self.end_headers()
-    
+
     def _send_404(self):
         """Send 404 response."""
         self.send_response(404)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
         self.wfile.write(b"Not Found")
-    
+
     def _serve_static(self, path: str):
         """Serve static files."""
         self._send_404()
-    
+
     def log_message(self, format, *args):
         """Log HTTP requests."""
         logger.debug(f"{self.address_string()} - {format % args}")
-    
+
     def _get_dashboard_html(self) -> str:
         """Get dashboard HTML."""
         config = self.dashboard.config
@@ -332,7 +332,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             <h1>{config.title}</h1>
             <button class="btn btn-primary logout" onclick="logout()">Logout</button>
         </div>
-        
+
         <div class="stats">
             <div class="stat-card">
                 <div class="stat-value" id="total">0</div>
@@ -351,13 +351,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 <div class="stat-label">Unknown</div>
             </div>
         </div>
-        
+
         <div class="sessions">
             <h2>Sessions</h2>
             <div id="sessions-list">Loading...</div>
         </div>
     </div>
-    
+
     <script>
         async function loadStats() {{
             const response = await fetch('/api/stats');
@@ -367,17 +367,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             document.getElementById('expired').textContent = data.expired;
             document.getElementById('unknown').textContent = data.unknown;
         }}
-        
+
         async function loadSessions() {{
             const response = await fetch('/api/sessions');
             const sessions = await response.json();
             const list = document.getElementById('sessions-list');
-            
+
             if (sessions.length === 0) {{
                 list.innerHTML = '<p>No sessions found</p>';
                 return;
             }}
-            
+
             list.innerHTML = sessions.map(s => `
                 <div class="session">
                     <div class="session-name">${{s.name}}</div>
@@ -388,18 +388,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 </div>
             `).join('');
         }}
-        
+
         async function logout() {{
             await fetch('/api/auth/logout', {{ method: 'POST' }});
             window.location.href = '/login';
         }}
-        
+
         loadStats();
         loadSessions();
     </script>
 </body>
 </html>"""
-    
+
     def _get_login_html(self) -> str:
         """Get login page HTML."""
         config = self.dashboard.config
@@ -437,19 +437,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         </form>
         <div class="error" id="error">Invalid credentials</div>
     </div>
-    
+
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {{
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            
+
             const response = await fetch('/api/auth/login', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ username, password }})
             }});
-            
+
             const data = await response.json();
             if (data.success) {{
                 document.cookie = `tokenade_token=${{data.token}}; path=/`;
@@ -476,14 +476,14 @@ class DashboardServer:
     - Authentication
     - HTTPS support
     """
-    
+
     def __init__(self, config: Optional[DashboardConfig] = None):
         self.config = config or DashboardConfig()
         self._server = None
         self._sessions: List[Dict] = []
         self._stats: Dict[str, Any] = {}
         self._auth_tokens: Dict[str, Dict] = {}
-    
+
     def start(self, block: bool = True):
         """
         Start the dashboard server.
@@ -492,12 +492,12 @@ class DashboardServer:
             block: Whether to block the main thread
         """
         DashboardHandler.dashboard = self
-        
+
         self._server = HTTPServer(
             (self.config.host, self.config.port),
             DashboardHandler,
         )
-        
+
         if self.config.ssl_certfile and self.config.ssl_keyfile:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(self.config.ssl_certfile, self.config.ssl_keyfile)
@@ -505,33 +505,33 @@ class DashboardServer:
             logger.info(f"Dashboard started at https://{self.config.host}:{self.config.port}")
         else:
             logger.info(f"Dashboard started at http://{self.config.host}:{self.config.port}")
-        
+
         if block:
             self._server.serve_forever()
-    
+
     def stop(self):
         """Stop the dashboard server."""
         if self._server:
             self._server.shutdown()
             self._server = None
-    
+
     def get_sessions(self) -> List[Dict]:
         """Get all sessions for display."""
         self._refresh_sessions()
         return self._sessions
-    
+
     def get_health(self) -> Dict[str, Any]:
         """Get health status."""
         healthy = sum(1 for s in self._sessions if s.get("status") == "healthy")
         total = len(self._sessions)
-        
+
         return {
             "status": "healthy" if healthy == total else "degraded",
             "healthy": healthy,
             "total": total,
             "timestamp": time.time(),
         }
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics."""
         return {
@@ -540,37 +540,37 @@ class DashboardServer:
             "expired": sum(1 for s in self._sessions if s.get("status") == "expired"),
             "unknown": sum(1 for s in self._sessions if s.get("status") == "unknown"),
         }
-    
+
     def refresh_session(self, name: str) -> Dict[str, Any]:
         """Refresh a session."""
         return {
             "success": True,
             "message": f"Refreshed session: {name}",
         }
-    
+
     def validate_session(self, name: str) -> Dict[str, Any]:
         """Validate a session."""
         return {
             "success": True,
             "message": f"Validated session: {name}",
         }
-    
+
     def delete_session(self, name: str) -> Dict[str, Any]:
         """Delete a session."""
         return {
             "success": True,
             "message": f"Deleted session: {name}",
         }
-    
+
     def _refresh_sessions(self):
         """Refresh session list from disk."""
         from pathlib import Path
-        
+
         sessions_dir = Path("~/.tokenade/sessions").expanduser()
         if not sessions_dir.exists():
             self._sessions = []
             return
-        
+
         sessions = []
         for f in sessions_dir.glob("*.tokenade"):
             sessions.append({
@@ -580,5 +580,5 @@ class DashboardServer:
                 "modified": f.stat().st_mtime,
                 "status": "healthy",
             })
-        
+
         self._sessions = sessions[:self.config.max_sessions]

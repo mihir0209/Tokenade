@@ -378,7 +378,7 @@ def generate_compose_override(
             "    build: .",
             "    image: tokenade:latest",
             f"    container_name: {service_name}",
-            f'    ports:',
+            '    ports:',
             f'      - "{port}:9222"',
             "    volumes:",
             f"      - ./sessions/{Path(session).name}:/app/sessions/input.tokenade:ro",

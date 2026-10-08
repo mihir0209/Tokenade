@@ -485,7 +485,7 @@ class SystemBrowserLauncher:
                 f"{browser} browser not found. Install it:\n"
                 f"  Ubuntu/Debian: sudo apt install {'google-chrome' if browser in ('chrome', 'chromium') else browser}\n"
                 f"  macOS: brew install --cask {'google-chrome' if browser == 'chrome' else browser}\n"
-                f"  Or specify path: --browser-path /path/to/browser"
+                "  Or specify path: --browser-path /path/to/browser"
             )
 
         # Auto-start Xvfb if headless and no display available
@@ -560,7 +560,7 @@ class SystemBrowserLauncher:
             process.terminate()
             raise RuntimeError(
                 f"Browser {browser} launched but CDP not ready after {timeout}s.\n"
-                f"The browser may have crashed or CDP is not enabled."
+                "The browser may have crashed or CDP is not enabled."
             )
 
         self._active_browsers.append(browser_proc)
