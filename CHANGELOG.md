@@ -4,7 +4,7 @@ All notable changes to Tokenade will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.4.0] - 2026-10-06
 
 ### Added
 - **Origin-egress tunnel, Phase 1** (plan: `.agent/plans/tunnel.md`): use a session
